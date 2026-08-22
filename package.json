@@ -1,0 +1,34 @@
+{
+  "name": "norr",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no test runner configured yet (tracked separately) \" && exit 0"
+  },
+  "dependencies": {
+    "next": "^15.5.23",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
+    "server-only": "^0.0.1",
+    "@yourorg/ui": "file:./vendor/yourorg-ui-stub"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^15.5.23",
+    "typescript": "^5"
+  }
+}
