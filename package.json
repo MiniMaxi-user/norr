@@ -14,13 +14,14 @@
     "test": "echo \"no test runner configured yet (tracked separately) \" && exit 0"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
+    "@yourorg/ui": "file:./vendor/yourorg-ui-stub",
     "next": "^15.5.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.112.3",
     "server-only": "^0.0.1",
-    "@yourorg/ui": "file:./vendor/yourorg-ui-stub"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

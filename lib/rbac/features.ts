@@ -49,8 +49,15 @@ export type FeatureKey =
  * phasing) — gated purely on the feature key, not on which organization is
  * asking. Update this set as modules ship; it goes away entirely once the
  * TODO below is done.
+ *
+ * `clients` and `assets` added here as part of Phase 1 Core CRM (issues
+ * #8/#9): `app/(app)/clients/actions.ts` and `app/(app)/assets/actions.ts`
+ * both call `hasFeature()` at the top of every action (CLAUDE.md rule 3) —
+ * leaving these two out of this set would make every one of those actions
+ * unconditionally fail with "module not enabled", which would be wrong now
+ * that the modules are actually shipping.
  */
-const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>(["dashboard"]);
+const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>(["dashboard", "clients", "assets"]);
 
 /**
  * `hasFeature(organization, featureKey)` — the one gate every module
