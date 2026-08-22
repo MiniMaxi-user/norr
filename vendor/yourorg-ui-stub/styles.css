@@ -790,6 +790,10 @@ a {
   width: min(680px, 100%);
 }
 .ui-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 1.25rem 1.5rem 1rem;
   border-bottom: 1px solid var(--ui-border);
 }

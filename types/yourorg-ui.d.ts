@@ -129,14 +129,14 @@ declare module "@yourorg/ui" {
       selected?: boolean;
     }) => ReactElement;
     HeaderCell: (
-      props: ThHTMLAttributes<HTMLTableCellElement> & {
+      props: Omit<ThHTMLAttributes<HTMLTableCellElement>, "align"> & {
         align?: "start" | "center" | "end";
         width?: string | number;
         children?: ReactNode;
       }
     ) => ReactElement;
     Cell: (
-      props: TdHTMLAttributes<HTMLTableCellElement> & {
+      props: Omit<TdHTMLAttributes<HTMLTableCellElement>, "align"> & {
         align?: "start" | "center" | "end";
         children?: ReactNode;
       }
@@ -200,6 +200,17 @@ declare module "@yourorg/ui/icons" {
   export const CalendarDays: Icon;
   export const BarChart3: Icon;
   export const Receipt: Icon;
+  export const Plus: Icon;
+  export const Pencil: Icon;
+  export const Trash2: Icon;
+  export const X: Icon;
+  export const ChevronLeft: Icon;
+  export const ChevronRight: Icon;
+  export const MapPin: Icon;
+  export const Building2: Icon;
+  export const Mail: Icon;
+  export const Phone: Icon;
+  export const AlertTriangle: Icon;
 }
 
 declare module "@yourorg/ui/styles.css";
