@@ -11,7 +11,26 @@ import {
   useTheme,
 } from "@yourorg/ui";
 import { Search } from "@yourorg/ui/icons";
-import type { ResolvedNavItem } from "./nav-items";
+import type { ReactNode } from "react";
+
+/**
+ * Client-safe projection of `ResolvedNavItem` (see `./nav-items`): `icon` is
+ * an already-rendered element, not the bare component reference. A Server
+ * Component (`Topbar`) must render `<Icon />` itself before this ever
+ * reaches this "use client" component — passing a component *function*
+ * across the server/client boundary as a prop fails at runtime ("Functions
+ * cannot be passed directly to Client Components"), even though it type
+ * checks fine, since TypeScript has no notion of the RSC serialization
+ * boundary. This crashed the live app shell for exactly this reason; fixed
+ * by never letting a raw `ComponentType` cross into this file's props.
+ */
+export interface CommandPaletteNavItem {
+  moduleKey: string;
+  label: string;
+  href: string;
+  icon: ReactNode;
+  enabled: boolean;
+}
 
 /**
  * Global cmd/ctrl-K command palette. Owns its own open state and the
@@ -28,7 +47,7 @@ import type { ResolvedNavItem } from "./nav-items";
  * once modules ship, register their commands here dynamically instead of
  * just navigation entries.
  */
-export function CommandPalette({ navItems }: { navItems: ResolvedNavItem[] }) {
+export function CommandPalette({ navItems }: { navItems: CommandPaletteNavItem[] }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -75,7 +94,7 @@ export function CommandPalette({ navItems }: { navItems: ResolvedNavItem[] }) {
               key={item.moduleKey}
               onSelect={() => runAndClose(() => router.push(item.href))}
             >
-              <item.icon />
+              {item.icon}
               {item.label}
             </CommandItem>
           ))}
