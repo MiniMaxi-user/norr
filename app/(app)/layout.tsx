@@ -2,28 +2,33 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { MainSkeleton } from "@/components/shell/main-skeleton";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
+import { requireSession } from "@/lib/auth/session";
 
 // This route group is the authenticated app shell: everything rendered
 // through here gets the sidebar/topbar chrome. Marketing/auth pages
-// (login, signup, invite-accept) belong in a sibling route group — e.g.
-// `app/(auth)/*` — that does NOT import AppShell, so they render without
-// this chrome.
+// (login, signup, invite-accept) live in the sibling `app/(auth)/*` route
+// group, which does NOT import AppShell, so they render without this
+// chrome.
 //
-// TODO(auth-rbac-engineer, issues #3/#4): this is the seam for real auth.
-// Resolve the session here (see lib/supabase/server.ts) and:
-//   - redirect to /login when there's no session
-//   - pass the user/organization down to `AppShell` (account switcher,
-//     `preferencesStore` lookups keyed by user id instead of `null`)
-// Nothing below should be read as "this route is protected" yet — it isn't.
+// Real auth gate (issue #3/#4): `requireSession()` resolves the session via
+// `lib/supabase/server.ts` + the `memberships`/`users` tables and redirects
+// to `/login` when there's no session. Every route under `app/(app)` is
+// protected as of this layout — nothing below it needs its own auth check
+// for "is someone signed in" (a route may still need its own `can()` /
+// `hasFeature()` checks for "is this *specific* action/module allowed").
 export default async function AppRouteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const defaultSidebarCollapsed = await preferencesStore.getSidebarCollapsed(null);
+  const session = await requireSession();
+  const defaultSidebarCollapsed = await preferencesStore.getSidebarCollapsed(session.userId);
 
   return (
-    <AppShell defaultSidebarCollapsed={defaultSidebarCollapsed}>
+    <AppShell
+      defaultSidebarCollapsed={defaultSidebarCollapsed}
+      organization={session.organization}
+    >
       <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
     </AppShell>
   );

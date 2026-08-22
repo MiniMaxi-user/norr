@@ -4,7 +4,13 @@
 // still catches real misuse. Delete this file along with vendor/ once the
 // real design-system package ships its own types.
 declare module "@yourorg/ui" {
-  import type { ReactNode, ButtonHTMLAttributes, ReactElement } from "react";
+  import type {
+  ReactNode,
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  LabelHTMLAttributes,
+  ReactElement,
+} from "react";
 
   export function ThemeProvider(props: {
     attribute?: string;
@@ -67,6 +73,12 @@ declare module "@yourorg/ui" {
     "aria-hidden"?: boolean;
     children?: ReactNode;
   }): ReactElement;
+
+  export function Label(
+    props: LabelHTMLAttributes<HTMLLabelElement> & { children?: ReactNode }
+  ): ReactElement;
+
+  export function Input(props: InputHTMLAttributes<HTMLInputElement>): ReactElement;
 
   export function Skeleton(props: { height?: string; width?: string }): ReactElement;
 

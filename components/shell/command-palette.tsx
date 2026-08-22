@@ -11,7 +11,7 @@ import {
   useTheme,
 } from "@yourorg/ui";
 import { Search } from "@yourorg/ui/icons";
-import { NAV_ITEMS } from "./nav-items";
+import type { ResolvedNavItem } from "./nav-items";
 
 /**
  * Global cmd/ctrl-K command palette. Owns its own open state and the
@@ -20,12 +20,15 @@ import { NAV_ITEMS } from "./nav-items";
  * the same state and there's no server-renderable part of a command
  * palette.
  *
- * Commands today are shell-level only (navigate to the one enabled module,
- * toggle theme). TODO(frontend-ui-engineer): once modules ship, register
- * their commands here dynamically (respecting `hasFeature()`) instead of
- * hardcoding a growing list.
+ * Commands today are shell-level only (navigate to enabled modules, toggle
+ * theme). `navItems` is resolved server-side via `resolveNavItems()`
+ * (`hasFeature()` per item, issue #4) and passed down from `Topbar` — this
+ * component can't call `hasFeature()` itself since it's a server-only
+ * DB-backed helper and this is a "use client" leaf. TODO(frontend-ui-engineer):
+ * once modules ship, register their commands here dynamically instead of
+ * just navigation entries.
  */
-export function CommandPalette() {
+export function CommandPalette({ navItems }: { navItems: ResolvedNavItem[] }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -50,7 +53,7 @@ export function CommandPalette() {
     setOpen(false);
   }
 
-  const enabledNavItems = NAV_ITEMS.filter((item) => item.enabled);
+  const enabledNavItems = navItems.filter((item) => item.enabled);
 
   return (
     <>

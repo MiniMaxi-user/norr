@@ -117,6 +117,14 @@ function Stack({ gap, children, ...rest }) {
   return React.createElement("div", Object.assign({ className: cx("ui-stack", gap && `ui-stack-${gap}`) }, rest), children);
 }
 
+function Label({ children, ...rest }) {
+  return React.createElement("label", Object.assign({ className: "ui-label" }, rest), children);
+}
+
+function Input(props) {
+  return React.createElement("input", Object.assign({ className: "ui-input" }, props));
+}
+
 function Skeleton({ height, width }) {
   return React.createElement("div", { className: "ui-skeleton", style: { height, width } });
 }
@@ -169,6 +177,8 @@ module.exports = {
   Card,
   Heading,
   Text,
+  Label,
+  Input,
   Stack,
   Skeleton,
   CommandPalette,

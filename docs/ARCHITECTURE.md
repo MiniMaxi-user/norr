@@ -45,6 +45,12 @@ create policy "org_isolation" on assets
   Use `is_member_of_org(organization_id)` (and, where a write should be owner-only, `is_org_owner(organization_id)`) in every new tenant-scoped table's RLS policies — don't re-derive membership with an inline subquery.
 - No client-side query ever bypasses RLS. Server actions run under the user's session. The service-role key is used only in trusted server-only contexts (billing webhook sync, audited platform-admin cross-tenant reads). Platform Admin cross-tenant reads are **not** implemented as an RLS bypass policy for `is_platform_admin` users — they go through `lib/supabase/admin.ts` (service-role) from trusted server code only, audited in application code.
 
+### Auth flows — implemented (issue #3)
+- `lib/auth/session.ts`: `getCurrentSession()` / `requireSession()` resolve the signed-in user, their `is_platform_admin` flag, and their (first) organization + tenant role in one place, under the caller's own session. `app/(app)/layout.tsx` calls `requireSession()` to gate the entire authenticated route group (redirects to `/login` when signed out); nothing else under `app/(app)` needs its own "is anyone signed in" check.
+- `lib/auth/actions.ts`: Server Actions for signup, login, logout, invite creation, and invite redemption — all via `lib/supabase/server.ts` (never `admin.ts`). This Supabase project requires email confirmation (`mailer_autoconfirm: false`), so a brand-new signup has no session in the same request; organization/owner bootstrap is deferred to that user's first successful login (see `ensureOwnOrganizationBootstrapped` — carries the org name through via Supabase user metadata across the confirmation round trip).
+- `app/(auth)/{login,signup,invite/[token]}`: route group without the `AppShell` chrome (sibling to `app/(app)`), using `@yourorg/ui` form primitives (`Input`/`Label`, added to the temporary stub — see `vendor/yourorg-ui-stub`).
+- Invite mechanism: see the `invites` table entry under "Core schema (v1)" above.
+
 ## Core schema (v1)
 - `organizations`, `memberships`, `users` (Supabase `auth.users` + profile table) — **implemented** in `supabase/migrations/20260822150910_organizations_memberships_baseline_rls.sql`:
   - `users (id uuid pk references auth.users, email, full_name, is_platform_admin boolean default false, created_at, updated_at)` — profile row auto-created by an `on auth.users insert` trigger; `authenticated` only has column-level UPDATE grant on `full_name` (never `is_platform_admin`/`email`/`id`), so no client path can self-elevate to platform admin.
@@ -59,6 +65,7 @@ create policy "org_isolation" on assets
 - `work_orders` (organization_id, client_id, asset_id, contract_id, assigned_to, status, scheduled_at)
 - `reports` (work_order_id, pdf_url, generated_at)
 - `invoices` (organization_id, client_id, amount, status) — the tenant's own invoicing to its clients
+- `invites (id, organization_id, email, role, invited_by, token, expires_at, accepted_at, created_at)` — **implemented** in `supabase/migrations/20260822180000_invites.sql`, issue #3/#4. Lets an existing `owner` invite an email address that has no `auth.users` row yet: `token` is an unguessable capability looked up (pre-auth) via the `get_invite_by_token(token)` SECURITY DEFINER function, and redeemed into a real `memberships` row post-auth via the `redeem_invite(token)` SECURITY DEFINER function, which enforces that the redeeming account's own email matches the invite's email. `role` reuses `membership_role` (no `platform_admin` value), so Platform Admin access is structurally unreachable through this flow.
 - `organization_features` (organization_id, feature_key, enabled) — entitlements
 - `subscriptions` (organization_id, stripe_customer_id, stripe_subscription_id, plan)
 - `audit_log` (organization_id, actor_id, action, entity, at)
@@ -77,11 +84,15 @@ create policy "org_isolation" on assets
 
 Encode this as a single config object (`lib/rbac/permissions.ts`), not scattered `if (role === ...)` checks. Enforce it both server-side and in RLS.
 
+**Implemented** (issue #4): `lib/rbac/permissions.ts` encodes the table above verbatim as `TENANT_PERMISSIONS` (+ a `PLATFORM_ADMIN_PERMISSIONS` column), exposing `can(actor, module, action)`, `canAny(...)`, `allowedActions(...)`, and `canAccessModule(...)`. `actor: { role: TenantRole | null; isPlatformAdmin?: boolean }` keeps Platform Admin as an orthogonal flag, never a `TenantRole` member, per the rule above. `_own`-suffixed actions (`create_own`/`read_own`/`update_own`) mark matrix cells like "Read (assigned)"/"Read/Update own" — callers must still apply the actual resource-ownership filter themselves; `can()` only tells you the verb is allowed at all.
+
 ## Feature flags
 - `organization_features` drives UI + API gating
 - Stripe webhook (`customer.subscription.updated`) syncs entitlements → `organization_features`
 - Platform Admin UI can override per tenant (trials, custom deals) — logged in `audit_log`
 - Every module route/component checks entitlement via one helper — `hasFeature(organization, featureKey)` — never hardcode module availability
+
+**Implemented (Phase 0 stub, issue #4):** `lib/rbac/features.ts` exports `hasFeature(organization, featureKey)` with the real call signature (`organization: { id }`, async) already wired everywhere a module gate is needed (`components/shell/nav-items.ts` → `resolveNavItems`, threaded down to the sidebar and command palette). Since `organization_features` doesn't exist until Phase 3, the current implementation ignores `organization` and returns `true` only for feature keys with a shipped implementation (today: `dashboard`). Swapping in the real `organization_features` query (documented inline as a TODO in that file) is the only change needed once Phase 3 lands — no call site should need to change.
 
 ## Premium UX requirements
 - Collapsible sidebar (persisted per user), command palette, optimistic mutations
