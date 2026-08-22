@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { isTenantRole, TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
+import { isTenantRole, TENANT_ROLES } from "@/lib/rbac/permissions";
+import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
 
 /**
  * Server Actions backing the auth pages under `app/(auth)/*` (issue #3):
@@ -19,85 +20,29 @@ export interface AuthActionState {
 }
 
 function getSiteOrigin(): string {
-  // Set in Vercel per-environment (see .env.example); falls back to local
-  // dev. Used only to build the `emailRedirectTo` link Supabase puts in
-  // confirmation/invite emails — flagged in the handoff for devops-release
-  // to confirm this is set in every deployed environment and that the
-  // resulting URLs are in Supabase Auth's redirect allow-list.
-  return process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  // Used to build the `emailRedirectTo` link Supabase puts in
+  // confirmation/invite emails. Preference order:
+  //  1. NEXT_PUBLIC_SITE_URL — set explicitly in Vercel for Production only
+  //     (the stable custom/production domain), so confirmation emails sent
+  //     from a production signup always point at the production URL even
+  //     though VERCEL_URL would also technically resolve there.
+  //  2. VERCEL_URL — auto-injected by Vercel on every deployment (including
+  //     previews), so a signup on a PR preview redirects back to that same
+  //     preview instead of production or localhost. Not NEXT_PUBLIC_-
+  //     prefixed because it's only ever read here, server-side.
+  //  3. localhost — local dev.
+  // Whatever this resolves to MUST be present in Supabase Auth's redirect
+  // URL allow-list (dashboard, or the `additional_redirect_urls` project
+  // config) or `signUp`'s `emailRedirectTo` will be silently ignored.
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
 }
 
 function readRedirectTarget(raw: FormDataEntryValue | null): string {
   const value = typeof raw === "string" ? raw.trim() : "";
   // Guard against open-redirect: only ever follow a same-site relative path.
   return value.startsWith("/") && !value.startsWith("//") ? value : "/";
-}
-
-/**
- * Shared bootstrap pattern (docs/ARCHITECTURE.md): create an organization
- * and self-insert the caller as its `owner`, both under the caller's own
- * session — relying on the RLS policy that allows a self-owner-insert only
- * while the org has zero members. No-ops (returns `{}` without inserting
- * anything) if the caller already has any membership, so it's safe to call
- * unconditionally rather than requiring callers to track "did this already
- * happen".
- *
- * This is called from two places, because org creation cannot always
- * happen inside `signUpAction` itself:
- *  - Immediately, inside `signUpAction`, when `signUp()` returns a session
- *    in the same request (true when the project's Auth settings have email
- *    confirmation OFF).
- *  - Deferred, from `logInAction`, on the first successful login after a
- *    signup that DID require email confirmation (true for this project as
- *    of writing — `mailer_autoconfirm: false`, confirmed against the live
- *    project's `/auth/v1/settings`). `signUp()` returns no session in that
- *    case, so nothing can be inserted yet; the organization name the user
- *    typed on the signup form is preserved via `options.data.organization_name`
- *    (Supabase user metadata) specifically so it survives until then.
- */
-async function ensureOwnOrganizationBootstrapped(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  organizationNameHint?: string,
-): Promise<{ error?: string }> {
-  const { data: existingMemberships } = await supabase
-    .from("memberships")
-    .select("id")
-    .eq("user_id", userId)
-    .limit(1);
-  if (existingMemberships && existingMemberships.length > 0) {
-    return {};
-  }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const metadataName =
-    typeof user?.user_metadata?.organization_name === "string"
-      ? user.user_metadata.organization_name.trim()
-      : "";
-  const emailLocalPart = (user?.email ?? "").split("@")[0];
-  const organizationName =
-    organizationNameHint?.trim() || metadataName || `${emailLocalPart || "New"}'s organization`;
-
-  const { data: organization, error: organizationError } = await supabase
-    .from("organizations")
-    .insert({ name: organizationName, created_by: userId })
-    .select("id")
-    .single();
-
-  if (organizationError || !organization) {
-    return { error: organizationError?.message ?? "Could not create organization." };
-  }
-
-  const { error: membershipError } = await supabase.from("memberships").insert({
-    user_id: userId,
-    organization_id: organization.id,
-    role: "owner" satisfies TenantRole,
-  });
-
-  return membershipError ? { error: membershipError.message } : {};
 }
 
 /**
