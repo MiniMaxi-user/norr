@@ -55,51 +55,93 @@ import { assetCreateSchema, assetUpdateSchema } from "./schema";
  *     based scoping), not on anything in this file.
  */
 
+/** Resolved (embedded) shape of a `reference_list_items` row, as returned by
+ * the `asset_type`/`asset_status` embeds below — just enough for a picklist
+ * badge/label in the UI, not the full row (id/list membership are already
+ * known from the `list_key` that was embedded on). */
+export interface ResolvedReferenceItem {
+  value: string;
+  label: string;
+  color: string | null;
+}
+
 export interface AssetRecord {
   id: string;
   organization_id: string;
   client_id: string;
   site_id: string;
   name: string;
-  type: string;
+  type_id: string;
   manufacturer: string | null;
   model: string | null;
   serial_number: string | null;
-  status: "active" | "decommissioned";
+  status_id: string;
   installed_at: string | null;
   warranty_until: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Embedded via `reference_list_items!assets_type_id_fkey(...)` — see
+   * `ASSET_SELECT` below. `null` only if `type_id` somehow no longer
+   * resolves (shouldn't happen; `type_id` is `not null` with no `on delete`
+   * cascade/set-null from `reference_list_items`, so an item an asset points
+   * to can't currently be deleted out from under it). */
+  asset_type: ResolvedReferenceItem | null;
+  /** Embedded via `reference_list_items!assets_status_id_fkey(...)`. */
+  asset_status: ResolvedReferenceItem | null;
 }
+
+/**
+ * Shared select shape for every query that returns an `AssetRecord`, so the
+ * frontend gets the resolved type/label/color for both `type_id` and
+ * `status_id` in one round trip instead of N+1-ing a lookup per row per
+ * column. `assets` has two FKs into `reference_list_items` (`type_id` and
+ * `status_id`), so PostgREST needs the exact FK constraint name to
+ * disambiguate each embed (`!assets_type_id_fkey` / `!assets_status_id_fkey`
+ * — confirmed live against the linked project's auto-generated constraint
+ * names from `alter table assets add column type_id uuid references
+ * reference_list_items (id)` in
+ * supabase/migrations/20260822200000_reference_lists.sql; Postgres's default
+ * naming for an unnamed column FK is `<table>_<column>_fkey`).
+ */
+const ASSET_SELECT =
+  "*, asset_type:reference_list_items!assets_type_id_fkey(value,label,color), asset_status:reference_list_items!assets_status_id_fkey(value,label,color)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
 function toAssetInsertRow(input: ReturnType<typeof assetCreateSchema.parse>) {
-  return {
+  const row: Record<string, unknown> = {
     site_id: input.siteId,
     name: input.name,
-    type: input.type,
+    type_id: input.typeId,
     manufacturer: input.manufacturer ?? null,
     model: input.model ?? null,
     serial_number: input.serialNumber ?? null,
-    status: input.status ?? "active",
     installed_at: input.installedAt ?? null,
     warranty_until: input.warrantyUntil ?? null,
     notes: input.notes ?? null,
   };
+  // status_id is intentionally omitted (not even sent as null) when not
+  // provided — the `derive_asset_org_and_client` DB trigger fills in the
+  // organization's default `asset_status` item on insert. Sending an
+  // explicit `null` would be a valid column value at the DB layer today
+  // (the trigger only fills it in `if new.status_id is null`, which an
+  // explicit null also satisfies) but omitting it is clearer intent and
+  // matches "no default supplied" rather than "default to null".
+  if (input.statusId !== undefined) row.status_id = input.statusId;
+  return row;
 }
 
 function toAssetUpdateRow(input: ReturnType<typeof assetUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
   if (input.siteId !== undefined) row.site_id = input.siteId;
   if (input.name !== undefined) row.name = input.name;
-  if (input.type !== undefined) row.type = input.type;
+  if (input.typeId !== undefined) row.type_id = input.typeId;
   if (input.manufacturer !== undefined) row.manufacturer = input.manufacturer ?? null;
   if (input.model !== undefined) row.model = input.model ?? null;
   if (input.serialNumber !== undefined) row.serial_number = input.serialNumber ?? null;
-  if (input.status !== undefined) row.status = input.status;
+  if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.installedAt !== undefined) row.installed_at = input.installedAt ?? null;
   if (input.warrantyUntil !== undefined) row.warranty_until = input.warrantyUntil ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
@@ -141,7 +183,7 @@ export async function listAssets(
   const offset = clampOffset(options.offset);
 
   const supabase = await createSupabaseServerClient();
-  let query = supabase.from("assets").select("*", { count: "exact" });
+  let query = supabase.from("assets").select(ASSET_SELECT, { count: "exact" });
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.siteId) query = query.eq("site_id", options.siteId);
   query = query.order("name", { ascending: true }).range(offset, offset + limit - 1);
@@ -163,7 +205,7 @@ export async function getAsset(id: string): Promise<ActionResult<{ asset: AssetR
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("assets").select("*").eq("id", idResult.data).maybeSingle();
+  const { data, error } = await supabase.from("assets").select(ASSET_SELECT).eq("id", idResult.data).maybeSingle();
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Asset not found.");
@@ -188,7 +230,7 @@ export async function createAsset(input: unknown): Promise<ActionResult<{ asset:
   const { data, error } = await supabase
     .from("assets")
     .insert(toAssetInsertRow(parsed.data))
-    .select("*")
+    .select(ASSET_SELECT)
     .single();
 
   if (error) return fail(mapDbError(error));
@@ -229,7 +271,7 @@ export async function updateAsset(id: string, input: unknown): Promise<ActionRes
     .from("assets")
     .update(row)
     .eq("id", idResult.data)
-    .select("*")
+    .select(ASSET_SELECT)
     .maybeSingle();
 
   if (error) return fail(mapDbError(error));

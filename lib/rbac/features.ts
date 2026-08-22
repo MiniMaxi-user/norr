@@ -40,7 +40,14 @@ export type FeatureKey =
   | "contracts"
   | "planning"
   | "reporting"
-  | "billing";
+  | "billing"
+  // Tenant-configurable reference lists (picklists) — see
+  // lib/reference-lists/actions.ts and lib/rbac/permissions.ts's `settings`
+  // module. Not a `nav-items.ts` entry today (no dedicated Settings page
+  // yet — a concurrent frontend effort owns that), but every
+  // reference-lists Server Action still calls `hasFeature()` first per
+  // CLAUDE.md rule 3.
+  | "settings";
 
 /**
  * Phase 0 stand-in for "the org's Stripe subscription entitles them to this
@@ -56,8 +63,19 @@ export type FeatureKey =
  * leaving these two out of this set would make every one of those actions
  * unconditionally fail with "module not enabled", which would be wrong now
  * that the modules are actually shipping.
+ *
+ * `settings` added alongside the reference-lists feature (tenant-
+ * configurable Asset Type/Status picklists, `lib/reference-lists/actions.ts`)
+ * — it ships in the same PR as `assets`' migration to `type_id`/`status_id`,
+ * so it needs to be usable immediately, same reasoning as `clients`/`assets`
+ * above.
  */
-const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>(["dashboard", "clients", "assets"]);
+const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
+  "dashboard",
+  "clients",
+  "assets",
+  "settings",
+]);
 
 /**
  * `hasFeature(organization, featureKey)` — the one gate every module

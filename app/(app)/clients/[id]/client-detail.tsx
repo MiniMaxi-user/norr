@@ -1,43 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Card, EmptyState, Heading, Stack, Table, Text } from "@yourorg/ui";
-import { Users } from "@yourorg/ui/icons";
+import { Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
+import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ClientFormDialog } from "../client-form-dialog";
 import { DeleteClientDialog } from "../delete-client-dialog";
-import { DeleteSiteDialog } from "../delete-site-dialog";
-import { SiteFormDialog } from "../site-form-dialog";
+import { setLastUsedView } from "@/lib/preferences/actions";
+import { AssetsPanel } from "./assets-panel";
+import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
+import { SitesPanel } from "./sites-panel";
+
+export interface ClientDetailProps {
+  client: ClientRecord;
+  sites: SiteRecord[];
+  canWrite: boolean;
+  assets: AssetRecord[];
+  assetsEnabled: boolean;
+  assetTypes: ReferenceListItemRecord[];
+  assetStatuses: ReferenceListItemRecord[];
+  canCreateAssets: boolean;
+  canEditAssets: boolean;
+  canDeleteAssets: boolean;
+  defaultTab: "sites" | "assets";
+}
 
 /**
- * Client detail: the client's own fields plus its sites, with inline
- * create/edit/delete for both (same Dialog-form pattern as the list page).
- * This is where a user would eventually add assets to a site, but that's
- * the Assets module's job (`app/(app)/assets/**`, not built yet at the page
- * level) — no asset-adding UI or deep link lives here.
+ * Client detail: the client's own fields, plus its Sites and Assets shown
+ * together on one page via `Tabs` instead of siloed screens (the "ik
+ * verwacht dat je bij clients gelijk ook de assets kan zien" requirement).
+ * The two tabs aren't just glued side by side — a site row's "Assets" count
+ * (`SitesPanel`) jumps straight to that site's expanded group in the Assets
+ * tab (`AssetsPanel`, grouped by site via `Disclosure`), so the real
+ * client -> sites -> assets hierarchy stays visible from either tab instead
+ * of being flattened into one generic list.
  */
 export function ClientDetail({
   client,
   sites,
   canWrite,
-}: {
-  client: ClientRecord;
-  sites: SiteRecord[];
-  canWrite: boolean;
-}) {
+  assets,
+  assetsEnabled,
+  assetTypes,
+  assetStatuses,
+  canCreateAssets,
+  canEditAssets,
+  canDeleteAssets,
+  defaultTab,
+}: ClientDetailProps) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [siteForm, setSiteForm] = useState<{ open: boolean; site: SiteRecord | null }>({
-    open: false,
-    site: null,
+  const [tab, setTab] = useState<"sites" | "assets">(defaultTab);
+  const [focusSite, setFocusSite] = useState<{ siteId: string | null; token: number }>({
+    siteId: null,
+    token: 0,
   });
-  const [deleteSiteTarget, setDeleteSiteTarget] = useState<SiteRecord | null>(null);
+  const [, startTransition] = useTransition();
 
-  function openAddSite() {
-    setSiteForm({ open: true, site: null });
+  const assetCountBySiteId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const asset of assets) {
+      map.set(asset.site_id, (map.get(asset.site_id) ?? 0) + 1);
+    }
+    return map;
+  }, [assets]);
+
+  function selectTab(next: "sites" | "assets") {
+    setTab(next);
+    startTransition(() => {
+      void setLastUsedView(CLIENT_DETAIL_VIEW_KEY, next);
+    });
+  }
+
+  function viewAssetsForSite(siteId: string) {
+    setFocusSite((current) => ({ siteId, token: current.token + 1 }));
+    selectTab("assets");
   }
 
   return (
@@ -69,61 +110,53 @@ export function ClientDetail({
         </Stack>
       </Card>
 
-      <Stack gap="sm">
-        <Heading level={2}>Sites</Heading>
-        {canWrite && (
-          <div>
-            <Button variant="primary" size="sm" onClick={openAddSite}>
-              Add site
-            </Button>
-          </div>
-        )}
+      {assetsEnabled ? (
+        <Tabs value={tab} onValueChange={(next) => selectTab(next as "sites" | "assets")}>
+          <Tabs.List aria-label="Client detail">
+            <Tabs.Tab value="sites">Sites</Tabs.Tab>
+            <Tabs.Tab value="assets">
+              Assets{assets.length > 0 ? ` (${assets.length})` : ""}
+            </Tabs.Tab>
+          </Tabs.List>
 
-        {sites.length === 0 ? (
-          <EmptyState
-            icon={<Users />}
-            heading="No sites yet"
-            text="Add this client's first site to begin tracking equipment there."
-            action={
-              canWrite ? (
-                <Button variant="primary" onClick={openAddSite}>
-                  Add site
-                </Button>
-              ) : undefined
-            }
+          <Tabs.Panel value="sites">
+            <SitesPanel
+              clientId={client.id}
+              sites={sites}
+              canWrite={canWrite}
+              assetCountBySiteId={assetCountBySiteId}
+              assetsEnabled={assetsEnabled}
+              onViewAssets={viewAssetsForSite}
+            />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="assets">
+            <AssetsPanel
+              clientId={client.id}
+              sites={sites}
+              assets={assets}
+              assetTypes={assetTypes}
+              assetStatuses={assetStatuses}
+              canCreate={canCreateAssets}
+              canEdit={canEditAssets}
+              canDelete={canDeleteAssets}
+              focusSiteId={focusSite.siteId}
+              focusToken={focusSite.token}
+            />
+          </Tabs.Panel>
+        </Tabs>
+      ) : (
+        <Stack gap="sm">
+          <Heading level={2}>Sites</Heading>
+          <SitesPanel
+            clientId={client.id}
+            sites={sites}
+            canWrite={canWrite}
+            assetCountBySiteId={assetCountBySiteId}
+            assetsEnabled={false}
           />
-        ) : (
-          <Table>
-            <Table.Head>
-              <Table.Row>
-                <Table.HeaderCell>Name</Table.HeaderCell>
-                <Table.HeaderCell>Address</Table.HeaderCell>
-                <Table.HeaderCell>City</Table.HeaderCell>
-                {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-              </Table.Row>
-            </Table.Head>
-            <Table.Body>
-              {sites.map((site) => (
-                <Table.Row key={site.id}>
-                  <Table.Cell>{site.name}</Table.Cell>
-                  <Table.Cell>{site.address_line1 || <Text tone="muted">—</Text>}</Table.Cell>
-                  <Table.Cell>{site.city || <Text tone="muted">—</Text>}</Table.Cell>
-                  {canWrite && (
-                    <Table.Cell align="center">
-                      <Button variant="outline" size="sm" onClick={() => setSiteForm({ open: true, site })}>
-                        Edit
-                      </Button>{" "}
-                      <Button variant="danger" size="sm" onClick={() => setDeleteSiteTarget(site)}>
-                        Delete
-                      </Button>
-                    </Table.Cell>
-                  )}
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table>
-        )}
-      </Stack>
+        </Stack>
+      )}
 
       {canWrite && (
         <>
@@ -133,19 +166,6 @@ export function ClientDetail({
             onOpenChange={setDeleteOpen}
             client={client}
             onDeleted={() => router.push("/clients")}
-          />
-          <SiteFormDialog
-            open={siteForm.open}
-            onOpenChange={(open) => setSiteForm((s) => ({ ...s, open }))}
-            clientId={client.id}
-            site={siteForm.site}
-          />
-          <DeleteSiteDialog
-            open={Boolean(deleteSiteTarget)}
-            onOpenChange={(open) => {
-              if (!open) setDeleteSiteTarget(null);
-            }}
-            site={deleteSiteTarget}
           />
         </>
       )}

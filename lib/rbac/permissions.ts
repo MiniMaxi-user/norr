@@ -52,7 +52,8 @@ export type Module =
   | "planning"
   | "reporting"
   | "dashboard"
-  | "billing";
+  | "billing"
+  | "settings";
 
 /**
  * Actions a role can be granted on a module. The `_own` suffix actions
@@ -99,6 +100,20 @@ const NONE: readonly Action[] = [] as const;
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
+ *
+ * `settings` (below) is NOT part of the docs/ARCHITECTURE.md matrix above —
+ * it's a small, mechanical extension added alongside the reference-lists
+ * feature (tenant-configurable picklists: Asset Type/Status today, Contract
+ * Type etc. later — see docs/ARCHITECTURE.md "Tenant-configurable reference
+ * data" and `lib/reference-lists/actions.ts`). Modeled the same shape as
+ * every other module rather than inventing a bespoke check, since the DB
+ * RLS boundary on `reference_lists`/`reference_list_items` is exactly
+ * "owner CRUD, everyone else read" (see
+ * supabase/migrations/20260822200000_reference_lists.sql) — the same
+ * pattern as `clients`/`sites`/`assets`. Flagged here for
+ * `auth-rbac-engineer` to fold into docs/ARCHITECTURE.md's matrix table
+ * properly / reconsider naming, rather than silently treated as a
+ * permanent decision.
  */
 const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> = {
   clients: {
@@ -152,6 +167,13 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: CRUD,
     administratie: CRUD,
   },
+  settings: {
+    owner: CRUD,
+    planner: READ_ONLY,
+    engineer: READ_ONLY,
+    finance: READ_ONLY,
+    administratie: READ_ONLY,
+  },
 };
 
 /**
@@ -171,6 +193,10 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,
+  // Reference-list configuration is tenant-specific admin data, not a
+  // cross-tenant Platform Admin concern (no "Read (support only)" carve-out
+  // documented for it the way Clients has) — NONE, same shape as `planning`.
+  settings: NONE,
 };
 
 export interface PermissionActor {

@@ -5,18 +5,24 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
+    "predev": "npm run build -w @yourorg/ui",
     "dev": "next dev",
+    "prebuild": "npm run build -w @yourorg/ui",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "pretypecheck": "npm run typecheck -w @yourorg/ui && npm run build -w @yourorg/ui",
     "typecheck": "tsc --noEmit",
     "test": "echo \"no test runner configured yet (tracked separately) \" && exit 0"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
-    "@yourorg/ui": "file:./vendor/yourorg-ui-stub",
+    "@yourorg/ui": "*",
     "leaflet": "^1.9.4",
     "next": "^15.5.23",
     "react": "^19.0.0",

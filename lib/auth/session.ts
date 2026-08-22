@@ -51,6 +51,7 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     supabase
       .from("memberships")
       .select("role, organization:organizations(id, name, slug)")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();

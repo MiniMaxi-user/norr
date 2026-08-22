@@ -24,7 +24,7 @@ export function ClientsTable({
   const router = useRouter();
 
   return (
-    <Table>
+    <Table stickyHeader maxHeight="65vh">
       <Table.Head>
         <Table.Row>
           <Table.HeaderCell>Name</Table.HeaderCell>

@@ -44,15 +44,37 @@ export function fail<T = never>(
  * update (matrix says Planner has Assets Read/Update), the DB rejects it
  * because RLS is still owner-only for writes in v1, and this maps that
  * rejection to a clean message rather than a raw Postgres error string.
+ *
+ * `23514` (check_violation) is also what the reference-list-backed columns
+ * introduced by `supabase/migrations/20260822200000_reference_lists.sql`
+ * raise for two distinct, unrelated-looking cases that share the same
+ * Postgres error code: (a) the cross-organization re-parent guards
+ * (`derive_site_organization_id` / `derive_asset_org_and_client` /
+ * `derive_reference_list_item_org`), and (b) `validate_asset_reference_items`
+ * rejecting a `type_id`/`status_id` that points at an item from the wrong
+ * `list_key` (e.g. an `asset_status` item passed as `type_id`) or from a
+ * different organization's reference list. Kept as one shared, generic
+ * message here (rather than two separate codes) since Postgres itself only
+ * gives us one error code for both — any future module that gains its own
+ * `reference_list_items`-backed column (e.g. Phase 2 `contracts.type_id`)
+ * will hit the same class of error and should reuse this mapping rather
+ * than growing a local one-off.
  */
 export function mapDbError(error: { code?: string; message: string }): string {
   switch (error.code) {
     case "42501":
       return "You do not have permission to perform this action.";
     case "23503":
-      return "That record references something that no longer exists.";
+      // foreign_key_violation is raised both when a caller points a new/
+      // updated row at something that doesn't exist (e.g. a bad site_id),
+      // and — in the opposite direction — when a caller tries to delete a
+      // row that something else still depends on (e.g. deleting a
+      // `reference_list_items` row still referenced by `assets.type_id`;
+      // the FK has no `on delete cascade`/`set null`, so Postgres blocks
+      // it). Same code either way, so one general message covers both.
+      return "That action isn't allowed — it either references something that no longer exists, or something else still depends on it.";
     case "23514":
-      return "That change isn't allowed (e.g. it would move this record to a different organization).";
+      return "That change isn't allowed — it may reference a value that doesn't belong here (e.g. the wrong picklist), or would move this record to a different organization.";
     default:
       return error.message;
   }

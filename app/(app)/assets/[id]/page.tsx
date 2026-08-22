@@ -7,6 +7,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getAsset } from "../actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { AssetDetailActions } from "./asset-detail-actions";
 
 export const metadata = { title: "Asset details" };
@@ -41,10 +42,17 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
   if (!canAccessModule(actor, "assets")) notFound();
 
-  const [assetResult, clientsResult] = await Promise.all([getAsset(id), listClients({ limit: 200 })]);
+  const [assetResult, clientsResult, assetTypesResult, assetStatusesResult] = await Promise.all([
+    getAsset(id),
+    listClients({ limit: 200 }),
+    listReferenceItems("asset_type"),
+    listReferenceItems("asset_status"),
+  ]);
   if (!assetResult.data) notFound();
   const asset = assetResult.data.asset;
   const clients = clientsResult.data?.clients ?? [];
+  const assetTypes = assetTypesResult.data?.items ?? [];
+  const assetStatuses = assetStatusesResult.data?.items ?? [];
 
   const clientResult = await getClient(asset.client_id);
   const client = clientResult.data?.client ?? null;
@@ -61,19 +69,26 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
         <Toolbar.Section>
           <Stack gap="xs">
             <Heading level={1}>{asset.name}</Heading>
-            <Badge variant={asset.status === "active" ? "success" : "muted"}>
-              {asset.status === "active" ? "Active" : "Decommissioned"}
+            <Badge color={asset.asset_status?.color} variant="muted">
+              {asset.asset_status?.label ?? "—"}
             </Badge>
           </Stack>
         </Toolbar.Section>
         <Toolbar.Section align="end">
-          <AssetDetailActions asset={asset} clients={clients} canEdit={canEdit} canDelete={canDelete} />
+          <AssetDetailActions
+            asset={asset}
+            clients={clients}
+            assetTypes={assetTypes}
+            assetStatuses={assetStatuses}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
         </Toolbar.Section>
       </Toolbar>
 
       <Card>
         <Stack gap="md">
-          <DetailRow label="Type" value={asset.type} />
+          <DetailRow label="Type" value={asset.asset_type?.label ?? "—"} />
           <DetailRow label="Manufacturer" value={asset.manufacturer ?? "—"} />
           <DetailRow label="Model" value={asset.model ?? "—"} />
           <DetailRow label="Serial number" value={asset.serial_number ?? "—"} />

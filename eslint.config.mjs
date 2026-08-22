@@ -12,10 +12,9 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    // vendor/yourorg-ui-stub is a TEMPORARY plain-CJS stand-in for the real
-    // @yourorg/ui package (see its package.json) — not app code, excluded
-    // from lint the same way a vendored dependency would be.
-    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**", "vendor/**"],
+    // packages/*/dist is build output (see packages/ui/package.json) —
+    // never hand-edited, excluded from lint like any other build artifact.
+    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**", "packages/*/dist/**"],
   },
 ];
 

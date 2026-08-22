@@ -5,17 +5,16 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { AssetFormDialog } from "./asset-form-dialog";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
-
-function statusLabel(status: AssetRecord["status"]): string {
-  return status === "active" ? "Active" : "Decommissioned";
-}
 
 export interface AssetsTableProps {
   assets: AssetRecord[];
   clients: ClientRecord[];
   clientNameById: Map<string, string>;
+  assetTypes: ReferenceListItemRecord[];
+  assetStatuses: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -27,8 +26,21 @@ export interface AssetsTableProps {
  * on top of that). Row click navigates to the detail page; row-level
  * edit/delete actions are stopPropagation'd so they don't also trigger the
  * navigation.
+ *
+ * `stickyHeader`/`maxHeight` keep a long page of assets scrolling under a
+ * fixed header instead of pushing the pagination row off-screen (docs/
+ * ARCHITECTURE.md "Premium UX requirements" — this is the fix for "bij
+ * assets scroll hij niet").
  */
-export function AssetsTable({ assets, clients, clientNameById, canEdit, canDelete }: AssetsTableProps) {
+export function AssetsTable({
+  assets,
+  clients,
+  clientNameById,
+  assetTypes,
+  assetStatuses,
+  canEdit,
+  canDelete,
+}: AssetsTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
@@ -40,7 +52,7 @@ export function AssetsTable({ assets, clients, clientNameById, canEdit, canDelet
     return assets.filter((asset) =>
       [
         asset.name,
-        asset.type,
+        asset.asset_type?.label,
         asset.manufacturer,
         asset.model,
         asset.serial_number,
@@ -63,7 +75,7 @@ export function AssetsTable({ assets, clients, clientNameById, canEdit, canDelet
           onChange={(event) => setQuery(event.target.value)}
         />
 
-        <Table>
+        <Table stickyHeader maxHeight="65vh">
           <Table.Head>
             <Table.Row>
               <Table.HeaderCell>Name</Table.HeaderCell>
@@ -84,12 +96,12 @@ export function AssetsTable({ assets, clients, clientNameById, canEdit, canDelet
             {filtered.map((asset) => (
               <Table.Row key={asset.id} onClick={() => router.push(`/assets/${asset.id}`)}>
                 <Table.Cell>{asset.name}</Table.Cell>
-                <Table.Cell>{asset.type}</Table.Cell>
+                <Table.Cell>{asset.asset_type?.label ?? "—"}</Table.Cell>
                 <Table.Cell>{clientNameById.get(asset.client_id) ?? "—"}</Table.Cell>
                 <Table.Cell>{asset.serial_number ?? "—"}</Table.Cell>
                 <Table.Cell align="center">
-                  <Badge variant={asset.status === "active" ? "success" : "muted"}>
-                    {statusLabel(asset.status)}
+                  <Badge color={asset.asset_status?.color} variant="muted">
+                    {asset.asset_status?.label ?? "—"}
                   </Badge>
                 </Table.Cell>
                 {showActionsColumn && (
@@ -133,6 +145,8 @@ export function AssetsTable({ assets, clients, clientNameById, canEdit, canDelet
           mode="edit"
           asset={editingAsset}
           clients={clients}
+          assetTypes={assetTypes}
+          assetStatuses={assetStatuses}
           open
           onOpenChange={(next) => !next && setEditingAsset(null)}
         />

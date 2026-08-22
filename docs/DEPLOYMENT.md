@@ -26,30 +26,21 @@ source of truth for what needs to exist.
 | `STRIPE_WEBHOOK_SECRET` | Prod + Preview | Per-endpoint webhook signing secret. |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Prod + Preview + Dev | Public. |
 | `NEXT_PUBLIC_SITE_URL` | Prod + Preview + Dev | Preview deployments can use Vercel's `VERCEL_URL` system env var instead if a per-PR URL is preferred over a fixed one. |
-| `NPM_TOKEN` | GitHub Actions secret + Vercel (if `npm ci` needs to pull `@yourorg/ui`) | Auth token for the private registry the `design-system` repo publishes to. See `.npmrc`. |
-
 Any new third-party service (analytics, error tracking, etc.) must get an
 entry in `docs/ARCHITECTURE.md` plus its keys added here, to Vercel, and to
 `.env.example` — see CLAUDE.md / the `devops-release` agent rules.
 
-## `@yourorg/ui` (design-system) dependency
+## `@yourorg/ui` (design system) — in-repo workspace package
 
-`@yourorg/ui` is published from the separate `design-system` repo to a
-private package registry (see `.npmrc`). This app repo:
-
-- **never** vendors or path-references the design-system source locally,
-- consumes it as a normal versioned npm dependency,
-- requires `NPM_TOKEN` (scoped to the `@yourorg` registry) to be present
-  wherever `npm install`/`npm ci` runs against this repo — GitHub Actions
-  and Vercel both need it configured as a secret/env var.
-
-**Known sequencing gap (Phase 0):** as of this scaffold, `@yourorg/ui` has
-not published a v0.1 yet, so `npm install`/`npm ci` will fail to resolve it
-until either (a) the design-system repo publishes an initial version and
-`NPM_TOKEN` is configured, or (b) the dependency is temporarily removed from
-`package.json`. The app code does not yet import anything from the package,
-so removing it from `package.json` is a safe, reversible way to unblock
-local installs/CI in the meantime.
+`@yourorg/ui` lives in this repo (`packages/ui`), built as an npm workspace
+package — there is no separate registry/`NPM_TOKEN` dependency to configure
+for it. `npm install`/`npm ci` link it automatically via npm workspaces
+(root `package.json`'s `"workspaces": ["packages/*"]`). Both Vercel and
+GitHub Actions (`.github/workflows/ci.yml`) build it (`npm run build -w
+@yourorg/ui`) before building/typechecking the app, since the app consumes
+its `dist/` output like any other dependency, not via source transpilation.
+See `docs/ARCHITECTURE.md`'s "Design system consumption" section for the
+full picture.
 
 ## GitHub Actions
 

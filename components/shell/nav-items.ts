@@ -7,6 +7,7 @@ import {
   CalendarDays,
   BarChart3,
   Receipt,
+  Settings,
 } from "@yourorg/ui/icons";
 import { hasFeature, type FeatureKey, type FeatureOrganization } from "@/lib/rbac/features";
 
@@ -41,6 +42,11 @@ export const NAV_ITEMS: NavItem[] = [
   { moduleKey: "planning", label: "Planning", href: "/planning", icon: CalendarDays },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3 },
   { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt },
+  // Everyone can *view* Settings (read-only for non-owners — see
+  // `lib/rbac/permissions.ts`'s `settings` entry); the module itself is
+  // gated only on entitlement (`hasFeature`) like every other nav item, not
+  // on role, same as e.g. Clients showing up for every tenant role.
+  { moduleKey: "settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
 /**

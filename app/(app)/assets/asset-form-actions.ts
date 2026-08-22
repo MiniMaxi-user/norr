@@ -33,15 +33,25 @@ function readField(formData: FormData, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/** Same as `readField`, but an empty string (e.g. a "Use default…"
+ * placeholder option left selected) is also treated as absent — needed for
+ * `statusId`, which is optional (the DB fills in the org's default
+ * `asset_status` item when omitted) and whose `<Select>` therefore has a
+ * blank/placeholder option rather than being `required` like `typeId`'s. */
+function readOptionalField(formData: FormData, key: string): string | undefined {
+  const value = readField(formData, key);
+  return value && value.length > 0 ? value : undefined;
+}
+
 function formDataToAssetInput(formData: FormData) {
   return {
     siteId: readField(formData, "siteId"),
     name: readField(formData, "name"),
-    type: readField(formData, "type"),
+    typeId: readField(formData, "typeId"),
     manufacturer: readField(formData, "manufacturer"),
     model: readField(formData, "model"),
     serialNumber: readField(formData, "serialNumber"),
-    status: readField(formData, "status"),
+    statusId: readOptionalField(formData, "statusId"),
     installedAt: readField(formData, "installedAt"),
     warrantyUntil: readField(formData, "warrantyUntil"),
     notes: readField(formData, "notes"),

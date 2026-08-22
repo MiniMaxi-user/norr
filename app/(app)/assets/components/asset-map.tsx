@@ -5,13 +5,15 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import { Badge, Stack, Text } from "@yourorg/ui";
-import type { AssetRecord } from "../actions";
+import type { ResolvedReferenceItem } from "../actions";
 
 export interface MapPinAsset {
   id: string;
   name: string;
   clientName: string;
-  status: AssetRecord["status"];
+  /** Resolved `asset_status` embed (see `AssetRecord.asset_status`),
+   * `null` if it somehow doesn't resolve. */
+  status: ResolvedReferenceItem | null;
 }
 
 export interface MapPin {
@@ -92,8 +94,8 @@ export function AssetMap({ pins }: { pins: MapPin[] }) {
                   <Text>
                     {asset.name} — {asset.clientName}
                   </Text>
-                  <Badge variant={asset.status === "active" ? "success" : "muted"}>
-                    {asset.status === "active" ? "Active" : "Decommissioned"}
+                  <Badge color={asset.status?.color} variant="muted">
+                    {asset.status?.label ?? "—"}
                   </Badge>
                 </Stack>
               ))}

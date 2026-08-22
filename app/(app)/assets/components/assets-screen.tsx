@@ -3,6 +3,7 @@ import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import { listAssets, type AssetRecord } from "../actions";
 import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { AssetsFilters } from "./assets-filters";
 import { AssetsTable } from "./assets-table";
 import { AssetsViewSwitcher, type AssetsView } from "./assets-view-switcher";
@@ -47,7 +48,7 @@ function buildMapPins(assets: AssetRecord[], sitesById: Map<string, SiteRecord>,
       id: asset.id,
       name: asset.name,
       clientName: clientNameById.get(asset.client_id) ?? "Unknown client",
-      status: asset.status,
+      status: asset.asset_status,
     };
 
     const existing = pinsBySite.get(site.id);
@@ -86,15 +87,20 @@ export async function AssetsScreen({
   const limit = isMapView ? MAP_FETCH_LIMIT : LIST_PAGE_SIZE;
   const offset = isMapView ? 0 : page * LIST_PAGE_SIZE;
 
-  const [clientsResult, assetsResult, currentSitesResult] = await Promise.all([
-    listClients({ limit: 200 }),
-    listAssets({ clientId, siteId, limit, offset }),
-    clientId ? listSites(clientId) : Promise.resolve(null),
-  ]);
+  const [clientsResult, assetsResult, currentSitesResult, assetTypesResult, assetStatusesResult] =
+    await Promise.all([
+      listClients({ limit: 200 }),
+      listAssets({ clientId, siteId, limit, offset }),
+      clientId ? listSites(clientId) : Promise.resolve(null),
+      listReferenceItems("asset_type"),
+      listReferenceItems("asset_status"),
+    ]);
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
   const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
   const filterSites: SiteRecord[] = currentSitesResult?.data?.sites ?? [];
+  const assetTypes = assetTypesResult.data?.items ?? [];
+  const assetStatuses = assetStatusesResult.data?.items ?? [];
 
   const toolbar = (
     <Toolbar>
@@ -103,7 +109,9 @@ export async function AssetsScreen({
       </Toolbar.Section>
       <Toolbar.Section align="end">
         <AssetsViewSwitcher view={view} />
-        {canCreate && <CreateAssetButton clients={clients} />}
+        {canCreate && (
+          <CreateAssetButton clients={clients} assetTypes={assetTypes} assetStatuses={assetStatuses} />
+        )}
       </Toolbar.Section>
     </Toolbar>
   );
@@ -134,7 +142,11 @@ export async function AssetsScreen({
               ? "Try a different client or site filter."
               : "Add your first piece of equipment to start tracking it."
           }
-          action={canCreate && !hasFilters ? <CreateAssetButton clients={clients} /> : undefined}
+          action={
+            canCreate && !hasFilters ? (
+              <CreateAssetButton clients={clients} assetTypes={assetTypes} assetStatuses={assetStatuses} />
+            ) : undefined
+          }
         />
       </>
     );
@@ -179,6 +191,8 @@ export async function AssetsScreen({
         assets={assets}
         clients={clients}
         clientNameById={clientNameById}
+        assetTypes={assetTypes}
+        assetStatuses={assetStatuses}
         canEdit={canEdit}
         canDelete={canDelete}
       />

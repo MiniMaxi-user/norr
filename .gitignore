@@ -1,5 +1,9 @@
 # dependencies
 /node_modules
+# npm workspaces (packages/*) can get their own nested node_modules for
+# workspace-specific deps not hoisted to the root — /node_modules above only
+# anchors to the repo root and would miss these.
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,6 +18,10 @@
 # next.js
 /.next/
 /out/
+
+# workspace package build output — built by `npm run build`/`predev`,
+# never committed (same reasoning as /.next/); see packages/ui/package.json.
+/packages/*/dist/
 
 # production
 /build

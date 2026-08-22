@@ -4,17 +4,22 @@ import { useState } from "react";
 import { Button } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { AssetFormDialog } from "../components/asset-form-dialog";
 import { DeleteAssetDialog } from "../components/delete-asset-dialog";
 
 export function AssetDetailActions({
   asset,
   clients,
+  assetTypes,
+  assetStatuses,
   canEdit,
   canDelete,
 }: {
   asset: AssetRecord;
   clients: ClientRecord[];
+  assetTypes: ReferenceListItemRecord[];
+  assetStatuses: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }) {
@@ -35,7 +40,15 @@ export function AssetDetailActions({
       )}
 
       {editing && (
-        <AssetFormDialog mode="edit" asset={asset} clients={clients} open onOpenChange={setEditing} />
+        <AssetFormDialog
+          mode="edit"
+          asset={asset}
+          clients={clients}
+          assetTypes={assetTypes}
+          assetStatuses={assetStatuses}
+          open
+          onOpenChange={setEditing}
+        />
       )}
       {deleting && (
         <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />

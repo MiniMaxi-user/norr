@@ -204,12 +204,26 @@ select is(
 ); -- 17
 
 -- ---------------------------------------------------------------------------
--- assets: client_id + organization_id are both derived from site_id
+-- assets: client_id + organization_id are both derived from site_id.
+-- type_id/status_id (added in 20260822200000_reference_lists.sql) are FKs
+-- into that org's auto-seeded reference_list_items — org_a already has an
+-- 'asset_type' list (with a 'hvac' item) and an 'asset_status' list (with a
+-- default 'active' item) from the organizations_seed_reference_lists
+-- trigger that fired when org_a was created above.
 -- ---------------------------------------------------------------------------
 select lives_ok(
-  $$ insert into public.assets (id, site_id, name, type, serial_number)
-     values ('a0000000-0000-0000-0000-00000000000a', 'f0000000-0000-0000-0000-00000000000a', 'Boiler 1', 'boiler', 'SN-001') $$,
-  'owner_a can insert an asset under site f0000000... (org_a)'
+  $$ insert into public.assets (id, site_id, name, type_id, serial_number)
+     values (
+       'a0000000-0000-0000-0000-00000000000a',
+       'f0000000-0000-0000-0000-00000000000a',
+       'Boiler 1',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac'),
+       'SN-001'
+     ) $$,
+  'owner_a can insert an asset under site f0000000... (org_a), type_id resolved from org_a''s seeded asset_type list'
 ); -- 18
 
 select is(
@@ -225,14 +239,24 @@ select is(
 ); -- 20
 
 select is(
-  (select status::text from public.assets where id = 'a0000000-0000-0000-0000-00000000000a'),
+  (select rli.value
+     from public.assets a
+     join public.reference_list_items rli on rli.id = a.status_id
+     where a.id = 'a0000000-0000-0000-0000-00000000000a'),
   'active',
-  'assets.status defaults to active'
+  'assets.status_id defaults to the org''s default asset_status item (value=active) when omitted on insert'
 ); -- 21
 
 select throws_ok(
-  $$ insert into public.assets (site_id, name, type, client_id)
-     values ('f0000000-0000-0000-0000-00000000000a', 'Spoofed Asset', 'boiler', 'e0000000-0000-0000-0000-00000000000a') $$,
+  $$ insert into public.assets (site_id, name, type_id, client_id)
+     values (
+       'f0000000-0000-0000-0000-00000000000a', 'Spoofed Asset',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac'),
+       'e0000000-0000-0000-0000-00000000000a'
+     ) $$,
   '42501',
   null,
   'owner_a cannot set assets.client_id directly on insert (column-level grant withheld)'
@@ -249,7 +273,12 @@ select is(
 ); -- 23
 
 select throws_ok(
-  $$ update public.assets set status = 'decommissioned' where id = 'a0000000-0000-0000-0000-00000000000a' $$,
+  $$ update public.assets set status_id = (
+       select rli.id from public.reference_list_items rli
+         join public.reference_lists rl on rl.id = rli.reference_list_id
+         where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+           and rl.list_key = 'asset_status' and rli.value = 'decommissioned'
+     ) where id = 'a0000000-0000-0000-0000-00000000000a' $$,
   '42501',
   null,
   'planner_a cannot UPDATE an asset directly via RLS (owner-only backstop; finer planner grants are app-layer, not RLS, in v1)'
@@ -278,7 +307,12 @@ select throws_ok(
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ update public.assets set status = 'decommissioned' where id = 'a0000000-0000-0000-0000-00000000000a' $$,
+  $$ update public.assets set status_id = (
+       select rli.id from public.reference_list_items rli
+         join public.reference_lists rl on rl.id = rli.reference_list_id
+         where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+           and rl.list_key = 'asset_status' and rli.value = 'decommissioned'
+     ) where id = 'a0000000-0000-0000-0000-00000000000a' $$,
   'owner_a can update an asset in org_a'
 ); -- 27
 

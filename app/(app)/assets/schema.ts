@@ -14,11 +14,6 @@ function optionalText(max: number) {
   return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
 }
 
-/** Mirrors the Postgres `asset_status` enum (`'active' | 'decommissioned'`)
- * from supabase/migrations/20260822190000_clients_sites_assets.sql. */
-export const assetStatusSchema = z.enum(["active", "decommissioned"]);
-export type AssetStatus = z.infer<typeof assetStatusSchema>;
-
 const isoDateSchema = z.preprocess(
   emptyToUndefined,
   z
@@ -30,11 +25,21 @@ const isoDateSchema = z.preprocess(
 export const assetCreateSchema = z.object({
   siteId: z.string().uuid("Invalid site id."),
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
-  type: z.string().trim().min(1, "Type is required.").max(100, "Type is too long."),
+  /** FK into this org's `asset_type` reference list
+   * (`reference_list_items.id`) — see
+   * supabase/migrations/20260822200000_reference_lists.sql. Required, no
+   * default, same as the old free-text `type` column. Validated
+   * server-side by the `validate_asset_reference_items` DB trigger (must
+   * belong to the `asset_type` list, same organization). */
+  typeId: z.string().uuid("Invalid asset type."),
   manufacturer: optionalText(200),
   model: optionalText(200),
   serialNumber: optionalText(200),
-  status: assetStatusSchema.optional(),
+  /** FK into this org's `asset_status` reference list. Optional on create —
+   * the `derive_asset_org_and_client` DB trigger fills in the org's default
+   * `asset_status` item when omitted (replacing the old `default 'active'`
+   * enum default). */
+  statusId: z.string().uuid("Invalid asset status.").optional(),
   installedAt: isoDateSchema,
   warrantyUntil: isoDateSchema,
   notes: optionalText(5000),
