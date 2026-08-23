@@ -69,12 +69,20 @@ export type FeatureKey =
  * — it ships in the same PR as `assets`' migration to `type_id`/`status_id`,
  * so it needs to be usable immediately, same reasoning as `clients`/`assets`
  * above.
+ *
+ * `planning` added alongside the Work Orders module
+ * (`app/(app)/work-orders/actions.ts`, issue #13): every one of that file's
+ * actions calls `hasFeature()` first per CLAUDE.md rule 3, so leaving
+ * `planning` out of this set would make the module unconditionally fail with
+ * "module not enabled" now that it's actually shipping — same reasoning as
+ * `clients`/`assets`/`settings` above.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
   "clients",
   "assets",
   "settings",
+  "planning",
 ]);
 
 /**

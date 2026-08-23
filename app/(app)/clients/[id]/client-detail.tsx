@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
+import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -14,8 +15,9 @@ import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
 import { SitesPanel } from "./sites-panel";
+import { WorkOrdersPanel } from "./work-orders-panel";
 
-export type ClientDetailTab = "sites" | "assets" | "contacts";
+export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders";
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -28,6 +30,8 @@ export interface ClientDetailProps {
   canDeleteAssets: boolean;
   contacts: ContactRecord[];
   contactRoles: ReferenceListItemRecord[];
+  workOrders: WorkOrderRecord[];
+  workOrdersEnabled: boolean;
   defaultTab: ClientDetailTab;
 }
 
@@ -52,6 +56,8 @@ export function ClientDetail({
   canDeleteAssets,
   contacts,
   contactRoles,
+  workOrders,
+  workOrdersEnabled,
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
@@ -123,6 +129,11 @@ export function ClientDetail({
           <Tabs.Tab value="contacts">
             Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
           </Tabs.Tab>
+          {workOrdersEnabled && (
+            <Tabs.Tab value="workOrders">
+              Work Orders{workOrders.length > 0 ? ` (${workOrders.length})` : ""}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="sites">
@@ -154,6 +165,12 @@ export function ClientDetail({
         <Tabs.Panel value="contacts">
           <ContactsPanel clientId={client.id} contacts={contacts} contactRoles={contactRoles} canWrite={canWrite} />
         </Tabs.Panel>
+
+        {workOrdersEnabled && (
+          <Tabs.Panel value="workOrders">
+            <WorkOrdersPanel workOrders={workOrders} />
+          </Tabs.Panel>
+        )}
       </Tabs>
 
       {canWrite && (
