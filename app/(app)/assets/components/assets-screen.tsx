@@ -87,13 +87,14 @@ export async function AssetsScreen({
   const limit = isMapView ? MAP_FETCH_LIMIT : LIST_PAGE_SIZE;
   const offset = isMapView ? 0 : page * LIST_PAGE_SIZE;
 
-  const [clientsResult, assetsResult, currentSitesResult, assetTypesResult, assetStatusesResult] =
+  const [clientsResult, assetsResult, currentSitesResult, assetTypesResult, assetStatusesResult, assetSubtypesResult] =
     await Promise.all([
       listClients({ limit: 200 }),
       listAssets({ clientId, siteId, limit, offset }),
       clientId ? listSites(clientId) : Promise.resolve(null),
       listReferenceItems("asset_type"),
       listReferenceItems("asset_status"),
+      listReferenceItems("asset_subtype"),
     ]);
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
@@ -101,6 +102,7 @@ export async function AssetsScreen({
   const filterSites: SiteRecord[] = currentSitesResult?.data?.sites ?? [];
   const assetTypes = assetTypesResult.data?.items ?? [];
   const assetStatuses = assetStatusesResult.data?.items ?? [];
+  const assetSubtypes = assetSubtypesResult.data?.items ?? [];
 
   const toolbar = (
     <Toolbar>
@@ -110,7 +112,12 @@ export async function AssetsScreen({
       <Toolbar.Section align="end">
         <AssetsViewSwitcher view={view} />
         {canCreate && (
-          <CreateAssetButton clients={clients} assetTypes={assetTypes} assetStatuses={assetStatuses} />
+          <CreateAssetButton
+            clients={clients}
+            assetTypes={assetTypes}
+            assetStatuses={assetStatuses}
+            assetSubtypes={assetSubtypes}
+          />
         )}
       </Toolbar.Section>
     </Toolbar>
@@ -144,7 +151,12 @@ export async function AssetsScreen({
           }
           action={
             canCreate && !hasFilters ? (
-              <CreateAssetButton clients={clients} assetTypes={assetTypes} assetStatuses={assetStatuses} />
+              <CreateAssetButton
+                clients={clients}
+                assetTypes={assetTypes}
+                assetStatuses={assetStatuses}
+                assetSubtypes={assetSubtypes}
+              />
             ) : undefined
           }
         />
@@ -193,6 +205,7 @@ export async function AssetsScreen({
         clientNameById={clientNameById}
         assetTypes={assetTypes}
         assetStatuses={assetStatuses}
+        assetSubtypes={assetSubtypes}
         canEdit={canEdit}
         canDelete={canDelete}
       />

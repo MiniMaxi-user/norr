@@ -15,6 +15,7 @@ export interface AssetsTableProps {
   clientNameById: Map<string, string>;
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  assetSubtypes: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -38,6 +39,7 @@ export function AssetsTable({
   clientNameById,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   canEdit,
   canDelete,
 }: AssetsTableProps) {
@@ -151,6 +153,7 @@ export function AssetsTable({
           clients={clients}
           assetTypes={assetTypes}
           assetStatuses={assetStatuses}
+          assetSubtypes={assetSubtypes}
           open
           onOpenChange={(next) => !next && setEditingAsset(null)}
         />

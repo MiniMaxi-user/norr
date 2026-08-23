@@ -77,11 +77,27 @@ export const referenceItemColorSchema = z.preprocess(
     .optional(),
 );
 
+/** FK into an item from this list's *parent* list (see
+ * `reference_lists.parent_list_key` / `reference_list_items.parent_item_id`
+ * in `supabase/migrations/20260823090000_contacts_dependent_reference_lists.sql`
+ * — e.g. an `asset_subtype` item's `parentItemId` points at the `asset_type`
+ * item it belongs under). Optional at the Zod layer on purpose: whether it's
+ * actually required depends on a runtime property (the target list's
+ * `parent_list_key`) that this schema alone can't know — `actions.ts`
+ * enforces "required exactly when the list is dependent" itself, after
+ * resolving the list, as defense in depth alongside the DB's
+ * `validate_reference_list_item_parent` trigger. */
+export const referenceItemParentIdSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().uuid("Invalid parent item id.").optional(),
+);
+
 export const referenceItemCreateSchema = z.object({
   value: referenceItemValueSchema,
   label: z.string().trim().min(1, "Label is required.").max(200, "Label is too long."),
   color: referenceItemColorSchema,
   sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
+  parentItemId: referenceItemParentIdSchema,
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;

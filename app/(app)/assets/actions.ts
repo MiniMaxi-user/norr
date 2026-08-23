@@ -76,6 +76,11 @@ export interface AssetRecord {
   model: string | null;
   serial_number: string | null;
   status_id: string;
+  /** FK into this org's `asset_subtype` reference list. Nullable — not every
+   * asset needs a sub-type, unlike `type_id`. See the comment on
+   * `subtypeId` in `./schema.ts` for the dependent-list validation split
+   * (shape here, cross-field "must be a sub-type of type_id" at the DB). */
+  subtype_id: string | null;
   installed_at: string | null;
   warranty_until: string | null;
   notes: string | null;
@@ -90,6 +95,9 @@ export interface AssetRecord {
   asset_type: ResolvedReferenceItem | null;
   /** Embedded via `reference_list_items!assets_status_id_fkey(...)`. */
   asset_status: ResolvedReferenceItem | null;
+  /** Embedded via `reference_list_items!assets_subtype_id_fkey(...)`. `null`
+   * whenever `subtype_id` is `null` (no sub-type set on this asset). */
+  asset_subtype: ResolvedReferenceItem | null;
 }
 
 /**
@@ -103,12 +111,52 @@ export interface AssetRecord {
  * names from `alter table assets add column type_id uuid references
  * reference_list_items (id)` in
  * supabase/migrations/20260822200000_reference_lists.sql; Postgres's default
- * naming for an unnamed column FK is `<table>_<column>_fkey`).
+ * naming for an unnamed column FK is `<table>_<column>_fkey`). Extended
+ * (issue #26) with a third embed, `asset_subtype`, via
+ * `assets_subtype_id_fkey` — same default-naming reasoning, added by
+ * `alter table assets add column subtype_id uuid references
+ * reference_list_items (id)` in
+ * supabase/migrations/20260823090000_contacts_dependent_reference_lists.sql.
  */
 const ASSET_SELECT =
-  "*, asset_type:reference_list_items!assets_type_id_fkey(value,label,color), asset_status:reference_list_items!assets_status_id_fkey(value,label,color)";
+  "*, asset_type:reference_list_items!assets_type_id_fkey(value,label,color), asset_status:reference_list_items!assets_status_id_fkey(value,label,color), asset_subtype:reference_list_items!assets_subtype_id_fkey(value,label,color)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/**
+ * Defense-in-depth shape check for `subtypeId`, mirrored from the same
+ * pattern in `lib/reference-lists/actions.ts`'s `validateDependentParentItem`:
+ * confirms the id resolves to an item on the `asset_subtype` list (RLS
+ * already scopes the lookup to the caller's own organization) *before* the
+ * insert/update is attempted, so an id from the wrong list (or a
+ * nonexistent one) comes back as a clean field error instead of the DB's
+ * generic `23514` message. The cross-field check — that the subtype's own
+ * `parent_item_id` actually equals this asset's `type_id` — is deliberately
+ * NOT duplicated here (per this task's scope): that's left to
+ * `validate_asset_reference_items`, which `mapDbError` already turns into a
+ * clean "wrong picklist" style message on `23514`.
+ */
+async function validateAssetSubtype(
+  supabase: SupabaseServerClient,
+  subtypeId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await supabase
+    .from("reference_list_items")
+    .select("id, reference_list:reference_lists(list_key)")
+    .eq("id", subtypeId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: mapDbError(error) };
+
+  const listKey = (data?.reference_list as unknown as { list_key: string } | null)?.list_key;
+  if (!data || listKey !== "asset_subtype") {
+    return { ok: false, error: "Invalid asset sub-type — it must be a value from the Asset Sub-type list." };
+  }
+
+  return { ok: true };
+}
 
 function toAssetInsertRow(input: ReturnType<typeof assetCreateSchema.parse>) {
   const row: Record<string, unknown> = {
@@ -118,6 +166,7 @@ function toAssetInsertRow(input: ReturnType<typeof assetCreateSchema.parse>) {
     manufacturer: input.manufacturer ?? null,
     model: input.model ?? null,
     serial_number: input.serialNumber ?? null,
+    subtype_id: input.subtypeId ?? null,
     installed_at: input.installedAt ?? null,
     warranty_until: input.warrantyUntil ?? null,
     notes: input.notes ?? null,
@@ -142,6 +191,7 @@ function toAssetUpdateRow(input: ReturnType<typeof assetUpdateSchema.parse>) {
   if (input.model !== undefined) row.model = input.model ?? null;
   if (input.serialNumber !== undefined) row.serial_number = input.serialNumber ?? null;
   if (input.statusId !== undefined) row.status_id = input.statusId;
+  if (input.subtypeId !== undefined) row.subtype_id = input.subtypeId ?? null;
   if (input.installedAt !== undefined) row.installed_at = input.installedAt ?? null;
   if (input.warrantyUntil !== undefined) row.warranty_until = input.warrantyUntil ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
@@ -227,6 +277,14 @@ export async function createAsset(input: unknown): Promise<ActionResult<{ asset:
   }
 
   const supabase = await createSupabaseServerClient();
+
+  if (parsed.data.subtypeId !== undefined) {
+    const subtypeCheck = await validateAssetSubtype(supabase, parsed.data.subtypeId);
+    if (!subtypeCheck.ok) {
+      return fail(subtypeCheck.error, { subtypeId: [subtypeCheck.error] });
+    }
+  }
+
   const { data, error } = await supabase
     .from("assets")
     .insert(toAssetInsertRow(parsed.data))
@@ -267,6 +325,14 @@ export async function updateAsset(id: string, input: unknown): Promise<ActionRes
   }
 
   const supabase = await createSupabaseServerClient();
+
+  if (parsed.data.subtypeId !== undefined) {
+    const subtypeCheck = await validateAssetSubtype(supabase, parsed.data.subtypeId);
+    if (!subtypeCheck.ok) {
+      return fail(subtypeCheck.error, { subtypeId: [subtypeCheck.error] });
+    }
+  }
+
   const { data, error } = await supabase
     .from("assets")
     .update(row)

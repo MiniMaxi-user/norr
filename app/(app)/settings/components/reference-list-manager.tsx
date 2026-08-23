@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, EmptyState, Heading, Stack, Table, Text } from "@yourorg/ui";
 import { ArrowDown, ArrowUp, Settings } from "@yourorg/ui/icons";
@@ -27,6 +27,19 @@ export interface ReferenceListManagerProps {
    * the values mean, only the owner edits them."
    */
   canWrite: boolean;
+  /** Non-null exactly when `listKey`'s own list is a *dependent* list (e.g.
+   * `asset_subtype` -> `"asset_type"`) — see `reference_lists.parent_list_key`
+   * in the contacts/dependent-lists migration. Drives both the parent-item
+   * picker in the create/edit dialog and the resolved parent label shown per
+   * row below. */
+  parentListKey: string | null;
+  /** Display title for `parentListKey` (e.g. `"Asset Type"`), for the picker
+   * label — `undefined` when `parentListKey` is `null`. */
+  parentListTitle?: string;
+  /** Every item of the parent list (`parentListKey`), for resolving each of
+   * `items`' `parent_item_id` to a label, and for populating the create/edit
+   * dialog's parent picker. Empty when `parentListKey` is `null`. */
+  parentItems: ReferenceListItemRecord[];
 }
 
 /**
@@ -44,9 +57,13 @@ export function ReferenceListManager({
   items,
   loadError,
   canWrite,
+  parentListKey,
+  parentListTitle,
+  parentItems,
 }: ReferenceListManagerProps) {
   const router = useRouter();
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+  const parentById = useMemo(() => new Map(parentItems.map((item) => [item.id, item])), [parentItems]);
 
   const [formState, setFormState] = useState<{ open: boolean; item: ReferenceListItemRecord | null }>({
     open: false,
@@ -146,7 +163,14 @@ export function ReferenceListManager({
                 <Table.Cell>
                   <Badge color={item.color}>{item.color ?? "default"}</Badge>
                 </Table.Cell>
-                <Table.Cell>{item.label}</Table.Cell>
+                <Table.Cell>
+                  <Stack gap="xs">
+                    <Text>{item.label}</Text>
+                    {item.parent_item_id && (
+                      <Text tone="muted">under {parentById.get(item.parent_item_id)?.label ?? "—"}</Text>
+                    )}
+                  </Stack>
+                </Table.Cell>
                 <Table.Cell>
                   <Text tone="muted">{item.value}</Text>
                 </Table.Cell>
@@ -176,6 +200,9 @@ export function ReferenceListManager({
             onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
             listKey={listKey}
             item={formState.item}
+            parentListKey={parentListKey}
+            parentListTitle={parentListTitle}
+            parentItems={parentItems}
           />
           <DeleteReferenceItemDialog
             open={Boolean(deleteTarget)}

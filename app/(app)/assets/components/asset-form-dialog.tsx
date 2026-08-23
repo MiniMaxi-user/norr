@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  CascadingSelect,
   Dialog,
   Heading,
   IconButton,
@@ -43,6 +44,13 @@ export interface AssetFormDialogProps {
   assetTypes: ReferenceListItemRecord[];
   /** This org's `asset_status` picklist values. */
   assetStatuses: ReferenceListItemRecord[];
+  /** This org's `asset_subtype` picklist values — a *dependent* list
+   * (`parent_list_key = "asset_type"`, each item's `parent_item_id` points at
+   * the `asset_type` item it belongs under). Passed down unfiltered, same
+   * "fetch once" convention as `assetTypes`/`assetStatuses`; the Sub-type
+   * `<CascadingSelect>` below does its own filtering against the currently
+   * selected Type. */
+  assetSubtypes: ReferenceListItemRecord[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -57,7 +65,10 @@ export interface AssetFormDialogProps {
  * docs/ARCHITECTURE.md "Tenant-configurable reference data") — both
  * `<Select>`s below are populated from `assetTypes`/`assetStatuses`, never
  * hardcoded options, and submit the picklist item's `id` (`typeId`/
- * `statusId`), not its label/value.
+ * `statusId`), not its label/value. Sub-type is the same idea but
+ * *dependent* on Type (docs/ARCHITECTURE.md "Domain completeness") — the
+ * `<CascadingSelect>` stays empty/disabled until a Type is chosen and is
+ * filtered to that Type's own sub-types once it is.
  *
  * The client picker here (when not `lockedClientId`-scoped) is a plain,
  * un-submitted `<select>` used only to drive which sites are offered — the
@@ -72,6 +83,7 @@ export function AssetFormDialog({
   lockedClientId,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   open,
   onOpenChange,
 }: AssetFormDialogProps) {
@@ -84,6 +96,12 @@ export function AssetFormDialog({
   );
   const [sites, setSites] = useState<SiteRecord[]>([]);
   const [loadingSites, setLoadingSites] = useState(false);
+  // Controlled (not just `defaultValue`, unlike most fields in this dialog)
+  // because the Sub-type `<CascadingSelect>` below needs to know the
+  // currently selected Type on every render to filter/disable itself — see
+  // the "Domain completeness" cascading-select pattern in
+  // `packages/ui/src/components/cascading-select.tsx`.
+  const [selectedTypeId, setSelectedTypeId] = useState(asset?.type_id ?? "");
 
   useEffect(() => {
     if (!selectedClientId) {
@@ -188,7 +206,13 @@ export function AssetFormDialog({
 
             <Stack gap="sm">
               <Label htmlFor="asset-type">Type</Label>
-              <Select id="asset-type" name="typeId" defaultValue={asset?.type_id ?? ""} required>
+              <Select
+                id="asset-type"
+                name="typeId"
+                value={selectedTypeId}
+                onChange={(event) => setSelectedTypeId(event.target.value)}
+                required
+              >
                 <option value="" disabled>
                   Select a type…
                 </option>
@@ -204,6 +228,30 @@ export function AssetFormDialog({
                   No asset types configured yet — add one from Settings first.
                 </Text>
               )}
+            </Stack>
+
+            <Stack gap="sm">
+              <Label htmlFor="asset-subtype">Sub-type</Label>
+              {/* Remounted (via `key`) whenever the selected Type changes, so
+                  its uncontrolled `defaultValue` resets to whichever option
+                  matches the new Type (or the placeholder, if none does) —
+                  same trick the Site select above uses for its Client
+                  dependency, see the comment on `CascadingSelect`. */}
+              <CascadingSelect
+                id="asset-subtype"
+                name="subtypeId"
+                key={selectedTypeId}
+                defaultValue={asset?.type_id === selectedTypeId ? asset?.subtype_id ?? "" : ""}
+                parentValue={selectedTypeId}
+                options={assetSubtypes.map((item) => ({
+                  id: item.id,
+                  label: item.label,
+                  parentId: item.parent_item_id ?? "",
+                }))}
+                placeholder="No sub-type"
+                emptyParentPlaceholder="Select a type first…"
+              />
+              {state.fieldErrors?.subtypeId && <Text tone="danger">{state.fieldErrors.subtypeId[0]}</Text>}
             </Stack>
 
             <Stack gap="sm">

@@ -42,17 +42,20 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
   if (!canAccessModule(actor, "assets")) notFound();
 
-  const [assetResult, clientsResult, assetTypesResult, assetStatusesResult] = await Promise.all([
-    getAsset(id),
-    listClients({ limit: 200 }),
-    listReferenceItems("asset_type"),
-    listReferenceItems("asset_status"),
-  ]);
+  const [assetResult, clientsResult, assetTypesResult, assetStatusesResult, assetSubtypesResult] =
+    await Promise.all([
+      getAsset(id),
+      listClients({ limit: 200 }),
+      listReferenceItems("asset_type"),
+      listReferenceItems("asset_status"),
+      listReferenceItems("asset_subtype"),
+    ]);
   if (!assetResult.data) notFound();
   const asset = assetResult.data.asset;
   const clients = clientsResult.data?.clients ?? [];
   const assetTypes = assetTypesResult.data?.items ?? [];
   const assetStatuses = assetStatusesResult.data?.items ?? [];
+  const assetSubtypes = assetSubtypesResult.data?.items ?? [];
 
   const clientResult = await getClient(asset.client_id);
   const client = clientResult.data?.client ?? null;
@@ -80,6 +83,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
             clients={clients}
             assetTypes={assetTypes}
             assetStatuses={assetStatuses}
+            assetSubtypes={assetSubtypes}
             canEdit={canEdit}
             canDelete={canDelete}
           />
@@ -89,6 +93,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
       <Card>
         <Stack gap="md">
           <DetailRow label="Type" value={asset.asset_type?.label ?? "—"} />
+          <DetailRow label="Sub-type" value={asset.asset_subtype?.label ?? "—"} />
           <DetailRow label="Manufacturer" value={asset.manufacturer ?? "—"} />
           <DetailRow label="Model" value={asset.model ?? "—"} />
           <DetailRow label="Serial number" value={asset.serial_number ?? "—"} />

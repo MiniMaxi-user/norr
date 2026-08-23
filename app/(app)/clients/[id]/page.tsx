@@ -6,8 +6,9 @@ import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissio
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { getClient } from "../actions";
+import { listContacts } from "../contacts-actions";
 import { listAssets } from "@/app/(app)/assets/actions";
-import { ClientDetail } from "./client-detail";
+import { ClientDetail, type ClientDetailTab } from "./client-detail";
 import { ClientDetailSkeleton } from "./client-detail-skeleton";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 
@@ -59,14 +60,37 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "assets")) &&
     canAccessModule(actor, "assets");
 
-  const [assetsResult, assetTypesResult, assetStatusesResult, lastUsedTab] = assetsModuleVisible
-    ? await Promise.all([
-        listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT }),
-        listReferenceItems("asset_type"),
-        listReferenceItems("asset_status"),
-        preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
-      ])
-    : [null, null, null, null];
+  // Contacts (issue #26) aren't a separately-entitled module — they're a
+  // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
+  // unlike Assets, this data is always fetched here rather than gated behind
+  // its own `hasFeature`/`canAccessModule` check.
+  const [
+    assetsResult,
+    assetTypesResult,
+    assetStatusesResult,
+    assetSubtypesResult,
+    contactsResult,
+    contactRolesResult,
+    lastUsedTab,
+  ] = await Promise.all([
+    assetsModuleVisible
+      ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
+      : Promise.resolve(null),
+    assetsModuleVisible ? listReferenceItems("asset_type") : Promise.resolve(null),
+    assetsModuleVisible ? listReferenceItems("asset_status") : Promise.resolve(null),
+    assetsModuleVisible ? listReferenceItems("asset_subtype") : Promise.resolve(null),
+    listContacts(id),
+    listReferenceItems("contact_role"),
+    preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
+  ]);
+
+  const requestedTab = lastUsedTab as ClientDetailTab | null;
+  const defaultTab: ClientDetailTab =
+    requestedTab === "assets" && assetsModuleVisible
+      ? "assets"
+      : requestedTab === "contacts"
+        ? "contacts"
+        : "sites";
 
   return (
     <ClientDetail
@@ -77,12 +101,15 @@ async function ClientDetailContent({ id }: { id: string }) {
       assetsEnabled={assetsModuleVisible}
       assetTypes={assetTypesResult?.data?.items ?? []}
       assetStatuses={assetStatusesResult?.data?.items ?? []}
+      assetSubtypes={assetSubtypesResult?.data?.items ?? []}
       canCreateAssets={assetsModuleVisible && can(actor, "assets", "create")}
       canEditAssets={
         assetsModuleVisible && (can(actor, "assets", "update") || can(actor, "assets", "update_own"))
       }
       canDeleteAssets={assetsModuleVisible && can(actor, "assets", "delete")}
-      defaultTab={lastUsedTab === "assets" ? "assets" : "sites"}
+      contacts={contactsResult.data?.contacts ?? []}
+      contactRoles={contactRolesResult.data?.items ?? []}
+      defaultTab={defaultTab}
     />
   );
 }

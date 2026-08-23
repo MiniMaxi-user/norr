@@ -10,6 +10,7 @@ export interface CreateAssetButtonProps {
   clients: ClientRecord[];
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  assetSubtypes: ReferenceListItemRecord[];
   /** Pre-scopes the create dialog to a single client (see
    * `AssetFormDialog`'s `lockedClientId`) — passed by the Clients detail
    * page's Assets tab. */
@@ -28,6 +29,7 @@ export function CreateAssetButton({
   clients,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   lockedClientId,
   label,
 }: CreateAssetButtonProps) {
@@ -45,6 +47,7 @@ export function CreateAssetButton({
           lockedClientId={lockedClientId}
           assetTypes={assetTypes}
           assetStatuses={assetStatuses}
+          assetSubtypes={assetSubtypes}
           open
           onOpenChange={setOpen}
         />
