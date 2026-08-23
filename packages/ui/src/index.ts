@@ -34,16 +34,24 @@ export { Tooltip, type TooltipProps } from "./components/tooltip";
 export { Kbd } from "./components/kbd";
 export { Card, type CardProps } from "./components/card";
 export { Heading, Text, type HeadingProps, type HeadingLevel, type TextProps, type TextTone } from "./components/typography";
-export { Stack, type StackProps, type StackGap } from "./components/stack";
+export { Stack, Inline, type StackProps, type StackGap, type InlineProps, type InlineAlign } from "./components/stack";
+export { Avatar, type AvatarProps, type AvatarSize } from "./components/avatar";
+export { Breadcrumbs, type BreadcrumbsProps, type BreadcrumbItem } from "./components/breadcrumbs";
 export {
   Label,
   Input,
   Select,
   Textarea,
+  FormSection,
+  FormGrid,
+  FormGridFull,
   type LabelProps,
   type InputProps,
   type SelectProps,
   type TextareaProps,
+  type FormSectionProps,
+  type FormGridProps,
+  type FormGridFullProps,
 } from "./components/form";
 export { Skeleton, type SkeletonProps } from "./components/skeleton";
 export {

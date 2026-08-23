@@ -115,6 +115,17 @@ Encode this as a single config object (`lib/rbac/permissions.ts`), not scattered
 - Skeleton loading, not spinners; route-level streaming (Suspense)
 - Design tokens and components come exclusively from `@yourorg/ui` — no ad-hoc styling in the app repo
 
+### Relational detail pages — the standard, not a special case
+A flat list + a create/edit modal is never the whole answer once a record has real relationships (a client has sites and assets; a contract will have line items and linked assets; a work order will have a client, a site, an asset, and a planner). Whenever you build or touch a detail page for an entity that has related child or parent records, apply this pattern:
+
+- **Surface the relationship in place.** A parent detail page shows its related records as tabs (`Tabs` from `@yourorg/ui`), not just a link out to another module's list. Reference implementation: `app/(app)/clients/[id]/client-detail.tsx` — a client's own fields, plus `Sites` and `Assets` tabs on the same page, with `SitesPanel`'s per-site asset count jumping straight into the matching `Disclosure` group in `AssetsPanel`. That three-level hierarchy (client → sites → assets) staying visible and navigable from either tab, instead of being flattened into one generic table, is the bar — not the exception.
+- **Create in context.** A record creatable from a parent's tab (e.g. adding an asset from a client's Assets tab) should open pre-scoped to that parent (client/site already set), not dump the user into a bare, disconnected form.
+- **Nested groupings use `Disclosure`**, not a flat table, once a list has a natural sub-grouping (assets grouped by site, line items grouped by category, etc).
+- **Breadcrumb the hierarchy**, don't just "back link" it. `BackLink` (single hop, "back to X") is right for a page with one obvious parent list. Once a page sits two or more levels deep in a real hierarchy (Clients → Acme Corp → Site X), it needs a breadcrumb trail showing the full path, not just a single hop backward — add a `Breadcrumbs` primitive to `@yourorg/ui` if one doesn't exist yet rather than approximating it with more `BackLink`s.
+- **Known current gap**: `app/(app)/assets/[id]/page.tsx` (asset detail) does not meet this bar yet — it shows `Client`/`Site` as plain text/link `DetailRow`s with only a single `BackLink`, instead of the richer treatment `client-detail.tsx` gets. Bring it in line with the pattern above rather than treating it as acceptable prior art.
+
+Before building a new module (Contracts, Planning, Reporting — see `docs/ROADMAP.md`), identify its real relationships first and design the detail page's tabs/breadcrumbs/nesting up front — don't ship the flat version now and "add relations later."
+
 ## Design system consumption
 `@yourorg/ui` lives in this repo at `packages/ui`, as a real npm workspace package (root `package.json` `"workspaces": ["packages/*"]`), not a separate repo or private registry — there is no separate design-system repo, and none is planned for now. This is a deliberate choice, not a temporary stand-in (that was the old `vendor/yourorg-ui-stub`, now deleted): keeping it in-repo means the app and its design system iterate in the same PR.
 

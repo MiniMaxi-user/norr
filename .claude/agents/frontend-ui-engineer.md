@@ -17,6 +17,14 @@ Rules:
 
 Missing design tokens/components go into `packages/ui` directly (same PR) — don't fork one-off styled components in the app. Hand off permission/entitlement questions to `auth-rbac-engineer`.
 
+Relational detail pages — see `docs/ARCHITECTURE.md`'s "Relational detail pages" section for the full standard. In short: a flat list + a create/edit modal is never sufficient once a record has real relationships. Before building or touching a detail page:
+- Identify its real parent/child relationships first.
+- Surface related records as `Tabs` on the same page, not just a link to another module's list — reference implementation: `app/(app)/clients/[id]/client-detail.tsx` (client → Sites/Assets tabs, with cross-tab jump-to-group).
+- Group nested lists with `Disclosure`, not a flat table, once there's a natural sub-grouping.
+- Creating a child record from a parent's tab must pre-scope it to that parent, not open a bare disconnected form.
+- Once a page is two-plus levels deep in a hierarchy, use a breadcrumb trail, not a single `BackLink` — add a `Breadcrumbs` primitive to `@yourorg/ui` if one doesn't exist yet.
+- A simple modal for editing a single flat record (no relations) is still fine — this standard applies once relationships are involved, not to every dialog.
+
 Working style:
 - Small edit (styling tweak, copy change, adjusting an existing view, wiring an existing `@yourorg/ui` component)? Make it directly and stop there. Don't start the dev server, don't write or run Playwright/e2e tests, don't screenshot to self-verify — the user is testing in the browser themselves and will report back.
 - Only reach for `packages/ui` changes, new Suspense/loading-state work, or a `qa-reviewer` handoff when the change is an actual new view/module, not a small tweak to an existing one.

@@ -717,6 +717,95 @@ a:focus-visible > .ui-card-interactive,
   gap: var(--ui-space-lg);
 }
 
+/* Row-direction sibling of Stack — see components/stack.tsx `Inline`. The
+   `.ui-stack-*` gap classes above are reused as-is (they only set `gap`,
+   which is direction-agnostic). */
+.ui-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.ui-inline-start {
+  align-items: flex-start;
+}
+.ui-inline-center {
+  align-items: center;
+}
+.ui-inline-end {
+  align-items: flex-end;
+}
+.ui-inline-baseline {
+  align-items: baseline;
+}
+.ui-inline-wrap {
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Avatar — see components/avatar.tsx
+ * ---------------------------------------------------------------------- */
+.ui-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+  border: 1px solid var(--ui-accent-tint-border);
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.ui-avatar-sm {
+  width: 1.625rem;
+  height: 1.625rem;
+  font-size: 0.6875rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Breadcrumbs — see components/breadcrumbs.tsx
+ * ---------------------------------------------------------------------- */
+.ui-breadcrumbs-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--ui-text-sm);
+}
+.ui-breadcrumbs-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ui-breadcrumbs-link {
+  color: var(--ui-muted);
+  font-weight: 550;
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-breadcrumbs-link:hover {
+  color: var(--ui-accent-strong);
+}
+.ui-breadcrumbs-text {
+  color: var(--ui-muted);
+  font-weight: 550;
+}
+.ui-breadcrumbs-current {
+  color: var(--ui-fg);
+  font-weight: 600;
+}
+.ui-breadcrumbs-separator {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--ui-muted-subtle);
+  flex-shrink: 0;
+}
+
 /* ---------------------------------------------------------------------- *
  * Form fields
  * ---------------------------------------------------------------------- */
@@ -783,6 +872,83 @@ a:focus-visible > .ui-card-interactive,
   transform: translateY(-50%);
   color: var(--ui-muted);
   pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Form section / grid — see components/form.tsx `FormSection`/`FormGrid`.
+ * The structural fix for "this dialog is one flat undifferentiated list of
+ * fields": related fields group under a labeled section, and naturally
+ * paired fields (postal code + city, latitude + longitude, ...) sit in a
+ * two-column row instead of every field forcing full width.
+ * ---------------------------------------------------------------------- */
+.ui-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.ui-form-section + .ui-form-section {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ui-border);
+}
+.ui-form-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.ui-form-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+}
+.ui-form-section-icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.ui-form-section-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.ui-form-section-title {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ui-muted);
+}
+.ui-form-section-description {
+  font-size: var(--ui-text-sm);
+  color: var(--ui-muted-subtle);
+}
+.ui-form-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-md);
+}
+
+.ui-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ui-space-md);
+  align-items: start;
+}
+.ui-form-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.ui-form-grid-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 560px) {
+  .ui-form-grid,
+  .ui-form-grid-3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------------------------------------------------------------------- *
