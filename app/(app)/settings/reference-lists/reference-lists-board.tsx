@@ -42,6 +42,16 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Contact Role",
     description: "Roles a client contact can have — e.g. Primary, Billing, Site manager, Technical.",
   },
+  {
+    key: "work_order_status",
+    title: "Work Order Status",
+    description: "Lifecycle stages a work order moves through — e.g. New, Scheduled, En Route, In Progress, Completed, Invoiced.",
+  },
+  {
+    key: "work_order_priority",
+    title: "Work Order Priority",
+    description: "Urgency levels for a work order — e.g. Low, Normal, High, Urgent.",
+  },
 ] as const;
 
 /**

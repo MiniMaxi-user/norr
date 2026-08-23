@@ -8,6 +8,7 @@ import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { listAssets } from "@/app/(app)/assets/actions";
+import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { ClientDetail, type ClientDetailTab } from "./client-detail";
 import { ClientDetailSkeleton } from "./client-detail-skeleton";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
@@ -17,6 +18,10 @@ import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
  * view, not the org-wide Assets list (which does paginate). Matches the
  * existing map-view fetch limit convention in `assets-screen.tsx`. */
 const ALL_CLIENT_ASSETS_LIMIT = 500;
+
+/** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only Work
+ * Orders tab. */
+const ALL_CLIENT_WORK_ORDERS_LIMIT = 500;
 
 export default async function ClientDetailPage({
   params,
@@ -60,16 +65,28 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "assets")) &&
     canAccessModule(actor, "assets");
 
+  // The Work Orders tab is likewise a view onto a separately-entitled module
+  // (issue #13) — gated server-side the same way as Assets above, before any
+  // work order data is fetched, so a tenant/role without Planning access
+  // never sees the tab render at all (not just disabled).
+  const workOrdersModuleVisible =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "planning")) &&
+    canAccessModule(actor, "planning");
+
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
-  // unlike Assets, this data is always fetched here rather than gated behind
-  // its own `hasFeature`/`canAccessModule` check.
-  const [assetsResult, contactsResult, contactRolesResult, lastUsedTab] = await Promise.all([
+  // unlike Assets/Work Orders, this data is always fetched here rather than
+  // gated behind its own `hasFeature`/`canAccessModule` check.
+  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, lastUsedTab] = await Promise.all([
     assetsModuleVisible
       ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
       : Promise.resolve(null),
     listContacts(id),
     listReferenceItems("contact_role"),
+    workOrdersModuleVisible
+      ? listWorkOrders({ clientId: id, limit: ALL_CLIENT_WORK_ORDERS_LIMIT })
+      : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
   ]);
 
@@ -79,7 +96,9 @@ async function ClientDetailContent({ id }: { id: string }) {
       ? "assets"
       : requestedTab === "contacts"
         ? "contacts"
-        : "sites";
+        : requestedTab === "workOrders" && workOrdersModuleVisible
+          ? "workOrders"
+          : "sites";
 
   return (
     <ClientDetail
@@ -95,6 +114,8 @@ async function ClientDetailContent({ id }: { id: string }) {
       canDeleteAssets={assetsModuleVisible && can(actor, "assets", "delete")}
       contacts={contactsResult.data?.contacts ?? []}
       contactRoles={contactRolesResult.data?.items ?? []}
+      workOrders={workOrdersResult?.data?.workOrders ?? []}
+      workOrdersEnabled={workOrdersModuleVisible}
       defaultTab={defaultTab}
     />
   );
