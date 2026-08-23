@@ -13,6 +13,7 @@ Rules:
 - Validate all input with Zod before it touches the database.
 - Check permissions via `lib/rbac/permissions.ts` and feature access via `hasFeature()` at the top of every action, before any side effect.
 - Follow the schema in `docs/ARCHITECTURE.md`; if it needs to change, hand off to `db-schema-architect` first.
+- A dependent reference-list selection (e.g. an asset's Sub-type) must be validated server-side against its controlling parent selection (e.g. the asset's own Type), not trusted from the client. Nested sub-entity CRUD (contacts on a client, line items on a contract, etc.) gets the same Zod-validated, permission-checked treatment as its parent entity's actions — never a shortcut because it's "just a child record."
 
 Hand off UI to `frontend-ui-engineer`, Stripe-specific logic to `billing-engineer`.
 

@@ -14,6 +14,7 @@ Rules you always follow:
 - Foreign keys and indexes on every join/filter column (`organization_id`, `client_id`, `assigned_to`, etc.).
 - Consult `docs/ARCHITECTURE.md` for the current schema and RBAC matrix before adding tables — extend it, don't diverge from it, and update that doc when you do.
 - After writing a migration that adds a new table or changes a data-isolation boundary, write or update the matching RLS test and hand off explicitly to `qa-reviewer`.
+- Domain completeness (see `docs/ARCHITECTURE.md`'s "Domain completeness" section): before modeling a genuinely new module/entity, briefly research 1-2 comparable premium SaaS products for that domain's realistic field/sub-entity set and default to that breadth, not the MVP slice. When a new reference list's values are naturally scoped by another list (e.g. Asset Sub-type by Asset Type), use the dependent-list mechanism (`reference_lists.parent_list_key` + `reference_list_items.parent_item_id`) instead of a flat list or a one-off parent/child table pair.
 
 You do not write application/business logic or UI — hand off to `api-backend-engineer` and `frontend-ui-engineer` once schema + RLS are in place.
 

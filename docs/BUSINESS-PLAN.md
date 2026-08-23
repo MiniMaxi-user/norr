@@ -24,12 +24,35 @@ Twee niveaus. Ik interpreteer je omschrijving als volgt — **check dit voordat 
 Binnen een tenant beheert die tenant vervolgens weer **zijn eigen klanten** — dat is de "Clients"-module (CRM). Dus: Admin beheert tenants, een tenant beheert zijn klanten. Zie `ARCHITECTURE.md` voor het datamodel.
 
 ## 4. Modules (kernfunctionaliteit)
-- **Clients** — CRM voor de klanten van de tenant (contactpersonen, locaties)
-- **Assets** — apparatuur/installaties per klant/locatie, onderhoudshistorie
-- **Contracts** — SLA's, looptijd, gekoppelde assets, facturatietermijnen
-- **Planning** — planbord (lijst/kanban/kalender/kaart), toewijzing engineers
-- **Reporting** — servicerapporten, PDF-export, contractrendement
-- **Dashboarding** — configureerbare widgets per rol
+
+Vergeleken met premium FSM-platforms (ServiceTitan, Jobber, Housecall Pro, Salesforce Field Service — zie research in het uitvoeringsplan van 2026-08-23) was deze lijst te dun: een "job" bestond nergens als eerste-klas object, er was geen klant-eigen portaal, geen voorraad/onderdelenbeheer, geen offertetraject, geen preventief onderhoud. Onderstaande lijst is bewust breder — dit is de visie, niet alles wordt tegelijk gebouwd (zie `ROADMAP.md` voor fasering en het per-fase "één issue per functie-slice"-principe).
+
+**Klanten & assets**
+- **Clients** — CRM voor de klanten van de tenant, incl. **Contactpersonen** (meerdere per klant, met rol) en **Locaties** (meerdere per klant, met adres + kaartcoördinaten)
+- **Assets** — apparatuur/installaties per klant/locatie, type + subtype (afhankelijke referentielijsten), onderhoudshistorie, documenten/bijlagen (handleidingen, foto's, certificaten)
+
+**Operations**
+- **Work Orders** — de centrale werkeenheid: status-levenscyclus (nieuw → gepland → onderweg → bezig → afgerond → gefactureerd), gekoppeld aan klant/locatie/asset/engineer/contract, notities/foto's/handtekening
+- **Planning/Dispatch** — planbord (lijst/kanban/kalender/kaart), toewijzing engineers aan Work Orders, drag-and-drop
+- **Preventief onderhoud / Service Plans** — terugkerende onderhoudsschema's per asset/contract die automatisch Work Orders genereren vóór de vervaldatum
+- **Checklists / inspectieformulieren** — configureerbare formuliertemplates per Work Order-type, in te vullen door engineers (foto's, digitale sign-off)
+- **Urenregistratie** — in-/uitklokken per Work Order + reistijd, voedt contractrendement-rapportage
+
+**Sales & Finance**
+- **Offertes/Estimates** — offertetraject met sjablonen/prijsregels, omzetten naar Work Order/contract bij akkoord
+- **Contracts** — SLA's, looptijd, entitlements/garantietermijnen, verlenging, gekoppelde assets, facturatietermijnen
+- **Facturatie** — gegenereerd vanuit afgeronde Work Orders/contracten, betaalstatus, export (nu alleen genoemd als taak van Finance/Administratie — dit wordt een eigen module)
+- **Reporting** — servicerapporten, PDF-export, contractrendement, first-time-fix rate, technicus-utilisatie
+- **Dashboarding** — configureerbare widgets per rol, gevoed door echte Work Order-data zodra die bestaat
+
+**Klantbeleving**
+- **Klantportaal** — de eindklant van de tenant kan zelf Work Order-status/historie bekijken, offertes goedkeuren, facturen betalen
+- **Notificaties/communicatie** — automatische sms/e-mail (ETA monteur, job afgerond, factuur vervalt), interne @mentions op een Work Order
+
+**Platform**
+- **Integraties** — koppelingen boekhouding/agenda/kaarten (via de Vercel Marketplace-aanpak die elders in deze stack al gebruikt wordt)
+- **Multi-locatie/franchise** — voor de tenant zelf die met meerdere vestigingen/depots werkt, met roll-up rapportage
+- **Kennisbank** en **IoT/remote monitoring** — langetermijnvisie, expliciet nog niet ingepland (zie `ROADMAP.md` Fase 5)
 
 ## 5. Verdienmodel
 - Basis platformfee per tenant (per actieve gebruiker of flat fee)
@@ -41,7 +64,10 @@ Binnen een tenant beheert die tenant vervolgens weer **zijn eigen klanten** — 
 - Inklapbare navigatie, hover states, command palette
 - Meerdere weergaven per module (lijst / kanban / kalender / kaart)
 - Configuratiescherm: functies per tenant aan/uit, zichtbaarheid per rol
-- Eigen design system in een aparte repo — voor consistentie én bouwsnelheid
+- Eigen design system in-repo (`packages/ui`) — voor consistentie én bouwsnelheid
+- **Relaties altijd zichtbaar in context**: een record met kind-entiteiten (klant → contactpersonen/locaties/assets, straks Work Order → checklist/onderdelen/uren) krijgt tabs, breadcrumbs en in-context aanmaken — nooit alleen een platte lijst + los modal-formulier
+- **Referentiedata altijd configureerbaar per tenant**, en waar relevant **afhankelijk van elkaar** (bv. Asset Subtype hangt af van Asset Type) — nooit een hardcoded enum
+- **Vettere, data-dichte pagina's naarmate er meer te tonen is**: het dashboard is nu bewust nog een lege Fase-0 placeholder — zodra Work Orders bestaan wordt dat een echt, dicht dashboard, geen losse kaartjes; het klantportaal en de mobiele engineer-weergave krijgen dezelfde designsysteem-kwaliteit als de tenant-app, niet een uitgeklede variant
 
 ## 7. Fasering
 Zie `ROADMAP.md` — 5 fases, van fundament (auth/rollen/shell) tot premium polish. Bewust gekozen om het fundament eerst goed te zetten: elke module hangt af van tenancy + RBAC + de app-shell.
