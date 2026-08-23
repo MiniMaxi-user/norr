@@ -126,6 +126,15 @@ A flat list + a create/edit modal is never the whole answer once a record has re
 
 Before building a new module (Contracts, Planning, Reporting — see `docs/ROADMAP.md`), identify its real relationships first and design the detail page's tabs/breadcrumbs/nesting up front — don't ship the flat version now and "add relations later."
 
+## Domain completeness
+
+`docs/BUSINESS-PLAN.md` §4 was widened 2026-08-23 after review: the original module list only had each module's MVP slice (e.g. a client with one email/phone, no contact persons) instead of the realistic domain a premium comparable product has. This is now a standing requirement, not a one-time fix:
+
+- **Before modeling a new module or entity**, briefly research 1-2 comparable premium SaaS products in that domain (ServiceTitan/Jobber/Housecall Pro/Salesforce Field Service-tier, or the closest equivalent for a non-FSM concern) and default to that realistic breadth of sub-entities/fields, not the minimum needed to satisfy the current user story. `docs/ROADMAP.md` names the modules already identified this way (Work Orders, Contacts, Quotes, Invoicing, Preventive Maintenance, Inventory, Customer Portal, etc.) — check there first before assuming something is out of scope.
+- **Every categorical/type/status field is tenant-configurable** via `reference_lists`/`reference_list_items` (`supabase/migrations/20260822200000_reference_lists.sql`) — never a hardcoded enum or free text.
+- **Check whether a reference list depends on another one** before modeling it as a flat list — e.g. Asset Sub-type's valid values depend on which Asset Type is selected. Use the dependent-list mechanism (`reference_lists.parent_list_key` + `reference_list_items.parent_item_id`, validated the same way `validate_asset_reference_items` validates cross-list correctness) instead of one flat list mixing every possible value, or instead of inventing a one-off parent/child table pair.
+- **New sub-entities follow the "Relational detail pages" standard above**: surfaced as a `Tabs` entry on their parent, created in-context, not bolted on as a disconnected flat list reachable only via its own top-level route.
+
 ## Design system consumption
 `@yourorg/ui` lives in this repo at `packages/ui`, as a real npm workspace package (root `package.json` `"workspaces": ["packages/*"]`), not a separate repo or private registry — there is no separate design-system repo, and none is planned for now. This is a deliberate choice, not a temporary stand-in (that was the old `vendor/yourorg-ui-stub`, now deleted): keeping it in-repo means the app and its design system iterate in the same PR.
 

@@ -25,6 +25,8 @@ Relational detail pages — see `docs/ARCHITECTURE.md`'s "Relational detail page
 - Once a page is two-plus levels deep in a hierarchy, use a breadcrumb trail, not a single `BackLink` — add a `Breadcrumbs` primitive to `@yourorg/ui` if one doesn't exist yet.
 - A simple modal for editing a single flat record (no relations) is still fine — this standard applies once relationships are involved, not to every dialog.
 
+Domain completeness (see `docs/ARCHITECTURE.md`'s "Domain completeness" section) — a dependent reference field (e.g. Asset Sub-type, scoped by the record's own Asset Type) renders as a shared cascading-select pattern in `@yourorg/ui` (child options filtered/disabled until the parent field has a value, re-filtered when it changes) — build it once as a reusable primitive, not per-form.
+
 Working style:
 - Small edit (styling tweak, copy change, adjusting an existing view, wiring an existing `@yourorg/ui` component)? Make it directly and stop there. Don't start the dev server, don't write or run Playwright/e2e tests, don't screenshot to self-verify — the user is testing in the browser themselves and will report back.
 - Only reach for `packages/ui` changes, new Suspense/loading-state work, or a `qa-reviewer` handoff when the change is an actual new view/module, not a small tweak to an existing one.

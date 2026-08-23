@@ -15,6 +15,7 @@ Next.js 15 (App Router), TypeScript strict, Supabase (Postgres/Auth/Storage/RLS)
 4. No ad-hoc CSS/styling — use `@yourorg/ui` tokens and components.
 5. Server Components by default; `use client` only when interactivity requires it.
 6. Every PR maps to a GitHub project board issue; update its status.
+7. Model the realistic full domain for a module — sub-entities (contact persons, multiple locations, etc.), tenant-configurable reference data, and dependent/cascading reference lists are the default, not a later add-on. Research comparable premium SaaS products when scoping a new module (see `docs/BUSINESS-PLAN.md` §4 and `docs/ARCHITECTURE.md`'s "Domain completeness" section).
 
 ## Working with subagents
 Specialized subagents live in `.claude/agents/`. Delegate to them for their domain instead of doing the work inline in the main thread:
