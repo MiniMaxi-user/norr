@@ -34,7 +34,7 @@ export default async function SettingsPage() {
       </Stack>
 
       <Link href="/settings/reference-lists">
-        <Card>
+        <Card interactive>
           <Stack gap="xs">
             <Heading level={3}>Reference lists</Heading>
             <Text tone="muted">

@@ -1,7 +1,6 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { BackLink, Heading, Stack, Text } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -24,7 +23,7 @@ export default async function ReferenceListsPage() {
     <Stack gap="lg">
       <Stack gap="xs">
         <div>
-          <Link href="/settings">&larr; Back to settings</Link>
+          <BackLink href="/settings">Back to settings</BackLink>
         </div>
         <Heading level={1}>Reference lists</Heading>
         <Text tone="muted">

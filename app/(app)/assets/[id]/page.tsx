@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
+import { Badge, Breadcrumbs, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -63,7 +63,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
 
   return (
     <Stack gap="lg">
-      <Link href="/assets">&larr; Back to assets</Link>
+      <Breadcrumbs items={[{ label: "Assets", href: "/assets" }, { label: asset.name }]} />
 
       <Toolbar>
         <Toolbar.Section>

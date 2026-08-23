@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="11 7 145 54" width="145" height="54" fill="none" stroke-linecap="butt"><title>Norr logotype klein — zwaardere lijn</title>
+  <path d="M14 54 V14 L50 46 V10" fill="none" stroke="currentColor" stroke-width="7"></path>
+  <path d="M50 46 L62.4 57" fill="none" stroke="#C79A3E" stroke-width="3"></path>
+  <circle cx="78" cy="41" r="13" stroke="currentColor" stroke-width="7"></circle>
+  <path d="M104 54 V29" stroke="currentColor" stroke-width="7"></path>
+  <path d="M104 37 C104 29 110 27 119 27.5" stroke="currentColor" stroke-width="7"></path>
+  <path d="M131 54 V29" stroke="currentColor" stroke-width="7"></path>
+  <path d="M131 37 C131 29 137 27 146 27.5" stroke="currentColor" stroke-width="7"></path>
+</svg>

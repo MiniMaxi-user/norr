@@ -66,12 +66,12 @@ export function SiteAssetsTable({
               </Table.Cell>
               {showActionsColumn && (
                 <Table.Cell align="center">
-                  <span onClick={(event) => event.stopPropagation()}>
+                  <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                     {canEdit && (
                       <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
                         Edit
                       </Button>
-                    )}{" "}
+                    )}
                     {canDelete && (
                       <Button type="button" variant="danger" size="sm" onClick={() => setDeletingAsset(asset)}>
                         Delete

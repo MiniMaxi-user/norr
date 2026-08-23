@@ -1,6 +1,5 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { BackLink, Heading, Stack, Text } from "@yourorg/ui";
 import { requireSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -43,7 +42,7 @@ async function ClientDetailContent({ id }: { id: string }) {
       <Stack gap="sm">
         <Heading level={1}>Client not found</Heading>
         <Text tone="danger">{result.error ?? "Could not load this client."}</Text>
-        <Link href="/clients">Back to clients</Link>
+        <BackLink href="/clients">Back to clients</BackLink>
       </Stack>
     );
   }

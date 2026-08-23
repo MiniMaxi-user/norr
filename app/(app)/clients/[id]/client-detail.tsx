@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
+import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -83,9 +82,7 @@ export function ClientDetail({
 
   return (
     <Stack gap="lg">
-      <div>
-        <Link href="/clients">&larr; Back to clients</Link>
-      </div>
+      <Breadcrumbs items={[{ label: "Clients", href: "/clients" }, { label: client.name }]} />
 
       <Card>
         <Stack gap="md">

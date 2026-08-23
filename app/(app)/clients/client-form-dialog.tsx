@@ -3,7 +3,19 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Label, Stack, Text, Textarea } from "@yourorg/ui";
+import {
+  Button,
+  Dialog,
+  FormGrid,
+  FormGridFull,
+  FormSection,
+  Heading,
+  Label,
+  Stack,
+  Text,
+  Textarea,
+} from "@yourorg/ui";
+import { FileText, MapPin, Users } from "@yourorg/ui/icons";
 import { createClient, updateClient, type ClientRecord } from "./actions";
 import { FormField } from "./form-field";
 import { useEscapeToClose } from "./use-escape-to-close";
@@ -67,54 +79,78 @@ export function ClientFormDialog({
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} size="lg">
       <Dialog.Header>
         <Heading level={3}>{isEdit ? "Edit client" : "Add client"}</Heading>
       </Dialog.Header>
       <form action={formAction}>
         <Dialog.Body>
-          <Stack gap="md">
+          <Stack gap="lg">
             {state.error && <Text tone="danger">{state.error}</Text>}
 
-            <FormField label="Name" name="name" defaultValue={client?.name} required errors={state.fieldErrors?.name} />
-            <FormField
-              label="Email"
-              name="email"
-              type="email"
-              defaultValue={client?.email}
-              errors={state.fieldErrors?.email}
-            />
-            <FormField label="Phone" name="phone" defaultValue={client?.phone} errors={state.fieldErrors?.phone} />
-            <FormField
-              label="Address line 1"
-              name="addressLine1"
-              defaultValue={client?.address_line1}
-              errors={state.fieldErrors?.addressLine1}
-            />
-            <FormField
-              label="Address line 2"
-              name="addressLine2"
-              defaultValue={client?.address_line2}
-              errors={state.fieldErrors?.addressLine2}
-            />
-            <FormField
-              label="Postal code"
-              name="postalCode"
-              defaultValue={client?.postal_code}
-              errors={state.fieldErrors?.postalCode}
-            />
-            <FormField label="City" name="city" defaultValue={client?.city} errors={state.fieldErrors?.city} />
-            <FormField label="Country" name="country" defaultValue={client?.country} errors={state.fieldErrors?.country} />
+            <FormSection title="Contact" icon={<Users />}>
+              <FormField
+                label="Name"
+                name="name"
+                defaultValue={client?.name}
+                required
+                errors={state.fieldErrors?.name}
+              />
+              <FormGrid>
+                <FormField
+                  label="Email"
+                  name="email"
+                  type="email"
+                  defaultValue={client?.email}
+                  errors={state.fieldErrors?.email}
+                />
+                <FormField label="Phone" name="phone" defaultValue={client?.phone} errors={state.fieldErrors?.phone} />
+              </FormGrid>
+            </FormSection>
 
-            <Stack gap="xs">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" name="notes" defaultValue={client?.notes ?? ""} />
-              {state.fieldErrors?.notes?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+            <FormSection title="Address" icon={<MapPin />}>
+              <FormField
+                label="Address line 1"
+                name="addressLine1"
+                defaultValue={client?.address_line1}
+                errors={state.fieldErrors?.addressLine1}
+              />
+              <FormField
+                label="Address line 2"
+                name="addressLine2"
+                defaultValue={client?.address_line2}
+                errors={state.fieldErrors?.addressLine2}
+              />
+              <FormGrid>
+                <FormField
+                  label="Postal code"
+                  name="postalCode"
+                  defaultValue={client?.postal_code}
+                  errors={state.fieldErrors?.postalCode}
+                />
+                <FormField label="City" name="city" defaultValue={client?.city} errors={state.fieldErrors?.city} />
+                <FormGridFull>
+                  <FormField
+                    label="Country"
+                    name="country"
+                    defaultValue={client?.country}
+                    errors={state.fieldErrors?.country}
+                  />
+                </FormGridFull>
+              </FormGrid>
+            </FormSection>
+
+            <FormSection title="Notes" icon={<FileText />}>
+              <Stack gap="xs">
+                <Label htmlFor="notes">Internal notes</Label>
+                <Textarea id="notes" name="notes" defaultValue={client?.notes ?? ""} />
+                {state.fieldErrors?.notes?.map((message) => (
+                  <Text key={message} tone="danger">
+                    {message}
+                  </Text>
+                ))}
+              </Stack>
+            </FormSection>
           </Stack>
         </Dialog.Body>
         <Dialog.Footer>

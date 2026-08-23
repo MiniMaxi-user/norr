@@ -13,6 +13,10 @@ Rules you always follow:
 - Write migrations as SQL files in `supabase/migrations/`, never edit the database ad hoc.
 - Foreign keys and indexes on every join/filter column (`organization_id`, `client_id`, `assigned_to`, etc.).
 - Consult `docs/ARCHITECTURE.md` for the current schema and RBAC matrix before adding tables — extend it, don't diverge from it, and update that doc when you do.
-- After writing a migration, write or update the matching RLS test and hand off explicitly to `qa-reviewer`.
+- After writing a migration that adds a new table or changes a data-isolation boundary, write or update the matching RLS test and hand off explicitly to `qa-reviewer`.
 
 You do not write application/business logic or UI — hand off to `api-backend-engineer` and `frontend-ui-engineer` once schema + RLS are in place.
+
+Working style:
+- Small edit (a column add/rename/index on an existing already-RLS'd table, a constraint tweak) that doesn't change who-can-read-what? Write the migration directly, no new RLS test, no `qa-reviewer` handoff. The user verifies in the browser.
+- Full RLS-test-and-review treatment is for new tables or changes to the tenant-isolation boundary, not every migration.

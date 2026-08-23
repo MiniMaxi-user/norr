@@ -1,47 +1,60 @@
 /* @yourorg/ui design tokens + component styles. Plain, dependency-free CSS
    (custom properties + classes only — no preprocessor, no Tailwind, no
-   CSS-in-JS), restyled for a premium B2B SaaS dashboard look
-   (Linear/Vercel/Stripe-dashboard register). This is the ONLY place design
-   tokens are defined — the app repo must never define its own (CLAUDE.md
-   rule 4). */
+   CSS-in-JS). This is the ONLY place design tokens are defined — the app
+   repo must never define its own (CLAUDE.md rule 4).
+
+   Visual direction: "licht & editorial" — light, generous whitespace,
+   refined serif/sans type pairing, soft restrained shadows. Built from the
+   real Norr brand (docs/logo/LEESMIJ.txt): Fjord (#1F3540, deep teal-slate)
+   is the ink/heading color, Snö (#DFE4E0, warm sage-off-white) is the
+   neutral surface tone, Mässing (#C79A3E, brass) is the ONE accent — used
+   sparingly (primary actions, active states, focus rings, small
+   highlights), never as a broad wash. Natt (#0E1A1F) is deprecated per the
+   brand doc and intentionally not used anywhere below; dark mode is instead
+   derived from Fjord itself. */
 
 /* ---------------------------------------------------------------------- *
  * Tokens
  * ---------------------------------------------------------------------- */
 
 :root {
-  /* Neutral scale — cool, slightly blue-tinted gray (12 steps) */
-  --ui-gray-25: #fcfcfd;
-  --ui-gray-50: #f8f9fb;
-  --ui-gray-100: #f1f2f5;
-  --ui-gray-150: #eaecf0;
-  --ui-gray-200: #e3e5ea;
-  --ui-gray-300: #d3d6dd;
-  --ui-gray-400: #b4b8c4;
-  --ui-gray-500: #8b90a0;
-  --ui-gray-600: #676c7d;
-  --ui-gray-700: #4a4e5c;
-  --ui-gray-800: #2f323c;
-  --ui-gray-900: #1b1d24;
-  --ui-gray-950: #101117;
+  /* Neutral scale — warm sage/teal-slate, anchored directly to the brand:
+     gray-200 is Snö itself, gray-900 is Fjord itself, everything else
+     interpolates between them instead of the old cool blue-gray ramp. */
+  --ui-gray-25: #fbfcfa;
+  --ui-gray-50: #f6f8f5;
+  --ui-gray-100: #eff2ed;
+  --ui-gray-150: #e6eae4;
+  --ui-gray-200: #dfe4e0; /* Snö */
+  --ui-gray-300: #c7cec7;
+  --ui-gray-400: #a6afa8;
+  --ui-gray-500: #82918a;
+  --ui-gray-600: #61716b;
+  --ui-gray-700: #485754;
+  --ui-gray-800: #33413e;
+  --ui-gray-900: #1f3540; /* Fjord */
+  --ui-gray-950: #16262e;
 
-  /* Accent — indigo, used deliberately (primary actions, active states,
-     focus rings) rather than throughout the UI */
-  --ui-accent-25: #f5f6ff;
-  --ui-accent-50: #eef0ff;
-  --ui-accent-100: #e0e3ff;
-  --ui-accent-300: #b3b9ff;
-  --ui-accent-500: #5457e8;
-  --ui-accent-600: #4643db;
-  --ui-accent-700: #3a37bd;
+  /* Accent — Mässing (brass). `500` is the true brand hex, reserved for
+     focus rings, thin active-state indicators and text-on-tint; solid
+     surfaces (primary button, active nav) use `700`, a deepened brass that
+     keeps Fjord-on-brass text at a comfortable contrast ratio without
+     diluting the color into a muddy bronze. */
+  --ui-accent-25: #fbf6ea;
+  --ui-accent-50: #f6ecd6;
+  --ui-accent-100: #ecd9ac;
+  --ui-accent-300: #d8b46c;
+  --ui-accent-500: #c79a3e; /* Mässing */
+  --ui-accent-600: #b0872f;
+  --ui-accent-700: #8a6522;
 
-  --ui-danger-50: #fef2f2;
-  --ui-danger-500: #dc2626;
-  --ui-danger-600: #b91c1c;
+  --ui-danger-50: #fdf2f1;
+  --ui-danger-500: #c4402f;
+  --ui-danger-600: #a13324;
 
-  --ui-success-50: #f0fdf5;
-  --ui-success-500: #17a34a;
-  --ui-success-600: #14803c;
+  --ui-success-50: #f1f7ee;
+  --ui-success-500: #4f8a4a;
+  --ui-success-600: #3d6e3a;
 
   /* Semantic mapping — light mode */
   --ui-bg: #ffffff;
@@ -56,12 +69,22 @@
   --ui-muted: var(--ui-gray-600);
   --ui-muted-subtle: var(--ui-gray-500);
 
-  --ui-accent: var(--ui-accent-600);
+  /* Primary CTAs/active states render true Mässing with Fjord (not white)
+     text — brand-accurate ("dark ink on brass") and measured at ~4.9:1
+     contrast, comfortably AA. Hover deepens toward `accent-700`. */
+  --ui-accent: var(--ui-accent-500);
   --ui-accent-hover: var(--ui-accent-700);
-  --ui-accent-fg: #ffffff;
+  --ui-accent-fg: var(--ui-gray-900);
   --ui-accent-tint: var(--ui-accent-50);
   --ui-accent-tint-border: var(--ui-accent-100);
-  --ui-focus-ring: rgba(84, 87, 232, 0.38);
+  /* True Mässing (`--ui-accent`, ~2.6:1 on white) isn't readable as small
+     TEXT/icon color on a light background — only as a filled surface
+     (paired with Fjord `--ui-accent-fg`) or a thin decorative line. Anywhere
+     accent shows up as text/an icon color directly on `--ui-bg`/`--ui-surface`
+     (badges, active tab label, hover-state icons), use this deepened brass
+     instead, measured at ~5:1. */
+  --ui-accent-strong: var(--ui-accent-700);
+  --ui-focus-ring: rgba(199, 154, 62, 0.45);
 
   --ui-danger: var(--ui-danger-500);
   --ui-danger-strong: var(--ui-danger-600);
@@ -70,27 +93,33 @@
   --ui-success-strong: var(--ui-success-600);
   --ui-success-tint: var(--ui-success-50);
 
-  --ui-overlay-scrim: rgba(17, 18, 28, 0.36);
-  --ui-toolbar-bg: rgba(255, 255, 255, 0.78);
+  --ui-overlay-scrim: rgba(22, 38, 46, 0.4);
+  --ui-toolbar-bg: rgba(255, 255, 255, 0.8);
   --ui-skeleton-shine: rgba(255, 255, 255, 0.7);
   --ui-tooltip-bg: var(--ui-gray-900);
-  --ui-tooltip-fg: #ffffff;
+  --ui-tooltip-fg: var(--ui-gray-50);
 
-  --ui-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
-  --ui-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --ui-shadow-md: 0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 16px rgba(16, 24, 40, 0.08);
-  --ui-shadow-lg: 0 6px 12px rgba(16, 24, 40, 0.06), 0 20px 40px rgba(16, 24, 40, 0.14);
+  --ui-shadow-xs: 0 1px 2px rgba(31, 53, 64, 0.04);
+  --ui-shadow-sm: 0 1px 2px rgba(31, 53, 64, 0.05), 0 1px 3px rgba(31, 53, 64, 0.08);
+  --ui-shadow-md: 0 2px 4px rgba(31, 53, 64, 0.04), 0 10px 20px rgba(31, 53, 64, 0.08);
+  --ui-shadow-lg: 0 6px 14px rgba(31, 53, 64, 0.06), 0 24px 48px rgba(31, 53, 64, 0.14);
 
-  /* Type scale */
-  --ui-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+  /* Type scale — editorial pairing: a serif for large/display headings
+     (`--ui-font-serif`, used by Heading levels 1–3), a refined humanist
+     sans everywhere else (body copy, UI chrome, small headings/labels).
+     Both are CSS-safe system stacks — this app has no font-loading service
+     configured, so nothing here depends on a network fetch. */
+  --ui-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --ui-font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
   --ui-text-xs: 0.75rem;
   --ui-text-sm: 0.8125rem;
   --ui-text-base: 0.875rem;
   --ui-text-md: 0.9375rem;
-  --ui-text-lg: 1.0625rem;
-  --ui-text-xl: 1.25rem;
-  --ui-text-2xl: 1.5rem;
-  --ui-text-3xl: 1.875rem;
+  --ui-text-lg: 1.125rem;
+  --ui-text-xl: 1.375rem;
+  --ui-text-2xl: 1.75rem;
+  --ui-text-3xl: 2.25rem;
 
   /* Spacing scale — shared by Stack's `gap` prop and every fixed padding
      value in this file, so spacing stays on-scale everywhere instead of
@@ -115,38 +144,48 @@
   --ui-duration-slow: 260ms;
 }
 
+/* Dark mode is derived from Fjord (never Natt, deprecated per the brand
+   doc — see LEESMIJ.txt) with Snö as the foreground ink, matching how the
+   logo itself flips (fjord-on-light / snö-on-dark). Mässing is preserved
+   as the one accent, at its true brand value since brass-on-dark-teal reads
+   with plenty of contrast without needing to be darkened the way it is on
+   a light background. */
 html.dark {
-  --ui-bg: #0a0a0d;
-  --ui-bg-inset: #08080a;
-  --ui-surface: #131319;
-  --ui-surface-hover: #1a1b22;
-  --ui-surface-2: #202129;
-  --ui-border: #24252e;
-  --ui-border-strong: #32333f;
-  --ui-fg: var(--ui-gray-50);
-  --ui-fg-secondary: var(--ui-gray-200);
-  --ui-muted: var(--ui-gray-400);
-  --ui-muted-subtle: var(--ui-gray-600);
+  --ui-bg: #14252c;
+  --ui-bg-inset: #0f1d23;
+  --ui-surface: #1a2e36;
+  --ui-surface-hover: #223a43;
+  --ui-surface-2: #2a444e;
+  --ui-border: #2f4952;
+  --ui-border-strong: #3e5c64;
+  --ui-fg: #dfe4e0; /* Snö */
+  --ui-fg-secondary: #c3cbc6;
+  --ui-muted: #93a29c;
+  --ui-muted-subtle: #6f8078;
 
   --ui-accent: var(--ui-accent-500);
-  --ui-accent-hover: #6b6ef0;
-  --ui-accent-fg: #ffffff;
-  --ui-accent-tint: rgba(84, 87, 232, 0.16);
-  --ui-accent-tint-border: rgba(84, 87, 232, 0.32);
-  --ui-focus-ring: rgba(112, 115, 240, 0.45);
+  --ui-accent-hover: #d8ad5c;
+  --ui-accent-fg: var(--ui-gray-900);
+  --ui-accent-tint: rgba(199, 154, 62, 0.16);
+  --ui-accent-tint-border: rgba(199, 154, 62, 0.34);
+  /* Unlike light mode, true Mässing already reads at ~5.8:1 against these
+     dark Fjord-derived surfaces, so it doubles as its own "strong" text/icon
+     color here — no separate deepened shade needed. */
+  --ui-accent-strong: var(--ui-accent-500);
+  --ui-focus-ring: rgba(199, 154, 62, 0.5);
 
-  --ui-danger: #f87171;
-  --ui-danger-strong: #fca5a5;
-  --ui-danger-tint: rgba(248, 113, 113, 0.12);
-  --ui-success: #4ade80;
-  --ui-success-strong: #86efac;
-  --ui-success-tint: rgba(74, 222, 128, 0.12);
+  --ui-danger: #e08476;
+  --ui-danger-strong: #eba99e;
+  --ui-danger-tint: rgba(224, 132, 118, 0.14);
+  --ui-success: #8fbf85;
+  --ui-success-strong: #b0d6a8;
+  --ui-success-tint: rgba(143, 191, 133, 0.14);
 
-  --ui-overlay-scrim: rgba(2, 2, 6, 0.62);
-  --ui-toolbar-bg: rgba(10, 10, 13, 0.72);
-  --ui-skeleton-shine: rgba(255, 255, 255, 0.06);
-  --ui-tooltip-bg: var(--ui-gray-50);
-  --ui-tooltip-fg: var(--ui-gray-900);
+  --ui-overlay-scrim: rgba(6, 12, 15, 0.64);
+  --ui-toolbar-bg: rgba(20, 37, 44, 0.76);
+  --ui-skeleton-shine: rgba(223, 228, 224, 0.08);
+  --ui-tooltip-bg: #dfe4e0;
+  --ui-tooltip-fg: #1f3540;
 
   --ui-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
   --ui-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -171,7 +210,7 @@ body {
   color: var(--ui-fg);
   font-family: var(--ui-font-sans);
   font-size: var(--ui-text-base);
-  line-height: 1.45;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   transition: background-color var(--ui-duration-base) var(--ui-ease), color var(--ui-duration-base) var(--ui-ease);
 }
@@ -272,11 +311,11 @@ a {
   justify-content: center;
   padding-inline: 0;
 }
-.ui-sidebar-collapsed .ui-logo-text {
-  display: none;
-}
 .ui-sidebar-header {
-  padding: 0.375rem 0.625rem 1.25rem;
+  /* Clear space per docs/logo/LEESMIJ.txt: at least half the mark's own
+     height on every side (mark is 22px tall here, so ~11px — rounded up to
+     the nearest space-scale step). */
+  padding: 0.75rem 0.625rem 1.25rem;
   font-weight: 600;
 }
 .ui-sidebar-body {
@@ -291,21 +330,33 @@ a {
   margin-inline: -0.125rem;
   padding-inline: 0.125rem;
 }
+/* Real Norr wordmark (docs/logo/*.svg, inlined as JSX in components/logo.tsx
+   — see that file for which drawing is which). `currentColor` on the
+   letters means the mark automatically tracks `--ui-fg` in both themes; the
+   brass "peillijn" stroke is hardcoded in the SVG per brand guidelines
+   (never recolored). Exactly one of the two marks below is visible at a
+   time — full wordmark expanded, standalone "N" collapsed — toggled by
+   `.ui-sidebar-collapsed`, mirroring how `.ui-nav-item-label` etc. already
+   hide/show without any client-side re-render. */
 .ui-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: var(--ui-text-md);
-  font-weight: 700;
-  letter-spacing: -0.01em;
   color: var(--ui-fg);
 }
-.ui-logo-mark {
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--ui-radius-sm);
-  background: linear-gradient(135deg, var(--ui-accent-500), var(--ui-accent-700));
+.ui-logo-full-mark,
+.ui-logo-icon-mark {
+  height: 22px;
+  width: auto;
   flex-shrink: 0;
+}
+.ui-logo-icon-mark {
+  display: none;
+}
+.ui-sidebar-collapsed .ui-logo-full-mark {
+  display: none;
+}
+.ui-sidebar-collapsed .ui-logo-icon-mark {
+  display: inline-flex;
 }
 
 .ui-nav-list {
@@ -326,11 +377,13 @@ a {
   font-size: var(--ui-text-base);
   font-weight: 500;
   color: var(--ui-fg-secondary);
-  transition: background-color var(--ui-duration-fast) var(--ui-ease), color var(--ui-duration-fast) var(--ui-ease);
+  transition: background-color var(--ui-duration-fast) var(--ui-ease), color var(--ui-duration-fast) var(--ui-ease),
+    transform var(--ui-duration-fast) var(--ui-ease);
 }
 .ui-nav-item:hover {
   background: var(--ui-surface-hover);
   color: var(--ui-fg);
+  transform: translateX(1px);
 }
 .ui-nav-item-disabled {
   color: var(--ui-muted-subtle);
@@ -381,7 +434,7 @@ a {
 }
 .ui-badge-accent {
   background: var(--ui-accent-tint);
-  color: var(--ui-accent);
+  color: var(--ui-accent-strong);
   border-color: var(--ui-accent-tint-border);
 }
 .ui-badge-success {
@@ -565,22 +618,52 @@ a {
   padding: 1.25rem 1.5rem;
   background: var(--ui-bg);
   box-shadow: var(--ui-shadow-sm);
-  transition: box-shadow var(--ui-duration-base) var(--ui-ease), border-color var(--ui-duration-base) var(--ui-ease);
+  transition: box-shadow var(--ui-duration-base) var(--ui-ease), border-color var(--ui-duration-base) var(--ui-ease),
+    transform var(--ui-duration-base) var(--ui-ease);
+}
+/* For a Card that's the sole clickable surface of its container (e.g.
+   wrapped in a Link/button rather than owning the click itself) — hovering
+   the container naturally hovers this nested element too, no JS needed. */
+.ui-card-interactive {
+  cursor: pointer;
+}
+.ui-card-interactive:hover {
+  border-color: var(--ui-accent-tint-border);
+  box-shadow: var(--ui-shadow-md);
+  transform: translateY(-2px);
+}
+a:focus-visible > .ui-card-interactive,
+.ui-card-interactive:focus-visible {
+  outline: none;
+  border-color: var(--ui-accent-tint-border);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring);
 }
 
 .ui-heading {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.3rem;
   font-weight: 650;
   letter-spacing: -0.015em;
+  line-height: 1.2;
   color: var(--ui-fg);
+}
+/* Editorial pairing: large/display headings (1–3) set in the serif,
+   generous line-height/letter-spacing for a statement feel; smaller
+   headings (4–6, mostly card/section/table-header labels) stay in the sans
+   — they're functioning as UI chrome, not editorial copy. */
+.ui-heading-1,
+.ui-heading-2,
+.ui-heading-3 {
+  font-family: var(--ui-font-serif);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 .ui-heading-1 {
   font-size: var(--ui-text-3xl);
-  font-weight: 700;
+  font-weight: 600;
 }
 .ui-heading-2 {
   font-size: var(--ui-text-2xl);
-  font-weight: 650;
+  font-weight: 600;
 }
 .ui-heading-3 {
   font-size: var(--ui-text-xl);
@@ -634,6 +717,95 @@ a {
   gap: var(--ui-space-lg);
 }
 
+/* Row-direction sibling of Stack — see components/stack.tsx `Inline`. The
+   `.ui-stack-*` gap classes above are reused as-is (they only set `gap`,
+   which is direction-agnostic). */
+.ui-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.ui-inline-start {
+  align-items: flex-start;
+}
+.ui-inline-center {
+  align-items: center;
+}
+.ui-inline-end {
+  align-items: flex-end;
+}
+.ui-inline-baseline {
+  align-items: baseline;
+}
+.ui-inline-wrap {
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Avatar — see components/avatar.tsx
+ * ---------------------------------------------------------------------- */
+.ui-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+  border: 1px solid var(--ui-accent-tint-border);
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.ui-avatar-sm {
+  width: 1.625rem;
+  height: 1.625rem;
+  font-size: 0.6875rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Breadcrumbs — see components/breadcrumbs.tsx
+ * ---------------------------------------------------------------------- */
+.ui-breadcrumbs-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--ui-text-sm);
+}
+.ui-breadcrumbs-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ui-breadcrumbs-link {
+  color: var(--ui-muted);
+  font-weight: 550;
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-breadcrumbs-link:hover {
+  color: var(--ui-accent-strong);
+}
+.ui-breadcrumbs-text {
+  color: var(--ui-muted);
+  font-weight: 550;
+}
+.ui-breadcrumbs-current {
+  color: var(--ui-fg);
+  font-weight: 600;
+}
+.ui-breadcrumbs-separator {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--ui-muted-subtle);
+  flex-shrink: 0;
+}
+
 /* ---------------------------------------------------------------------- *
  * Form fields
  * ---------------------------------------------------------------------- */
@@ -667,7 +839,7 @@ a {
 .ui-input:focus-visible,
 .ui-select:focus-visible,
 .ui-textarea:focus-visible {
-  border-color: var(--ui-accent);
+  border-color: var(--ui-accent-strong);
   box-shadow: 0 0 0 3px var(--ui-focus-ring);
 }
 .ui-input:disabled,
@@ -700,6 +872,83 @@ a {
   transform: translateY(-50%);
   color: var(--ui-muted);
   pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Form section / grid — see components/form.tsx `FormSection`/`FormGrid`.
+ * The structural fix for "this dialog is one flat undifferentiated list of
+ * fields": related fields group under a labeled section, and naturally
+ * paired fields (postal code + city, latitude + longitude, ...) sit in a
+ * two-column row instead of every field forcing full width.
+ * ---------------------------------------------------------------------- */
+.ui-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.ui-form-section + .ui-form-section {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ui-border);
+}
+.ui-form-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.ui-form-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+}
+.ui-form-section-icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.ui-form-section-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.ui-form-section-title {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ui-muted);
+}
+.ui-form-section-description {
+  font-size: var(--ui-text-sm);
+  color: var(--ui-muted-subtle);
+}
+.ui-form-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-md);
+}
+
+.ui-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ui-space-md);
+  align-items: start;
+}
+.ui-form-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.ui-form-grid-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 560px) {
+  .ui-form-grid,
+  .ui-form-grid-3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------------------------------------------------------------------- *
@@ -866,6 +1115,27 @@ a {
 .ui-dialog-lg {
   width: min(680px, 100%);
 }
+/* Every real call site wraps Dialog.Header/Body/Footer in a plain <form>
+   (see app/(app)/clients/client-form-dialog.tsx and
+   app/(app)/assets/components/asset-form-dialog.tsx) so a single submit
+   covers the whole dialog. That <form> is a normal block box, NOT a flex
+   container — so it breaks the flex chain .ui-dialog-body's scroll fix
+   depends on: .ui-dialog-body's `flex:1; min-height:0` only takes effect
+   on a direct flex-item child of a flex container, and once a plain <form>
+   sits between it and `.ui-dialog`, those rules do nothing, `.ui-dialog-body`
+   just grows to its content height, and the overflow gets clipped by
+   `.ui-dialog`'s `overflow:hidden` instead of ever scrolling. This is why
+   the dialog scroll fix (see the comment above `.ui-dialog-overlay`) didn't
+   actually work for any real form dialog in the app, only in isolation.
+   `display: contents` makes the <form> itself generate no box at all,
+   so Dialog.Header/Body/Footer become direct flex children of `.ui-dialog`
+   as if the <form> wrapper weren't there for LAYOUT purposes — while still
+   being a real <form> for submission purposes (display:contents doesn't
+   change DOM structure or form semantics, only box generation). */
+.ui-dialog > form {
+  display: contents;
+}
+
 .ui-dialog-header {
   flex-shrink: 0;
   display: flex;
@@ -960,6 +1230,30 @@ a {
 .ui-table-align-end {
   text-align: right;
 }
+/* Hover-revealed row actions — for a row whose primary affordance is
+   "click to open the detail page" (Table.Row with an `onClick`), the
+   Edit/Delete buttons are secondary and only need to be visible on hover or
+   keyboard focus, not competing for attention on every row all the time. */
+.ui-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity var(--ui-duration-fast) var(--ui-ease), transform var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-table-row:hover .ui-row-actions,
+.ui-row-actions:focus-within {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  /* No hover on touch — never hide the only way to reach these actions. */
+  .ui-row-actions {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* ---------------------------------------------------------------------- *
  * Tabs
@@ -996,8 +1290,8 @@ a {
   color: var(--ui-fg);
 }
 .ui-tabs-tab-active {
-  color: var(--ui-accent);
-  border-bottom-color: var(--ui-accent);
+  color: var(--ui-accent-strong);
+  border-bottom-color: var(--ui-accent-strong);
 }
 .ui-tabs-tab:disabled {
   color: var(--ui-muted-subtle);
@@ -1040,10 +1334,24 @@ a {
 .ui-disclosure-summary:hover {
   background: var(--ui-surface-hover);
 }
+.ui-disclosure-summary:hover .ui-disclosure-chevron {
+  color: var(--ui-accent-strong);
+}
 .ui-disclosure-chevron {
   flex-shrink: 0;
   color: var(--ui-muted);
-  transition: transform var(--ui-duration-fast) var(--ui-ease);
+  transition: transform var(--ui-duration-base) var(--ui-ease), color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-disclosure-content {
+  animation: ui-disclosure-in var(--ui-duration-slow) var(--ui-ease);
+}
+@keyframes ui-disclosure-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .ui-disclosure[open] > .ui-disclosure-summary .ui-disclosure-chevron {
   transform: rotate(90deg);
@@ -1065,6 +1373,30 @@ a {
 .ui-disclosure-content {
   padding: 0 1.25rem 1.25rem;
   border-top: 1px solid var(--ui-border);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Back link — see components/back-link.tsx
+ * ---------------------------------------------------------------------- */
+.ui-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--ui-text-sm);
+  font-weight: 550;
+  color: var(--ui-muted);
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-back-link:hover {
+  color: var(--ui-accent-strong);
+}
+.ui-back-link-icon {
+  width: 1rem;
+  height: 1rem;
+  transition: transform var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-back-link:hover .ui-back-link-icon {
+  transform: translateX(-2px);
 }
 
 /* ---------------------------------------------------------------------- *
