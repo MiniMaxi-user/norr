@@ -52,6 +52,22 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Work Order Priority",
     description: "Urgency levels for a work order — e.g. Low, Normal, High, Urgent.",
   },
+  {
+    key: "contract_type",
+    title: "Contract Type",
+    description: "Kinds of service agreement — e.g. Maintenance, Service, Installation, Warranty.",
+  },
+  {
+    key: "sla_tier",
+    title: "SLA Tier",
+    description:
+      "Service level tiers, each scoped to one Contract Type — e.g. Standard, Priority, and Premium all belong under Maintenance.",
+  },
+  {
+    key: "billing_terms",
+    title: "Billing Terms",
+    description: "How a contract is billed — e.g. Monthly, Quarterly, Annually, Per-visit, One-time.",
+  },
 ] as const;
 
 /**

@@ -36,6 +36,7 @@ function formDataToWorkOrderInput(formData: FormData) {
     clientId: readField(formData, "clientId"),
     siteId: readOptionalField(formData, "siteId"),
     assetId: readOptionalField(formData, "assetId"),
+    contractId: readOptionalField(formData, "contractId"),
     assignedTo: readOptionalField(formData, "assignedTo"),
     title: readField(formData, "title"),
     description: readField(formData, "description"),

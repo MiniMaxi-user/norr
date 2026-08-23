@@ -75,6 +75,7 @@ export interface WorkOrderRecord {
   client_id: string;
   site_id: string | null;
   asset_id: string | null;
+  contract_id: string | null;
   assigned_to: string | null;
   title: string;
   description: string | null;
@@ -95,14 +96,20 @@ export interface WorkOrderRecord {
   /** Embedded via `reference_list_items!work_orders_priority_id_fkey(...)`.
    * `null` whenever `priority_id` is `null` (no priority set). */
   work_order_priority: ResolvedReferenceItem | null;
+  /** Embedded via `contracts(id, name)` (issue #33) — a plain FK embed (not
+   * `reference_list_items`, so no `!fkey` disambiguator is needed: `contract_id`
+   * is the only FK from `work_orders` into `contracts`). `null` whenever
+   * `contract_id` is `null` (no contract linked). */
+  contract: { id: string; name: string } | null;
 }
 
 /** Shared select shape for every query returning a `WorkOrderRecord`, so the
- * frontend gets the resolved status/priority value/label/color in one round
- * trip instead of N+1-ing a lookup per row per column — same reasoning as
- * `ASSET_SELECT` in `app/(app)/assets/actions.ts`. */
+ * frontend gets the resolved status/priority value/label/color, plus the
+ * linked contract's name, in one round trip instead of N+1-ing a lookup per
+ * row per column — same reasoning as `ASSET_SELECT` in
+ * `app/(app)/assets/actions.ts`. */
 const WORK_ORDER_SELECT =
-  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color)";
+  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), contract:contracts(id, name)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -111,6 +118,7 @@ function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.par
     client_id: input.clientId,
     site_id: input.siteId ?? null,
     asset_id: input.assetId ?? null,
+    contract_id: input.contractId ?? null,
     assigned_to: input.assignedTo ?? null,
     title: input.title,
     description: input.description ?? null,
@@ -132,6 +140,7 @@ function toWorkOrderUpdateRow(input: ReturnType<typeof workOrderUpdateSchema.par
   if (input.clientId !== undefined) row.client_id = input.clientId;
   if (input.siteId !== undefined) row.site_id = input.siteId ?? null;
   if (input.assetId !== undefined) row.asset_id = input.assetId ?? null;
+  if (input.contractId !== undefined) row.contract_id = input.contractId ?? null;
   if (input.assignedTo !== undefined) row.assigned_to = input.assignedTo ?? null;
   if (input.title !== undefined) row.title = input.title;
   if (input.description !== undefined) row.description = input.description ?? null;
