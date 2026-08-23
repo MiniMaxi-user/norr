@@ -10,7 +10,10 @@ import { getClient } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
+import { listTimeEntries } from "../time-entries-actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { WorkOrderDetailActions } from "./work-order-detail-actions";
+import { TimeEntriesPanel } from "./time-entries-panel";
 
 export const metadata = { title: "Work order details" };
 
@@ -42,13 +45,15 @@ function formatDateTime(value: string | null): string {
 
 /**
  * Work order detail page — same visual weight as the Client/Asset detail
- * pages (docs/ARCHITECTURE.md "Relational detail pages"). No `Tabs` of its
- * own here: unlike Client (Sites/Assets/Contacts) or a future Contract, a
- * work order has no child sub-entities of its own yet in this pass's scope
- * (photos/checklists/time tracking are explicitly out of scope per the
- * migration's own design note 6) — its *parents* (Client/Site/Asset) are
- * surfaced as linked `DetailRow`s instead, same treatment
- * `app/(app)/assets/[id]/page.tsx` gives its own Client/Site.
+ * pages (docs/ARCHITECTURE.md "Relational detail pages"). No `Tabs` here:
+ * unlike Client (Sites/Assets/Contacts) or a future Contract, a work order
+ * has only one child sub-entity worth surfacing today (Time Entries, issue
+ * #15) — a single always-visible `TimeEntriesPanel` section reads better
+ * than a one-tab `Tabs`, same reasoning `ContractAssetsPanel` documents for
+ * Contracts' Linked Assets. Its *parents* (Client/Site/Asset) are surfaced
+ * as linked `DetailRow`s instead, same treatment `app/(app)/assets/[id]/page.tsx`
+ * gives its own Client/Site. Photos/checklists remain out of scope per the
+ * work_orders migration's design note 6.
  */
 export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPageProps) {
   const { id } = await params;
@@ -64,10 +69,12 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   if (!workOrderResult.data) notFound();
   const workOrder = workOrderResult.data.workOrder;
 
-  const [clientResult, assetResult, membersResult] = await Promise.all([
+  const [clientResult, assetResult, membersResult, timeEntriesResult, timeEntryTypesResult] = await Promise.all([
     getClient(workOrder.client_id),
     workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
     listOrgMembers(),
+    listTimeEntries(workOrder.id),
+    listReferenceItems("time_entry_type"),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -75,9 +82,18 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const asset = assetResult?.data?.asset ?? null;
   const members = membersResult.data?.members ?? [];
   const assignedMember = members.find((member) => member.id === workOrder.assigned_to) ?? null;
+  const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
+  const timeEntryTypes = timeEntryTypesResult.data?.items ?? [];
 
   const canEdit = canAny(actor, "planning", ["update", "update_own"]);
   const canDelete = can(actor, "planning", "delete");
+  // Time Entries (issue #15) share the `planning` module's own actions —
+  // see time-entries-panel.tsx's module comment for why `canDelete` above is
+  // reused as-is (owner/planner CRUD on `planning` implies both Work Orders
+  // and their Time Entries sub-resource).
+  const canLogTime = canAny(actor, "planning", ["create", "create_own"]);
+  const canUpdateTimeEntriesAny = can(actor, "planning", "update");
+  const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
 
   return (
     <Stack gap="lg">
@@ -129,6 +145,18 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
           <DetailRow label="Notes" value={workOrder.notes ?? "—"} />
         </Stack>
       </Card>
+
+      <TimeEntriesPanel
+        workOrderId={workOrder.id}
+        timeEntries={timeEntries}
+        members={members}
+        entryTypes={timeEntryTypes}
+        currentUserId={session.userId}
+        canLogTime={canLogTime}
+        canUpdateAny={canUpdateTimeEntriesAny}
+        canUpdateOwn={canUpdateTimeEntriesOwn}
+        canDelete={canDelete}
+      />
     </Stack>
   );
 }
