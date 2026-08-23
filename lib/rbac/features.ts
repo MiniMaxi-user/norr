@@ -39,6 +39,15 @@ export type FeatureKey =
   | "assets"
   | "contracts"
   | "planning"
+  // Checklists (issue #14, second stage) — see
+  // `lib/checklist-templates/actions.ts` and
+  // `app/(app)/work-orders/checklist-actions.ts`, and
+  // `lib/rbac/permissions.ts`'s dedicated `checklists` module. Not a
+  // `nav-items.ts` entry of its own (checklist templates are configured
+  // under Settings, and checklist instances live inside a work order's own
+  // detail page), but every one of those files' Server Actions still calls
+  // `hasFeature()` first per CLAUDE.md rule 3.
+  | "checklists"
   | "reporting"
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
@@ -81,6 +90,15 @@ export type FeatureKey =
  * actions.ts`, issue #33): every one of that file's actions (and the
  * `components/shell/nav-items.ts` entry) calls `hasFeature()` first per
  * CLAUDE.md rule 3 — same reasoning as `planning` above.
+ *
+ * `checklists` added alongside the Checklists module (issue #14, second
+ * stage — `lib/checklist-templates/actions.ts` and
+ * `app/(app)/work-orders/checklist-actions.ts`): every action in both of
+ * those files calls `hasFeature()` first per CLAUDE.md rule 3 — same
+ * reasoning as `contracts`/`planning` above. This exact omission (shipping a
+ * module's actions/RBAC row without adding its key here) has already broken
+ * `planning` once this session and was caught just before landing for
+ * `contracts` — don't repeat it a third time.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -89,6 +107,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "settings",
   "planning",
   "contracts",
+  "checklists",
 ]);
 
 /**
