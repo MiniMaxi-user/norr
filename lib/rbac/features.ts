@@ -76,6 +76,11 @@ export type FeatureKey =
  * `planning` out of this set would make the module unconditionally fail with
  * "module not enabled" now that it's actually shipping — same reasoning as
  * `clients`/`assets`/`settings` above.
+ *
+ * `contracts` added alongside the Contracts module (`app/(app)/contracts/
+ * actions.ts`, issue #33): every one of that file's actions (and the
+ * `components/shell/nav-items.ts` entry) calls `hasFeature()` first per
+ * CLAUDE.md rule 3 — same reasoning as `planning` above.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -83,6 +88,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "assets",
   "settings",
   "planning",
+  "contracts",
 ]);
 
 /**

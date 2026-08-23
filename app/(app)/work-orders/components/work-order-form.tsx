@@ -23,6 +23,7 @@ import {
 } from "../work-order-form-actions";
 import { listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { listContracts, type ContractRecord } from "@/app/(app)/contracts/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -130,6 +131,10 @@ export function WorkOrderForm({
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState(workOrder?.asset_id ?? initialAssetId ?? "");
 
+  const [clientContracts, setClientContracts] = useState<ContractRecord[]>([]);
+  const [loadingContracts, setLoadingContracts] = useState(false);
+  const [selectedContractId, setSelectedContractId] = useState(workOrder?.contract_id ?? "");
+
   const [scheduledAtLocal, setScheduledAtLocal] = useState(toDatetimeLocalValue(workOrder?.scheduled_at));
 
   useEffect(() => {
@@ -172,6 +177,28 @@ export function WorkOrderForm({
     };
   }, [selectedClientId]);
 
+  // Contract picker, filtered to the selected client's contracts — same
+  // "fetch on parent change" shape as Site/Asset above (issue #33).
+  useEffect(() => {
+    if (!selectedClientId) {
+      setClientContracts([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingContracts(true);
+    listContracts({ clientId: selectedClientId, limit: ALL_CLIENT_ASSETS_LIMIT })
+      .then((result) => {
+        if (cancelled) return;
+        setClientContracts(result.data?.contracts ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingContracts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId]);
+
   useEffect(() => {
     if (state.ok && state.workOrder) {
       router.push(`/work-orders/${state.workOrder.id}`);
@@ -182,13 +209,14 @@ export function WorkOrderForm({
 
   function handleClientChange(nextClientId: string) {
     setSelectedClientId(nextClientId);
-    // A new client invalidates any previously selected site/asset — same
-    // "discard the now-stale child selection" reasoning as the Sub-type
-    // remount in `asset-form.tsx`, just done via controlled state here
-    // instead of a `key` remount (this form needs the live values for
+    // A new client invalidates any previously selected site/asset/contract —
+    // same "discard the now-stale child selection" reasoning as the
+    // Sub-type remount in `asset-form.tsx`, just done via controlled state
+    // here instead of a `key` remount (this form needs the live values for
     // filtering, not just for submission).
     setSelectedSiteId("");
     setSelectedAssetId("");
+    setSelectedContractId("");
   }
 
   function handleSiteChange(nextSiteId: string) {
@@ -309,6 +337,31 @@ export function WorkOrderForm({
                   {state.fieldErrors?.assetId && <Text tone="danger">{state.fieldErrors.assetId[0]}</Text>}
                 </Stack>
               </FormGrid>
+
+              <Stack gap="sm">
+                <Label htmlFor="wo-contract">Contract</Label>
+                <Select
+                  id="wo-contract"
+                  name="contractId"
+                  value={selectedContractId}
+                  onChange={(event) => setSelectedContractId(event.target.value)}
+                  disabled={!selectedClientId || loadingContracts}
+                >
+                  <option value="">
+                    {!selectedClientId
+                      ? "Select a client first…"
+                      : loadingContracts
+                        ? "Loading contracts…"
+                        : "No contract"}
+                  </option>
+                  {clientContracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.name}
+                    </option>
+                  ))}
+                </Select>
+                {state.fieldErrors?.contractId && <Text tone="danger">{state.fieldErrors.contractId[0]}</Text>}
+              </Stack>
 
               <FormGrid columns={2}>
                 <Stack gap="sm">

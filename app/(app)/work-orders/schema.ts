@@ -8,9 +8,15 @@ import { z } from "zod";
  * only export async functions.
  *
  * Field names are camelCase; `actions.ts` maps the validated output to the
- * DB's snake_case columns. No `contractId` field — see
- * `supabase/migrations/20260823120000_work_orders_core.sql` design note 5
- * and this feature's task scope: that column doesn't exist yet.
+ * DB's snake_case columns.
+ *
+ * `contractId` (issue #33): `work_orders.contract_id` was deferred from
+ * `supabase/migrations/20260823120000_work_orders_core.sql` (design note 5
+ * there) and added by `supabase/migrations/20260823150000_contracts_core.sql`.
+ * Shape-only validation here (uuid); the cross-field "must belong to the
+ * same client_id as the work order" check is left entirely to the
+ * `validate_work_order_relations` DB trigger — same trust boundary
+ * `siteId`/`assetId` already use below.
  */
 
 function emptyToUndefined(value: unknown): unknown {
@@ -48,6 +54,9 @@ export const workOrderCreateSchema = z.object({
   /** Nullable; when set, must belong to `clientId` (and to `siteId`, if that
    * is also set) — same DB-trigger validation as `siteId` above. */
   assetId: optionalUuid("Invalid asset id."),
+  /** Nullable; when set, must belong to `clientId` — same DB-trigger
+   * validation as `siteId`/`assetId` above (see the module comment). */
+  contractId: optionalUuid("Invalid contract."),
   /** Nullable; when set, must be a member of the work order's own
    * organization — validated by `validate_work_order_relations`. */
   assignedTo: optionalUuid("Invalid assignee."),

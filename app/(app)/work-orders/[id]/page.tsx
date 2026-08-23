@@ -118,6 +118,10 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             label="Asset"
             value={asset ? <Link href={`/assets/${asset.id}`}>{asset.name}</Link> : "—"}
           />
+          <DetailRow
+            label="Contract"
+            value={workOrder.contract ? <Link href={`/contracts/${workOrder.contract.id}`}>{workOrder.contract.name}</Link> : "—"}
+          />
           <DetailRow label="Assigned to" value={memberDisplayName(assignedMember)} />
           <DetailRow label="Scheduled for" value={formatDateTime(workOrder.scheduled_at)} />
           <DetailRow label="Completed at" value={formatDateTime(workOrder.completed_at)} />

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -14,10 +15,11 @@ import { setLastUsedView } from "@/lib/preferences/actions";
 import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
+import { ContractsPanel } from "./contracts-panel";
 import { SitesPanel } from "./sites-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
 
-export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders";
+export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders" | "contracts";
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -32,6 +34,8 @@ export interface ClientDetailProps {
   contactRoles: ReferenceListItemRecord[];
   workOrders: WorkOrderRecord[];
   workOrdersEnabled: boolean;
+  contracts: ContractRecord[];
+  contractsEnabled: boolean;
   defaultTab: ClientDetailTab;
 }
 
@@ -58,6 +62,8 @@ export function ClientDetail({
   contactRoles,
   workOrders,
   workOrdersEnabled,
+  contracts,
+  contractsEnabled,
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
@@ -134,6 +140,11 @@ export function ClientDetail({
               Work Orders{workOrders.length > 0 ? ` (${workOrders.length})` : ""}
             </Tabs.Tab>
           )}
+          {contractsEnabled && (
+            <Tabs.Tab value="contracts">
+              Contracts{contracts.length > 0 ? ` (${contracts.length})` : ""}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="sites">
@@ -169,6 +180,12 @@ export function ClientDetail({
         {workOrdersEnabled && (
           <Tabs.Panel value="workOrders">
             <WorkOrdersPanel workOrders={workOrders} />
+          </Tabs.Panel>
+        )}
+
+        {contractsEnabled && (
+          <Tabs.Panel value="contracts">
+            <ContractsPanel contracts={contracts} />
           </Tabs.Panel>
         )}
       </Tabs>

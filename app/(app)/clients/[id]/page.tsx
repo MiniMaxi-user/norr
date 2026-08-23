@@ -9,6 +9,7 @@ import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
+import { listContracts } from "@/app/(app)/contracts/actions";
 import { ClientDetail, type ClientDetailTab } from "./client-detail";
 import { ClientDetailSkeleton } from "./client-detail-skeleton";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
@@ -22,6 +23,10 @@ const ALL_CLIENT_ASSETS_LIMIT = 500;
 /** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only Work
  * Orders tab. */
 const ALL_CLIENT_WORK_ORDERS_LIMIT = 500;
+
+/** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only
+ * Contracts tab (issue #33). */
+const ALL_CLIENT_CONTRACTS_LIMIT = 500;
 
 export default async function ClientDetailPage({
   params,
@@ -74,21 +79,34 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "planning")) &&
     canAccessModule(actor, "planning");
 
+  // The Contracts tab is likewise a view onto a separately-entitled module
+  // (issue #33) — gated server-side the same way as Assets/Work Orders
+  // above, before any contract data is fetched, so a tenant/role without
+  // Contracts access never sees the tab render at all (not just disabled).
+  const contractsModuleVisible =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "contracts")) &&
+    canAccessModule(actor, "contracts");
+
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
-  // unlike Assets/Work Orders, this data is always fetched here rather than
-  // gated behind its own `hasFeature`/`canAccessModule` check.
-  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, lastUsedTab] = await Promise.all([
-    assetsModuleVisible
-      ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
-      : Promise.resolve(null),
-    listContacts(id),
-    listReferenceItems("contact_role"),
-    workOrdersModuleVisible
-      ? listWorkOrders({ clientId: id, limit: ALL_CLIENT_WORK_ORDERS_LIMIT })
-      : Promise.resolve(null),
-    preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
-  ]);
+  // unlike Assets/Work Orders/Contracts, this data is always fetched here
+  // rather than gated behind its own `hasFeature`/`canAccessModule` check.
+  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, contractsResult, lastUsedTab] =
+    await Promise.all([
+      assetsModuleVisible
+        ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
+        : Promise.resolve(null),
+      listContacts(id),
+      listReferenceItems("contact_role"),
+      workOrdersModuleVisible
+        ? listWorkOrders({ clientId: id, limit: ALL_CLIENT_WORK_ORDERS_LIMIT })
+        : Promise.resolve(null),
+      contractsModuleVisible
+        ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
+        : Promise.resolve(null),
+      preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
+    ]);
 
   const requestedTab = lastUsedTab as ClientDetailTab | null;
   const defaultTab: ClientDetailTab =
@@ -98,7 +116,9 @@ async function ClientDetailContent({ id }: { id: string }) {
         ? "contacts"
         : requestedTab === "workOrders" && workOrdersModuleVisible
           ? "workOrders"
-          : "sites";
+          : requestedTab === "contracts" && contractsModuleVisible
+            ? "contracts"
+            : "sites";
 
   return (
     <ClientDetail
@@ -116,6 +136,8 @@ async function ClientDetailContent({ id }: { id: string }) {
       contactRoles={contactRolesResult.data?.items ?? []}
       workOrders={workOrdersResult?.data?.workOrders ?? []}
       workOrdersEnabled={workOrdersModuleVisible}
+      contracts={contractsResult?.data?.contracts ?? []}
+      contractsEnabled={contractsModuleVisible}
       defaultTab={defaultTab}
     />
   );
