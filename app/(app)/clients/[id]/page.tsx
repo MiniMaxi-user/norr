@@ -64,21 +64,10 @@ async function ClientDetailContent({ id }: { id: string }) {
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
   // unlike Assets, this data is always fetched here rather than gated behind
   // its own `hasFeature`/`canAccessModule` check.
-  const [
-    assetsResult,
-    assetTypesResult,
-    assetStatusesResult,
-    assetSubtypesResult,
-    contactsResult,
-    contactRolesResult,
-    lastUsedTab,
-  ] = await Promise.all([
+  const [assetsResult, contactsResult, contactRolesResult, lastUsedTab] = await Promise.all([
     assetsModuleVisible
       ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
       : Promise.resolve(null),
-    assetsModuleVisible ? listReferenceItems("asset_type") : Promise.resolve(null),
-    assetsModuleVisible ? listReferenceItems("asset_status") : Promise.resolve(null),
-    assetsModuleVisible ? listReferenceItems("asset_subtype") : Promise.resolve(null),
     listContacts(id),
     listReferenceItems("contact_role"),
     preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
@@ -99,9 +88,6 @@ async function ClientDetailContent({ id }: { id: string }) {
       canWrite={canWrite}
       assets={assetsResult?.data?.assets ?? []}
       assetsEnabled={assetsModuleVisible}
-      assetTypes={assetTypesResult?.data?.items ?? []}
-      assetStatuses={assetStatusesResult?.data?.items ?? []}
-      assetSubtypes={assetSubtypesResult?.data?.items ?? []}
       canCreateAssets={assetsModuleVisible && can(actor, "assets", "create")}
       canEditAssets={
         assetsModuleVisible && (can(actor, "assets", "update") || can(actor, "assets", "update_own"))

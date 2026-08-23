@@ -23,7 +23,9 @@ Relational detail pages — see `docs/ARCHITECTURE.md`'s "Relational detail page
 - Group nested lists with `Disclosure`, not a flat table, once there's a natural sub-grouping.
 - Creating a child record from a parent's tab must pre-scope it to that parent, not open a bare disconnected form.
 - Once a page is two-plus levels deep in a hierarchy, use a breadcrumb trail, not a single `BackLink` — add a `Breadcrumbs` primitive to `@yourorg/ui` if one doesn't exist yet.
-- A simple modal for editing a single flat record (no relations) is still fine — this standard applies once relationships are involved, not to every dialog.
+- A simple modal is still fine for a small, secondary sub-entity reached from a tab (Contacts/Sites on a client) — this standard is about relationship *visibility*, not about banning every dialog.
+
+Popup vs. full page (see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section) — pick by weight, not habit: a top-level module's own record (Clients, Assets, Contracts, Planning/Work Orders, and future Quotes/Projects/Orders) gets a real page for create/edit (`/module/new`, `/module/[id]/edit`), never a `Dialog` — only a small sub-entity reached from a parent's tab (Contacts, Sites, a reference-list item) stays a dialog.
 
 Domain completeness (see `docs/ARCHITECTURE.md`'s "Domain completeness" section) — a dependent reference field (e.g. Asset Sub-type, scoped by the record's own Asset Type) renders as a shared cascading-select pattern in `@yourorg/ui` (child options filtered/disabled until the parent field has a value, re-filtered when it changes) — build it once as a reusable primitive, not per-form.
 

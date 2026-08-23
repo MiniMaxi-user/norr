@@ -3,7 +3,6 @@ import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import { listAssets, type AssetRecord } from "../actions";
 import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
-import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { AssetsFilters } from "./assets-filters";
 import { AssetsTable } from "./assets-table";
 import { AssetsViewSwitcher, type AssetsView } from "./assets-view-switcher";
@@ -87,22 +86,15 @@ export async function AssetsScreen({
   const limit = isMapView ? MAP_FETCH_LIMIT : LIST_PAGE_SIZE;
   const offset = isMapView ? 0 : page * LIST_PAGE_SIZE;
 
-  const [clientsResult, assetsResult, currentSitesResult, assetTypesResult, assetStatusesResult, assetSubtypesResult] =
-    await Promise.all([
-      listClients({ limit: 200 }),
-      listAssets({ clientId, siteId, limit, offset }),
-      clientId ? listSites(clientId) : Promise.resolve(null),
-      listReferenceItems("asset_type"),
-      listReferenceItems("asset_status"),
-      listReferenceItems("asset_subtype"),
-    ]);
+  const [clientsResult, assetsResult, currentSitesResult] = await Promise.all([
+    listClients({ limit: 200 }),
+    listAssets({ clientId, siteId, limit, offset }),
+    clientId ? listSites(clientId) : Promise.resolve(null),
+  ]);
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
   const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
   const filterSites: SiteRecord[] = currentSitesResult?.data?.sites ?? [];
-  const assetTypes = assetTypesResult.data?.items ?? [];
-  const assetStatuses = assetStatusesResult.data?.items ?? [];
-  const assetSubtypes = assetSubtypesResult.data?.items ?? [];
 
   const toolbar = (
     <Toolbar>
@@ -111,14 +103,7 @@ export async function AssetsScreen({
       </Toolbar.Section>
       <Toolbar.Section align="end">
         <AssetsViewSwitcher view={view} />
-        {canCreate && (
-          <CreateAssetButton
-            clients={clients}
-            assetTypes={assetTypes}
-            assetStatuses={assetStatuses}
-            assetSubtypes={assetSubtypes}
-          />
-        )}
+        {canCreate && <CreateAssetButton />}
       </Toolbar.Section>
     </Toolbar>
   );
@@ -149,16 +134,7 @@ export async function AssetsScreen({
               ? "Try a different client or site filter."
               : "Add your first piece of equipment to start tracking it."
           }
-          action={
-            canCreate && !hasFilters ? (
-              <CreateAssetButton
-                clients={clients}
-                assetTypes={assetTypes}
-                assetStatuses={assetStatuses}
-                assetSubtypes={assetSubtypes}
-              />
-            ) : undefined
-          }
+          action={canCreate && !hasFilters ? <CreateAssetButton /> : undefined}
         />
       </>
     );
@@ -199,16 +175,7 @@ export async function AssetsScreen({
   return (
     <>
       {toolbar}
-      <AssetsTable
-        assets={assets}
-        clients={clients}
-        clientNameById={clientNameById}
-        assetTypes={assetTypes}
-        assetStatuses={assetStatuses}
-        assetSubtypes={assetSubtypes}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
+      <AssetsTable assets={assets} clientNameById={clientNameById} canEdit={canEdit} canDelete={canDelete} />
       {/* `Toolbar` is the app shell's sticky top bar (see
           components/shell/topbar.tsx) — reusing it a second time here for a
           bottom pagination row would fight its own `position: sticky`.

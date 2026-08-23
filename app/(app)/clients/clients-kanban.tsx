@@ -19,12 +19,10 @@ import { ClientsTable } from "./clients-table";
 export function ClientsKanban({
   clients,
   canWrite,
-  onEdit,
   onDelete,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
-  onEdit: (client: ClientRecord) => void;
   onDelete: (client: ClientRecord) => void;
 }) {
   const columns = groupClientsForKanban(clients);
@@ -41,7 +39,7 @@ export function ClientsKanban({
             {column.clients.length === 0 ? (
               <Text tone="muted">No clients in this stage.</Text>
             ) : (
-              <ClientsTable clients={column.clients} canWrite={canWrite} onEdit={onEdit} onDelete={onDelete} />
+              <ClientsTable clients={column.clients} canWrite={canWrite} onDelete={onDelete} />
             )}
           </Stack>
         </Card>

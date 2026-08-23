@@ -6,8 +6,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getAsset } from "../actions";
-import { getClient, listClients } from "@/app/(app)/clients/actions";
-import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { getClient } from "@/app/(app)/clients/actions";
 import { AssetDetailActions } from "./asset-detail-actions";
 
 export const metadata = { title: "Asset details" };
@@ -42,20 +41,9 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
   if (!canAccessModule(actor, "assets")) notFound();
 
-  const [assetResult, clientsResult, assetTypesResult, assetStatusesResult, assetSubtypesResult] =
-    await Promise.all([
-      getAsset(id),
-      listClients({ limit: 200 }),
-      listReferenceItems("asset_type"),
-      listReferenceItems("asset_status"),
-      listReferenceItems("asset_subtype"),
-    ]);
+  const assetResult = await getAsset(id);
   if (!assetResult.data) notFound();
   const asset = assetResult.data.asset;
-  const clients = clientsResult.data?.clients ?? [];
-  const assetTypes = assetTypesResult.data?.items ?? [];
-  const assetStatuses = assetStatusesResult.data?.items ?? [];
-  const assetSubtypes = assetSubtypesResult.data?.items ?? [];
 
   const clientResult = await getClient(asset.client_id);
   const client = clientResult.data?.client ?? null;
@@ -78,15 +66,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
           </Stack>
         </Toolbar.Section>
         <Toolbar.Section align="end">
-          <AssetDetailActions
-            asset={asset}
-            clients={clients}
-            assetTypes={assetTypes}
-            assetStatuses={assetStatuses}
-            assetSubtypes={assetSubtypes}
-            canEdit={canEdit}
-            canDelete={canDelete}
-          />
+          <AssetDetailActions asset={asset} canEdit={canEdit} canDelete={canDelete} />
         </Toolbar.Section>
       </Toolbar>
 

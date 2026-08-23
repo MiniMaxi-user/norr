@@ -20,12 +20,10 @@ import type { ClientRecord } from "./actions";
 export function ClientsTable({
   clients,
   canWrite,
-  onEdit,
   onDelete,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
-  onEdit: (client: ClientRecord) => void;
   onDelete: (client: ClientRecord) => void;
 }) {
   const router = useRouter();
@@ -102,7 +100,7 @@ export function ClientsTable({
               {canWrite && (
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
-                    <Button variant="outline" size="sm" onClick={() => onEdit(client)}>
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/clients/${client.id}/edit`)}>
                       Edit
                     </Button>
                     <Button variant="danger" size="sm" onClick={() => onDelete(client)}>
