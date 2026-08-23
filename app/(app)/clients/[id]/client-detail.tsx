@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { ClientFormDialog } from "../client-form-dialog";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { AssetsPanel } from "./assets-panel";
@@ -23,12 +23,6 @@ export interface ClientDetailProps {
   canWrite: boolean;
   assets: AssetRecord[];
   assetsEnabled: boolean;
-  assetTypes: ReferenceListItemRecord[];
-  assetStatuses: ReferenceListItemRecord[];
-  /** This org's `asset_subtype` picklist values (dependent on `assetTypes` —
-   * see `lib/reference-lists/actions.ts`'s `parentListKey`), for the Assets
-   * tab's create/edit dialog cascading Sub-type select. */
-  assetSubtypes: ReferenceListItemRecord[];
   canCreateAssets: boolean;
   canEditAssets: boolean;
   canDeleteAssets: boolean;
@@ -53,9 +47,6 @@ export function ClientDetail({
   canWrite,
   assets,
   assetsEnabled,
-  assetTypes,
-  assetStatuses,
-  assetSubtypes,
   canCreateAssets,
   canEditAssets,
   canDeleteAssets,
@@ -64,7 +55,6 @@ export function ClientDetail({
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
-  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [tab, setTab] = useState<ClientDetailTab>(defaultTab);
   const [focusSite, setFocusSite] = useState<{ siteId: string | null; token: number }>({
@@ -102,9 +92,11 @@ export function ClientDetail({
           <Heading level={1}>{client.name}</Heading>
           {canWrite && (
             <div>
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                Edit
-              </Button>{" "}
+              <Link href={`/clients/${client.id}/edit`}>
+                <Button variant="outline" size="sm">
+                  Edit
+                </Button>
+              </Link>{" "}
               <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
                 Delete
               </Button>
@@ -150,9 +142,6 @@ export function ClientDetail({
               clientId={client.id}
               sites={sites}
               assets={assets}
-              assetTypes={assetTypes}
-              assetStatuses={assetStatuses}
-              assetSubtypes={assetSubtypes}
               canCreate={canCreateAssets}
               canEdit={canEditAssets}
               canDelete={canDeleteAssets}
@@ -168,15 +157,12 @@ export function ClientDetail({
       </Tabs>
 
       {canWrite && (
-        <>
-          <ClientFormDialog open={editOpen} onOpenChange={setEditOpen} client={client} />
-          <DeleteClientDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            client={client}
-            onDeleted={() => router.push("/clients")}
-          />
-        </>
+        <DeleteClientDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          client={client}
+          onDeleted={() => router.push("/clients")}
+        />
       )}
     </Stack>
   );

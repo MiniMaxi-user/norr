@@ -6,16 +6,12 @@ import { Boxes } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { CreateAssetButton } from "@/app/(app)/assets/components/create-asset-button";
 import type { SiteRecord } from "../actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { SiteAssetsTable } from "./site-assets-table";
 
 export interface AssetsPanelProps {
   clientId: string;
   sites: SiteRecord[];
   assets: AssetRecord[];
-  assetTypes: ReferenceListItemRecord[];
-  assetStatuses: ReferenceListItemRecord[];
-  assetSubtypes: ReferenceListItemRecord[];
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -42,9 +38,6 @@ export function AssetsPanel({
   clientId,
   sites,
   assets,
-  assetTypes,
-  assetStatuses,
-  assetSubtypes,
   canCreate,
   canEdit,
   canDelete,
@@ -90,13 +83,7 @@ export function AssetsPanel({
     <Stack gap="md">
       {canCreate && (
         <div>
-          <CreateAssetButton
-            clients={[]}
-            lockedClientId={clientId}
-            assetTypes={assetTypes}
-            assetStatuses={assetStatuses}
-            assetSubtypes={assetSubtypes}
-          />
+          <CreateAssetButton clientId={clientId} />
         </div>
       )}
 
@@ -126,15 +113,7 @@ export function AssetsPanel({
                   {siteAssets.length === 0 ? (
                     <Text tone="muted">No assets at this site yet.</Text>
                   ) : (
-                    <SiteAssetsTable
-                      assets={siteAssets}
-                      clientId={clientId}
-                      assetTypes={assetTypes}
-                      assetStatuses={assetStatuses}
-                      assetSubtypes={assetSubtypes}
-                      canEdit={canEdit}
-                      canDelete={canDelete}
-                    />
+                    <SiteAssetsTable assets={siteAssets} canEdit={canEdit} canDelete={canDelete} />
                   )}
                 </Disclosure.Content>
               </Disclosure>

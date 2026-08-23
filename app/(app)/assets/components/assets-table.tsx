@@ -4,18 +4,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
-import type { ClientRecord } from "@/app/(app)/clients/actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { AssetFormDialog } from "./asset-form-dialog";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
 
 export interface AssetsTableProps {
   assets: AssetRecord[];
-  clients: ClientRecord[];
   clientNameById: Map<string, string>;
-  assetTypes: ReferenceListItemRecord[];
-  assetStatuses: ReferenceListItemRecord[];
-  assetSubtypes: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -24,28 +17,20 @@ export interface AssetsTableProps {
  * List view table: client-side search over the current page of `assets`
  * (server-side filtering already narrows by client/site — see
  * `AssetsFilters` — free-text search here is a fast, no-round-trip refinement
- * on top of that). Row click navigates to the detail page; row-level
- * edit/delete actions are stopPropagation'd so they don't also trigger the
- * navigation.
+ * on top of that). Row click navigates to the detail page; the row-level
+ * Edit action navigates to `/assets/[id]/edit` (a real page, docs/
+ * ARCHITECTURE.md "Popup vs. full page — pick by weight, not habit") instead
+ * of opening a dialog; Delete stays a lightweight confirmation `Dialog` (a
+ * single flat-record removal, not a relational form).
  *
  * `stickyHeader`/`maxHeight` keep a long page of assets scrolling under a
  * fixed header instead of pushing the pagination row off-screen (docs/
  * ARCHITECTURE.md "Premium UX requirements" — this is the fix for "bij
  * assets scroll hij niet").
  */
-export function AssetsTable({
-  assets,
-  clients,
-  clientNameById,
-  assetTypes,
-  assetStatuses,
-  assetSubtypes,
-  canEdit,
-  canDelete,
-}: AssetsTableProps) {
+export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: AssetsTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
 
   const filtered = useMemo(() => {
@@ -120,7 +105,7 @@ export function AssetsTable({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setEditingAsset(asset)}
+                          onClick={() => router.push(`/assets/${asset.id}/edit`)}
                         >
                           Edit
                         </Button>
@@ -145,19 +130,6 @@ export function AssetsTable({
 
         {filtered.length === 0 && <Text tone="muted">No assets match &ldquo;{query}&rdquo;.</Text>}
       </Stack>
-
-      {editingAsset && (
-        <AssetFormDialog
-          mode="edit"
-          asset={editingAsset}
-          clients={clients}
-          assetTypes={assetTypes}
-          assetStatuses={assetStatuses}
-          assetSubtypes={assetSubtypes}
-          open
-          onOpenChange={(next) => !next && setEditingAsset(null)}
-        />
-      )}
 
       {deletingAsset && (
         <DeleteAssetDialog

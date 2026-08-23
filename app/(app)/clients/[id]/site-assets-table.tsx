@@ -4,16 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Table } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
-import { AssetFormDialog } from "@/app/(app)/assets/components/asset-form-dialog";
 import { DeleteAssetDialog } from "@/app/(app)/assets/components/delete-asset-dialog";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 export interface SiteAssetsTableProps {
   assets: AssetRecord[];
-  clientId: string;
-  assetTypes: ReferenceListItemRecord[];
-  assetStatuses: ReferenceListItemRecord[];
-  assetSubtypes: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -23,23 +17,14 @@ export interface SiteAssetsTableProps {
  * page's Assets tab — deliberately a smaller sibling of
  * `app/(app)/assets/components/assets-table.tsx` rather than that component
  * reused as-is: there's no "Client" column here (every row already belongs
- * to the site/client this whole page is about), and the edit dialog is
- * always `lockedClientId`-scoped to this client. Reuses the same
- * `AssetFormDialog`/`DeleteAssetDialog` the standalone Assets module uses,
- * so edits/deletes made from here behave identically (same validation, same
- * RLS/RBAC).
+ * to the site/client this whole page is about). Edit navigates to the full
+ * `/assets/[id]/edit` page (docs/ARCHITECTURE.md "Popup vs. full page — pick
+ * by weight, not habit"), same as the standalone Assets module; delete stays
+ * a lightweight confirmation `Dialog` (a single flat-record removal, not a
+ * relational form).
  */
-export function SiteAssetsTable({
-  assets,
-  clientId,
-  assetTypes,
-  assetStatuses,
-  assetSubtypes,
-  canEdit,
-  canDelete,
-}: SiteAssetsTableProps) {
+export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableProps) {
   const router = useRouter();
-  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
   const showActionsColumn = canEdit || canDelete;
 
@@ -70,7 +55,12 @@ export function SiteAssetsTable({
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                     {canEdit && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/assets/${asset.id}/edit`)}
+                      >
                         Edit
                       </Button>
                     )}
@@ -87,26 +77,8 @@ export function SiteAssetsTable({
         </Table.Body>
       </Table>
 
-      {editingAsset && (
-        <AssetFormDialog
-          mode="edit"
-          asset={editingAsset}
-          clients={[]}
-          lockedClientId={clientId}
-          assetTypes={assetTypes}
-          assetStatuses={assetStatuses}
-          assetSubtypes={assetSubtypes}
-          open
-          onOpenChange={(next) => !next && setEditingAsset(null)}
-        />
-      )}
-
       {deletingAsset && (
-        <DeleteAssetDialog
-          asset={deletingAsset}
-          open
-          onOpenChange={(next) => !next && setDeletingAsset(null)}
-        />
+        <DeleteAssetDialog asset={deletingAsset} open onOpenChange={(next) => !next && setDeletingAsset(null)} />
       )}
     </>
   );
