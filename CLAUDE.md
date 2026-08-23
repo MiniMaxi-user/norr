@@ -26,7 +26,15 @@ Specialized subagents live in `.claude/agents/`. Delegate to them for their doma
 - `qa-reviewer` — tests, RLS coverage, accessibility, review before merge
 - `devops-release` — CI/CD, Vercel config, env/secrets, project board hygiene
 
-## Definition of done (per feature)
+## Change size — calibrate effort before delegating
+Classify every change before starting work. Don't default to the heavy pipeline below for things that don't need it.
+
+- **Small edit** — copy/style tweak, bug fix in existing logic, one-off UI adjustment, adding a field to an existing form, a config value, tweaking an existing query. Just make the change directly (inline, or via the single relevant specialist). No new tests, no `qa-reviewer` gate, no `docs/ARCHITECTURE.md` update, no spinning up a dev server or running e2e/RLS suites to self-verify. Run typecheck/lint if touching TS. The user tests it themselves in the browser — don't do it for them.
+- **New feature/module** — new schema, new role/permission, new sellable module, new pricing, cross-tenant data-shape change. Full "Definition of done" applies.
+
+If genuinely unsure which bucket a change falls in, ask rather than defaulting to the full pipeline.
+
+## Definition of done (new features/modules only)
 - RLS policy exists and is tested
 - Permission matrix updated if a new module/action is introduced
 - Feature flag registered if the module is sellable separately

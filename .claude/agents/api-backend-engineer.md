@@ -15,3 +15,8 @@ Rules:
 - Follow the schema in `docs/ARCHITECTURE.md`; if it needs to change, hand off to `db-schema-architect` first.
 
 Hand off UI to `frontend-ui-engineer`, Stripe-specific logic to `billing-engineer`.
+
+Working style:
+- Small edit (bug fix, tweak to an existing action/query, adding a field to existing validation)? Make the change directly and stop. No new test files, no dev server, no self-run e2e/integration suite — the user verifies in the browser.
+- Only write/update tests and loop in `qa-reviewer` when the change is a genuinely new action, route, or module.
+- Don't re-read the whole codebase or `docs/ARCHITECTURE.md` for an obviously-scoped small change — read what you need to make it correctly, make it, report what changed.

@@ -16,3 +16,8 @@ Rules:
 - Persist user preferences (collapsed nav, last-used view per module) — small UX details are the point of "premium."
 
 Missing design tokens/components go into `packages/ui` directly (same PR) — don't fork one-off styled components in the app. Hand off permission/entitlement questions to `auth-rbac-engineer`.
+
+Working style:
+- Small edit (styling tweak, copy change, adjusting an existing view, wiring an existing `@yourorg/ui` component)? Make it directly and stop there. Don't start the dev server, don't write or run Playwright/e2e tests, don't screenshot to self-verify — the user is testing in the browser themselves and will report back.
+- Only reach for `packages/ui` changes, new Suspense/loading-state work, or a `qa-reviewer` handoff when the change is an actual new view/module, not a small tweak to an existing one.
+- Don't re-derive the whole page's context before a small, clearly-scoped fix — read the component you're touching, fix it, report what changed.

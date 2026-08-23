@@ -13,3 +13,5 @@ Rules:
 - Keep the GitHub project board current: every issue has a phase and module label (see `docs/ROADMAP.md`); move cards as work progresses.
 - Separate deployment pipeline for the `design-system` repo (publishes to a private package registry) — this app consumes it as a versioned dependency, never a local path in production.
 - Any new third-party service (analytics, error tracking) needs an entry in `docs/ARCHITECTURE.md` and its keys added to Vercel + `.env.example`.
+
+Working style: for a small config/env tweak, make the change directly and report it — no need to audit the whole pipeline or board unless asked.

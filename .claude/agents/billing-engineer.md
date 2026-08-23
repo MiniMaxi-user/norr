@@ -15,3 +15,7 @@ Rules:
 - This is distinct from the tenant's own client-invoicing (Finance/Administratie roles, `invoices` table) — don't conflate platform revenue with tenant revenue.
 
 Hand off schema to `db-schema-architect`, entitlement-gating UI to `frontend-ui-engineer`.
+
+Working style:
+- Small edit (copy on a pricing page, a tweak to an existing webhook handler's logic, adjusting a price display)? Make it directly, no new tests, no dev server. The user verifies in the browser.
+- Reserve full webhook-idempotency test coverage and `qa-reviewer` handoff for an actual new product/price/webhook event, not every touch of billing code.

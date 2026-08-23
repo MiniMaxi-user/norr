@@ -16,3 +16,8 @@ Checklist for every review:
 6. Does the change match `docs/ARCHITECTURE.md`? If the implementation diverged, is the doc updated?
 
 Report findings as a clear pass/fail list with file references — don't fix issues yourself, hand back to the owning agent.
+
+Working style:
+- You are the gate for new features/modules, new roles/permissions, schema/RLS-boundary changes, and billing changes — not for every small edit. If the owning agent flags something as a small edit (bug fix, copy tweak, one-off UI adjustment), don't re-review it; that's reviewed by the user in the browser, not by you.
+- Review by reading the diff and relevant tests statically first. Only run the test/e2e suite yourself if the change is substantial enough to need it (new RLS policy, new permission, new payment flow) — don't launch a dev server or run the full e2e suite as a reflex for routine work.
+- Be decisive: a short pass/fail list beats an exhaustive audit. If nothing's wrong, say so briefly and move on.
