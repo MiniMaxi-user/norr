@@ -52,6 +52,11 @@ function formDataToAssetInput(formData: FormData) {
     model: readField(formData, "model"),
     serialNumber: readField(formData, "serialNumber"),
     statusId: readOptionalField(formData, "statusId"),
+    // Optional, same as `statusId` — the Sub-type `<CascadingSelect>` in
+    // `asset-form-dialog.tsx` is left on its placeholder option (empty
+    // string) whenever no Type is selected yet or no sub-type was chosen,
+    // and an asset legitimately has no sub-type at all.
+    subtypeId: readOptionalField(formData, "subtypeId"),
     installedAt: readField(formData, "installedAt"),
     warrantyUntil: readField(formData, "warrantyUntil"),
     notes: readField(formData, "notes"),

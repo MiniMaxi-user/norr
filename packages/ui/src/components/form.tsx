@@ -61,6 +61,19 @@ export function Textarea({ className, ...rest }: TextareaProps) {
   return <textarea className={cx("ui-textarea", className)} {...rest} />;
 }
 
+export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type">;
+
+/** Native `<input type="checkbox">`, styled to match the rest of the form
+ * primitives (`accent-color`, not a fully custom-drawn box) — added for
+ * boolean fields like a contact's "primary contact" flag (issue #26) so call
+ * sites never reach for a raw unstyled `<input type="checkbox">` (CLAUDE.md
+ * rule 4: no ad-hoc styling in the app repo). Pair with `Label`/`Inline` for
+ * the "checkbox beside its label" row — this component itself renders only
+ * the input. */
+export function Checkbox({ className, ...rest }: CheckboxProps) {
+  return <input type="checkbox" className={cx("ui-checkbox", className)} {...rest} />;
+}
+
 export interface FormSectionProps extends HTMLAttributes<HTMLDivElement> {
   /** Short eyebrow-style section label, e.g. "Contact", "Address". */
   title: string;

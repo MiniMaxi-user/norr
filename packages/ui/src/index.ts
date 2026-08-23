@@ -42,6 +42,7 @@ export {
   Input,
   Select,
   Textarea,
+  Checkbox,
   FormSection,
   FormGrid,
   FormGridFull,
@@ -49,10 +50,16 @@ export {
   type InputProps,
   type SelectProps,
   type TextareaProps,
+  type CheckboxProps,
   type FormSectionProps,
   type FormGridProps,
   type FormGridFullProps,
 } from "./components/form";
+export {
+  CascadingSelect,
+  type CascadingSelectProps,
+  type CascadingSelectOption,
+} from "./components/cascading-select";
 export { Skeleton, type SkeletonProps } from "./components/skeleton";
 export {
   CommandPalette,

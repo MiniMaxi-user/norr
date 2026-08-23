@@ -13,6 +13,7 @@ export interface SiteAssetsTableProps {
   clientId: string;
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  assetSubtypes: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -33,6 +34,7 @@ export function SiteAssetsTable({
   clientId,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   canEdit,
   canDelete,
 }: SiteAssetsTableProps) {
@@ -93,6 +95,7 @@ export function SiteAssetsTable({
           lockedClientId={clientId}
           assetTypes={assetTypes}
           assetStatuses={assetStatuses}
+          assetSubtypes={assetSubtypes}
           open
           onOpenChange={(next) => !next && setEditingAsset(null)}
         />

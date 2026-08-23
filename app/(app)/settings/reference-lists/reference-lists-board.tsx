@@ -1,5 +1,5 @@
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@yourorg/ui";
-import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ReferenceListManager } from "../components/reference-list-manager";
 
 // This file is a Server Component (`ReferenceListsBoard` is `async`, doing
@@ -31,6 +31,17 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Asset Status",
     description: "Lifecycle states an asset can be in — e.g. Active, In Repair, Decommissioned.",
   },
+  {
+    key: "asset_subtype",
+    title: "Asset Sub-type",
+    description:
+      "Finer-grained equipment categories, each scoped to one Asset Type — e.g. Compressor, Thermostat, and Ductwork all belong under HVAC.",
+  },
+  {
+    key: "contact_role",
+    title: "Contact Role",
+    description: "Roles a client contact can have — e.g. Primary, Billing, Site manager, Technical.",
+  },
 ] as const;
 
 /**
@@ -43,6 +54,22 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
     REFERENCE_LIST_SECTIONS.map((section) => listReferenceItems(section.key)),
   );
 
+  // Every section's items, keyed by its own `list_key` — looked up below for
+  // whichever section turns out to be *dependent* (`parentListKey` non-null
+  // in its own `listReferenceItems` result, e.g. `asset_subtype` ->
+  // `asset_type`), so its parent-item picker/labels can be built from data
+  // already fetched here rather than a second round trip. Works today
+  // because every dependent list's declared parent is itself one of
+  // `REFERENCE_LIST_SECTIONS` (true for `asset_subtype` -> `asset_type`); a
+  // future dependent list whose parent ISN'T managed on this board would
+  // need its own fetch instead.
+  const itemsByListKey = new Map<string, ReferenceListItemRecord[]>(
+    REFERENCE_LIST_SECTIONS.map((section, index) => [section.key, results[index]?.data?.items ?? []]),
+  );
+  const titleByListKey = new Map<string, string>(
+    REFERENCE_LIST_SECTIONS.map((section) => [section.key, section.title]),
+  );
+
   return (
     <Tabs defaultValue={REFERENCE_LIST_SECTIONS[0].key}>
       <TabsList aria-label="Reference lists">
@@ -53,18 +80,24 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
         ))}
       </TabsList>
 
-      {REFERENCE_LIST_SECTIONS.map((section, index) => (
-        <TabsPanel key={section.key} value={section.key}>
-          <ReferenceListManager
-            listKey={section.key}
-            title={section.title}
-            description={section.description}
-            items={results[index]?.data?.items ?? []}
-            loadError={results[index]?.error}
-            canWrite={canWrite}
-          />
-        </TabsPanel>
-      ))}
+      {REFERENCE_LIST_SECTIONS.map((section, index) => {
+        const parentListKey = results[index]?.data?.parentListKey ?? null;
+        return (
+          <TabsPanel key={section.key} value={section.key}>
+            <ReferenceListManager
+              listKey={section.key}
+              title={section.title}
+              description={section.description}
+              items={results[index]?.data?.items ?? []}
+              loadError={results[index]?.error}
+              canWrite={canWrite}
+              parentListKey={parentListKey}
+              parentListTitle={parentListKey ? titleByListKey.get(parentListKey) ?? parentListKey : undefined}
+              parentItems={parentListKey ? itemsByListKey.get(parentListKey) ?? [] : []}
+            />
+          </TabsPanel>
+        );
+      })}
     </Tabs>
   );
 }

@@ -5,13 +5,17 @@ import { useRouter } from "next/navigation";
 import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
+import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ClientFormDialog } from "../client-form-dialog";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
+import { ContactsPanel } from "./contacts-panel";
 import { SitesPanel } from "./sites-panel";
+
+export type ClientDetailTab = "sites" | "assets" | "contacts";
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -21,10 +25,16 @@ export interface ClientDetailProps {
   assetsEnabled: boolean;
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  /** This org's `asset_subtype` picklist values (dependent on `assetTypes` —
+   * see `lib/reference-lists/actions.ts`'s `parentListKey`), for the Assets
+   * tab's create/edit dialog cascading Sub-type select. */
+  assetSubtypes: ReferenceListItemRecord[];
   canCreateAssets: boolean;
   canEditAssets: boolean;
   canDeleteAssets: boolean;
-  defaultTab: "sites" | "assets";
+  contacts: ContactRecord[];
+  contactRoles: ReferenceListItemRecord[];
+  defaultTab: ClientDetailTab;
 }
 
 /**
@@ -45,15 +55,18 @@ export function ClientDetail({
   assetsEnabled,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   canCreateAssets,
   canEditAssets,
   canDeleteAssets,
+  contacts,
+  contactRoles,
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [tab, setTab] = useState<"sites" | "assets">(defaultTab);
+  const [tab, setTab] = useState<ClientDetailTab>(defaultTab);
   const [focusSite, setFocusSite] = useState<{ siteId: string | null; token: number }>({
     siteId: null,
     token: 0,
@@ -68,7 +81,7 @@ export function ClientDetail({
     return map;
   }, [assets]);
 
-  function selectTab(next: "sites" | "assets") {
+  function selectTab(next: ClientDetailTab) {
     setTab(next);
     startTransition(() => {
       void setLastUsedView(CLIENT_DETAIL_VIEW_KEY, next);
@@ -107,26 +120,31 @@ export function ClientDetail({
         </Stack>
       </Card>
 
-      {assetsEnabled ? (
-        <Tabs value={tab} onValueChange={(next) => selectTab(next as "sites" | "assets")}>
-          <Tabs.List aria-label="Client detail">
-            <Tabs.Tab value="sites">Sites</Tabs.Tab>
+      <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
+        <Tabs.List aria-label="Client detail">
+          <Tabs.Tab value="sites">Sites</Tabs.Tab>
+          {assetsEnabled && (
             <Tabs.Tab value="assets">
               Assets{assets.length > 0 ? ` (${assets.length})` : ""}
             </Tabs.Tab>
-          </Tabs.List>
+          )}
+          <Tabs.Tab value="contacts">
+            Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
+          </Tabs.Tab>
+        </Tabs.List>
 
-          <Tabs.Panel value="sites">
-            <SitesPanel
-              clientId={client.id}
-              sites={sites}
-              canWrite={canWrite}
-              assetCountBySiteId={assetCountBySiteId}
-              assetsEnabled={assetsEnabled}
-              onViewAssets={viewAssetsForSite}
-            />
-          </Tabs.Panel>
+        <Tabs.Panel value="sites">
+          <SitesPanel
+            clientId={client.id}
+            sites={sites}
+            canWrite={canWrite}
+            assetCountBySiteId={assetCountBySiteId}
+            assetsEnabled={assetsEnabled}
+            onViewAssets={assetsEnabled ? viewAssetsForSite : undefined}
+          />
+        </Tabs.Panel>
 
+        {assetsEnabled && (
           <Tabs.Panel value="assets">
             <AssetsPanel
               clientId={client.id}
@@ -134,6 +152,7 @@ export function ClientDetail({
               assets={assets}
               assetTypes={assetTypes}
               assetStatuses={assetStatuses}
+              assetSubtypes={assetSubtypes}
               canCreate={canCreateAssets}
               canEdit={canEditAssets}
               canDelete={canDeleteAssets}
@@ -141,19 +160,12 @@ export function ClientDetail({
               focusToken={focusSite.token}
             />
           </Tabs.Panel>
-        </Tabs>
-      ) : (
-        <Stack gap="sm">
-          <Heading level={2}>Sites</Heading>
-          <SitesPanel
-            clientId={client.id}
-            sites={sites}
-            canWrite={canWrite}
-            assetCountBySiteId={assetCountBySiteId}
-            assetsEnabled={false}
-          />
-        </Stack>
-      )}
+        )}
+
+        <Tabs.Panel value="contacts">
+          <ContactsPanel clientId={client.id} contacts={contacts} contactRoles={contactRoles} canWrite={canWrite} />
+        </Tabs.Panel>
+      </Tabs>
 
       {canWrite && (
         <>

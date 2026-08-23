@@ -40,6 +40,18 @@ export const assetCreateSchema = z.object({
    * `asset_status` item when omitted (replacing the old `default 'active'`
    * enum default). */
   statusId: z.string().uuid("Invalid asset status.").optional(),
+  /** FK into this org's `asset_subtype` reference list
+   * (`reference_list_items.id`) — see
+   * `supabase/migrations/20260823090000_contacts_dependent_reference_lists.sql`.
+   * Optional/nullable, unlike `typeId`: not every asset needs a sub-type.
+   * `asset_subtype` is a *dependent* list (`parent_list_key = 'asset_type'`):
+   * whatever is selected here must be a sub-type of this asset's own
+   * `typeId`. Shape (uuid, belongs to the `asset_subtype` list) is validated
+   * in `actions.ts` before the insert/update is attempted; the actual
+   * cross-field "must be a sub-type of typeId" check is left to the
+   * `validate_asset_reference_items` DB trigger, which raises a `23514`
+   * mapped to a clean message by `mapDbError` when it's inconsistent. */
+  subtypeId: z.string().uuid("Invalid asset sub-type.").optional(),
   installedAt: isoDateSchema,
   warrantyUntil: isoDateSchema,
   notes: optionalText(5000),

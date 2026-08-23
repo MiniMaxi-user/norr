@@ -874,6 +874,94 @@ a:focus-visible > .ui-card-interactive,
   pointer-events: none;
 }
 
+.ui-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--ui-accent-strong);
+  cursor: pointer;
+}
+.ui-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Form section / grid — see components/form.tsx `FormSection`/`FormGrid`.
+ * The structural fix for "this dialog is one flat undifferentiated list of
+ * fields": related fields group under a labeled section, and naturally
+ * paired fields (postal code + city, latitude + longitude, ...) sit in a
+ * two-column row instead of every field forcing full width.
+ * ---------------------------------------------------------------------- */
+.ui-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.ui-form-section + .ui-form-section {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ui-border);
+}
+.ui-form-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.ui-form-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+}
+.ui-form-section-icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.ui-form-section-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.ui-form-section-title {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ui-muted);
+}
+.ui-form-section-description {
+  font-size: var(--ui-text-sm);
+  color: var(--ui-muted-subtle);
+}
+.ui-form-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-md);
+}
+
+.ui-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ui-space-md);
+  align-items: start;
+}
+.ui-form-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.ui-form-grid-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 560px) {
+  .ui-form-grid,
+  .ui-form-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------------------------------------------------------------------- *
  * Form section / grid — see components/form.tsx `FormSection`/`FormGrid`.
  * The structural fix for "this dialog is one flat undifferentiated list of

@@ -13,6 +13,7 @@ export function AssetDetailActions({
   clients,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   canEdit,
   canDelete,
 }: {
@@ -20,6 +21,7 @@ export function AssetDetailActions({
   clients: ClientRecord[];
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  assetSubtypes: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }) {
@@ -46,6 +48,7 @@ export function AssetDetailActions({
           clients={clients}
           assetTypes={assetTypes}
           assetStatuses={assetStatuses}
+          assetSubtypes={assetSubtypes}
           open
           onOpenChange={setEditing}
         />

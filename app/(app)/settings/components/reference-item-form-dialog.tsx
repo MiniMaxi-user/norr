@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Dialog, Heading, Input, Label, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Dialog, Heading, Input, Label, Select, Stack, Text } from "@yourorg/ui";
 import {
   createReferenceItem,
   updateReferenceItem,
@@ -26,15 +26,41 @@ export interface ReferenceItemFormDialogProps {
   /** Present for edit, absent for create — same `isEdit = Boolean(item)`
    * convention as `ClientFormDialog`/`SiteFormDialog`. */
   item?: ReferenceListItemRecord | null;
+  /** Non-null exactly when `listKey`'s own list is a *dependent* list (e.g.
+   * `asset_subtype` -> `"asset_type"`, see `reference_lists.parent_list_key`
+   * in the contacts/dependent-lists migration). When set, a parent-item
+   * picker is shown and required — `createReferenceItem`/`updateReferenceItem`
+   * reject a missing `parentItemId` on such a list. */
+  parentListKey: string | null;
+  /** Display title for `parentListKey` (e.g. `"Asset Type"`), used only for
+   * the picker's label/placeholder copy. */
+  parentListTitle?: string;
+  /** Every item of the parent list, to populate the picker. Empty when
+   * `parentListKey` is `null`. */
+  parentItems: ReferenceListItemRecord[];
 }
 
 /**
  * Create/edit dialog for a single value within a tenant-configurable
- * reference list (Asset Type/Status today). Generic over `listKey` — reused
- * by `ReferenceListManager` for every list rather than one dialog per list.
+ * reference list (Asset Type/Status/Sub-type, Contact Role today). Generic
+ * over `listKey` — reused by `ReferenceListManager` for every list rather
+ * than one dialog per list. Extended (issue #26) with an optional
+ * parent-item picker for *dependent* lists (`parentListKey` non-null) — see
+ * `lib/reference-lists/actions.ts`'s `validateDependentParentItem`, which
+ * this dialog mirrors at the form layer: required exactly when the list is
+ * dependent, absent otherwise.
  */
-export function ReferenceItemFormDialog({ open, onOpenChange, listKey, item }: ReferenceItemFormDialogProps) {
+export function ReferenceItemFormDialog({
+  open,
+  onOpenChange,
+  listKey,
+  item,
+  parentListKey,
+  parentListTitle,
+  parentItems,
+}: ReferenceItemFormDialogProps) {
   const isEdit = Boolean(item);
+  const isDependent = Boolean(parentListKey);
   const router = useRouter();
   const [color, setColor] = useState(item?.color ?? "");
 
@@ -47,6 +73,7 @@ export function ReferenceItemFormDialog({ open, onOpenChange, listKey, item }: R
       value: formData.get("value"),
       label: formData.get("label"),
       color: formData.get("color") || undefined,
+      parentItemId: isDependent ? formData.get("parentItemId") || undefined : undefined,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -84,6 +111,35 @@ export function ReferenceItemFormDialog({ open, onOpenChange, listKey, item }: R
                 </Text>
               ))}
             </Stack>
+
+            {isDependent && (
+              <Stack gap="xs">
+                <Label htmlFor="ref-item-parent">{parentListTitle ?? "Parent"}</Label>
+                <Select id="ref-item-parent" name="parentItemId" defaultValue={item?.parent_item_id ?? ""} required>
+                  <option value="" disabled>
+                    Select a {(parentListTitle ?? "parent").toLowerCase()}…
+                  </option>
+                  {parentItems.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                <Text tone="muted">
+                  Every value on this list belongs under one {(parentListTitle ?? "parent").toLowerCase()} value.
+                </Text>
+                {state.fieldErrors?.parentItemId?.map((message) => (
+                  <Text key={message} tone="danger">
+                    {message}
+                  </Text>
+                ))}
+                {parentItems.length === 0 && (
+                  <Text tone="danger">
+                    No {(parentListTitle ?? "parent").toLowerCase()} values exist yet — add one there first.
+                  </Text>
+                )}
+              </Stack>
+            )}
 
             <Stack gap="xs">
               <Label htmlFor="ref-item-value">Value (stable id)</Label>

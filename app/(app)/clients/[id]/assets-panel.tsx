@@ -15,6 +15,7 @@ export interface AssetsPanelProps {
   assets: AssetRecord[];
   assetTypes: ReferenceListItemRecord[];
   assetStatuses: ReferenceListItemRecord[];
+  assetSubtypes: ReferenceListItemRecord[];
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -43,6 +44,7 @@ export function AssetsPanel({
   assets,
   assetTypes,
   assetStatuses,
+  assetSubtypes,
   canCreate,
   canEdit,
   canDelete,
@@ -93,6 +95,7 @@ export function AssetsPanel({
             lockedClientId={clientId}
             assetTypes={assetTypes}
             assetStatuses={assetStatuses}
+            assetSubtypes={assetSubtypes}
           />
         </div>
       )}
@@ -128,6 +131,7 @@ export function AssetsPanel({
                       clientId={clientId}
                       assetTypes={assetTypes}
                       assetStatuses={assetStatuses}
+                      assetSubtypes={assetSubtypes}
                       canEdit={canEdit}
                       canDelete={canDelete}
                     />
