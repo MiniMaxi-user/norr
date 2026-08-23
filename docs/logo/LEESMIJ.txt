@@ -1,0 +1,34 @@
+NORR — logotype, letters in Fjord (#1F3540), peillijn in Mässing (#C79A3E)
+
+norr-logotype-fjord.svg         logotype in Fjord — voor lichte achtergronden
+norr-logotype-sno.svg           logotype in Snö (#DFE4E0) — voor donkere achtergronden
+norr-logotype-currentcolor.svg  logotype dat de tekstkleur overneemt (web/app)
+norr-logotype-klein-fjord.svg   onder 34px hoogte: zwaardere lijn, Fjord
+norr-logotype-klein.svg         idem, currentColor
+norr-icoon-n-fjord.svg          losse N met peillijn, Fjord
+norr-icoon-n.svg                losse N met peillijn, currentColor
+norr-favicon-32.svg / -16.svg   favicon: N in Snö op een vol vlak Fjord
+norr-logotype-natt.svg          oude versie in Natt (#0E1A1F), niet meer gebruiken
+
+Kleur
+  letters      Fjord    #1F3540
+  op donker    Snö      #DFE4E0
+  peillijn     Mässing  #C79A3E  — uitsluitend de peillijn, nooit de letters
+  De N staat altijd met peillijn, ook los en als favicon.
+
+Maten
+  logotype minimaal 18px hoog / 46px breed
+  onder 34px hoog: gebruik de kleine variant
+  icoon minimaal 16px
+
+Vrije ruimte
+  rondom minimaal de halve hoogte van de N, aan alle vier de zijden.
+  de uitstekende top van de rechterstam en de peillijn tellen mee als rand.
+
+Niet doen
+  niet roteren, spiegelen of schuinzetten
+  letters niet herzetten of opnieuw spatieren — dit is een tekening, geen font
+  geen gradient, schaduw, glans of omlijning
+  de N nooit los naast de volledige naam plaatsen
+  messing niet voor de letters zelf en niet als achtergrondvlak
+  nooit direct op een foto: altijd op Fjord, Natt of Snö

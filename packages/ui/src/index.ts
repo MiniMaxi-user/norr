@@ -19,6 +19,7 @@ export { Sidebar, type SidebarProps } from "./components/sidebar";
 export { NavList, NavItem, type NavListProps, type NavItemProps } from "./components/nav";
 export { Badge, type BadgeProps, type BadgeVariant } from "./components/badge";
 export { Logo, type LogoProps } from "./components/logo";
+export { BackLink, type BackLinkProps } from "./components/back-link";
 export { Toolbar, type ToolbarProps, type ToolbarSectionProps } from "./components/toolbar";
 export {
   Button,

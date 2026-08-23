@@ -52,10 +52,10 @@ export function ClientsTable({
             <Table.Cell>{client.city || <Text tone="muted">—</Text>}</Table.Cell>
             {canWrite && (
               <Table.Cell align="center">
-                <span onClick={(event) => event.stopPropagation()}>
+                <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                   <Button variant="outline" size="sm" onClick={() => onEdit(client)}>
                     Edit
-                  </Button>{" "}
+                  </Button>
                   <Button variant="danger" size="sm" onClick={() => onDelete(client)}>
                     Delete
                   </Button>

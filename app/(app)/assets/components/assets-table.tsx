@@ -107,8 +107,12 @@ export function AssetsTable({
                 {showActionsColumn && (
                   <Table.Cell align="center">
                     {/* Stops the row's own onClick (navigation) from also
-                        firing — the actual actions below are real buttons. */}
-                    <span onClick={(event) => event.stopPropagation()}>
+                        firing — the actual actions below are real buttons.
+                        `.ui-row-actions` hover-reveals them (styles.css) so
+                        a dense list of assets doesn't repeat two buttons per
+                        row at all times; `:focus-within` keeps them visible
+                        for keyboard navigation. */}
+                    <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                       {canEdit && (
                         <Button
                           type="button"
@@ -118,7 +122,7 @@ export function AssetsTable({
                         >
                           Edit
                         </Button>
-                      )}{" "}
+                      )}
                       {canDelete && (
                         <Button
                           type="button"
