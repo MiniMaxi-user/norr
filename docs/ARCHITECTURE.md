@@ -137,6 +137,13 @@ A flat list + a create/edit modal is never the whole answer once a record has re
 
 Before building a new module (Contracts, Planning, Reporting — see `docs/ROADMAP.md`), identify its real relationships first and design the detail page's tabs/breadcrumbs/nesting up front — don't ship the flat version now and "add relations later."
 
+### Popup vs. full page — pick by weight, not habit
+A `Dialog` is for a **small, secondary list's** create/edit form — a sub-entity reached from a tab on some other record's detail page (Contacts on a client, Sites on a client, an item in a Settings reference list). It is **not** the right pattern for a top-level module's own primary record.
+
+- **Top-level module entities** — Clients, Assets, Contracts, Planning/Work Orders, and future Sales/Ops modules like Quotes or Projects/Orders (see `docs/ROADMAP.md`) — get a **real page** for create/edit (`/clients/new`, `/clients/[id]/edit`, `/assets/new`, `/assets/[id]/edit`, etc.), not a modal. These records carry enough fields, relationships, and (once Work Orders/Contracts land) enough sub-content of their own that a popup is the wrong container — a page gives room to breathe, a real URL to link/bookmark, and space for the record's own tabs/sections without nesting a `Tabs`-inside-a-`Dialog`.
+- **Sub-entities reached from a tab** (Contacts, Sites) stay dialogs — they're small, single-purpose, and scoped to a parent that's already on screen; a full-page round trip would be overkill for them.
+- **Known current gap**: `client-form-dialog.tsx` and the asset create/edit dialog (`app/(app)/assets/components/asset-form-dialog.tsx`) are top-level-entity forms still built as `Dialog`s. Convert these to real pages; leave `site-form-dialog.tsx` and `contact-form-dialog.tsx` as dialogs (they're the small-sub-entity case this rule carves out).
+
 ## Domain completeness
 
 `docs/BUSINESS-PLAN.md` §4 was widened 2026-08-23 after review: the original module list only had each module's MVP slice (e.g. a client with one email/phone, no contact persons) instead of the realistic domain a premium comparable product has. This is now a standing requirement, not a one-time fix:
