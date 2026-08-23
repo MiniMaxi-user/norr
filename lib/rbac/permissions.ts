@@ -50,6 +50,7 @@ export type Module =
   | "assets"
   | "contracts"
   | "planning"
+  | "checklists"
   | "reporting"
   | "dashboard"
   | "billing"
@@ -150,6 +151,26 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Checklists (issue #14, second stage): a Work Order sub-resource
+  // (`work_order_checklists`/`work_order_checklist_items`,
+  // supabase/migrations/20260823210000_checklists_core.sql), but modeled as
+  // its OWN module rather than folded into `planning` per that migration's
+  // explicit flag (docs/ARCHITECTURE.md's "Checklists" RBAC note): `planning`'s
+  // engineer row was widened to `create_own` for Time Tracking (issue #15),
+  // and reusing it here would incorrectly suggest an engineer can create a
+  // checklist instance too — the RLS above does not allow that (creating an
+  // instance is owner/planner only, matching Work Orders' OWN create
+  // boundary, not Time Entries' carve-out). This row is deliberately the
+  // ORIGINAL Work-Orders-era shape: engineer gets read_own/update_own only
+  // (they can check off items on their own assigned checklist) and no
+  // create/delete at all.
+  checklists: {
+    owner: CRUD,
+    planner: CRUD,
+    engineer: ["read_own", "update_own"],
+    finance: READ_ONLY,
+    administratie: READ_ONLY,
+  },
   reporting: {
     owner: READ_ONLY,
     planner: READ_ONLY,
@@ -196,6 +217,9 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   assets: READ_ONLY,
   contracts: READ_ONLY,
   planning: NONE,
+  // No "Read (support only)"-style cross-tenant carve-out documented for
+  // Checklists — same NONE shape as `planning`/`settings`.
+  checklists: NONE,
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,

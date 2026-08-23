@@ -11,9 +11,12 @@ import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import { listTimeEntries } from "../time-entries-actions";
+import { getWorkOrderChecklist } from "../checklist-actions";
+import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { WorkOrderDetailActions } from "./work-order-detail-actions";
 import { TimeEntriesPanel } from "./time-entries-panel";
+import { ChecklistPanel } from "./checklist-panel";
 
 export const metadata = { title: "Work order details" };
 
@@ -46,14 +49,16 @@ function formatDateTime(value: string | null): string {
 /**
  * Work order detail page — same visual weight as the Client/Asset detail
  * pages (docs/ARCHITECTURE.md "Relational detail pages"). No `Tabs` here:
- * unlike Client (Sites/Assets/Contacts) or a future Contract, a work order
- * has only one child sub-entity worth surfacing today (Time Entries, issue
- * #15) — a single always-visible `TimeEntriesPanel` section reads better
- * than a one-tab `Tabs`, same reasoning `ContractAssetsPanel` documents for
- * Contracts' Linked Assets. Its *parents* (Client/Site/Asset) are surfaced
- * as linked `DetailRow`s instead, same treatment `app/(app)/assets/[id]/page.tsx`
- * gives its own Client/Site. Photos/checklists remain out of scope per the
- * work_orders migration's design note 6.
+ * unlike Client (Sites/Assets/Contacts) or a future Contract, neither of a
+ * work order's child sub-entities (Time Entries, issue #15; Checklist, issue
+ * #14) needs its own tab — each is a single always-visible Card section
+ * (`TimeEntriesPanel`, `ChecklistPanel`) that reads better than a two-tab
+ * `Tabs`, same reasoning `ContractAssetsPanel` documents for Contracts'
+ * Linked Assets. Its *parents* (Client/Site/Asset) are surfaced as linked
+ * `DetailRow`s instead, same treatment `app/(app)/assets/[id]/page.tsx` gives
+ * its own Client/Site. Photo/e-signature capture on the checklist remains
+ * out of scope per the checklists migration's own design notes (a documented
+ * follow-up, not an oversight).
  */
 export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPageProps) {
   const { id } = await params;
@@ -69,12 +74,36 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   if (!workOrderResult.data) notFound();
   const workOrder = workOrderResult.data.workOrder;
 
-  const [clientResult, assetResult, membersResult, timeEntriesResult, timeEntryTypesResult] = await Promise.all([
+  // Checklists (issue #14) are their own, separately-entitled module (NOT
+  // folded into `planning` — see `lib/rbac/permissions.ts`'s `checklists`
+  // row doc comment), so per CLAUDE.md rule 3 / docs/ARCHITECTURE.md
+  // "Feature flags" the section must not render at all when the org isn't
+  // entitled to it or this role has no access at all to the module — not
+  // merely be shown disabled. This is independent of the page's own
+  // `planning` gate above.
+  const checklistsEnabled = await hasFeature(session.organization, "checklists");
+  const canAccessChecklists = checklistsEnabled && canAccessModule(actor, "checklists");
+  const canAttachChecklist = canAccessChecklists && can(actor, "checklists", "create");
+
+  const [
+    clientResult,
+    assetResult,
+    membersResult,
+    timeEntriesResult,
+    timeEntryTypesResult,
+    checklistResult,
+    checklistTemplatesResult,
+  ] = await Promise.all([
     getClient(workOrder.client_id),
     workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
     listOrgMembers(),
     listTimeEntries(workOrder.id),
     listReferenceItems("time_entry_type"),
+    canAccessChecklists ? getWorkOrderChecklist(workOrder.id) : Promise.resolve(null),
+    // Only needed to populate the "attach a checklist" template picker, and
+    // only owner/planner ever see that affordance — skip the round trip
+    // entirely for every other role.
+    canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -84,6 +113,9 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const assignedMember = members.find((member) => member.id === workOrder.assigned_to) ?? null;
   const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
   const timeEntryTypes = timeEntryTypesResult.data?.items ?? [];
+  const checklist = checklistResult?.data?.checklist ?? null;
+  const checklistItems = checklistResult?.data?.items ?? [];
+  const checklistTemplates = checklistTemplatesResult?.data?.templates ?? [];
 
   const canEdit = canAny(actor, "planning", ["update", "update_own"]);
   const canDelete = can(actor, "planning", "delete");
@@ -94,6 +126,12 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canLogTime = canAny(actor, "planning", ["create", "create_own"]);
   const canUpdateTimeEntriesAny = can(actor, "planning", "update");
   const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
+
+  // Checklists (issue #14) are their OWN module (see comment above), not a
+  // reuse of `planning`'s actions/permissions.
+  const canDetachChecklist = canAccessChecklists && can(actor, "checklists", "delete");
+  const canUpdateChecklistAny = canAccessChecklists && can(actor, "checklists", "update");
+  const canUpdateChecklistOwn = canAccessChecklists && can(actor, "checklists", "update_own");
 
   return (
     <Stack gap="lg">
@@ -157,6 +195,21 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
         canUpdateOwn={canUpdateTimeEntriesOwn}
         canDelete={canDelete}
       />
+
+      {canAccessChecklists && (
+        <ChecklistPanel
+          workOrderId={workOrder.id}
+          checklist={checklist}
+          items={checklistItems}
+          templates={checklistTemplates}
+          members={members}
+          currentUserId={session.userId}
+          canAttach={canAttachChecklist}
+          canDetach={canDetachChecklist}
+          canUpdateAny={canUpdateChecklistAny}
+          canUpdateOwn={canUpdateChecklistOwn}
+        />
+      )}
     </Stack>
   );
 }

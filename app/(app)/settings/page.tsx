@@ -45,6 +45,18 @@ export default async function SettingsPage() {
           </Stack>
         </Card>
       </Link>
+
+      <Link href="/settings/checklist-templates">
+        <Card interactive>
+          <Stack gap="xs">
+            <Heading level={3}>Checklist templates</Heading>
+            <Text tone="muted">
+              Build reusable inspection/checklist forms — attach one to any work order to guide what an engineer
+              checks off on-site. Everyone can view them; only the organization owner can change them.
+            </Text>
+          </Stack>
+        </Card>
+      </Link>
     </Stack>
   );
 }
