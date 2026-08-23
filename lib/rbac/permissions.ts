@@ -96,7 +96,7 @@ const NONE: readonly Action[] = [] as const;
  * | Clients    | CRUD  | Read    | Read (assigned)      | Read    | Read           |
  * | Assets     | CRUD  | R/U     | Read/Update (assigned)| Read   | Read           |
  * | Contracts  | CRUD  | Read    | Read                 | CRUD    | Read           |
- * | Planning   | CRUD  | CRUD    | Read/Update own      | Read    | Read           |
+ * | Planning   | CRUD  | CRUD    | Read/Update/Create own| Read   | Read           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
@@ -140,7 +140,13 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
   planning: {
     owner: CRUD,
     planner: CRUD,
-    engineer: ["read_own", "update_own"],
+    // create_own added for issue #15 (Time Tracking on Work Orders):
+    // engineer can log/clock in their OWN time (time_entries, a sub-resource
+    // of Work Orders under this same module — see
+    // supabase/migrations/20260823180000_time_entries_core.sql), but this
+    // does NOT grant plain `create` — an engineer still cannot create Work
+    // Orders themselves, that stays owner/planner only.
+    engineer: ["read_own", "update_own", "create_own"],
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },

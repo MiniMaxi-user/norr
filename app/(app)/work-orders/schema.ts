@@ -86,3 +86,56 @@ export type WorkOrderCreateInput = z.infer<typeof workOrderCreateSchema>;
 export const workOrderUpdateSchema = workOrderCreateSchema.partial();
 
 export type WorkOrderUpdateInput = z.infer<typeof workOrderUpdateSchema>;
+
+/**
+ * Time Entries (issue #15) — clock-in/out time logged against a work order,
+ * see `app/(app)/work-orders/time-entries-actions.ts` and
+ * `supabase/migrations/20260823180000_time_entries_core.sql`. Folded into
+ * this file rather than a separate `time-entries-schema.ts`, same convention
+ * `contactCreateSchema`/`contactUpdateSchema` established in
+ * `app/(app)/clients/schema.ts` for a sub-entity's schema living alongside
+ * its parent's.
+ *
+ * There is deliberately no `workOrderId` field on either schema below — same
+ * reasoning `contactCreateSchema`'s doc comment gives for omitting
+ * `clientId`: `clockIn(workOrderId, input)` takes it as its own function
+ * argument (validated with the same `uuidSchema` shape every other id
+ * parameter in `actions.ts` uses), not a schema field, since a time entry is
+ * always created in the context of one specific work order.
+ *
+ * `userId` is accepted by both schemas below purely as a *shape* check
+ * (valid uuid or absent). Whether a given caller is actually allowed to set
+ * it to someone other than themselves is an RBAC decision, not a Zod one —
+ * see `time-entries-actions.ts`'s `clockIn` (app-layer: engineers are always
+ * pinned to their own id, regardless of what they pass here) and
+ * `updateTimeEntry`/RLS's `WITH CHECK` (DB-layer, for the same reason
+ * `work_orders.assignedTo` relies on RLS rather than an app-layer check —
+ * see this file's `workOrderCreateSchema.assignedTo` comment).
+ */
+export const timeEntryClockInSchema = z.object({
+  /** Only usable by a caller with plain `create` (owner/planner) to clock
+   * someone else in; an engineer's `create_own`-only clock-in ignores this
+   * field entirely and is always pinned to their own id — see `clockIn`. */
+  userId: optionalUuid("Invalid user id."),
+  /** FK into this org's `time_entry_type` reference list. Optional — the
+   * `derive_time_entry_organization_id` DB trigger fills in the
+   * organization's default item ("Labor") when omitted, same UX as
+   * `workOrderCreateSchema.statusId`. */
+  entryTypeId: optionalUuid("Invalid time entry type."),
+});
+
+export type TimeEntryClockInInput = z.infer<typeof timeEntryClockInSchema>;
+
+/** General edit (clock-out is `updateTimeEntry({ endedAt })` under the hood
+ * in spirit, but `clockOut(id)` is its own action for the common case — see
+ * `time-entries-actions.ts`). Every field optional; still validated the same
+ * way when present. */
+export const timeEntryUpdateSchema = z.object({
+  userId: optionalUuid("Invalid user id."),
+  entryTypeId: optionalUuid("Invalid time entry type."),
+  startedAt: optionalIsoDateTime("Expected a valid start date/time."),
+  endedAt: optionalIsoDateTime("Expected a valid end date/time."),
+  notes: optionalText(5000),
+});
+
+export type TimeEntryUpdateInput = z.infer<typeof timeEntryUpdateSchema>;
