@@ -1,0 +1,65 @@
+name: User story
+description: A backlog story for Claude Code to implement — description + explicit acceptance criteria.
+title: "[Story] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is this, and why does it matter? Who uses it, and in what situation? Link related modules/pages if relevant.
+      placeholder: |
+        As a <role>, I want <capability>, so that <outcome>.
+
+        Context: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: A checklist of concrete, verifiable conditions. Be specific — this is what "done" means. Claude Code builds exactly this; it will ask before assuming anything not covered here.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+        - [ ] ...
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: See docs/ROADMAP.md for what each phase covers.
+      options:
+        - "phase:0 — Foundation"
+        - "phase:1 — Core CRM"
+        - "phase:2 — Operations core"
+        - "phase:3 — Money & insights"
+        - "phase:4 — Customer & field experience"
+        - "phase:5 — Scale & extensibility"
+    validations:
+      required: false
+
+  - type: input
+    id: module
+    attributes:
+      label: Module label
+      description: "The module:* label to apply (e.g. module:invoicing). Add it manually after creating the issue if you're not sure it exists yet as a label."
+      placeholder: "module:..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / out of scope
+      description: Anything explicitly NOT included in this story, known follow-ups, or design constraints worth flagging up front.
+    validations:
+      required: false
