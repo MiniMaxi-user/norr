@@ -29,7 +29,9 @@
   "scripts": {
     "build": "tsup && node ./scripts/copy-css.mjs",
     "dev": "tsup --watch --onSuccess \"node ./scripts/copy-css.mjs\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build"
   },
   "peerDependencies": {
     "next": "*",
@@ -37,12 +39,16 @@
     "react-dom": "*"
   },
   "devDependencies": {
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/react-vite": "^8.6.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "next": "^15.5.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "storybook": "^8.6.14",
     "tsup": "^8.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^5.4.11"
   }
 }

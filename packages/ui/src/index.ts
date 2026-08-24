@@ -13,13 +13,45 @@
 // Next's RSC compiler would no longer see `ThemeProvider`/`useTheme`/`Tabs`
 // as client-boundary exports — see tsup.config.ts for the full story.
 export { ThemeProvider, useTheme, type ThemeName, type ThemeProviderProps, type ThemeContextValue } from "./client.js";
+export {
+  ToastProvider,
+  useToast,
+  toast,
+  type ToastTone,
+  type ToastOptions,
+  type ToastProviderProps,
+} from "./toast.js";
 
 export { AppLayout, type AppLayoutProps } from "./components/layout";
 export { Sidebar, type SidebarProps } from "./components/sidebar";
-export { NavList, NavItem, type NavListProps, type NavItemProps } from "./components/nav";
+export {
+  NavList,
+  NavItem,
+  NavGroupLabel,
+  type NavListProps,
+  type NavItemProps,
+  type NavGroupLabelProps,
+} from "./components/nav";
 export { Badge, type BadgeProps, type BadgeVariant } from "./components/badge";
-export { Logo, type LogoProps } from "./components/logo";
+export { Logo, type LogoProps, Logomark, type LogomarkProps } from "./components/logo";
+export { NordicScene, type NordicSceneProps } from "./components/nordic-scene";
 export { BackLink, type BackLinkProps } from "./components/back-link";
+export { Separator, type SeparatorProps } from "./components/separator";
+export {
+  DropdownMenu,
+  type DropdownMenuProps,
+  type DropdownMenuTriggerProps,
+  type DropdownMenuContentProps,
+  type DropdownMenuLabelProps,
+  type DropdownMenuItemProps,
+} from "./components/dropdown-menu";
+export {
+  AuthSplitLayout,
+  type AuthSplitLayoutProps,
+  type AuthSplitPanelProps,
+  type AuthSplitFormAreaProps,
+  type AuthSplitIllustrationProps,
+} from "./components/auth-split-layout";
 export { Toolbar, type ToolbarProps, type ToolbarSectionProps } from "./components/toolbar";
 export {
   Button,
@@ -87,6 +119,24 @@ export {
   type DisclosureSummaryProps,
   type DisclosureContentProps,
 } from "./components/disclosure";
+export { Switch, type SwitchProps } from "./components/switch";
+export {
+  RadioGroup,
+  RadioGroupItem,
+  type RadioGroupProps,
+  type RadioGroupItemProps,
+} from "./components/radio-group";
+export { Progress, type ProgressProps, type ProgressTone } from "./components/progress";
+export { StatCard, type StatCardProps, type StatCardTrend, type StatCardTone } from "./components/stat-card";
+export { Timeline, type TimelineProps, type TimelineRowProps, type TimelineBlockProps } from "./components/timeline";
+export {
+  MapSurface,
+  MapPinPopup,
+  type MapSurfaceProps,
+  type MapSurfacePinProps,
+  type MapPinPopupProps,
+  type MapPinPopupRow,
+} from "./components/map-surface";
 export {
   Tabs,
   // Standalone named exports of `Tabs.List`/`Tabs.Tab`/`Tabs.Panel` — a

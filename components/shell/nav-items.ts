@@ -19,12 +19,20 @@ import { hasFeature, type FeatureKey, type FeatureOrganization } from "@/lib/rba
  * `moduleKey` matches the `module:*` labels used on the GitHub project
  * board (docs/ROADMAP.md) and doubles as the `hasFeature()` key (CLAUDE.md
  * rule 3) — see `resolveNavItems` below.
+ *
+ * `group` clusters entries under a small uppercase heading in the sidebar
+ * (see `NavGroupLabel` in @yourorg/ui and `AppSidebar` below) — matching
+ * every reference topbar/sidebar screenshot in docs/designexamples, all of
+ * which group nav entries instead of one flat list. Purely a display
+ * grouping, not a data model — items keep their existing flat array order,
+ * consecutive items sharing a `group` render under one heading.
  */
 export interface NavItem {
   moduleKey: FeatureKey;
   label: string;
   href: string;
   icon: ComponentType;
+  group: string;
 }
 
 export interface ResolvedNavItem extends NavItem {
@@ -36,28 +44,28 @@ export interface ResolvedNavItem extends NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { moduleKey: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { moduleKey: "clients", label: "Clients", href: "/clients", icon: Users },
-  { moduleKey: "assets", label: "Assets", href: "/assets", icon: Boxes },
-  { moduleKey: "contracts", label: "Contracts", href: "/contracts", icon: FileText },
+  { moduleKey: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard, group: "Overview" },
+  { moduleKey: "clients", label: "Clients", href: "/clients", icon: Users, group: "Operations" },
+  { moduleKey: "assets", label: "Assets", href: "/assets", icon: Boxes, group: "Operations" },
+  { moduleKey: "contracts", label: "Contracts", href: "/contracts", icon: FileText, group: "Operations" },
   // Route is `/work-orders` (the Work Order entity, issue #13) rather than
   // `/planning` — the fuller multi-view (list/kanban/calendar/map,
   // drag-and-drop) Planning/Dispatch board named in docs/ROADMAP.md is
   // separate, larger, follow-on work that may claim `/planning` later.
   // `moduleKey`/entitlement stays `planning` either way (that's the feature
   // key + RBAC matrix row both already use).
-  { moduleKey: "planning", label: "Work Orders", href: "/work-orders", icon: CalendarDays },
+  { moduleKey: "planning", label: "Work Orders", href: "/work-orders", icon: CalendarDays, group: "Operations" },
   // Quotes / Estimates (issue #16, third stage — frontend). `moduleKey`
   // matches the `quotes` feature key/RBAC module both already registered in
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
-  { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList },
-  { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3 },
-  { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt },
+  { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
+  { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3, group: "Insights" },
+  { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt, group: "Insights" },
   // Everyone can *view* Settings (read-only for non-owners — see
   // `lib/rbac/permissions.ts`'s `settings` entry); the module itself is
   // gated only on entitlement (`hasFeature`) like every other nav item, not
   // on role, same as e.g. Clients showing up for every tenant role.
-  { moduleKey: "settings", label: "Settings", href: "/settings", icon: Settings },
+  { moduleKey: "settings", label: "Settings", href: "/settings", icon: Settings, group: "Admin" },
 ];
 
 /**

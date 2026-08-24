@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { Sidebar, IconButton, Tooltip } from "@yourorg/ui";
+import { Sidebar, Button, IconButton, Tooltip } from "@yourorg/ui";
 import { PanelLeftClose, PanelLeftOpen } from "@yourorg/ui/icons";
 import { setSidebarCollapsed } from "@/lib/preferences/actions";
 
@@ -23,6 +23,11 @@ interface SidebarShellProps {
  * trip, but the visible width flip is instant and matches what the next
  * server render will produce (via `defaultCollapsed`, read from the cookie
  * in `app/(app)/layout.tsx`), so there's no flash on navigation/reload.
+ *
+ * The toggle itself renders in the sidebar's own footer slot (bottom,
+ * border-top) rather than tacked onto the end of the nav list — a full-width
+ * labeled ghost button when expanded, an icon-only button (with a tooltip,
+ * since there's no room for a label) when collapsed.
  */
 export function SidebarShell({ defaultCollapsed, header, children, footer }: SidebarShellProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -37,18 +42,39 @@ export function SidebarShell({ defaultCollapsed, header, children, footer }: Sid
   }
 
   return (
-    <Sidebar collapsed={collapsed} header={header} footer={footer}>
+    <Sidebar
+      collapsed={collapsed}
+      header={header}
+      footer={
+        <>
+          {footer}
+          {collapsed ? (
+            <Tooltip content="Navigatie uitklappen">
+              <IconButton
+                aria-label="Navigatie uitklappen"
+                aria-pressed={collapsed}
+                variant="ghost"
+                onClick={toggle}
+                className="ui-sidebar-collapse-toggle"
+              >
+                <PanelLeftOpen aria-hidden />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={collapsed}
+              onClick={toggle}
+              className="ui-sidebar-collapse-toggle"
+            >
+              <PanelLeftClose aria-hidden /> Inklappen
+            </Button>
+          )}
+        </>
+      }
+    >
       {children}
-      <Tooltip content={collapsed ? "Expand navigation" : "Collapse navigation"}>
-        <IconButton
-          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          aria-pressed={collapsed}
-          variant="ghost"
-          onClick={toggle}
-        >
-          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        </IconButton>
-      </Tooltip>
     </Sidebar>
   );
 }

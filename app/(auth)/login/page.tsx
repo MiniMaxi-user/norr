@@ -1,5 +1,17 @@
 import Link from "next/link";
-import { Card, Heading, Text, Stack } from "@yourorg/ui";
+import {
+  AuthSplitLayout,
+  Button,
+  Heading,
+  Inline,
+  Logo,
+  Logomark,
+  NordicScene,
+  Separator,
+  Stack,
+  Text,
+} from "@yourorg/ui";
+import { ShieldCheck } from "@yourorg/ui/icons";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage({
@@ -10,19 +22,56 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <Stack gap="lg">
-      <Stack gap="sm">
-        <Heading level={1}>Log in</Heading>
-        <Text tone="muted">Sign in to your Norr account.</Text>
-      </Stack>
+    <AuthSplitLayout>
+      <AuthSplitLayout.Panel>
+        <Logo />
 
-      <Card>
-        <LoginForm next={next} />
-      </Card>
+        <AuthSplitLayout.FormArea>
+          <Stack gap="lg">
+            <Stack gap="xs">
+              <Heading level={1}>Welkom terug</Heading>
+              <Text tone="muted">Log in om je planning en teams te beheren.</Text>
+            </Stack>
 
-      <Text tone="muted">
-        No account yet? <Link href="/signup">Create one</Link>.
-      </Text>
-    </Stack>
+            <LoginForm next={next} />
+
+            <Stack gap="lg">
+              <Inline gap="sm" align="center">
+                <Separator />
+                <Text tone="muted">of</Text>
+                <Separator />
+              </Inline>
+
+              {/* No SSO provider is configured yet (lib/auth/actions.ts) —
+                  kept visually present but inert per the product owner's
+                  explicit note that non-functional chrome is fine for now. */}
+              <Button type="button" variant="outline" fullWidth>
+                <ShieldCheck aria-hidden /> Doorgaan met SSO
+              </Button>
+            </Stack>
+
+            <Text tone="muted">
+              Nieuw bij norr?{" "}
+              <Link href="/signup" className="ui-text-link">
+                Maak een account aan
+              </Link>
+            </Text>
+          </Stack>
+        </AuthSplitLayout.FormArea>
+
+        <Inline gap="xs" align="center">
+          <ShieldCheck aria-hidden />
+          <Text tone="muted">Beveiligd met enterprise-grade encryptie</Text>
+        </Inline>
+      </AuthSplitLayout.Panel>
+
+      <AuthSplitLayout.Illustration
+        cornerMark={<Logomark />}
+        tagline="Wij geven richting."
+        description="Van eerste melding tot laatste kilometer — norr stuurt elk team in het veld de juiste kant op."
+      >
+        <NordicScene />
+      </AuthSplitLayout.Illustration>
+    </AuthSplitLayout>
   );
 }

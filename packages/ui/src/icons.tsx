@@ -254,3 +254,63 @@ export const ArrowDown = createIcon("ArrowDown", (
     <path d="M6 13l6 6 6-6" />
   </>
 ));
+
+export const ChevronDown = createIcon("ChevronDown", <path d="M4.5 9.5 12 17l7.5-7.5" />);
+
+// Used on the login screen's SSO button + trust line, and available for any
+// future "secured"/"verified" affordance.
+export const ShieldCheck = createIcon("ShieldCheck", (
+  <>
+    <path d="M12 3 5 6v5.5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />
+    <path d="m9 12 2 2 4-4.5" />
+  </>
+));
+
+// Topbar help affordance (visually present, not wired to anything yet).
+export const CircleHelp = createIcon("CircleHelp", (
+  <>
+    <circle cx={12} cy={12} r={9} />
+    <path d="M9.3 9.3a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.2 1-1.2 2" />
+    <line x1={12} y1={16.7} x2={12} y2={16.7} />
+  </>
+));
+
+// Topbar notifications affordance (visually present, not wired to anything yet).
+export const Bell = createIcon("Bell", (
+  <>
+    <path d="M6 9.5a6 6 0 0 1 12 0c0 4 1.3 5.2 1.3 5.2H4.7S6 13.5 6 9.5z" />
+    <path d="M10 18.5a2 2 0 0 0 4 0" />
+  </>
+));
+
+export const LogOut = createIcon("LogOut", (
+  <>
+    <path d="M14 4h-3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" />
+    <line x1={20} y1={12} x2={9.5} y2={12} />
+    <path d="m16.5 8 4 4-4 4" />
+  </>
+));
+
+export const UserRound = createIcon("UserRound", (
+  <>
+    <circle cx={12} cy={8.5} r={3.75} />
+    <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+  </>
+));
+
+// Row/kebab menu trigger — three vertical dots.
+export const MoreVertical = createIcon("MoreVertical", (
+  <>
+    <circle cx={12} cy={5} r={1.4} fill="currentColor" stroke="none" />
+    <circle cx={12} cy={12} r={1.4} fill="currentColor" stroke="none" />
+    <circle cx={12} cy={19} r={1.4} fill="currentColor" stroke="none" />
+  </>
+));
+
+export const CreditCard = createIcon("CreditCard", (
+  <>
+    <rect x={3} y={5.5} width={18} height={13} rx={2} />
+    <line x1={3} y1={10} x2={21} y2={10} />
+    <line x1={7} y1={14.5} x2={11} y2={14.5} />
+  </>
+));

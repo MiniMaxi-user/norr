@@ -14,6 +14,11 @@ export interface CurrentOrganization {
 export interface CurrentSession {
   userId: string;
   email: string;
+  /** `users.full_name` — same field `lib/members/format.ts`'s
+   * `memberDisplayName` reads for every other member; `null` for an account
+   * that hasn't set one. The topbar avatar/user menu falls back to `email`
+   * (via that same helper) when this is `null`. */
+  fullName: string | null;
   /** `users.is_platform_admin` — cross-tenant, never a tenant role. See
    * lib/rbac/permissions.ts `PermissionActor`. */
   isPlatformAdmin: boolean;
@@ -57,7 +62,7 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
       .maybeSingle();
 
   const [profileResult, membershipResult] = await Promise.all([
-    supabase.from("users").select("is_platform_admin").eq("id", user.id).maybeSingle(),
+    supabase.from("users").select("is_platform_admin, full_name").eq("id", user.id).maybeSingle(),
     membershipQuery(),
   ]);
 
@@ -78,10 +83,13 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     membership = retry.data as typeof membership;
   }
 
+  const profile = profileResult.data as { is_platform_admin: boolean; full_name: string | null } | null;
+
   return {
     userId: user.id,
     email: user.email ?? "",
-    isPlatformAdmin: (profileResult.data as { is_platform_admin: boolean } | null)?.is_platform_admin ?? false,
+    fullName: profile?.full_name ?? null,
+    isPlatformAdmin: profile?.is_platform_admin ?? false,
     organization: membership?.organization ?? null,
     role: membership?.role ?? null,
   };

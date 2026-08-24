@@ -1,19 +1,29 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cx } from "../cx";
 
-export type ButtonVariant = "primary" | "outline" | "danger";
+export type ButtonVariant = "primary" | "outline" | "danger" | "ghost" | "link";
 export type ButtonSize = "sm";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Stretches the button to the width of its container — e.g. a login
+   * form's primary submit/SSO buttons. Off by default (most buttons hug
+   * their own content). */
+  fullWidth?: boolean;
 }
 
-export function Button({ variant, size, type = "button", className, ...rest }: ButtonProps) {
+export function Button({ variant, size, fullWidth, type = "button", className, ...rest }: ButtonProps) {
   return (
     <button
       type={type}
-      className={cx("ui-button", variant && `ui-button-${variant}`, size && `ui-button-${size}`, className)}
+      className={cx(
+        "ui-button",
+        variant && `ui-button-${variant}`,
+        size && `ui-button-${size}`,
+        fullWidth && "ui-button-full",
+        className,
+      )}
       {...rest}
     />
   );

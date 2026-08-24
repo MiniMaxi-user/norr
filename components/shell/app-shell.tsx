@@ -4,6 +4,7 @@ import { AppSidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { resolveNavItems } from "./nav-items";
 import type { FeatureOrganization } from "@/lib/rbac/features";
+import type { CurrentSession } from "@/lib/auth/session";
 
 interface AppShellProps {
   defaultSidebarCollapsed: boolean;
@@ -11,6 +12,9 @@ interface AppShellProps {
    * a signed-in user with no tenant membership yet. Threaded through to
    * `resolveNavItems` for real `hasFeature()` gating (issue #4). */
   organization: FeatureOrganization | null;
+  /** Real signed-in user, for the topbar avatar/dropdown (issue #3's
+   * `requireSession()` guarantees one exists by the time this renders). */
+  user: Pick<CurrentSession, "email" | "fullName" | "role">;
   title?: ReactNode;
   children: ReactNode;
 }
@@ -33,6 +37,7 @@ interface AppShellProps {
 export async function AppShell({
   defaultSidebarCollapsed,
   organization,
+  user,
   title,
   children,
 }: AppShellProps) {
@@ -41,7 +46,7 @@ export async function AppShell({
   return (
     <AppLayout
       sidebar={<AppSidebar defaultCollapsed={defaultSidebarCollapsed} items={navItems} />}
-      topbar={<Topbar title={title} navItems={navItems} />}
+      topbar={<Topbar title={title} navItems={navItems} user={user} />}
     >
       {children}
     </AppLayout>

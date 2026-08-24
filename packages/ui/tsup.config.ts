@@ -42,7 +42,7 @@ import { defineConfig } from "tsup";
 // Jest/ts-node) doesn't need any of this: each entry is fully
 // self-contained there, which is fine since CJS output isn't what Next's
 // RSC module graph walks.
-const clientBoundaryModules = ["./client.js", "./tabs.js"];
+const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js"];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
 export default defineConfig([
@@ -61,6 +61,7 @@ export default defineConfig([
     entry: {
       client: "src/client.tsx",
       tabs: "src/tabs.tsx",
+      toast: "src/toast.tsx",
     },
     format: ["esm"],
     dts: true,
@@ -78,6 +79,7 @@ export default defineConfig([
       icons: "src/icons.tsx",
       client: "src/client.tsx",
       tabs: "src/tabs.tsx",
+      toast: "src/toast.tsx",
     },
     format: ["cjs"],
     dts: false,

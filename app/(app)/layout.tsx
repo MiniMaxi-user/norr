@@ -28,6 +28,7 @@ export default async function AppRouteLayout({
     <AppShell
       defaultSidebarCollapsed={defaultSidebarCollapsed}
       organization={session.organization}
+      user={{ email: session.email, fullName: session.fullName, role: session.role }}
     >
       <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
     </AppShell>

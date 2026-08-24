@@ -1,7 +1,7 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
 
-export type BadgeVariant = "muted" | "accent" | "success" | "danger";
+export type BadgeVariant = "muted" | "accent" | "success" | "danger" | "warning";
 
 /**
  * Named swatch palette for tenant-configurable colors (mirrors

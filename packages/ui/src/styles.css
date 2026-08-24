@@ -56,6 +56,14 @@
   --ui-success-500: #4f8a4a;
   --ui-success-600: #3d6e3a;
 
+  /* Warning — a burnt-orange tone, deliberately shifted redder than Mässing
+     (the accent) so a "Pending"/"At risk" pill never reads as an active
+     brand accent state. Same light-tint/solid-strength formula as
+     danger/success above. */
+  --ui-warning-50: #fdf2e3;
+  --ui-warning-500: #c2660c;
+  --ui-warning-600: #9c5209;
+
   /* Semantic mapping — light mode */
   --ui-bg: #ffffff;
   --ui-bg-inset: var(--ui-gray-25);
@@ -92,6 +100,9 @@
   --ui-success: var(--ui-success-500);
   --ui-success-strong: var(--ui-success-600);
   --ui-success-tint: var(--ui-success-50);
+  --ui-warning: var(--ui-warning-500);
+  --ui-warning-strong: var(--ui-warning-600);
+  --ui-warning-tint: var(--ui-warning-50);
 
   --ui-overlay-scrim: rgba(22, 38, 46, 0.4);
   --ui-toolbar-bg: rgba(255, 255, 255, 0.8);
@@ -142,6 +153,15 @@
   --ui-duration-fast: 120ms;
   --ui-duration-base: 180ms;
   --ui-duration-slow: 260ms;
+
+  /* Raw brand primitives — Fjord / Snö / Mässing, unmixed with any semantic
+     token. Reserved for fixed brand surfaces that don't follow the light/dark
+     theme toggle (the sidebar's permanent "ink" surface below, `NordicScene`,
+     and `Logo`'s hardcoded peillijn stroke) — everything else in this file
+     must keep using the semantic `--ui-*` tokens above, never these. */
+  --ui-brand-fjord: #1f3540;
+  --ui-brand-snow: #dfe4e0;
+  --ui-brand-massing: #c79a3e;
 }
 
 /* Dark mode is derived from Fjord (never Natt, deprecated per the brand
@@ -180,6 +200,9 @@ html.dark {
   --ui-success: #8fbf85;
   --ui-success-strong: #b0d6a8;
   --ui-success-tint: rgba(143, 191, 133, 0.14);
+  --ui-warning: #e0a05a;
+  --ui-warning-strong: #f0b876;
+  --ui-warning-tint: rgba(224, 160, 90, 0.14);
 
   --ui-overlay-scrim: rgba(6, 12, 15, 0.64);
   --ui-toolbar-bg: rgba(20, 37, 44, 0.76);
@@ -284,13 +307,38 @@ a {
   flex-shrink: 0;
   height: 100%;
   overflow-y: auto;
-  border-right: 1px solid var(--ui-border);
+  border-right: none;
   background: var(--ui-surface);
   display: flex;
   flex-direction: column;
   padding: 1rem 0.75rem;
+  box-shadow: var(--ui-shadow-lg);
+  position: relative;
+  z-index: 1;
   transition: width var(--ui-duration-slow) var(--ui-ease), background-color var(--ui-duration-base) var(--ui-ease),
     border-color var(--ui-duration-base) var(--ui-ease);
+
+  /* Fixed dark "ink" surface — like `Logo`/`NordicScene`, this brand chrome
+     always renders Fjord-dark regardless of the page's own light/dark theme
+     toggle (matches norrdesign's `Sidebar[variant="ink"]`). Re-points the
+     same semantic tokens `html.dark` uses (see that block above) so every
+     child — `NavItem`, `Badge`, `IconButton`, `Logo`'s `currentColor`
+     letters, … — gets correct dark-surface contrast for free, no per-child
+     overrides needed. */
+  --ui-bg: #14252c;
+  --ui-bg-inset: #0f1d23;
+  --ui-surface: #1a2e36;
+  --ui-surface-hover: #223a43;
+  --ui-surface-2: #2a444e;
+  --ui-border: #2f4952;
+  --ui-border-strong: #3e5c64;
+  --ui-fg: var(--ui-brand-snow);
+  --ui-fg-secondary: #c3cbc6;
+  --ui-muted: #93a29c;
+  --ui-muted-subtle: #6f8078;
+  --ui-accent-tint: rgba(199, 154, 62, 0.16);
+  --ui-accent-tint-border: rgba(199, 154, 62, 0.34);
+  --ui-accent-strong: var(--ui-accent-500);
 }
 .ui-sidebar-collapsed {
   width: 68px;
@@ -324,11 +372,24 @@ a {
 .ui-sidebar-footer {
   margin-top: auto;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ui-border);
   margin-inline: -0.125rem;
   padding-inline: 0.125rem;
+}
+/* Collapse/expand toggle rendered in the sidebar footer (see
+   components/shell/sidebar-shell.tsx) — full-width, left-aligned label when
+   expanded; centered icon-only when collapsed. Referenced directly by class
+   name from the app, same documented-utility pattern as `.ui-row-actions`. */
+.ui-sidebar-collapse-toggle {
+  width: 100%;
+  justify-content: flex-start;
+}
+.ui-sidebar-collapsed .ui-sidebar-collapse-toggle {
+  justify-content: center;
 }
 /* Real Norr wordmark (docs/logo/*.svg, inlined as JSX in components/logo.tsx
    — see that file for which drawing is which). `currentColor` on the
@@ -385,6 +446,23 @@ a {
   color: var(--ui-fg);
   transform: translateX(1px);
 }
+/* Active/current-route state — the one deliberate, contained dose of Mässing
+   in the sidebar (see the brand comment at the top of this file: "used
+   sparingly... never a broad wash"). Solid filled pill, same "dark Fjord ink
+   on true brass" formula as `.ui-button-primary`, closest to the Altezza
+   reference's solid-orange current-row treatment — contained to a single
+   row's pill, not a wash across the sidebar. `--ui-accent`/`--ui-accent-fg`
+   aren't repointed by `.ui-sidebar`'s ink-surface override above, so this
+   reads identically whether the app is in light or dark theme. */
+.ui-nav-item-active,
+.ui-nav-item-active:hover {
+  background: var(--ui-accent);
+  color: var(--ui-accent-fg);
+  transform: none;
+}
+.ui-nav-item-active:hover {
+  background: var(--ui-accent-hover);
+}
 .ui-nav-item-disabled {
   color: var(--ui-muted-subtle);
   cursor: default;
@@ -411,6 +489,25 @@ a {
   margin-left: auto;
   overflow: hidden;
   transition: opacity var(--ui-duration-fast) var(--ui-ease);
+}
+
+/* Group section heading between clusters of nav items — see
+   `NavGroupLabel` in components/nav.tsx. Rendered as its own `<li>` so it
+   lives inside the same `<ul>` as the items it labels. */
+.ui-nav-group-label {
+  padding: 0.75rem 0.625rem 0.25rem;
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-muted-subtle);
+  list-style: none;
+}
+.ui-nav-group-label:first-child {
+  padding-top: 0.125rem;
+}
+.ui-sidebar-collapsed .ui-nav-group-label {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -444,6 +541,10 @@ a {
 .ui-badge-danger {
   background: var(--ui-danger-tint);
   color: var(--ui-danger-strong);
+}
+.ui-badge-warning {
+  background: var(--ui-warning-tint);
+  color: var(--ui-warning-strong);
 }
 
 /* ---------------------------------------------------------------------- *
@@ -537,6 +638,35 @@ a {
 }
 .ui-button-danger:hover {
   background: var(--ui-danger-tint);
+}
+.ui-button-ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.ui-button-ghost:hover {
+  background: var(--ui-surface-hover);
+  border-color: transparent;
+}
+/* A borderless, padding-free inline text action (e.g. "Forgot password?"
+   beside a field label) — reads as a link, not a button, but stays a real
+   <button> for form semantics. */
+.ui-button-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ui-accent-strong);
+  font-weight: 550;
+}
+.ui-button-link:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ui-accent-hover);
+  text-decoration: underline;
+}
+.ui-button-full {
+  width: 100%;
 }
 .ui-button:disabled,
 .ui-icon-button:disabled {
@@ -739,6 +869,18 @@ a:focus-visible > .ui-card-interactive,
 }
 .ui-inline-wrap {
   flex-wrap: wrap;
+}
+.ui-inline-justify-start {
+  justify-content: flex-start;
+}
+.ui-inline-justify-center {
+  justify-content: center;
+}
+.ui-inline-justify-end {
+  justify-content: flex-end;
+}
+.ui-inline-justify-between {
+  justify-content: space-between;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1529,4 +1671,816 @@ a:focus-visible > .ui-card-interactive,
 }
 .ui-empty-state-action {
   margin-top: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Separator — see components/separator.tsx
+ * ---------------------------------------------------------------------- */
+.ui-separator {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 100%;
+  height: 1px;
+  background: var(--ui-border);
+}
+.ui-separator-vertical {
+  width: 1px;
+  height: 1.25rem;
+  align-self: center;
+}
+
+/* Inline text link inside body copy (e.g. a Next `<Link>` embedded in a
+   `Text`) — referenced directly by its class name from app call sites, same
+   documented-utility pattern as `.ui-row-actions` above, since a plain
+   `next/link` isn't itself a package component this file can style through
+   a component class alone. */
+.ui-text-link {
+  color: var(--ui-accent-strong);
+  font-weight: 550;
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-text-link:hover {
+  color: var(--ui-accent-hover);
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Dropdown menu — see components/dropdown-menu.tsx
+ * ---------------------------------------------------------------------- */
+.ui-dropdown-menu {
+  position: relative;
+  display: inline-flex;
+}
+.ui-dropdown-menu-trigger {
+  display: inline-flex;
+}
+.ui-dropdown-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+.ui-dropdown-menu-content {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 91;
+  min-width: 14rem;
+  padding: 0.375rem;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-lg);
+  animation: ui-dialog-in var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-dropdown-menu-content-start {
+  right: auto;
+  left: 0;
+}
+.ui-dropdown-menu-label {
+  padding: 0.5rem 0.625rem 0.375rem;
+  font-size: var(--ui-text-sm);
+  font-weight: 600;
+  color: var(--ui-fg);
+}
+.ui-dropdown-menu-separator {
+  margin: 0.25rem 0;
+  border: none;
+  border-top: 1px solid var(--ui-border);
+}
+.ui-dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: transparent;
+  color: var(--ui-fg);
+  font: inherit;
+  font-size: var(--ui-text-base);
+  cursor: pointer;
+  transition: background-color var(--ui-duration-fast) var(--ui-ease), color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-dropdown-menu-item:hover,
+.ui-dropdown-menu-item:focus-visible {
+  background: var(--ui-surface-hover);
+}
+.ui-dropdown-menu-item:disabled {
+  color: var(--ui-muted-subtle);
+  cursor: not-allowed;
+}
+.ui-dropdown-menu-item:disabled:hover {
+  background: transparent;
+}
+.ui-dropdown-menu-item-danger {
+  color: var(--ui-danger);
+}
+.ui-dropdown-menu-item-danger:hover {
+  background: var(--ui-danger-tint);
+  color: var(--ui-danger-strong);
+}
+.ui-dropdown-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+/* Topbar user-menu trigger (avatar + name + chevron) — referenced directly
+   by its class name from components/shell/user-menu.tsx, same documented-
+   utility pattern as `.ui-row-actions` above. */
+.ui-user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.3125rem 0.75rem 0.3125rem 0.3125rem;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-full);
+  background: transparent;
+  color: var(--ui-fg);
+  cursor: pointer;
+  transition: background-color var(--ui-duration-fast) var(--ui-ease), border-color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-user-menu-trigger:hover {
+  background: var(--ui-surface-hover);
+  border-color: var(--ui-border);
+}
+/* Stacked name + role, matching the two-line identity block every reference
+   topbar shows (Altezza's "Alina Savchenko / Super Admin", the FSM board's
+   "Bruce Wayne / Service Manager") instead of collapsing the role into the
+   dropdown alone. */
+.ui-user-menu-trigger-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  min-width: 0;
+}
+.ui-user-menu-trigger-name {
+  font-size: var(--ui-text-sm);
+  font-weight: 600;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-user-menu-trigger-role {
+  font-size: var(--ui-text-xs);
+  font-weight: 500;
+  color: var(--ui-muted);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-user-menu-trigger-chevron {
+  color: var(--ui-muted);
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Nordic scene illustration — see components/nordic-scene.tsx
+ * ---------------------------------------------------------------------- */
+.ui-nordic-scene {
+  /* `position: absolute` takes the SVG out of flow so it can't contribute
+     its own intrinsic size to `.ui-auth-split-illustration`. Without this,
+     a browser resolving `height: 100%` against a flex parent with no
+     definite height (only `min-height`, from `.ui-auth-split` below) falls
+     back to the SVG's own viewBox aspect ratio — which, cropped to a tall
+     narrow column, computes taller than the viewport and drags the whole
+     split-screen row (including the form panel) down with it, pushing the
+     email/password fields below the fold. Absolutely positioned, it just
+     fills whatever box the flex layout gives the illustration column,
+     cropped by `preserveAspectRatio="xMidYMid slice"` as intended. */
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Auth split layout — see components/auth-split-layout.tsx. The login
+ * screen's split shell: a form column paired with a full-bleed brand
+ * illustration. `min-height` (not `height`) so the panel can still grow
+ * taller than the viewport for a very short window instead of clipping the
+ * form — same `dvh`-with-`vh`-fallback reasoning as `.ui-app-layout`.
+ * ---------------------------------------------------------------------- */
+.ui-auth-split {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ui-bg);
+}
+.ui-auth-split-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  width: 100%;
+  padding: 2.5rem 2rem;
+}
+@media (min-width: 640px) {
+  .ui-auth-split-panel {
+    padding: 2.5rem 3rem;
+  }
+}
+@media (min-width: 1024px) {
+  .ui-auth-split-panel {
+    width: 460px;
+    flex-shrink: 0;
+  }
+}
+@media (min-width: 1280px) {
+  .ui-auth-split-panel {
+    width: 520px;
+  }
+}
+.ui-auth-split-form {
+  width: 100%;
+  max-width: 24rem;
+  /* `margin: auto` (not `0 auto`) on both axes: the panel is a flex column,
+     so top/bottom auto absorbs the leftover space above/below this item,
+     centering it vertically between the logo and whatever follows (or the
+     panel's bottom edge, if nothing does) instead of letting a stray
+     `justify-content: space-between` shove it down past the fold on tall
+     viewports. Left/right auto keeps the existing horizontal centering. */
+  margin: auto;
+}
+.ui-auth-split-illustration {
+  position: relative;
+  display: none;
+  flex: 1;
+  overflow: hidden;
+  background: var(--ui-brand-fjord);
+}
+@media (min-width: 1024px) {
+  .ui-auth-split-illustration {
+    display: block;
+  }
+}
+.ui-auth-split-illustration-mark {
+  position: absolute;
+  top: 2rem;
+  left: 2rem;
+  color: var(--ui-brand-snow);
+}
+.ui-auth-split-illustration-scrim {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 8rem 3rem 3.5rem;
+  background: linear-gradient(
+    to top,
+    rgba(31, 53, 64, 0.95) 0%,
+    rgba(31, 53, 64, 0.65) 55%,
+    rgba(31, 53, 64, 0) 100%
+  );
+}
+.ui-auth-split-illustration-tagline {
+  margin: 0;
+  max-width: 28rem;
+  font-family: var(--ui-font-serif);
+  font-size: var(--ui-text-3xl);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ui-brand-snow);
+}
+.ui-auth-split-illustration-description {
+  margin: 0;
+  max-width: 28rem;
+  font-size: var(--ui-text-md);
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--ui-brand-snow) 80%, var(--ui-brand-fjord));
+}
+
+/* ---------------------------------------------------------------------- *
+ * Switch — see components/switch.tsx. A single `<input type="checkbox">`
+ * with `appearance: none`, drawn as a track+thumb entirely via CSS
+ * (`::before` for the thumb, `:checked` to slide it) — no JS state needed.
+ * ---------------------------------------------------------------------- */
+.ui-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 2.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-border-strong);
+  cursor: pointer;
+  transition: background-color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--ui-shadow-sm);
+  transition: transform var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-switch:checked {
+  background: var(--ui-accent);
+}
+.ui-switch:checked::before {
+  transform: translateX(1rem);
+}
+.ui-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Radio group — see components/radio-group.tsx. Native `<input
+ * type="radio">`s sharing a `name` group themselves in the browser, so
+ * (unlike the switch above, which needs the same `appearance:none` trick)
+ * this is the same styling approach, just circular with a dot instead of a
+ * sliding thumb.
+ * ---------------------------------------------------------------------- */
+.ui-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-sm);
+}
+.ui-radio {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  cursor: pointer;
+  transition: border-color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-radio:hover {
+  border-color: var(--ui-border-strong);
+}
+.ui-radio:checked {
+  border-color: var(--ui-accent-strong);
+}
+.ui-radio:checked::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ui-accent-strong);
+  transform: translate(-50%, -50%);
+}
+.ui-radio-danger {
+  border-color: var(--ui-danger);
+}
+.ui-radio:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Progress — see components/progress.tsx. Two nested divs, `value`
+ * expressed as an inline `width` on the indicator — no library.
+ * ---------------------------------------------------------------------- */
+.ui-progress {
+  position: relative;
+  width: 100%;
+  height: 0.5rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-surface-2);
+  overflow: hidden;
+}
+.ui-progress-indicator {
+  height: 100%;
+  border-radius: var(--ui-radius-full);
+  transition: width var(--ui-duration-slow) var(--ui-ease);
+}
+.ui-progress-accent {
+  background: var(--ui-accent);
+}
+.ui-progress-success {
+  background: var(--ui-success);
+}
+.ui-progress-danger {
+  background: var(--ui-danger);
+}
+.ui-progress-warning {
+  background: var(--ui-warning);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Stat card — see components/stat-card.tsx. Sits on top of `.ui-card`
+ * (padding/border/shadow already come from that), just adds the internal
+ * label/value/trend layout.
+ * ---------------------------------------------------------------------- */
+.ui-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.ui-stat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.ui-stat-card-label {
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-muted);
+}
+.ui-stat-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent-strong);
+}
+.ui-stat-card-value {
+  margin: 0;
+  font-size: var(--ui-text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ui-fg);
+}
+.ui-stat-card-trend {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--ui-text-xs);
+}
+.ui-stat-card-trend-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.ui-stat-card-trend-up {
+  color: var(--ui-success);
+}
+.ui-stat-card-trend-down {
+  color: var(--ui-danger);
+}
+.ui-stat-card-hint {
+  margin: 0;
+  color: var(--ui-muted);
+}
+.ui-stat-card-action {
+  margin-top: 0.25rem;
+}
+
+/* Highlight tone — a hero KPI tile (an "Overdue" balance with a CTA, e.g.).
+   Same "fixed surface repoints the semantic tokens" trick `.ui-sidebar` uses
+   for its permanent ink surface above: `--ui-bg` is repointed to the
+   gradient itself (`.ui-card`'s own `background: var(--ui-bg)` then just
+   paints it), so every nested child — label, value, hint, trend, the icon
+   chip — automatically gets correct Snö-on-gradient contrast for free, no
+   per-child color overrides needed. Unlike the sidebar this DOES still
+   follow the light/dark toggle (Fjord/Mässing read fine on both), so it only
+   repoints `--ui-bg`/`--ui-border`/`--ui-fg`/`--ui-muted`/`--ui-accent-tint`
+   — not a full ink-surface re-theme. */
+.ui-stat-card-highlight {
+  --ui-bg: linear-gradient(
+    135deg,
+    var(--ui-brand-fjord) 0%,
+    color-mix(in srgb, var(--ui-brand-fjord) 45%, var(--ui-brand-massing)) 100%
+  );
+  --ui-border: transparent;
+  --ui-fg: var(--ui-brand-snow);
+  --ui-fg-secondary: color-mix(in srgb, var(--ui-brand-snow) 82%, transparent);
+  --ui-muted: color-mix(in srgb, var(--ui-brand-snow) 68%, transparent);
+  --ui-accent-tint: rgba(223, 228, 224, 0.18);
+  --ui-accent-strong: var(--ui-brand-snow);
+  box-shadow: 0 8px 20px rgba(15, 29, 35, 0.28);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Timeline — see components/timeline.tsx. One flat CSS Grid (`Timeline.Row`
+ * contributes items, not a nested grid of its own — see that file's doc
+ * comment), column count driven by the `--ui-timeline-days` custom property
+ * `Timeline` sets inline from `days.length`.
+ * ---------------------------------------------------------------------- */
+.ui-timeline {
+  display: grid;
+  grid-template-columns: 220px repeat(var(--ui-timeline-days, 5), minmax(140px, 1fr));
+  min-width: max-content;
+}
+.ui-timeline-header-cell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.75rem 0.75rem 0.625rem;
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ui-muted);
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-border);
+}
+.ui-timeline-corner {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.ui-timeline-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  font-size: var(--ui-text-base);
+  font-weight: 550;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  border-top: 1px solid var(--ui-border);
+  border-right: 1px solid var(--ui-border);
+}
+.ui-timeline-cell {
+  padding: 0.375rem;
+  border-top: 1px solid var(--ui-border);
+  border-right: 1px solid var(--ui-border);
+}
+.ui-timeline-cell:last-child {
+  border-right: none;
+}
+.ui-timeline-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--ui-radius-md);
+  border-left: 3px solid transparent;
+  font-size: var(--ui-text-sm);
+}
+.ui-timeline-block-title {
+  font-weight: 550;
+  color: var(--ui-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-timeline-block-meta {
+  display: inline-flex;
+}
+.ui-timeline-block-muted {
+  background: var(--ui-surface-2);
+  border-left-color: var(--ui-border-strong);
+}
+.ui-timeline-block-accent {
+  background: var(--ui-accent-tint);
+  border-left-color: var(--ui-accent-strong);
+}
+.ui-timeline-block-success {
+  background: var(--ui-success-tint);
+  border-left-color: var(--ui-success);
+}
+.ui-timeline-block-danger {
+  background: var(--ui-danger-tint);
+  border-left-color: var(--ui-danger);
+}
+.ui-timeline-block-warning {
+  background: var(--ui-warning-tint);
+  border-left-color: var(--ui-warning);
+}
+.ui-timeline-block-clickable {
+  cursor: pointer;
+  transition: filter var(--ui-duration-fast) var(--ui-ease), box-shadow var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-timeline-block-clickable:hover,
+.ui-timeline-block-clickable:focus-visible {
+  filter: brightness(0.97);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Map surface — see components/map-surface.tsx. Purely decorative (an
+ * abstract block/road pattern via CSS, no real tiles/network) — real map
+ * integration lives at the app's `assets/components/asset-map.tsx`, out of
+ * scope for this package. `MapSurface.Pin`/`MapPinPopup` are real,
+ * positioned-by-percent primitives future real map views can reuse.
+ * ---------------------------------------------------------------------- */
+.ui-map-surface {
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 45px, var(--ui-border) 45px, var(--ui-border) 46px),
+    repeating-linear-gradient(90deg, transparent, transparent 64px, var(--ui-border) 64px, var(--ui-border) 65px);
+}
+.ui-map-surface-terrain {
+  position: absolute;
+  inset: -10%;
+  background: radial-gradient(circle at 20% 25%, var(--ui-accent-tint) 0%, transparent 38%),
+    radial-gradient(circle at 78% 65%, var(--ui-accent-tint) 0%, transparent 32%),
+    radial-gradient(circle at 55% 15%, var(--ui-success-tint) 0%, transparent 26%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.ui-map-surface-block {
+  position: absolute;
+  background: var(--ui-surface-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  pointer-events: none;
+}
+.ui-map-pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 2px solid var(--ui-bg);
+  border-radius: 50% 50% 50% 0;
+  transform-origin: bottom center;
+  rotate: -45deg;
+  background: var(--ui-fg-secondary);
+  color: var(--ui-bg);
+  cursor: pointer;
+  box-shadow: var(--ui-shadow-sm);
+  transition: background-color var(--ui-duration-fast) var(--ui-ease), transform var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-map-pin::after {
+  content: "";
+  rotate: 45deg;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ui-map-pin:hover {
+  transform: translate(-50%, -100%) scale(1.06);
+}
+.ui-map-pin-active {
+  background: var(--ui-accent-strong);
+  box-shadow: var(--ui-shadow-md);
+}
+.ui-map-pin-popup {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 2.25rem));
+  width: 15rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-lg);
+  z-index: 5;
+}
+.ui-map-pin-popup::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: var(--ui-bg);
+  border-right: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+}
+.ui-map-pin-popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+.ui-map-pin-popup-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--ui-text-sm);
+}
+.ui-map-pin-popup-row + .ui-map-pin-popup-row {
+  margin-top: 0.375rem;
+}
+.ui-map-pin-popup-label {
+  color: var(--ui-muted);
+}
+.ui-map-pin-popup-value {
+  color: var(--ui-fg-secondary);
+  font-weight: 550;
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Toast — see toast.tsx. Fixed bottom-right stack; `ToastProvider` drains
+ * an imperative queue (`toast(...)`) into this markup.
+ * ---------------------------------------------------------------------- */
+.ui-toast-viewport {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  width: min(360px, calc(100vw - 3rem));
+}
+.ui-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--ui-border);
+  border-left: 3px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg);
+  box-shadow: var(--ui-shadow-lg);
+  animation: ui-toast-in var(--ui-duration-base) var(--ui-ease);
+}
+.ui-toast-success {
+  border-left-color: var(--ui-success);
+}
+.ui-toast-danger {
+  border-left-color: var(--ui-danger);
+}
+.ui-toast-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.ui-toast-title {
+  margin: 0;
+  font-size: var(--ui-text-sm);
+  font-weight: 600;
+  color: var(--ui-fg);
+}
+.ui-toast-description {
+  margin: 0;
+  font-size: var(--ui-text-sm);
+  color: var(--ui-fg-secondary);
+}
+.ui-toast-action {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  cursor: pointer;
+}
+.ui-toast-action:hover {
+  background: var(--ui-surface-hover);
+}
+.ui-toast-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  padding: 0.2rem;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+.ui-toast-close:hover {
+  background: var(--ui-surface-hover);
+  color: var(--ui-fg);
+}
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

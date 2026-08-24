@@ -7,12 +7,14 @@ import { Stack } from "@yourorg/ui";
 // app/layout.tsx (which already provides <html>/<body>/ThemeProvider), so
 // it only needs to arrange its own children.
 //
-// Deliberately minimal: no page-centering/max-width container, because
-// @yourorg/ui (packages/ui) doesn't have such a layout primitive yet and
-// CLAUDE.md rule 4 forbids ad-hoc CSS in this repo to fake one. Real visual
-// polish for these pages (a centered auth-page shell primitive) is
-// frontend-ui-engineer / design-system territory — request it from
-// packages/ui rather than styling one off here.
+// Deliberately thin: `/login` now owns a full-bleed split-screen shell of
+// its own (`AuthSplitLayout`, packages/ui) that must fill the viewport, not
+// get padded/centered by a shared wrapper here — this `<Stack>` is a no-op
+// around it (a single-child flex column has no visible effect). Signup and
+// invite-accept still render their own simple `<Stack gap="lg">` content
+// directly (see their page.tsx files) since they haven't had the same visual
+// pass yet; giving this route group's layout a real centered/max-width
+// treatment for THEM is follow-up frontend-ui-engineer work, not done here.
 export default function AuthRouteLayout({ children }: { children: ReactNode }) {
   return <Stack gap="lg">{children}</Stack>;
 }

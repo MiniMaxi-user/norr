@@ -33,10 +33,12 @@ function Wordmark({ label, ...rest }: SVGProps<SVGSVGElement> & { label: string 
 
 /**
  * Standalone "N" mark with its peillijn (docs/logo/norr-icoon-n.svg,
- * `currentColor`) — used for the collapsed sidebar. Per brand rules the
- * bare N is never placed next to the full name; `styles.css` makes sure
- * exactly one of `Wordmark`/`IconMark` is ever visible at a time (toggled
- * by `.ui-sidebar-collapsed`), never both.
+ * `currentColor`) — the icon-only drawing shared by the collapsed sidebar
+ * (via `Logo`'s internal CSS toggle, see styles.css's
+ * `.ui-sidebar-collapsed .ui-logo-icon-mark`) and by `Logomark` below, which
+ * exports this same mark standalone for spots that aren't part of that
+ * toggle — e.g. the corner of the login screen's illustration panel. Per
+ * brand rules the bare N is never placed next to the full name.
  */
 function IconMark({ label, ...rest }: SVGProps<SVGSVGElement> & { label: string }) {
   return (
@@ -55,4 +57,25 @@ export function Logo({ children }: LogoProps) {
       <IconMark className="ui-logo-icon-mark" label={label} />
     </span>
   );
+}
+
+export interface LogomarkProps extends Omit<SVGProps<SVGSVGElement>, "width" | "height"> {
+  /** Rendered height in px (width follows the mark's own aspect ratio,
+   * viewBox 63:53). Defaults to 20 — this component isn't inside the
+   * sidebar's own `.ui-logo-icon-mark` CSS sizing, so (unlike `Logo`) it
+   * needs an explicit default. */
+  size?: number;
+  children?: ReactNode;
+}
+
+/**
+ * Standalone icon-only "N" mark (see `IconMark` above) for use outside the
+ * sidebar's expand/collapse toggle — e.g. the login screen's illustration
+ * corner. Tracks `currentColor` for the letter strokes (so a caller can set
+ * `color`/a text-tone className to place it on light or dark art) with the
+ * brass peillijn stroke fixed per brand rules, same as `Logo`.
+ */
+export function Logomark({ size = 20, children, ...rest }: LogomarkProps) {
+  const label = typeof children === "string" ? children : "Norr";
+  return <IconMark label={label} width={(size * 63) / 53} height={size} {...rest} />;
 }
