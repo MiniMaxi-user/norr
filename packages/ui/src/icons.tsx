@@ -140,6 +140,19 @@ export const Receipt = createIcon("Receipt", (
   </>
 ));
 
+// Used for the Quotes module (issue #16) — distinct from `FileText`
+// (Contracts, a signed agreement) and `Receipt` (Billing, already-invoiced
+// revenue): a clipboard with a checkmark reads as "proposal pending
+// approval", the right register for a pre-sale quote.
+export const ClipboardList = createIcon("ClipboardList", (
+  <>
+    <rect x={5} y={4} width={14} height={17} rx={1.5} />
+    <rect x={9} y={2.5} width={6} height={3} rx={1} />
+    <path d="m8.5 12 1.5 1.5L13 10" />
+    <line x1={8.5} y1={16.5} x2={15.5} y2={16.5} />
+  </>
+));
+
 export const Plus = createIcon("Plus", (
   <>
     <line x1={12} y1={4} x2={12} y2={20} />

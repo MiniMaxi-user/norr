@@ -10,6 +10,7 @@ import { listContacts } from "../contacts-actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listContracts } from "@/app/(app)/contracts/actions";
+import { listQuotes } from "@/app/(app)/quotes/actions";
 import { ClientDetail, type ClientDetailTab } from "./client-detail";
 import { ClientDetailSkeleton } from "./client-detail-skeleton";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
@@ -27,6 +28,10 @@ const ALL_CLIENT_WORK_ORDERS_LIMIT = 500;
 /** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only
  * Contracts tab (issue #33). */
 const ALL_CLIENT_CONTRACTS_LIMIT = 500;
+
+/** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only
+ * Quotes tab (issue #16). */
+const ALL_CLIENT_QUOTES_LIMIT = 500;
 
 export default async function ClientDetailPage({
   params,
@@ -88,11 +93,22 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "contracts")) &&
     canAccessModule(actor, "contracts");
 
+  // The Quotes tab is likewise a view onto a separately-entitled module
+  // (issue #16) — gated server-side the same way as Assets/Work Orders/
+  // Contracts above, before any quote data is fetched, so a tenant/role
+  // without Quotes access never sees the tab render at all (not just
+  // disabled).
+  const quotesModuleVisible =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "quotes")) &&
+    canAccessModule(actor, "quotes");
+
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
-  // unlike Assets/Work Orders/Contracts, this data is always fetched here
-  // rather than gated behind its own `hasFeature`/`canAccessModule` check.
-  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, contractsResult, lastUsedTab] =
+  // unlike Assets/Work Orders/Contracts/Quotes, this data is always fetched
+  // here rather than gated behind its own `hasFeature`/`canAccessModule`
+  // check.
+  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, contractsResult, quotesResult, lastUsedTab] =
     await Promise.all([
       assetsModuleVisible
         ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
@@ -104,6 +120,9 @@ async function ClientDetailContent({ id }: { id: string }) {
         : Promise.resolve(null),
       contractsModuleVisible
         ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
+        : Promise.resolve(null),
+      quotesModuleVisible
+        ? listQuotes({ clientId: id, limit: ALL_CLIENT_QUOTES_LIMIT })
         : Promise.resolve(null),
       preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
     ]);
@@ -118,7 +137,9 @@ async function ClientDetailContent({ id }: { id: string }) {
           ? "workOrders"
           : requestedTab === "contracts" && contractsModuleVisible
             ? "contracts"
-            : "sites";
+            : requestedTab === "quotes" && quotesModuleVisible
+              ? "quotes"
+              : "sites";
 
   return (
     <ClientDetail
@@ -138,6 +159,8 @@ async function ClientDetailContent({ id }: { id: string }) {
       workOrdersEnabled={workOrdersModuleVisible}
       contracts={contractsResult?.data?.contracts ?? []}
       contractsEnabled={contractsModuleVisible}
+      quotes={quotesResult?.data?.quotes ?? []}
+      quotesEnabled={quotesModuleVisible}
       defaultTab={defaultTab}
     />
   );

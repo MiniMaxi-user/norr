@@ -48,6 +48,11 @@ export type FeatureKey =
   // detail page), but every one of those files' Server Actions still calls
   // `hasFeature()` first per CLAUDE.md rule 3.
   | "checklists"
+  // Quotes / Estimates (issue #16, second stage) — see
+  // `app/(app)/quotes/actions.ts` and `lib/rbac/permissions.ts`'s dedicated
+  // `quotes` module. Every action in that file calls `hasFeature()` first per
+  // CLAUDE.md rule 3.
+  | "quotes"
   | "reporting"
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
@@ -99,6 +104,13 @@ export type FeatureKey =
  * module's actions/RBAC row without adding its key here) has already broken
  * `planning` once this session and was caught just before landing for
  * `contracts` — don't repeat it a third time.
+ *
+ * `quotes` added alongside the Quotes module (issue #16, second stage —
+ * `app/(app)/quotes/actions.ts`): every action in that file calls
+ * `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
+ * `checklists`/`contracts`/`planning` above. Same omission flagged again in
+ * `supabase/migrations/20260824090000_quotes_core.sql`'s hand-off notes —
+ * double-checked it's actually in this Set, not just the `FeatureKey` union.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -108,6 +120,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "planning",
   "contracts",
   "checklists",
+  "quotes",
 ]);
 
 /**

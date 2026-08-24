@@ -51,6 +51,7 @@ export type Module =
   | "contracts"
   | "planning"
   | "checklists"
+  | "quotes"
   | "reporting"
   | "dashboard"
   | "billing"
@@ -98,6 +99,8 @@ const NONE: readonly Action[] = [] as const;
  * | Assets     | CRUD  | R/U     | Read/Update (assigned)| Read   | Read           |
  * | Contracts  | CRUD  | Read    | Read                 | CRUD    | Read           |
  * | Planning   | CRUD  | CRUD    | Read/Update/Create own| Read   | Read           |
+ * | Checklists | CRUD  | CRUD    | Read/Update own      | Read    | Read           |
+ * | Quotes     | CRUD  | CRUD    | Read                 | Read    | Read           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
@@ -171,6 +174,20 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Quotes (issue #16, second stage): a new top-level module (pre-sale
+  // proposal builder), reusing `work_orders`' exact CRUD shape — owner AND
+  // planner both get full CRUD (unlike `contracts`' owner+finance pairing,
+  // since a quote isn't yet revenue) — engineer/finance/administratie are
+  // plain `read` (all rows, no `_own` scoping: a quote is a sales document
+  // any team member can see, not assigned to one engineer). Matches
+  // supabase/migrations/20260824090000_quotes_core.sql's RLS exactly.
+  quotes: {
+    owner: CRUD,
+    planner: CRUD,
+    engineer: READ_ONLY,
+    finance: READ_ONLY,
+    administratie: READ_ONLY,
+  },
   reporting: {
     owner: READ_ONLY,
     planner: READ_ONLY,
@@ -220,6 +237,11 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // No "Read (support only)"-style cross-tenant carve-out documented for
   // Checklists — same NONE shape as `planning`/`settings`.
   checklists: NONE,
+  // No "Read (support only)"-style cross-tenant carve-out documented for
+  // Quotes either (docs/ARCHITECTURE.md's RBAC matrix table shows "—" for
+  // Quotes' Platform Admin column) — same NONE shape as `planning`/
+  // `checklists`/`settings`.
+  quotes: NONE,
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,

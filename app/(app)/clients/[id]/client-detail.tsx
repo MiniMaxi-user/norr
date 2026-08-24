@@ -7,6 +7,7 @@ import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import type { QuoteRecord } from "@/app/(app)/quotes/actions";
 import type { ClientRecord, SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -16,10 +17,11 @@ import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
 import { ContractsPanel } from "./contracts-panel";
+import { QuotesPanel } from "./quotes-panel";
 import { SitesPanel } from "./sites-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
 
-export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders" | "contracts";
+export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders" | "contracts" | "quotes";
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -36,6 +38,8 @@ export interface ClientDetailProps {
   workOrdersEnabled: boolean;
   contracts: ContractRecord[];
   contractsEnabled: boolean;
+  quotes: QuoteRecord[];
+  quotesEnabled: boolean;
   defaultTab: ClientDetailTab;
 }
 
@@ -64,6 +68,8 @@ export function ClientDetail({
   workOrdersEnabled,
   contracts,
   contractsEnabled,
+  quotes,
+  quotesEnabled,
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
@@ -145,6 +151,11 @@ export function ClientDetail({
               Contracts{contracts.length > 0 ? ` (${contracts.length})` : ""}
             </Tabs.Tab>
           )}
+          {quotesEnabled && (
+            <Tabs.Tab value="quotes">
+              Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="sites">
@@ -186,6 +197,12 @@ export function ClientDetail({
         {contractsEnabled && (
           <Tabs.Panel value="contracts">
             <ContractsPanel contracts={contracts} />
+          </Tabs.Panel>
+        )}
+
+        {quotesEnabled && (
+          <Tabs.Panel value="quotes">
+            <QuotesPanel quotes={quotes} />
           </Tabs.Panel>
         )}
       </Tabs>
