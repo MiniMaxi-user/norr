@@ -15,7 +15,7 @@ Next.js 15 (App Router), TypeScript strict, Supabase (Postgres/Auth/Storage/RLS)
 4. No ad-hoc CSS/styling — use `@yourorg/ui` tokens and components.
 5. Server Components by default; `use client` only when interactivity requires it.
 6. Every PR maps to a GitHub project board issue; update its status.
-7. Model the realistic full domain for a module — sub-entities (contact persons, multiple locations, etc.), tenant-configurable reference data, and dependent/cascading reference lists are the default, not a later add-on. Research comparable premium SaaS products when scoping a new module (see `docs/BUSINESS-PLAN.md` §4 and `docs/ARCHITECTURE.md`'s "Domain completeness" section).
+7. Backlog stories (title + description + acceptance criteria) are authored by the product owner on the GitHub project board — build exactly what a story's acceptance criteria specify, don't add modules/features beyond them unprompted. Within that scope, still build with full domain-completeness craftsmanship by default: sub-entities, tenant-configurable reference data, dependent/cascading reference lists where a real dependency exists, relational detail pages, and the right popup-vs-full-page weight (see `docs/ARCHITECTURE.md`'s "Domain completeness"/"Relational detail pages"/"Popup vs. full page" sections) — these are implementation-quality standards for *how* to build what's asked, not license to invent *what* to build. If a story's acceptance criteria are ambiguous or clearly incomplete for what they describe, ask before assuming.
 
 ## Working with subagents
 Specialized subagents live in `.claude/agents/`. Delegate to them for their domain instead of doing the work inline in the main thread:
