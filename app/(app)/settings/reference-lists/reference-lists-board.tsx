@@ -68,6 +68,11 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Billing Terms",
     description: "How a contract is billed — e.g. Monthly, Quarterly, Annually, Per-visit, One-time.",
   },
+  {
+    key: "quote_status",
+    title: "Quote Status",
+    description: "Lifecycle stages a quote moves through — e.g. Draft, Sent, Accepted, Rejected, Expired.",
+  },
 ] as const;
 
 /**

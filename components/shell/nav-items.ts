@@ -5,6 +5,7 @@ import {
   Boxes,
   FileText,
   CalendarDays,
+  ClipboardList,
   BarChart3,
   Receipt,
   Settings,
@@ -46,6 +47,10 @@ export const NAV_ITEMS: NavItem[] = [
   // `moduleKey`/entitlement stays `planning` either way (that's the feature
   // key + RBAC matrix row both already use).
   { moduleKey: "planning", label: "Work Orders", href: "/work-orders", icon: CalendarDays },
+  // Quotes / Estimates (issue #16, third stage — frontend). `moduleKey`
+  // matches the `quotes` feature key/RBAC module both already registered in
+  // lib/rbac/features.ts / lib/rbac/permissions.ts.
+  { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3 },
   { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt },
   // Everyone can *view* Settings (read-only for non-owners — see
