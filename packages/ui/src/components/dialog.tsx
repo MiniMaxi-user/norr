@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
 
-export type DialogSize = "sm" | "lg";
+export type DialogSize = "sm" | "lg" | "panel";
 
 export interface DialogProps {
   open: boolean;
@@ -36,6 +36,16 @@ export interface DialogProps {
  * `auto`, the body never actually engaged `overflow-y: auto`, it just grew
  * past `max-height` and got silently clipped by the dialog surface's
  * `overflow: hidden` instead of scrolling. See styles.css `.ui-dialog-body`.
+ *
+ * `size="panel"` is a different shape entirely — a full-height sheet
+ * anchored to the right edge of the viewport (`position: fixed`, so it
+ * escapes `.ui-dialog-overlay`'s flex centering rather than needing it) that
+ * slides in from the right, for a record-editing form that wants more width
+ * and less forced vertical scrolling than a centered card. It reuses the
+ * exact same column-flexbox scroll fix described above — a panel tall
+ * enough to overflow a short viewport still scrolls its `Dialog.Body`
+ * correctly, that architecture didn't change. See `.ui-dialog-panel` in
+ * styles.css.
  */
 export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
   if (!open) return null;

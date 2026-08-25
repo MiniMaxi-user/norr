@@ -8,7 +8,6 @@ import {
   Checkbox,
   Dialog,
   FormGrid,
-  FormGridFull,
   FormSection,
   Heading,
   Inline,
@@ -17,7 +16,7 @@ import {
   Text,
   Textarea,
 } from "@yourorg/ui";
-import { Building2, FileText, MapPin } from "@yourorg/ui/icons";
+import { Building2, FileText } from "@yourorg/ui/icons";
 import { createSite, updateSite, type SiteRecord } from "./actions";
 import { FormField } from "./form-field";
 import { useEscapeToClose } from "./use-escape-to-close";
@@ -36,7 +35,6 @@ import { useEscapeToClose } from "./use-escape-to-close";
  * `undefined` means "wasn't submitted, fall back to the locked/forced value
  * or `site`", not "unchecked". */
 interface SiteFormValues {
-  name?: string;
   addressLine1?: string;
   addressLine2?: string;
   postalCode?: string;
@@ -144,7 +142,6 @@ export function SiteFormDialog({
     // component's doc comment for why relying on `site` alone here would
     // silently blank the form if these inputs are ever remounted.
     const values: SiteFormValues = {
-      name: String(formData.get("name") ?? ""),
       addressLine1: String(formData.get("addressLine1") ?? ""),
       addressLine2: String(formData.get("addressLine2") ?? ""),
       postalCode: String(formData.get("postalCode") ?? ""),
@@ -208,27 +205,25 @@ export function SiteFormDialog({
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="lg">
+    <Dialog open={open} onOpenChange={onOpenChange} size="panel">
       <Dialog.Header>
         <Heading level={3}>{isEdit ? "Edit site" : "Add site"}</Heading>
       </Dialog.Header>
       <form action={formAction}>
         {!isEdit && <input type="hidden" name="clientId" value={clientId} />}
         <Dialog.Body>
-          <Stack gap="lg">
+          <Stack gap="md">
             {state.error && <Text tone="danger">{state.error}</Text>}
 
-            <FormSection title="Site" icon={<Building2 />}>
-              <FormField
-                label="Name"
-                name="name"
-                defaultValue={textDefault(values?.name, site?.name)}
-                required
-                errors={state.fieldErrors?.name}
-              />
-            </FormSection>
-
-            <FormSection title="Address" icon={<MapPin />}>
+            {/* Purely address fields now (issue #42 dropped the site's own
+                free-text `name` — a "site", in this domain, IS an address,
+                with nothing else to name), so this section is titled
+                "Address" rather than the previous "Site" — there's no longer
+                a meaningful site-vs-address distinction to hold a separate
+                "Site" label over. Postal/city/country share one 3-column row
+                (the panel is wide enough) instead of a 2-col grid plus a
+                full-width country row underneath it. */}
+            <FormSection title="Address" icon={<Building2 />}>
               <FormField
                 label="Address line 1"
                 name="addressLine1"
@@ -242,7 +237,7 @@ export function SiteFormDialog({
                 defaultValue={textDefault(values?.addressLine2, site?.address_line2)}
                 errors={state.fieldErrors?.addressLine2}
               />
-              <FormGrid>
+              <FormGrid columns={3}>
                 <FormField
                   label="Postal code"
                   name="postalCode"
@@ -257,91 +252,100 @@ export function SiteFormDialog({
                   required
                   errors={state.fieldErrors?.city}
                 />
-                <FormGridFull>
-                  <FormField
-                    label="Country"
-                    name="country"
-                    defaultValue={textDefault(values?.country, site?.country)}
-                    required
-                    errors={state.fieldErrors?.country}
-                  />
-                </FormGridFull>
+                <FormField
+                  label="Country"
+                  name="country"
+                  defaultValue={textDefault(values?.country, site?.country)}
+                  errors={state.fieldErrors?.country}
+                />
               </FormGrid>
             </FormSection>
 
-            <FormSection
-              title="Purpose"
-              description={
-                isFirstSite && !isEdit
-                  ? "This client's first site — always the visit, invoice, and delivery address, and the primary address."
-                  : "Select what this address is used for."
-              }
-            >
-              <Stack gap="xs">
-                <Text tone="muted">Address is suitable for</Text>
-                <Stack gap="xs">
-                  <Inline gap="sm" align="center">
-                    <Checkbox
-                      id="site-is-visit-address"
-                      name="isVisitAddress"
-                      defaultChecked={purposeDefault(values?.isVisitAddress, site?.is_visit_address)}
-                      disabled={forcePurpose}
-                    />
-                    <Label htmlFor="site-is-visit-address">Visit address</Label>
-                  </Inline>
-                  <Inline gap="sm" align="center">
-                    <Checkbox
-                      id="site-is-invoice-address"
-                      name="isInvoiceAddress"
-                      defaultChecked={purposeDefault(values?.isInvoiceAddress, site?.is_invoice_address)}
-                      disabled={forcePurpose}
-                    />
-                    <Label htmlFor="site-is-invoice-address">Invoice address</Label>
-                  </Inline>
-                  <Inline gap="sm" align="center">
-                    <Checkbox
-                      id="site-is-delivery-address"
-                      name="isDeliveryAddress"
-                      defaultChecked={purposeDefault(values?.isDeliveryAddress, site?.is_delivery_address)}
-                      disabled={forcePurpose}
-                    />
-                    <Label htmlFor="site-is-delivery-address">Delivery address</Label>
-                  </Inline>
-                </Stack>
-                {state.fieldErrors?.isVisitAddress?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-              </Stack>
+            {/* Purpose and Notes don't depend on each other, so they sit
+                side by side in the panel's extra width instead of stacking
+                — each wrapped in its own plain div so the two FormSections
+                aren't DOM-adjacent siblings (that would trigger
+                `.ui-form-section + .ui-form-section`'s stacked-sections top
+                divider, which reads wrong on a side-by-side pair). */}
+            <FormGrid columns={2}>
+              <div>
+                <FormSection
+                  title="Purpose"
+                  description={
+                    isFirstSite && !isEdit
+                      ? "This client's first site — always the visit, invoice, and delivery address, and the primary address."
+                      : "Select what this address is used for."
+                  }
+                >
+                  <Stack gap="xs">
+                    <Text tone="muted">Address is suitable for</Text>
+                    <Stack gap="xs">
+                      <Inline gap="sm" align="center">
+                        <Checkbox
+                          id="site-is-visit-address"
+                          name="isVisitAddress"
+                          defaultChecked={purposeDefault(values?.isVisitAddress, site?.is_visit_address)}
+                          disabled={forcePurpose}
+                        />
+                        <Label htmlFor="site-is-visit-address">Visit address</Label>
+                      </Inline>
+                      <Inline gap="sm" align="center">
+                        <Checkbox
+                          id="site-is-invoice-address"
+                          name="isInvoiceAddress"
+                          defaultChecked={purposeDefault(values?.isInvoiceAddress, site?.is_invoice_address)}
+                          disabled={forcePurpose}
+                        />
+                        <Label htmlFor="site-is-invoice-address">Invoice address</Label>
+                      </Inline>
+                      <Inline gap="sm" align="center">
+                        <Checkbox
+                          id="site-is-delivery-address"
+                          name="isDeliveryAddress"
+                          defaultChecked={purposeDefault(values?.isDeliveryAddress, site?.is_delivery_address)}
+                          disabled={forcePurpose}
+                        />
+                        <Label htmlFor="site-is-delivery-address">Delivery address</Label>
+                      </Inline>
+                    </Stack>
+                    {state.fieldErrors?.isVisitAddress?.map((message) => (
+                      <Text key={message} tone="danger">
+                        {message}
+                      </Text>
+                    ))}
+                  </Stack>
 
-              <Inline gap="sm" align="center">
-                <Checkbox
-                  id="site-is-primary"
-                  name="isPrimary"
-                  defaultChecked={primaryDefault()}
-                  disabled={primaryLocked}
-                />
-                <Label htmlFor="site-is-primary">Primary address for this client</Label>
-              </Inline>
-              {state.fieldErrors?.isPrimary?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </FormSection>
+                  <Inline gap="sm" align="center">
+                    <Checkbox
+                      id="site-is-primary"
+                      name="isPrimary"
+                      defaultChecked={primaryDefault()}
+                      disabled={primaryLocked}
+                    />
+                    <Label htmlFor="site-is-primary">Primary address for this client</Label>
+                  </Inline>
+                  {state.fieldErrors?.isPrimary?.map((message) => (
+                    <Text key={message} tone="danger">
+                      {message}
+                    </Text>
+                  ))}
+                </FormSection>
+              </div>
 
-            <FormSection title="Notes" icon={<FileText />}>
-              <Stack gap="xs">
-                <Label htmlFor="site-notes">Internal notes</Label>
-                <Textarea id="site-notes" name="notes" defaultValue={textDefault(values?.notes, site?.notes)} />
-                {state.fieldErrors?.notes?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-              </Stack>
-            </FormSection>
+              <div>
+                <FormSection title="Notes" icon={<FileText />}>
+                  <Stack gap="xs">
+                    <Label htmlFor="site-notes">Internal notes</Label>
+                    <Textarea id="site-notes" name="notes" defaultValue={textDefault(values?.notes, site?.notes)} />
+                    {state.fieldErrors?.notes?.map((message) => (
+                      <Text key={message} tone="danger">
+                        {message}
+                      </Text>
+                    ))}
+                  </Stack>
+                </FormSection>
+              </div>
+            </FormGrid>
           </Stack>
         </Dialog.Body>
         <Dialog.Footer>

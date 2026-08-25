@@ -3,6 +3,7 @@ import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import { listAssets, type AssetRecord } from "../actions";
 import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { AssetsFilters } from "./assets-filters";
 import { AssetsTable } from "./assets-table";
 import { AssetsViewSwitcher, type AssetsView } from "./assets-view-switcher";
@@ -56,7 +57,7 @@ function buildMapPins(assets: AssetRecord[], sitesById: Map<string, SiteRecord>,
     } else {
       pinsBySite.set(site.id, {
         siteId: site.id,
-        siteName: site.name,
+        siteLabel: formatSiteAddressShort(site) ?? "Unnamed site",
         latitude: site.latitude,
         longitude: site.longitude,
         assets: [pinAsset],

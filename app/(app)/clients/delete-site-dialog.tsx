@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { deleteSite, type SiteRecord } from "./actions";
+import { formatSiteAddress } from "./format-site-address";
 import { useEscapeToClose } from "./use-escape-to-close";
 
 /**
@@ -68,7 +69,7 @@ export function DeleteSiteDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="sm">
       <Dialog.Header>
-        <Heading level={3}>Delete {site?.name ?? "site"}?</Heading>
+        <Heading level={3}>Delete {formatSiteAddress(site) ?? "this site"}?</Heading>
       </Dialog.Header>
       <Dialog.Body>
         <Stack gap="sm">

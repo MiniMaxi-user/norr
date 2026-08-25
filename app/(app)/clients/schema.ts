@@ -58,10 +58,14 @@ export const SITE_PURPOSE_REQUIRED_MESSAGE =
  * (same shape `contactCreateSchema`/`contactUpdateSchema` above use, minus
  * the cross-field refine those don't need).
  *
- * `addressLine1`/`postalCode`/`city`/`country` are required (non-empty) as
- * of issue #41 redo — these are now the load-bearing address fields for the
- * whole feature (they were `optionalText` before, when a site was more of an
- * afterthought hanging off an asset). `latitude`/`longitude` are deliberately
+ * `addressLine1`/`postalCode`/`city` are required (non-empty) as of issue
+ * #41 redo — these are now the load-bearing address fields for the whole
+ * feature (they were `optionalText` before, when a site was more of an
+ * afterthought hanging off an asset). `country` is deliberately NOT
+ * required (issue #42) — not every org's clients are domestic-only, but
+ * requiring it up front was friction for the common single-country case;
+ * `sites.country` was already a nullable column (no DB change needed here).
+ * `latitude`/`longitude` are deliberately
  * NOT here at all: they're no longer client-submittable — repurposed to a
  * server-computed geocoding cache written by `createSite`/`updateSite` via
  * `lib/geocoding/nominatim.ts`, never entered manually. See
@@ -69,12 +73,11 @@ export const SITE_PURPOSE_REQUIRED_MESSAGE =
  */
 export const siteBaseSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
-  name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   addressLine1: z.string().trim().min(1, "Address is required.").max(200, "Address is too long."),
   addressLine2: optionalText(200),
   postalCode: z.string().trim().min(1, "Postal code is required.").max(20, "Postal code is too long."),
   city: z.string().trim().min(1, "City is required.").max(100, "City is too long."),
-  country: z.string().trim().min(1, "Country is required.").max(100, "Country is too long."),
+  country: optionalText(100),
   /** Visit / invoice / delivery address — at least one must be true
    * per row (see `SITE_PURPOSE_REQUIRED_MESSAGE`). All three optional here
    * at the field level (a partial update may touch none of them); enforced

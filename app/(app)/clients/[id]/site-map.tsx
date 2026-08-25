@@ -8,7 +8,7 @@ import { Badge, Stack, Text } from "@yourorg/ui";
 
 export interface SiteMapPin {
   siteId: string;
-  siteName: string;
+  addressLabel: string;
   latitude: number;
   longitude: number;
   addressLine1: string | null;
@@ -94,7 +94,7 @@ export function SiteMap({ pins }: { pins: SiteMapPin[] }) {
           <Popup>
             <Stack gap="xs">
               <Text>
-                <strong>{pin.siteName}</strong>
+                <strong>{pin.addressLabel}</strong>
               </Text>
               {pin.isPrimary && <Badge variant="accent">Primary</Badge>}
               <Text tone="muted">{[pin.addressLine1, pin.city].filter(Boolean).join(", ") || "—"}</Text>

@@ -7,6 +7,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getQuote, listQuoteLineItems } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { QuoteDetailActions } from "./quote-detail-actions";
 import { QuoteLineItemsPanel } from "./quote-line-items-panel";
@@ -77,7 +78,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   const client = clientResult.data?.client ?? null;
   const sites = clientResult.data?.sites ?? [];
-  const siteNameById = new Map(sites.map((site) => [site.id, site.name]));
+  const siteLabelById = new Map(sites.map((site) => [site.id, formatSiteAddressShort(site)]));
   const lineItems = lineItemsResult.data?.lineItems ?? [];
   const clientAssets = clientAssetsResult.data?.assets ?? [];
 
@@ -111,7 +112,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             label="Client"
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
-          <DetailRow label="Site" value={quote.site_id ? siteNameById.get(quote.site_id) ?? "—" : "—"} />
+          <DetailRow label="Site" value={quote.site_id ? siteLabelById.get(quote.site_id) ?? "—" : "—"} />
           <DetailRow label="Valid until" value={formatDate(quote.valid_until)} />
           <DetailRow label="Notes" value={quote.notes ?? "—"} />
           <Stack gap="xs">

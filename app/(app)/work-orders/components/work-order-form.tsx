@@ -23,6 +23,7 @@ import {
 } from "../work-order-form-actions";
 import { listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listContracts, type ContractRecord } from "@/app/(app)/contracts/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
@@ -305,7 +306,7 @@ export function WorkOrderForm({
                     <option value="">{loadingSites ? "Loading sites…" : "No specific site"}</option>
                     {sites.map((site) => (
                       <option key={site.id} value={site.id}>
-                        {site.name}
+                        {formatSiteAddressShort(site) ?? "Unnamed site"}
                       </option>
                     ))}
                   </Select>

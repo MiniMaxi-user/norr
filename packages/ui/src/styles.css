@@ -1481,6 +1481,39 @@ a:focus-visible > .ui-card-interactive,
 .ui-dialog-lg {
   width: min(680px, 100%);
 }
+/* Full-height right-edge panel — an alternative to the centered card above
+   for a form that wants more width and less forced vertical scrolling.
+   `position: fixed` takes it out of `.ui-dialog-overlay`'s
+   `align-items:center; justify-content:center` flex centering entirely (it
+   no longer participates in that layout at all), so it anchors to the
+   viewport's right edge regardless of the overlay's own alignment rules —
+   nothing on `.ui-dialog-overlay` needs to change for this variant. Only a
+   `border-left` (no border on the other 3 edges, which are flush with the
+   viewport) since a full-bleed panel doesn't read like a floating card the
+   way `.ui-dialog`'s all-around border does. Keeps the same column-flexbox
+   scroll-fix chain as the centered dialog (see the big comment above) — a
+   panel tall enough to overflow a short viewport still scrolls
+   `.ui-dialog-body` correctly. */
+.ui-dialog-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(640px, 100%);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  border: none;
+  border-left: 1px solid var(--ui-border);
+  border-radius: 0;
+  animation: ui-panel-in var(--ui-duration-base) var(--ui-ease);
+}
+@keyframes ui-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
 /* Every real call site wraps Dialog.Header/Body/Footer in a plain <form>
    (see app/(app)/clients/client-form-dialog.tsx and
    app/(app)/assets/components/asset-form-dialog.tsx) so a single submit

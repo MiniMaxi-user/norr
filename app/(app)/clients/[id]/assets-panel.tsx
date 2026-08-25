@@ -6,6 +6,7 @@ import { Boxes } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { CreateAssetButton } from "@/app/(app)/assets/components/create-asset-button";
 import type { SiteRecord } from "../actions";
+import { formatSiteAddressShort } from "../format-site-address";
 import { SiteAssetsTable } from "./site-assets-table";
 
 export interface AssetsPanelProps {
@@ -106,8 +107,7 @@ export function AssetsPanel({
                     </Text>
                   }
                 >
-                  {site.name}
-                  {site.city ? ` — ${site.city}` : ""}
+                  {formatSiteAddressShort(site) ?? "Unnamed site"}
                 </Disclosure.Summary>
                 <Disclosure.Content>
                   {siteAssets.length === 0 ? (

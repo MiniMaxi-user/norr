@@ -17,7 +17,11 @@ export interface ContractAssetsPanelProps {
    * already in `contractAssets` client-side, so it always reflects the
    * latest link state without a second round trip after a link/unlink. */
   clientAssets: AssetRecord[];
-  siteNameById: Map<string, string>;
+  /** `null` when a linked asset's site has no address parts to format at
+   * all (shouldn't normally happen — `addressLine1`/`city` are required —
+   * but `formatSiteAddressShort` is total, not partial, so the type carries
+   * that possibility through rather than lying about it). */
+  siteLabelById: Map<string, string | null>;
   /** Gated on `can(actor, "contracts", "create")` — matches
    * `linkContractAsset`'s own RBAC/RLS boundary (owner/finance only). */
   canLink: boolean;
@@ -40,7 +44,7 @@ export function ContractAssetsPanel({
   contractId,
   contractAssets,
   clientAssets,
-  siteNameById,
+  siteLabelById,
   canLink,
   canUnlink,
 }: ContractAssetsPanelProps) {
@@ -112,7 +116,7 @@ export function ContractAssetsPanel({
                     )}
                   </Table.Cell>
                   <Table.Cell>
-                    {contractAsset.asset ? siteNameById.get(contractAsset.asset.site_id) ?? "—" : "—"}
+                    {contractAsset.asset ? siteLabelById.get(contractAsset.asset.site_id) ?? "—" : "—"}
                   </Table.Cell>
                   {canUnlink && (
                     <Table.Cell align="center">

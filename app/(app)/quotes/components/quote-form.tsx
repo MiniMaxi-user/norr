@@ -7,6 +7,7 @@ import { Button, Card, FormGrid, FormSection, Input, Label, Select, Stack, Text,
 import type { QuoteRecord } from "../actions";
 import { createQuoteFormAction, updateQuoteFormAction, type QuoteFormState } from "../quote-form-actions";
 import { listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 const initialState: QuoteFormState = { ok: false };
@@ -144,7 +145,7 @@ export function QuoteForm({ mode, quote, clients, lockedClientId, statuses, canc
                     </option>
                     {sites.map((site) => (
                       <option key={site.id} value={site.id}>
-                        {site.name}
+                        {formatSiteAddressShort(site) ?? "Unnamed site"}
                       </option>
                     ))}
                   </Select>

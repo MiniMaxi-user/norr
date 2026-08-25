@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Select } from "@yourorg/ui";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 
 /**
  * Client/site cascading filter dropdowns for the assets list/map views.
@@ -62,7 +63,7 @@ export function AssetsFilters({
         <option value="">All sites</option>
         {sites.map((site) => (
           <option key={site.id} value={site.id}>
-            {site.name}
+            {formatSiteAddressShort(site) ?? "Unnamed site"}
           </option>
         ))}
       </Select>

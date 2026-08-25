@@ -12,6 +12,7 @@ import type { ClientRecord, SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteClientDialog } from "../delete-client-dialog";
+import { formatSiteAddress } from "../format-site-address";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { AssetsPanel } from "./assets-panel";
@@ -170,7 +171,7 @@ export function ClientDetail({
 
       <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
         <Tabs.List aria-label="Client detail">
-          <Tabs.Tab value="sites">Sites</Tabs.Tab>
+          <Tabs.Tab value="sites">Sites{sites.length > 0 ? ` (${sites.length})` : ""}</Tabs.Tab>
           {assetsEnabled && (
             <Tabs.Tab value="assets">
               Assets{assets.length > 0 ? ` (${assets.length})` : ""}
@@ -255,14 +256,6 @@ export function ClientDetail({
       )}
     </Stack>
   );
-}
-
-function formatSiteAddress(site: SiteRecord): string | null {
-  const cityLine = [site.postal_code, site.city].filter(Boolean).join(" ");
-  const parts = [site.address_line1, site.address_line2, cityLine, site.country].filter(
-    (part): part is string => Boolean(part),
-  );
-  return parts.length ? parts.join(", ") : null;
 }
 
 /** Same "Client since {month} {year}" convention as `clients-table.tsx`'s

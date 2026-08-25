@@ -7,6 +7,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getWorkOrder } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
@@ -164,10 +165,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             label="Client"
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
-          <DetailRow
-            label="Site"
-            value={site ? `${site.name}${site.city ? ` — ${site.city}` : ""}` : "—"}
-          />
+          <DetailRow label="Site" value={site ? formatSiteAddressShort(site) ?? "—" : "—"} />
           <DetailRow
             label="Asset"
             value={asset ? <Link href={`/assets/${asset.id}`}>{asset.name}</Link> : "—"}

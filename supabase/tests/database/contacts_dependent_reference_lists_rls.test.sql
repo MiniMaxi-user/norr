@@ -349,8 +349,8 @@ select pg_temp.act_as('f1111111-1111-1111-1111-111111111111');
 insert into public.clients (id, organization_id, name)
 values ('a2000000-0000-0000-0000-00000000000c', 'a1000000-0000-0000-0000-00000000000a', 'Client A2');
 
-insert into public.sites (id, client_id, name)
-values ('a4000000-0000-0000-0000-00000000000a', 'a2000000-0000-0000-0000-00000000000c', 'Site A');
+insert into public.sites (id, client_id)
+values ('a4000000-0000-0000-0000-00000000000a', 'a2000000-0000-0000-0000-00000000000c');
 
 select lives_ok(
   $$ insert into public.assets (id, site_id, name, type_id, subtype_id, serial_number)

@@ -7,6 +7,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getContract, listContractAssets } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { ContractDetailActions } from "./contract-detail-actions";
 import { ContractAssetsPanel } from "./contract-assets-panel";
@@ -74,7 +75,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
 
   const client = clientResult.data?.client ?? null;
   const sites = clientResult.data?.sites ?? [];
-  const siteNameById = new Map(sites.map((site) => [site.id, site.name]));
+  const siteLabelById = new Map(sites.map((site) => [site.id, formatSiteAddressShort(site)]));
   const contractAssets = contractAssetsResult.data?.contractAssets ?? [];
   const clientAssets = clientAssetsResult.data?.assets ?? [];
 
@@ -127,7 +128,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
         contractId={contract.id}
         contractAssets={contractAssets}
         clientAssets={clientAssets}
-        siteNameById={siteNameById}
+        siteLabelById={siteLabelById}
         canLink={canLinkAssets}
         canUnlink={canUnlinkAssets}
       />

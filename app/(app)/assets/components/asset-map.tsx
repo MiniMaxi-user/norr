@@ -18,7 +18,7 @@ export interface MapPinAsset {
 
 export interface MapPin {
   siteId: string;
-  siteName: string;
+  siteLabel: string;
   latitude: number;
   longitude: number;
   assets: MapPinAsset[];
@@ -87,7 +87,7 @@ export function AssetMap({ pins }: { pins: MapPin[] }) {
           <Popup>
             <Stack gap="xs">
               <Text>
-                <strong>{pin.siteName}</strong>
+                <strong>{pin.siteLabel}</strong>
               </Text>
               {pin.assets.map((asset) => (
                 <Stack key={asset.id} gap="xs">

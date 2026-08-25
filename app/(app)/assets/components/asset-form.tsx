@@ -7,6 +7,7 @@ import { Button, Card, CascadingSelect, Input, Label, Select, Stack, Text, Texta
 import type { AssetRecord } from "../actions";
 import { createAssetFormAction, updateAssetFormAction, type AssetFormState } from "../asset-form-actions";
 import { listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 const initialState: AssetFormState = { ok: false };
@@ -157,7 +158,7 @@ export function AssetForm({
               </option>
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
-                  {site.name}
+                  {formatSiteAddressShort(site) ?? "Unnamed site"}
                 </option>
               ))}
             </Select>

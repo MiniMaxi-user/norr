@@ -7,6 +7,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getAsset } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { AssetDetailActions } from "./asset-detail-actions";
 
 export const metadata = { title: "Asset details" };
@@ -83,10 +84,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
             label="Client"
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
-          <DetailRow
-            label="Site"
-            value={site ? `${site.name}${site.city ? ` — ${site.city}` : ""}` : "Unknown site"}
-          />
+          <DetailRow label="Site" value={site ? formatSiteAddressShort(site) ?? "Unknown site" : "Unknown site"} />
           <DetailRow label="Notes" value={asset.notes ?? "—"} />
         </Stack>
       </Card>

@@ -5,6 +5,7 @@ import { Badge, Button, Card, EmptyState, Inline, Stack, Table, Text } from "@yo
 import { Boxes } from "@yourorg/ui/icons";
 import type { SiteRecord } from "../actions";
 import { DeleteSiteDialog } from "../delete-site-dialog";
+import { formatSiteAddressShort } from "../format-site-address";
 import { SiteFormDialog } from "../site-form-dialog";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
 
@@ -73,7 +74,7 @@ export function SitesPanel({
         .filter((site) => site.latitude != null && site.longitude != null)
         .map((site) => ({
           siteId: site.id,
-          siteName: site.name,
+          addressLabel: formatSiteAddressShort(site) ?? "Unnamed site",
           latitude: site.latitude as number,
           longitude: site.longitude as number,
           addressLine1: site.address_line1,
@@ -118,7 +119,7 @@ export function SitesPanel({
           <Table>
             <Table.Head>
               <Table.Row>
-                <Table.HeaderCell>Name</Table.HeaderCell>
+                <Table.HeaderCell>Site</Table.HeaderCell>
                 <Table.HeaderCell>Address</Table.HeaderCell>
                 <Table.HeaderCell>City</Table.HeaderCell>
                 <Table.HeaderCell>Purpose</Table.HeaderCell>
@@ -136,7 +137,7 @@ export function SitesPanel({
                   >
                     <Table.Cell>
                       <Inline gap="xs" align="center">
-                        <Text>{site.name}</Text>
+                        <Text>{formatSiteAddressShort(site) ?? "—"}</Text>
                         {site.is_primary && <Badge variant="accent">Primary</Badge>}
                       </Inline>
                     </Table.Cell>
@@ -207,13 +208,13 @@ export function SitesPanel({
                 {primaryPin && (
                   <div className="ui-sites-map-legend-item">
                     <span className="ui-sites-map-legend-dot ui-sites-map-legend-dot-accent" aria-hidden="true" />
-                    <Text>{primaryPin.siteName}</Text>
+                    <Text>{primaryPin.addressLabel}</Text>
                   </div>
                 )}
                 {otherPins.length > 0 && (
                   <div className="ui-sites-map-legend-item">
                     <span className="ui-sites-map-legend-dot ui-sites-map-legend-dot-muted" aria-hidden="true" />
-                    <Text tone="muted">{otherPins.map((pin) => pin.city || pin.siteName).join(" · ")}</Text>
+                    <Text tone="muted">{otherPins.map((pin) => pin.city || pin.addressLabel).join(" · ")}</Text>
                   </div>
                 )}
               </div>

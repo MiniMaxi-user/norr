@@ -124,8 +124,8 @@ select is(
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, name, city, is_visit_address)
-     values ('f0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a', 'Main Site', 'Amsterdam', true) $$,
+  $$ insert into public.sites (id, client_id, city, is_visit_address)
+     values ('f0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a', 'Amsterdam', true) $$,
   'owner_a can insert a site under client A (org_a)'
 ); -- 8
 
@@ -136,8 +136,8 @@ select is(
 ); -- 9
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name, organization_id, is_visit_address)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Spoofed Site', 'd0000000-0000-0000-0000-00000000000a', true) $$,
+  $$ insert into public.sites (client_id, organization_id, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-00000000000a', true) $$,
   '42501',
   null,
   'owner_a cannot set sites.organization_id directly on insert (column-level grant withheld)'
@@ -153,8 +153,8 @@ select is(
 ); -- 11
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name, is_visit_address)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Planner Site', true) $$,
+  $$ insert into public.sites (client_id, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', true) $$,
   '42501',
   null,
   'planner_a (non-owner) cannot INSERT a site (RLS owner-only backstop)'
@@ -170,8 +170,8 @@ select is(
 ); -- 13
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name, is_visit_address)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Hostile Reparent Attempt', true) $$,
+  $$ insert into public.sites (client_id, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', true) $$,
   '42501',
   null,
   'owner_b cannot insert a site under org_a''s client (not is_org_owner of org_a; USING/CHECK on the derived organization_id blocks it)'
@@ -334,22 +334,22 @@ select lives_ok(
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name, is_visit_address, is_invoice_address, is_delivery_address)
-     values ('e0000000-0000-0000-0000-00000000000a', 'No Purpose Site', false, false, false) $$,
+  $$ insert into public.sites (client_id, is_visit_address, is_invoice_address, is_delivery_address)
+     values ('e0000000-0000-0000-0000-00000000000a', false, false, false) $$,
   '23514',
   null,
   'a site with all three purpose flags false violates sites_at_least_one_purpose'
 ); -- 30
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, name, is_visit_address, is_primary)
-     values ('f0000000-0000-0000-0000-00000000000b', 'e0000000-0000-0000-0000-00000000000a', 'Address 1', true, true) $$,
+  $$ insert into public.sites (id, client_id, is_visit_address, is_primary)
+     values ('f0000000-0000-0000-0000-00000000000b', 'e0000000-0000-0000-0000-00000000000a', true, true) $$,
   'owner_a can insert a primary site (address 1) under client A'
 ); -- 31
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, name, is_invoice_address, is_primary)
-     values ('f0000000-0000-0000-0000-00000000000c', 'e0000000-0000-0000-0000-00000000000a', 'Address 2', true, true) $$,
+  $$ insert into public.sites (id, client_id, is_invoice_address, is_primary)
+     values ('f0000000-0000-0000-0000-00000000000c', 'e0000000-0000-0000-0000-00000000000a', true, true) $$,
   'owner_a can insert a second primary site (address 2) under client A'
 ); -- 32
 

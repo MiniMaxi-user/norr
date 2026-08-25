@@ -58,7 +58,6 @@ export interface SiteRecord {
   id: string;
   organization_id: string;
   client_id: string;
-  name: string;
   address_line1: string | null;
   address_line2: string | null;
   postal_code: string | null;
@@ -116,7 +115,6 @@ function toSiteInsertRow(
 ) {
   return {
     client_id: input.clientId,
-    name: input.name,
     address_line1: input.addressLine1,
     address_line2: input.addressLine2 ?? null,
     postal_code: input.postalCode,
@@ -144,7 +142,6 @@ function toSiteInsertRow(
 function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; longitude: number }) {
   const row: Record<string, unknown> = {};
   if (input.clientId !== undefined) row.client_id = input.clientId;
-  if (input.name !== undefined) row.name = input.name;
   if (input.addressLine1 !== undefined) row.address_line1 = input.addressLine1;
   if (input.addressLine2 !== undefined) row.address_line2 = input.addressLine2 ?? null;
   if (input.postalCode !== undefined) row.postal_code = input.postalCode;
@@ -212,7 +209,10 @@ export async function getClient(
   const supabase = await createSupabaseServerClient();
   const [clientResult, sitesResult] = await Promise.all([
     supabase.from("clients").select("*").eq("id", idResult.data).maybeSingle(),
-    supabase.from("sites").select("*").eq("client_id", idResult.data).order("name", { ascending: true }),
+    // `sites.name` no longer exists (issue #42) — ordered by address line 1
+    // instead, the closest equivalent to an alphabetical "name" ordering now
+    // that a site is identified purely by its address.
+    supabase.from("sites").select("*").eq("client_id", idResult.data).order("address_line1", { ascending: true }),
   ]);
 
   if (clientResult.error) return fail(mapDbError(clientResult.error));
@@ -368,7 +368,9 @@ export async function listSites(clientId: string): Promise<ActionResult<{ sites:
     .from("sites")
     .select("*")
     .eq("client_id", idResult.data)
-    .order("name", { ascending: true });
+    // See `getClient`'s equivalent query above for why `address_line1`, not
+    // `name` (dropped, issue #42).
+    .order("address_line1", { ascending: true });
 
   if (error) return fail(mapDbError(error));
   return ok({ sites: (data ?? []) as SiteRecord[] });
@@ -466,7 +468,10 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
     addressLine1: parsed.data.addressLine1,
     postalCode: parsed.data.postalCode,
     city: parsed.data.city,
-    country: parsed.data.country,
+    // Country is optional as of issue #42 — `buildQuery` already drops any
+    // falsy address part, same `?? ""` fallback `updateSite` below already
+    // uses for its own (merged-with-existing) geocode call.
+    country: parsed.data.country ?? "",
   });
 
   const { data, error } = await supabase
