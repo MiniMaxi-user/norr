@@ -56,6 +56,12 @@ export interface ClientRecord {
   vat_number: string | null;
   iban: string | null;
   notes: string | null;
+  /** When set, this Client row IS a real platform tenant — links to the
+   * `organizations` row a Platform Admin manages through this same Client
+   * record (issue #45). See migration
+   * `20260825160000_clients_represents_organization.sql` and
+   * `activateAsTenant` below. `null` for an ordinary CRM client. */
+  represents_organization_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -354,6 +360,73 @@ export async function deleteClient(id: string): Promise<ActionResult<{ deletedId
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Client not found, or you do not have permission to delete it.");
   return ok({ deletedId: data.id as string });
+}
+
+/**
+ * Platform-admin-only (issue #45): turns an existing Client row into a real
+ * platform tenant by creating an `organizations` row and linking it via
+ * `clients.represents_organization_id`. This is how a Platform Admin
+ * "activates" a tenant they've been managing as a plain Client record
+ * (Sites/Contacts/Assets/Contracts/Work Orders/Quotes on that client keep
+ * working unchanged either way — this action only ever adds the link).
+ *
+ * Deliberately NOT gated by `can(actor, "clients", ...)` — Platform Admin is
+ * not a `TenantRole` (see `lib/rbac/permissions.ts`'s `PermissionActor`
+ * comment) and this action has nothing to do with the ordinary
+ * clients-module RBAC matrix; it's checked directly against
+ * `ctx.context.session.isPlatformAdmin` (`users.is_platform_admin`, see
+ * `lib/auth/session.ts`) so a regular tenant owner — who otherwise passes
+ * every `can(actor, "clients", "update")` check on their own clients — can
+ * never call this successfully.
+ *
+ * Still goes through `requireModuleContext("clients")` first: a Platform
+ * Admin must also be a member of some organization (their own dedicated
+ * "Platform" org, bootstrapped by hand — see the migration's header
+ * comment) with the `clients` feature enabled, same as any other caller of
+ * this module's actions — this action operates on a Client row that lives
+ * inside THAT organization, not the tenant being activated.
+ */
+export async function activateAsTenant(clientId: string): Promise<ActionResult<{ client: ClientRecord }>> {
+  const idResult = uuidSchema.safeParse(clientId);
+  if (!idResult.success) return fail("Invalid client id.");
+
+  const ctx = await requireModuleContext("clients");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!ctx.context.session.isPlatformAdmin) {
+    return fail("Only a platform admin can activate a client as a tenant.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("clients")
+    .select("id, name, represents_organization_id")
+    .eq("id", idResult.data)
+    .maybeSingle();
+  if (existingError) return fail(mapDbError(existingError));
+  if (!existing) return fail("Client not found.");
+  if (existing.represents_organization_id) {
+    return fail("This client is already activated as a tenant.");
+  }
+
+  const { data: organization, error: organizationError } = await supabase
+    .from("organizations")
+    .insert({ name: existing.name, created_by: ctx.context.session.userId })
+    .select("id")
+    .single();
+  if (organizationError) return fail(mapDbError(organizationError));
+
+  const { data, error } = await supabase
+    .from("clients")
+    .update({ represents_organization_id: organization.id })
+    .eq("id", idResult.data)
+    .select("*")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Client not found, or you do not have permission to update it.");
+  return ok({ client: data as ClientRecord });
 }
 
 // ---------------------------------------------------------------------------

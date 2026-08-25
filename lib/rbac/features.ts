@@ -61,7 +61,19 @@ export type FeatureKey =
   // yet — a concurrent frontend effort owns that), but every
   // reference-lists Server Action still calls `hasFeature()` first per
   // CLAUDE.md rule 3.
-  | "settings";
+  | "settings"
+  // Platform (issue #45) — Platform Admin's own cross-tenant settings stub
+  // (app/(app)/platform-settings/page.tsx) and the "Platform" nav group in
+  // components/shell/nav-items.ts. Deliberately NOT added to
+  // `SHIPPED_FEATURES` below and NOT resolved through `hasFeature()` at all:
+  // `resolveNavItems()` special-cases this key to gate on
+  // `isPlatformAdmin` instead (see that file), because `hasFeature` always
+  // returns `false` when `organization` is `null` — true for a
+  // platform-admin-only account, which is exactly the account this key
+  // exists for. Kept in this union only so `NavItem.moduleKey` (typed
+  // `FeatureKey`) can hold it, matching this file's own "same string keys
+  // as moduleKey/Module" convention.
+  | "platform";
 
 /**
  * Phase 0 stand-in for "the org's Stripe subscription entitles them to this

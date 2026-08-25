@@ -15,6 +15,12 @@ interface AppShellProps {
   /** Real signed-in user, for the topbar avatar/dropdown (issue #3's
    * `requireSession()` guarantees one exists by the time this renders). */
   user: Pick<CurrentSession, "email" | "fullName" | "role">;
+  /** `session.isPlatformAdmin` (issue #45) — threaded to `resolveNavItems`
+   * so the "Platform settings" nav item can resolve `enabled` outside the
+   * normal `hasFeature(organization, ...)` path (see that function's own
+   * comment for why), and to `Topbar`/`UserMenu` for the "Platform Admin"
+   * badge. */
+  isPlatformAdmin: boolean;
   title?: ReactNode;
   children: ReactNode;
 }
@@ -38,15 +44,16 @@ export async function AppShell({
   defaultSidebarCollapsed,
   organization,
   user,
+  isPlatformAdmin,
   title,
   children,
 }: AppShellProps) {
-  const navItems = await resolveNavItems(organization);
+  const navItems = await resolveNavItems(organization, isPlatformAdmin);
 
   return (
     <AppLayout
       sidebar={<AppSidebar defaultCollapsed={defaultSidebarCollapsed} items={navItems} />}
-      topbar={<Topbar title={title} navItems={navItems} user={user} />}
+      topbar={<Topbar title={title} navItems={navItems} user={user} isPlatformAdmin={isPlatformAdmin} />}
     >
       {children}
     </AppLayout>

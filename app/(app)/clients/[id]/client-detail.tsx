@@ -3,28 +3,39 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, Breadcrumbs, Button, DetailHero, Stack, Tabs, Text } from "@yourorg/ui";
-import { Boxes, ClipboardList, FileText, MapPin, Receipt, Users } from "@yourorg/ui/icons";
+import { Badge, Breadcrumbs, Button, DetailHero, Inline, Stack, Tabs, Text } from "@yourorg/ui";
+import { Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
-import type { ClientRecord, SiteRecord } from "../actions";
+import { activateAsTenant, type ClientRecord, type SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
+import type { TenantAccessStatus } from "../platform-access-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { formatSiteAddress } from "../format-site-address";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
+import { AccessPanel } from "./access-panel";
 import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
 import { ContractsPanel } from "./contracts-panel";
+import { ModulesPanel } from "./modules-panel";
 import { QuotesPanel } from "./quotes-panel";
 import { SitesPanel } from "./sites-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
 
-export type ClientDetailTab = "sites" | "assets" | "contacts" | "workOrders" | "contracts" | "quotes";
+export type ClientDetailTab =
+  | "sites"
+  | "assets"
+  | "contacts"
+  | "workOrders"
+  | "contracts"
+  | "quotes"
+  | "access"
+  | "modules";
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -43,6 +54,16 @@ export interface ClientDetailProps {
   contractsEnabled: boolean;
   quotes: QuoteRecord[];
   quotesEnabled: boolean;
+  /** `session.isPlatformAdmin` (issue #45), threaded down the same way
+   * `canWrite` etc. already are — gates the "Activate as tenant" hero action
+   * and the "Access"/"Modules" tabs below. */
+  isPlatformAdmin: boolean;
+  /** Each of `contacts`' current tenant login-access status, keyed by
+   * `email.trim().toLowerCase()` — only ever fetched (non-`null`) server-side
+   * in `page.tsx` when the "Access" tab is actually visible
+   * (`isPlatformAdmin && client.represents_organization_id`); `null`
+   * otherwise, in which case the tab itself doesn't render either. */
+  accessStatusByEmail: Record<string, TenantAccessStatus> | null;
   defaultTab: ClientDetailTab;
 }
 
@@ -86,6 +107,8 @@ export function ClientDetail({
   contractsEnabled,
   quotes,
   quotesEnabled,
+  isPlatformAdmin,
+  accessStatusByEmail,
   defaultTab,
 }: ClientDetailProps) {
   const router = useRouter();
@@ -142,6 +165,14 @@ export function ClientDetail({
     (item): item is string => Boolean(item),
   );
 
+  // Issue #45: this client already represents a real platform tenant once
+  // `represents_organization_id` is set — the "Activate as tenant" hero
+  // action only makes sense before that (one-way, no un-activate), and the
+  // "Access"/"Modules" tabs only make sense after it.
+  const isActivatedTenant = Boolean(client.represents_organization_id);
+  const showActivateTenant = isPlatformAdmin && !isActivatedTenant;
+  const tenantAccessVisible = isPlatformAdmin && isActivatedTenant;
+
   return (
     <Stack gap="lg">
       <DetailHero
@@ -155,16 +186,21 @@ export function ClientDetail({
           </>
         }
         actions={
-          canWrite ? (
+          canWrite || showActivateTenant ? (
             <>
-              <Link href={`/clients/${client.id}/edit`}>
-                <Button variant="outline" size="sm">
-                  Edit
-                </Button>
-              </Link>
-              <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
-                Delete
-              </Button>
+              {canWrite && (
+                <>
+                  <Link href={`/clients/${client.id}/edit`}>
+                    <Button variant="outline" size="sm">
+                      Edit
+                    </Button>
+                  </Link>
+                  <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+                    Delete
+                  </Button>
+                </>
+              )}
+              {showActivateTenant && <ActivateTenantAction clientId={client.id} />}
             </>
           ) : undefined
         }
@@ -198,6 +234,16 @@ export function ClientDetail({
           {quotesEnabled && (
             <Tabs.Tab value="quotes" icon={<Receipt />}>
               Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
+            </Tabs.Tab>
+          )}
+          {tenantAccessVisible && (
+            <Tabs.Tab value="access" icon={<ShieldCheck />}>
+              Access
+            </Tabs.Tab>
+          )}
+          {tenantAccessVisible && (
+            <Tabs.Tab value="modules" icon={<Settings />}>
+              Modules
             </Tabs.Tab>
           )}
         </Tabs.List>
@@ -249,6 +295,18 @@ export function ClientDetail({
             <QuotesPanel quotes={quotes} />
           </Tabs.Panel>
         )}
+
+        {tenantAccessVisible && (
+          <Tabs.Panel value="access">
+            <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
+          </Tabs.Panel>
+        )}
+
+        {tenantAccessVisible && (
+          <Tabs.Panel value="modules">
+            <ModulesPanel />
+          </Tabs.Panel>
+        )}
       </Tabs>
 
       {canWrite && (
@@ -260,6 +318,64 @@ export function ClientDetail({
         />
       )}
     </Stack>
+  );
+}
+
+/**
+ * "Activate as tenant" hero action (issue #45) — platform-admin-only,
+ * one-way (there's no "un-activate"), so a plain click isn't enough: the
+ * first click swaps the button for an inline "Confirm"/"Cancel" pair rather
+ * than opening a full `Dialog` (per the story: this doesn't warrant one).
+ * On success, `router.refresh()` re-fetches the page's server data, which
+ * both flips `client.represents_organization_id` (so this action itself
+ * disappears) and reveals the new "Access"/"Modules" tabs.
+ */
+function ActivateTenantAction({ clientId }: { clientId: string }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleActivate() {
+    setError(null);
+    setPending(true);
+    activateAsTenant(clientId)
+      .then((result) => {
+        setPending(false);
+        if (result.error || !result.data) {
+          setError(result.error ?? "Could not activate this client as a tenant.");
+          return;
+        }
+        setConfirming(false);
+        router.refresh();
+      })
+      .catch(() => {
+        setPending(false);
+        setError("Could not activate this client as a tenant.");
+      });
+  }
+
+  if (confirming) {
+    return (
+      <Inline gap="xs" align="center">
+        <Text tone="danger">Turn this client into a real platform tenant?</Text>
+        <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={pending}>
+          Cancel
+        </Button>
+        <Button variant="primary" size="sm" onClick={handleActivate} disabled={pending}>
+          {pending ? "Activating…" : "Confirm"}
+        </Button>
+      </Inline>
+    );
+  }
+
+  return (
+    <Inline gap="xs" align="center">
+      {error && <Text tone="danger">{error}</Text>}
+      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+        Activate as tenant
+      </Button>
+    </Inline>
   );
 }
 

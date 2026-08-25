@@ -34,10 +34,14 @@ export function Topbar({
   title,
   navItems,
   user,
+  isPlatformAdmin,
 }: {
   title?: ReactNode;
   navItems: ResolvedNavItem[];
   user: Pick<CurrentSession, "email" | "fullName" | "role">;
+  /** `session.isPlatformAdmin` (issue #45) — passed straight through to
+   * `UserMenu` for the "Platform Admin" badge next to the user's name. */
+  isPlatformAdmin: boolean;
 }) {
   const displayName = memberDisplayName({ email: user.email, full_name: user.fullName });
 
@@ -61,7 +65,7 @@ export function Topbar({
 
         <Separator orientation="vertical" />
 
-        <UserMenu name={displayName} role={user.role} />
+        <UserMenu name={displayName} role={user.role} isPlatformAdmin={isPlatformAdmin} />
       </Toolbar.Section>
     </Toolbar>
   );

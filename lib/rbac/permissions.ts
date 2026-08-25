@@ -55,7 +55,8 @@ export type Module =
   | "reporting"
   | "dashboard"
   | "billing"
-  | "settings";
+  | "settings"
+  | "platform";
 
 /**
  * Actions a role can be granted on a module. The `_own` suffix actions
@@ -218,6 +219,19 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Platform (issue #45): Platform Admin's own cross-tenant settings area
+  // (app/(app)/platform-settings/page.tsx) — never a tenant-role concern
+  // (docs/ARCHITECTURE.md / CLAUDE.md: `is_platform_admin` is a separate,
+  // cross-tenant flag, never assignable through a tenant role/invite flow),
+  // so every tenant role gets NONE here, same shape as e.g. `billing`'s
+  // planner/engineer rows.
+  platform: {
+    owner: NONE,
+    planner: NONE,
+    engineer: NONE,
+    finance: NONE,
+    administratie: NONE,
+  },
 };
 
 /**
@@ -249,6 +263,12 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // cross-tenant Platform Admin concern (no "Read (support only)" carve-out
   // documented for it the way Clients has) — NONE, same shape as `planning`.
   settings: NONE,
+  // Platform (issue #45): the only module Platform Admin gets on its own
+  // account, matching `app/(app)/platform-settings/page.tsx`'s gate
+  // (`canAccessModule(actor, "platform")`). Read-only per this file's own
+  // "Platform Admin is ... read-mostly by design" convention — there's
+  // nothing to configure yet (stub page).
+  platform: READ_ONLY,
 };
 
 export interface PermissionActor {

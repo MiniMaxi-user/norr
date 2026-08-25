@@ -31,6 +31,7 @@ export default async function AppRouteLayout({
         defaultSidebarCollapsed={defaultSidebarCollapsed}
         organization={session.organization}
         user={{ email: session.email, fullName: session.fullName, role: session.role }}
+        isPlatformAdmin={session.isPlatformAdmin}
         title={<PageHeaderSlot />}
       >
         <Suspense fallback={<MainSkeleton />}>{children}</Suspense>

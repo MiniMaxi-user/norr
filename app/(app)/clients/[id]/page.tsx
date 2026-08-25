@@ -7,6 +7,7 @@ import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
+import { getTenantAccessStatus } from "../platform-access-actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listContracts } from "@/app/(app)/contracts/actions";
@@ -64,6 +65,13 @@ async function ClientDetailContent({ id }: { id: string }) {
   }
 
   const canWrite = can(actor, "clients", "update");
+
+  // Issue #45: the "Access"/"Modules" tabs are platform-admin-only, and only
+  // once this client has actually been activated as a tenant
+  // (`represents_organization_id` set) — same visibility rule `ClientDetail`
+  // itself re-derives for the tab triggers/panels, computed here too since it
+  // gates whether `getTenantAccessStatus` below is worth calling at all.
+  const tenantAccessVisible = session.isPlatformAdmin && Boolean(result.data.client.represents_organization_id);
 
   // The Assets tab is itself a view onto the (separately-entitled) Assets
   // module — per docs/ARCHITECTURE.md, a module that isn't entitled/
@@ -127,6 +135,27 @@ async function ClientDetailContent({ id }: { id: string }) {
       preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
     ]);
 
+  // Access-status lookup (issue #45): only run once the "Access" tab could
+  // actually be visible (see `tenantAccessVisible` above) — same
+  // conditional-fetch discipline every other entitlement-gated tab on this
+  // page already follows. Runs after the `Promise.all` above (rather than
+  // inside it) since it needs `contactsResult`'s emails as input. Fetched
+  // server-side, not via a client `useEffect`, because `Tabs.Panel`
+  // unmounts/remounts on every tab switch (`packages/ui/src/tabs.tsx`) — a
+  // `useEffect` fetch in the panel would re-run (and flicker) every time an
+  // admin reselects this tab, and a Server Action can't run at render time
+  // anyway. This keeps the same "everything this page needs is fetched once,
+  // up front, and handed down as props" convention every other tab already
+  // uses.
+  const accessStatusResult = tenantAccessVisible
+    ? await getTenantAccessStatus(
+        id,
+        (contactsResult.data?.contacts ?? [])
+          .map((contact) => contact.email)
+          .filter((email): email is string => Boolean(email)),
+      )
+    : null;
+
   const requestedTab = lastUsedTab as ClientDetailTab | null;
   const defaultTab: ClientDetailTab =
     requestedTab === "assets" && assetsModuleVisible
@@ -139,7 +168,11 @@ async function ClientDetailContent({ id }: { id: string }) {
             ? "contracts"
             : requestedTab === "quotes" && quotesModuleVisible
               ? "quotes"
-              : "sites";
+              : requestedTab === "access" && tenantAccessVisible
+                ? "access"
+                : requestedTab === "modules" && tenantAccessVisible
+                  ? "modules"
+                  : "sites";
 
   return (
     <ClientDetail
@@ -161,6 +194,8 @@ async function ClientDetailContent({ id }: { id: string }) {
       contractsEnabled={contractsModuleVisible}
       quotes={quotesResult?.data?.quotes ?? []}
       quotesEnabled={quotesModuleVisible}
+      isPlatformAdmin={session.isPlatformAdmin}
+      accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}
     />
   );

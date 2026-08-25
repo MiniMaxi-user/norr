@@ -9,6 +9,7 @@ import {
   BarChart3,
   Receipt,
   Settings,
+  ShieldCheck,
 } from "@yourorg/ui/icons";
 import { hasFeature, type FeatureKey, type FeatureOrganization } from "@/lib/rbac/features";
 
@@ -66,6 +67,13 @@ export const NAV_ITEMS: NavItem[] = [
   // gated only on entitlement (`hasFeature`) like every other nav item, not
   // on role, same as e.g. Clients showing up for every tenant role.
   { moduleKey: "settings", label: "Settings", href: "/settings", icon: Settings, group: "Admin" },
+  // Platform (issue #45) — Platform Admin's own cross-tenant settings stub.
+  // Own new `group` ("Platform"), placed last, per this file's
+  // group-by-consecutive-adjacency mechanism (no separate groups config).
+  // `enabled` is NOT resolved via `hasFeature()` like every item above —
+  // see the `moduleKey === "platform"` special case in `resolveNavItems`
+  // below.
+  { moduleKey: "platform", label: "Platform settings", href: "/platform-settings", icon: ShieldCheck, group: "Platform" },
 ];
 
 /**
@@ -78,15 +86,24 @@ export const NAV_ITEMS: NavItem[] = [
  *
  * `organization` is `null` for a signed-in user with no tenant membership
  * yet (e.g. a platform-admin-only account) — every item resolves to
- * `enabled: false` in that case (see `hasFeature`).
+ * `enabled: false` in that case (see `hasFeature`), EXCEPT the "Platform
+ * settings" item (`moduleKey === "platform"`), which is a platform-wide
+ * concern that has nothing to do with tenant entitlement — `hasFeature`
+ * always returns `false` when `organization` is `null`, which is exactly
+ * the account shape (platform-admin-only, no tenant membership) this item
+ * needs to work for. That one item is special-cased below to resolve
+ * `enabled` from `isPlatformAdmin` instead of `hasFeature`; every other
+ * item's resolution is unchanged.
  */
 export async function resolveNavItems(
   organization: FeatureOrganization | null,
+  isPlatformAdmin = false,
 ): Promise<ResolvedNavItem[]> {
   return Promise.all(
     NAV_ITEMS.map(async (item) => ({
       ...item,
-      enabled: await hasFeature(organization, item.moduleKey),
+      enabled:
+        item.moduleKey === "platform" ? isPlatformAdmin : await hasFeature(organization, item.moduleKey),
     })),
   );
 }
