@@ -11,7 +11,7 @@ import { Button } from "../src/components/button";
 import { DetailHero } from "../src/components/detail-hero";
 import { Tabs } from "../src/tabs";
 import { EmptyState } from "../src/components/empty-state";
-import { FileText } from "../src/icons";
+import { ClipboardList, FileText, LayoutDashboard } from "../src/icons";
 
 const account = accounts[0]!;
 
@@ -64,9 +64,15 @@ function EditorialDetailPage() {
 
         <Tabs defaultValue="overview">
           <Tabs.List aria-label="Account detail">
-            <Tabs.Tab value="overview">Overview</Tabs.Tab>
-            <Tabs.Tab value="workOrders">Work orders (4)</Tabs.Tab>
-            <Tabs.Tab value="contracts">Contracts (1)</Tabs.Tab>
+            <Tabs.Tab value="overview" icon={<LayoutDashboard />}>
+              Overview
+            </Tabs.Tab>
+            <Tabs.Tab value="workOrders" icon={<ClipboardList />}>
+              Work orders (4)
+            </Tabs.Tab>
+            <Tabs.Tab value="contracts" icon={<FileText />}>
+              Contracts (1)
+            </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="overview">

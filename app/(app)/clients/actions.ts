@@ -46,8 +46,15 @@ export interface ClientRecord {
   id: string;
   organization_id: string;
   name: string;
-  email: string | null;
   phone: string | null;
+  /** Dutch Chamber of Commerce (KvK) registration number — see migration
+   * `20260825150000_clients_business_fields.sql`. `email` was dropped from
+   * this table in the same migration (issue #43): a client's contact email
+   * now only ever lives on its `Contact` rows (`contacts-actions.ts`), never
+   * on the client itself. */
+  kvk_number: string | null;
+  vat_number: string | null;
+  iban: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -87,8 +94,10 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
   return {
     organization_id: organizationId,
     name: input.name,
-    email: input.email ?? null,
     phone: input.phone ?? null,
+    kvk_number: input.kvkNumber ?? null,
+    vat_number: input.vatNumber ?? null,
+    iban: input.iban ?? null,
     notes: input.notes ?? null,
   };
 }
@@ -96,8 +105,10 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
 function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
-  if (input.email !== undefined) row.email = input.email ?? null;
   if (input.phone !== undefined) row.phone = input.phone ?? null;
+  if (input.kvkNumber !== undefined) row.kvk_number = input.kvkNumber ?? null;
+  if (input.vatNumber !== undefined) row.vat_number = input.vatNumber ?? null;
+  if (input.iban !== undefined) row.iban = input.iban ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   return row;
 }

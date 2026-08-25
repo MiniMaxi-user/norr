@@ -47,7 +47,12 @@ export function groupClientsForKanban(
   const buckets: Record<ClientStage, ClientRecord[]> = { new: [], contacted: [], onboarded: [] };
 
   for (const client of clients) {
-    const hasContact = Boolean(client.email || client.phone);
+    // `client.email` was dropped from the DB (issue #43) — a client's
+    // contact email now only ever lives on its `Contact` rows, which aren't
+    // plumbed into this list/kanban fetch (see `clients-board.tsx`; adding
+    // that here would be a bigger detour than this heuristic warrants).
+    // `phone` alone is a reasonable minimal "has contact info" signal.
+    const hasContact = Boolean(client.phone);
     const hasSite = Boolean(primarySiteByClientId[client.id]);
     if (!hasContact) {
       buckets.new.push(client);
@@ -59,11 +64,11 @@ export function groupClientsForKanban(
   }
 
   return [
-    { stage: "new", label: "New", description: "No email or phone on file yet", clients: buckets.new },
+    { stage: "new", label: "New", description: "No phone on file yet", clients: buckets.new },
     {
       stage: "contacted",
       label: "Contacted",
-      description: "Has an email or phone, no site/address yet",
+      description: "Has a phone number, no site/address yet",
       clients: buckets.contacted,
     },
     {

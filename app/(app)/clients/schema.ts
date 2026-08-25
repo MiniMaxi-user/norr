@@ -23,8 +23,17 @@ function optionalText(max: number) {
 
 export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
-  email: z.preprocess(emptyToUndefined, z.string().trim().email("Invalid email address.").max(320).optional()),
   phone: optionalText(50),
+  /** Dutch Chamber of Commerce (KvK) registration number — plain text, no
+   * format validation at the DB or app layer (see migration
+   * `20260825150000_clients_business_fields.sql`). */
+  kvkNumber: optionalText(50),
+  /** VAT / BTW number — same "plain text, no format validation" treatment
+   * as `kvkNumber`. */
+  vatNumber: optionalText(50),
+  /** Bank account IBAN. 34 is the real maximum IBAN length worldwide
+   * (Malta/Saint Lucia use the longest IBAN format, 34 characters). */
+  iban: optionalText(34),
   notes: optionalText(5000),
 });
 

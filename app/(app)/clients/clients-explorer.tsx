@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Button, Card, EmptyState, Input, Stack, Text } from "@yourorg/ui";
 import { Users } from "@yourorg/ui/icons";
 import type { ClientRecord, SiteRecord } from "./actions";
@@ -9,6 +8,7 @@ import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
 import { DeleteClientDialog } from "./delete-client-dialog";
+import { NewClientPanel } from "./new-client-panel";
 import { ViewToggle, type ViewOption } from "./view-toggle";
 
 export type ClientsView = "list" | "kanban";
@@ -21,11 +21,15 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
 /**
  * Client component owning all Clients-list interactivity: search/filter
  * (client-side, over the already-fetched page — server-side search is a
- * later improvement per the task spec), the list/kanban view switch, and
- * the delete confirmation dialog. Create/Edit are real pages now
- * (`/clients/new`, `/clients/[id]/edit` — docs/ARCHITECTURE.md "Popup vs.
- * full page — pick by weight, not habit"), reached via plain `Link`s.
- * `clients`/`count` are fetched once server-side (`clients-board.tsx`) and
+ * later improvement per the task spec), the list/kanban view switch, the
+ * "Add client" slide-in panel, and the delete confirmation dialog. As of
+ * issue #43, creating a client opens `NewClientPanel` (a `Dialog`
+ * `size="panel"`) instead of navigating to a full page — an explicit,
+ * confirmed override of this app's usual "Popup vs. full page" default (see
+ * that component's doc comment). Editing is still a real page
+ * (`/clients/[id]/edit`, unchanged by this issue — docs/ARCHITECTURE.md
+ * "Popup vs. full page — pick by weight, not habit"). `clients`/`count` are
+ * fetched once server-side (`clients-board.tsx`) and
  * passed down as props; a delete calls `router.refresh()` (inside the
  * dialog) to re-fetch rather than mutating this component's local copy,
  * keeping this component's own state limited to pure UI state (search text,
@@ -64,13 +68,14 @@ export function ClientsExplorer({
   const [view, setView] = useState<ClientsView>(defaultView);
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ClientRecord | null>(null);
+  const [newClientOpen, setNewClientOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return clients;
     return clients.filter((client) => {
       const primarySite = primarySiteByClientId[client.id];
-      return [client.name, client.email, client.phone, primarySite?.city].some((field) =>
+      return [client.name, client.phone, primarySite?.city].some((field) =>
         (field ?? "").toLowerCase().includes(query),
       );
     });
@@ -78,18 +83,21 @@ export function ClientsExplorer({
 
   if (clients.length === 0) {
     return (
-      <EmptyState
-        icon={<Users />}
-        heading="No clients yet"
-        text="Add your first client to start tracking their sites and assets."
-        action={
-          canWrite ? (
-            <Link href="/clients/new">
-              <Button variant="primary">Add client</Button>
-            </Link>
-          ) : undefined
-        }
-      />
+      <>
+        <EmptyState
+          icon={<Users />}
+          heading="No clients yet"
+          text="Add your first client to start tracking their sites and assets."
+          action={
+            canWrite ? (
+              <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                Add client
+              </Button>
+            ) : undefined
+          }
+        />
+        {canWrite && <NewClientPanel open={newClientOpen} onOpenChange={setNewClientOpen} />}
+      </>
     );
   }
 
@@ -99,16 +107,16 @@ export function ClientsExplorer({
         <Stack gap="sm">
           <Input
             aria-label="Search clients"
-            placeholder="Search by name, email, phone, or city…"
+            placeholder="Search by name, phone, or city…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
           <div>
             <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
             {canWrite && (
-              <Link href="/clients/new">
-                <Button variant="primary">Add client</Button>
-              </Link>
+              <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                Add client
+              </Button>
             )}
           </div>
         </Stack>
@@ -143,6 +151,8 @@ export function ClientsExplorer({
           client={deleteTarget}
         />
       )}
+
+      {canWrite && <NewClientPanel open={newClientOpen} onOpenChange={setNewClientOpen} />}
     </Stack>
   );
 }

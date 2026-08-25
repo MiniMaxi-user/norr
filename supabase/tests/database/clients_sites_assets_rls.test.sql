@@ -66,8 +66,8 @@ values ('b3333333-3333-3333-3333-333333333333', 'd0000000-0000-0000-0000-0000000
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.clients (id, organization_id, name, email)
-     values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-00000000000a', 'Client A', 'client-a@test.local') $$,
+  $$ insert into public.clients (id, organization_id, name)
+     values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-00000000000a', 'Client A') $$,
   'owner_a can insert a client into org_a'
 ); -- 1
 

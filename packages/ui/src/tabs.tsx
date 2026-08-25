@@ -98,6 +98,11 @@ export function TabsList({ children, ...rest }: TabsListProps) {
 export interface TabsTabProps {
   value: string;
   disabled?: boolean;
+  /** Small leading icon (issue #44, "Icons bij tabjes") — purely decorative
+   * (`aria-hidden`, per this package's icon convention), rendered before
+   * `children` at a fixed small size via `.ui-tabs-tab-icon`. Optional so
+   * every existing icon-less call site keeps rendering unchanged. */
+  icon?: ReactNode;
   children?: ReactNode;
 }
 
@@ -129,7 +134,7 @@ function focusAndActivate(tab: HTMLButtonElement | null | undefined) {
  * `TabsList`/`TabsTab`/`TabsPanel` directly instead when a Server Component
  * needs to compose `Tabs` itself.
  */
-export function TabsTab({ value, disabled, children }: TabsTabProps) {
+export function TabsTab({ value, disabled, icon, children }: TabsTabProps) {
   const { value: activeValue, setValue, baseId } = useTabsContext("Tab");
   const selected = value === activeValue;
 
@@ -161,6 +166,11 @@ export function TabsTab({ value, disabled, children }: TabsTabProps) {
       onClick={() => setValue(value)}
       onKeyDown={onKeyDown}
     >
+      {icon && (
+        <span className="ui-tabs-tab-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       {children}
     </button>
   );

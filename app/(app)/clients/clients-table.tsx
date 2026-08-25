@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Avatar, Badge, Button, Inline, Stack, Table, Text } from "@yourorg/ui";
-import { Mail, MapPin, Phone } from "@yourorg/ui/icons";
+import { MapPin, Phone } from "@yourorg/ui/icons";
 import type { ClientRecord, SiteRecord } from "./actions";
 
 /**
@@ -39,7 +39,7 @@ export function ClientsTable({
       <Table.Head>
         <Table.Row>
           <Table.HeaderCell>Name</Table.HeaderCell>
-          <Table.HeaderCell>Contact</Table.HeaderCell>
+          <Table.HeaderCell>Phone</Table.HeaderCell>
           <Table.HeaderCell>Location</Table.HeaderCell>
           <Table.HeaderCell>Profile</Table.HeaderCell>
           {/* `align="end"` is documented as valid (types/yourorg-ui.d.ts) but
@@ -72,22 +72,14 @@ export function ClientsTable({
                 </Inline>
               </Table.Cell>
               <Table.Cell>
-                <Stack gap="xs">
-                  {client.email ? (
-                    <Inline gap="xs">
-                      <Mail aria-hidden />
-                      <Text>{client.email}</Text>
-                    </Inline>
-                  ) : (
-                    <Text tone="muted">No email</Text>
-                  )}
-                  {client.phone && (
-                    <Inline gap="xs">
-                      <Phone aria-hidden />
-                      <Text tone="muted">{client.phone}</Text>
-                    </Inline>
-                  )}
-                </Stack>
+                {client.phone ? (
+                  <Inline gap="xs">
+                    <Phone aria-hidden />
+                    <Text>{client.phone}</Text>
+                  </Inline>
+                ) : (
+                  <Text tone="muted">No phone</Text>
+                )}
               </Table.Cell>
               <Table.Cell>
                 {location ? (

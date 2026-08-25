@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Breadcrumbs, Button, DetailHero, Stack, Tabs, Text } from "@yourorg/ui";
+import { Boxes, ClipboardList, FileText, MapPin, Receipt, Users } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
@@ -59,7 +60,9 @@ export interface ClientDetailProps {
  * `components/shell/page-header-context.tsx`). The client's own fields are
  * the "Option C" editorial `DetailHero` (`@yourorg/ui`) — an initials hero
  * mark, the client's name as the page's serif `Heading level={1}`, a
- * dot-separated email/phone/primary-address meta line, and "Primary"/
+ * dot-separated phone/primary-address meta line (no email — `clients.email`
+ * was dropped in issue #43; a client's contact email now only lives on its
+ * `Contact` rows, see the Contacts tab), and "Primary"/
  * "Client since" badges — the now-canonical header pattern for a top-level
  * entity's detail page (see `stories/EditorialDetailPage.stories.tsx` and
  * docs/ARCHITECTURE.md's "Relational detail pages" section). `client.notes`
@@ -135,7 +138,7 @@ export function ClientDetail({
     selectTab("assets");
   }
 
-  const heroMeta = [client.email, client.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
+  const heroMeta = [client.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
     (item): item is string => Boolean(item),
   );
 
@@ -171,27 +174,29 @@ export function ClientDetail({
 
       <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
         <Tabs.List aria-label="Client detail">
-          <Tabs.Tab value="sites">Sites{sites.length > 0 ? ` (${sites.length})` : ""}</Tabs.Tab>
+          <Tabs.Tab value="sites" icon={<MapPin />}>
+            Sites{sites.length > 0 ? ` (${sites.length})` : ""}
+          </Tabs.Tab>
           {assetsEnabled && (
-            <Tabs.Tab value="assets">
+            <Tabs.Tab value="assets" icon={<Boxes />}>
               Assets{assets.length > 0 ? ` (${assets.length})` : ""}
             </Tabs.Tab>
           )}
-          <Tabs.Tab value="contacts">
+          <Tabs.Tab value="contacts" icon={<Users />}>
             Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
           </Tabs.Tab>
           {workOrdersEnabled && (
-            <Tabs.Tab value="workOrders">
+            <Tabs.Tab value="workOrders" icon={<ClipboardList />}>
               Work Orders{workOrders.length > 0 ? ` (${workOrders.length})` : ""}
             </Tabs.Tab>
           )}
           {contractsEnabled && (
-            <Tabs.Tab value="contracts">
+            <Tabs.Tab value="contracts" icon={<FileText />}>
               Contracts{contracts.length > 0 ? ` (${contracts.length})` : ""}
             </Tabs.Tab>
           )}
           {quotesEnabled && (
-            <Tabs.Tab value="quotes">
+            <Tabs.Tab value="quotes" icon={<Receipt />}>
               Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
             </Tabs.Tab>
           )}
