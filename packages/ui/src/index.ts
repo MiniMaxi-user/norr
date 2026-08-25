@@ -69,6 +69,7 @@ export { Heading, Text, type HeadingProps, type HeadingLevel, type TextProps, ty
 export { Stack, Inline, type StackProps, type StackGap, type InlineProps, type InlineAlign } from "./components/stack";
 export { Avatar, type AvatarProps, type AvatarSize } from "./components/avatar";
 export { Breadcrumbs, type BreadcrumbsProps, type BreadcrumbItem } from "./components/breadcrumbs";
+export { DetailHero, type DetailHeroProps } from "./components/detail-hero";
 export {
   Label,
   Input,

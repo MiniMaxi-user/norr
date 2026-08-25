@@ -34,10 +34,9 @@ const optionalIsoDateSchema = z.preprocess(emptyToUndefined, requiredIsoDateSche
 
 /**
  * Optional money amount with at most 2 decimal places, matching
- * `contracts.value numeric(12,2)`. `z.coerce.number()` mirrors the existing
- * numeric-field precedent (`siteCreateSchema.latitude`/`longitude` in
- * `app/(app)/clients/schema.ts`) — accepts a form's string or number input
- * alike. The 2-decimal-place check compares `value` against itself rounded
+ * `contracts.value numeric(12,2)`. `z.coerce.number()` accepts a form's
+ * string or number input alike. The 2-decimal-place check compares `value`
+ * against itself rounded
  * to the nearest cent (within a small epsilon) rather than using
  * `.multipleOf(0.01)`, which is itself prone to floating-point
  * representation artifacts for this exact use case (e.g.

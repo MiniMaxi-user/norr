@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, Card, Heading, Stack, Tabs, Text } from "@yourorg/ui";
+import { Badge, Breadcrumbs, Button, DetailHero, Stack, Tabs, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
@@ -13,6 +13,7 @@ import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { setLastUsedView } from "@/lib/preferences/actions";
+import { usePageHeader } from "@/components/shell/page-header-context";
 import { AssetsPanel } from "./assets-panel";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
@@ -52,6 +53,17 @@ export interface ClientDetailProps {
  * tab (`AssetsPanel`, grouped by site via `Disclosure`), so the real
  * client -> sites -> assets hierarchy stays visible from either tab instead
  * of being flattened into one generic list.
+ *
+ * The breadcrumb still lives in the Topbar (`usePageHeader`, see
+ * `components/shell/page-header-context.tsx`). The client's own fields are
+ * the "Option C" editorial `DetailHero` (`@yourorg/ui`) — an initials hero
+ * mark, the client's name as the page's serif `Heading level={1}`, a
+ * dot-separated email/phone/primary-address meta line, and "Primary"/
+ * "Client since" badges — the now-canonical header pattern for a top-level
+ * entity's detail page (see `stories/EditorialDetailPage.stories.tsx` and
+ * docs/ARCHITECTURE.md's "Relational detail pages" section). `client.notes`
+ * has no slot in that hero (the approved mockup's meta-line doesn't carry
+ * it), so it renders as a small muted line just below, only when present.
  */
 export function ClientDetail({
   client,
@@ -89,6 +101,27 @@ export function ClientDetail({
     return map;
   }, [assets]);
 
+  // Issue #41 redo ("Sites as client addresses"): `ClientRecord` no longer
+  // carries its own address fields — the client's main address is whichever
+  // of its `sites` has `is_primary = true` (the server guarantees at most
+  // one, and every client with at least one site has exactly one, per
+  // `createSite`'s "first site is forced primary" rule). Badged "Primary"
+  // here to satisfy "1 adres is het hoofdadres ... ook zichtbaar maken met
+  // badge ... op de detailpagina" — the same badge/label `sites-panel.tsx`
+  // uses on the matching row in the Sites tab.
+  const primarySite = useMemo(() => sites.find((site) => site.is_primary) ?? null, [sites]);
+
+  const breadcrumbItems = useMemo(
+    () => [{ label: "Clients", href: "/clients" }, { label: client.name }],
+    [client.name],
+  );
+  // The element itself (not just `breadcrumbItems`) must be memoized — see
+  // the "MUST be referentially stable" warning on `usePageHeader`'s doc
+  // comment. An inline `<Breadcrumbs items={breadcrumbItems} />` here would
+  // be a fresh element every render and infinite-loop.
+  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
+  usePageHeader(breadcrumbNode);
+
   function selectTab(next: ClientDetailTab) {
     setTab(next);
     startTransition(() => {
@@ -101,34 +134,39 @@ export function ClientDetail({
     selectTab("assets");
   }
 
+  const heroMeta = [client.email, client.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
+    (item): item is string => Boolean(item),
+  );
+
   return (
     <Stack gap="lg">
-      <Breadcrumbs items={[{ label: "Clients", href: "/clients" }, { label: client.name }]} />
-
-      <Card>
-        <Stack gap="md">
-          <Heading level={1}>{client.name}</Heading>
-          {canWrite && (
-            <div>
+      <DetailHero
+        avatarLabel={client.name}
+        title={client.name}
+        meta={heroMeta}
+        badges={
+          <>
+            {primarySite && <Badge variant="accent">Primary</Badge>}
+            <Badge variant="muted">{formatClientSince(client.created_at)}</Badge>
+          </>
+        }
+        actions={
+          canWrite ? (
+            <>
               <Link href={`/clients/${client.id}/edit`}>
                 <Button variant="outline" size="sm">
                   Edit
                 </Button>
-              </Link>{" "}
+              </Link>
               <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
                 Delete
               </Button>
-            </div>
-          )}
+            </>
+          ) : undefined
+        }
+      />
 
-          <Stack gap="xs">
-            <DetailRow label="Email" value={client.email} />
-            <DetailRow label="Phone" value={client.phone} />
-            <DetailRow label="Address" value={formatAddress(client)} />
-            <DetailRow label="Notes" value={client.notes} />
-          </Stack>
-        </Stack>
-      </Card>
+      {client.notes && <Text tone="muted">{client.notes}</Text>}
 
       <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
         <Tabs.List aria-label="Client detail">
@@ -219,19 +257,21 @@ export function ClientDetail({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div>
-      <Text tone="muted">{label}</Text>
-      <Text>{value || "—"}</Text>
-    </div>
-  );
-}
-
-function formatAddress(client: ClientRecord): string | null {
-  const cityLine = [client.postal_code, client.city].filter(Boolean).join(" ");
-  const parts = [client.address_line1, client.address_line2, cityLine, client.country].filter(
+function formatSiteAddress(site: SiteRecord): string | null {
+  const cityLine = [site.postal_code, site.city].filter(Boolean).join(" ");
+  const parts = [site.address_line1, site.address_line2, cityLine, site.country].filter(
     (part): part is string => Boolean(part),
   );
   return parts.length ? parts.join(", ") : null;
+}
+
+/** Same "Client since {month} {year}" convention as `clients-table.tsx`'s
+ * own `formatClientSince` (not imported from there — that one is a private
+ * helper local to the table, not exported) — feeds the hero's "Client
+ * since" badge, the only real (non-fabricated) client-tenure signal
+ * available on `ClientRecord`. */
+function formatClientSince(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "Client since —";
+  return `Client since ${date.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`;
 }

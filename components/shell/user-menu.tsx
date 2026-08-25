@@ -65,12 +65,12 @@ export function UserMenu({ name, role }: { name: string; role?: string | null })
         <DropdownMenu.Item icon={<CreditCard aria-hidden />} disabled>
           Facturatie
         </DropdownMenu.Item>
-        <DropdownMenu.Item icon={<SettingsIcon aria-hidden />} href="/settings">
+        <DropdownMenu.Item icon={<SettingsIcon aria-hidden />} href="/settings" onClick={() => setOpen(false)}>
           Instellingen
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
         <form action={logOutAction}>
-          <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger>
+          <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger onClick={() => setOpen(false)}>
             Uitloggen
           </DropdownMenu.Item>
         </form>

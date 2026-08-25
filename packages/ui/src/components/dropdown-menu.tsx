@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, MouseEventHandler, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { cx } from "../cx";
 
@@ -68,9 +69,34 @@ export interface DropdownMenuContentProps extends HTMLAttributes<HTMLDivElement>
 
 function DropdownMenuContent({ open, onClose, align = "end", className, children, ...rest }: DropdownMenuContentProps) {
   if (!open) return null;
+  // The backdrop is `position: fixed; inset: 0` to catch a click anywhere
+  // on the page and close the menu — but `position: fixed` resolves against
+  // the nearest ancestor that establishes its own containing block (any
+  // `filter`/`backdrop-filter`/`transform`/`perspective`/`will-change`), not
+  // necessarily the viewport. `Topbar`'s `.ui-toolbar` (a very plausible
+  // ancestor for this exact menu — see `components/shell/user-menu.tsx`) has
+  // `backdrop-filter: blur(10px)` for its glass effect, which silently
+  // shrinks `inset: 0` down to the toolbar's own (short) box instead of the
+  // full page — clicking anywhere below the topbar then does nothing, the
+  // menu never closes. Portal ONLY the backdrop to `document.body` (a real
+  // sibling of every such ancestor) so it always covers the true viewport,
+  // regardless of what filter/transform any future call site's ancestors
+  // use. The menu content itself stays exactly where it is in the DOM/JSX
+  // below — it must, since its `position: absolute` anchoring depends on
+  // `.ui-dropdown-menu`'s `position: relative` wrapper being a normal DOM
+  // ancestor; portaling it too would lose that anchor and need
+  // `getBoundingClientRect` + state to reposition, which would require a
+  // hook this file deliberately can't have (see the file's top doc
+  // comment). `typeof document` guards the (never actually hit, since
+  // `open` only ever becomes `true` from post-hydration client state) case
+  // of this rendering during SSR, where there is no `document`.
+  const backdrop =
+    typeof document === "undefined"
+      ? null
+      : createPortal(<div className="ui-dropdown-menu-backdrop" onClick={onClose} />, document.body);
   return (
     <>
-      <div className="ui-dropdown-menu-backdrop" onClick={onClose} />
+      {backdrop}
       <div
         role="menu"
         className={cx("ui-dropdown-menu-content", align === "start" && "ui-dropdown-menu-content-start", className)}
@@ -98,7 +124,7 @@ function DropdownMenuSeparator({ className, ...rest }: HTMLAttributes<HTMLHRElem
   return <hr className={cx("ui-dropdown-menu-separator", className)} {...rest} />;
 }
 
-export interface DropdownMenuItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
+export interface DropdownMenuItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onClick"> {
   /** Renders as a `Link` instead of a `<button>` when given (e.g. "Settings"
    * navigating to a real route) — ignored while `disabled`. */
   href?: string;
@@ -108,6 +134,13 @@ export interface DropdownMenuItemProps extends Omit<ButtonHTMLAttributes<HTMLBut
   danger?: boolean;
   disabled?: boolean;
   children?: ReactNode;
+  /** Fires either way — whether this renders as a `<button>` or (with
+   * `href`) a `Link`/`<a>` — e.g. a call site closing the menu on selection
+   * (`components/shell/user-menu.tsx`). Typed to accept either element
+   * (rather than inherited from `ButtonHTMLAttributes`, which only accepts
+   * an `HTMLButtonElement` handler and doesn't type-check against `Link`)
+   * since which element actually renders depends on `href`. */
+  onClick?: MouseEventHandler<HTMLButtonElement | HTMLAnchorElement>;
 }
 
 function DropdownMenuItem({
@@ -118,6 +151,7 @@ function DropdownMenuItem({
   disabled,
   className,
   children,
+  onClick,
   ...rest
 }: DropdownMenuItemProps) {
   const classes = cx("ui-dropdown-menu-item", danger && "ui-dropdown-menu-item-danger", className);
@@ -130,14 +164,14 @@ function DropdownMenuItem({
 
   if (href && !disabled) {
     return (
-      <Link href={href} role="menuitem" className={classes}>
+      <Link href={href} role="menuitem" className={classes} onClick={onClick}>
         {content}
       </Link>
     );
   }
 
   return (
-    <button type={type} role="menuitem" className={classes} disabled={disabled} {...rest}>
+    <button type={type} role="menuitem" className={classes} disabled={disabled} onClick={onClick} {...rest}>
       {content}
     </button>
   );

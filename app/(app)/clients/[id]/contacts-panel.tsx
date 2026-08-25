@@ -85,7 +85,10 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
             {contacts.map((contact) => {
               const role = contact.role_item_id ? roleById.get(contact.role_item_id) : undefined;
               return (
-                <Table.Row key={contact.id}>
+                <Table.Row
+                  key={contact.id}
+                  onClick={canWrite ? () => setContactForm({ open: true, contact }) : undefined}
+                >
                   <Table.Cell>
                     <Inline gap="sm">
                       <Avatar name={contact.name} size="sm" />
@@ -105,11 +108,21 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setContactForm({ open: true, contact })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setContactForm({ open: true, contact });
+                        }}
                       >
                         Edit
                       </Button>{" "}
-                      <Button variant="danger" size="sm" onClick={() => setDeleteTarget(contact)}>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDeleteTarget(contact);
+                        }}
+                      >
                         Delete
                       </Button>
                     </Table.Cell>

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Avatar, Badge, Button, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { Mail, MapPin, Phone } from "@yourorg/ui/icons";
-import type { ClientRecord } from "./actions";
+import type { ClientRecord, SiteRecord } from "./actions";
 
 /**
  * Plain data table for a list of clients — used both by the List view
@@ -13,18 +13,24 @@ import type { ClientRecord } from "./actions";
  *
  * Rows are compound cells rather than one-value-per-column plain text —
  * an initials avatar + "client since" meta under the name, contact info
- * grouped with its icon, city/country combined into one location cell, and
- * an at-a-glance "profile" badge — all built from fields already on
- * `ClientRecord` (no extra query per row).
+ * grouped with its icon, the primary site's city/country combined into one
+ * location cell (with a "Primary" badge — issue #41 redo, "Primary adres
+ * is zichtbaar in alle standaardoverzichten"), and an at-a-glance "profile"
+ * badge.
  */
 export function ClientsTable({
   clients,
   canWrite,
   onDelete,
+  primarySiteByClientId,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
   onDelete: (client: ClientRecord) => void;
+  /** Each client's primary site (or `null`), keyed by `client.id` — see
+   * `clients-explorer.tsx`. `ClientRecord` itself no longer carries any
+   * address fields (issue #41 redo, "Sites as client addresses"). */
+  primarySiteByClientId: Record<string, SiteRecord | null>;
 }) {
   const router = useRouter();
 
@@ -50,8 +56,9 @@ export function ClientsTable({
       </Table.Head>
       <Table.Body>
         {clients.map((client) => {
-          const location = [client.city, client.country].filter(Boolean).join(", ");
-          const hasFullAddress = Boolean(client.address_line1 && client.city);
+          const primarySite = primarySiteByClientId[client.id] ?? null;
+          const location = primarySite ? [primarySite.city, primarySite.country].filter(Boolean).join(", ") : "";
+          const hasAddress = Boolean(primarySite);
 
           return (
             <Table.Row key={client.id} onClick={() => router.push(`/clients/${client.id}`)}>
@@ -84,17 +91,18 @@ export function ClientsTable({
               </Table.Cell>
               <Table.Cell>
                 {location ? (
-                  <Inline gap="xs">
+                  <Inline gap="xs" align="center">
                     <MapPin aria-hidden />
                     <Text>{location}</Text>
+                    <Badge variant="accent">Primary</Badge>
                   </Inline>
                 ) : (
                   <Text tone="muted">—</Text>
                 )}
               </Table.Cell>
               <Table.Cell>
-                <Badge variant={hasFullAddress ? "success" : "muted"}>
-                  {hasFullAddress ? "Address on file" : "No address"}
+                <Badge variant={hasAddress ? "success" : "muted"}>
+                  {hasAddress ? "Address on file" : "No address"}
                 </Badge>
               </Table.Cell>
               {canWrite && (

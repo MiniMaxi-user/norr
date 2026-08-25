@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Button, Card, EmptyState, Input, Stack, Text } from "@yourorg/ui";
 import { Users } from "@yourorg/ui/icons";
-import type { ClientRecord } from "./actions";
+import type { ClientRecord, SiteRecord } from "./actions";
 import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
@@ -46,6 +46,7 @@ export function ClientsExplorer({
   pageSize,
   canWrite,
   defaultView,
+  primarySiteByClientId,
 }: {
   clients: ClientRecord[];
   count: number;
@@ -53,6 +54,12 @@ export function ClientsExplorer({
   pageSize: number;
   canWrite: boolean;
   defaultView: ClientsView;
+  /** Each client's primary site (or `null` if it has none yet), keyed by
+   * `client.id` — see `clients-board.tsx`'s `fetchPrimarySiteByClientId`.
+   * Threaded down to both `ClientsTable` and `ClientsKanban` so every
+   * standard client overview shows the same primary-address data
+   * ("Primary adres is zichtbaar in alle standaardoverzichten"). */
+  primarySiteByClientId: Record<string, SiteRecord | null>;
 }) {
   const [view, setView] = useState<ClientsView>(defaultView);
   const [search, setSearch] = useState("");
@@ -61,12 +68,13 @@ export function ClientsExplorer({
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return clients;
-    return clients.filter((client) =>
-      [client.name, client.email, client.phone, client.city].some((field) =>
+    return clients.filter((client) => {
+      const primarySite = primarySiteByClientId[client.id];
+      return [client.name, client.email, client.phone, primarySite?.city].some((field) =>
         (field ?? "").toLowerCase().includes(query),
-      ),
-    );
-  }, [clients, search]);
+      );
+    });
+  }, [clients, search, primarySiteByClientId]);
 
   if (clients.length === 0) {
     return (
@@ -109,9 +117,19 @@ export function ClientsExplorer({
       {filtered.length === 0 ? (
         <Text tone="muted">No clients match &ldquo;{search}&rdquo;.</Text>
       ) : view === "list" ? (
-        <ClientsTable clients={filtered} canWrite={canWrite} onDelete={setDeleteTarget} />
+        <ClientsTable
+          clients={filtered}
+          canWrite={canWrite}
+          onDelete={setDeleteTarget}
+          primarySiteByClientId={primarySiteByClientId}
+        />
       ) : (
-        <ClientsKanban clients={filtered} canWrite={canWrite} onDelete={setDeleteTarget} />
+        <ClientsKanban
+          clients={filtered}
+          canWrite={canWrite}
+          onDelete={setDeleteTarget}
+          primarySiteByClientId={primarySiteByClientId}
+        />
       )}
 
       <ClientsPagination page={page} pageSize={pageSize} count={count} />

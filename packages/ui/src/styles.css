@@ -222,6 +222,14 @@ html.dark {
 
 html {
   color-scheme: light;
+  /* Global density: every `--ui-text-*`/`--ui-space-*`/`--ui-radius-*` token
+     is defined in `rem`, which resolves against THIS element's font-size
+     (not `body`'s), so shrinking it here scales type, spacing, and radii
+     everywhere in one place — text a bit smaller, tighter gaps, more
+     content fitting on screen (also lets the sidebar be narrower — see
+     `.ui-sidebar`'s width below, which is a fixed `px` value and needed its
+     own explicit reduction to match, since it doesn't scale with this). */
+  font-size: 90%;
 }
 html.dark {
   color-scheme: dark;
@@ -303,7 +311,7 @@ a {
  * Sidebar / nav
  * ---------------------------------------------------------------------- */
 .ui-sidebar {
-  width: 252px;
+  width: 224px;
   flex-shrink: 0;
   height: 100%;
   overflow-y: auto;
@@ -341,7 +349,7 @@ a {
   --ui-accent-strong: var(--ui-accent-500);
 }
 .ui-sidebar-collapsed {
-  width: 68px;
+  width: 60px;
   padding-inline: 0.5rem;
 }
 .ui-sidebar-collapsed .ui-nav-item {
@@ -757,6 +765,13 @@ a {
 .ui-card-interactive {
   cursor: pointer;
 }
+/* Zero-padding modifier for a `Card` that owns its own internal
+   spacing/sections (e.g. a card housing a labeled head + edge-to-edge
+   content, like the Sites-tab map side-card) instead of the default
+   1.25rem/1.5rem padding. */
+.ui-card-flush {
+  padding: 0;
+}
 .ui-card-interactive:hover {
   border-color: var(--ui-accent-tint-border);
   box-shadow: var(--ui-shadow-md);
@@ -906,6 +921,17 @@ a:focus-visible > .ui-card-interactive,
   height: 1.625rem;
   font-size: 0.6875rem;
 }
+/* Hero mark (`DetailHero`, "Option C" editorial detail-page header) — 56px
+   rounded square, serif face, per the approved mockup's `.hero-mark`. */
+.ui-avatar-lg {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--ui-radius-lg);
+  font-family: var(--ui-font-serif);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: normal;
+}
 
 /* ---------------------------------------------------------------------- *
  * Breadcrumbs — see components/breadcrumbs.tsx
@@ -946,6 +972,116 @@ a:focus-visible > .ui-card-interactive,
   height: 0.8rem;
   color: var(--ui-muted-subtle);
   flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------- *
+ * DetailHero — see components/detail-hero.tsx. The "Option C" editorial
+ * header for a top-level entity's detail page (Clients today; Assets/Work
+ * Orders/Contracts/Quotes once those get their own detail pages — see
+ * docs/ARCHITECTURE.md's "Relational detail pages" section and
+ * stories/EditorialDetailPage.stories.tsx for the canonical reference).
+ * Hero mark (`Avatar` `size="lg"`) + serif `Heading level={1}` + a
+ * dot-separated meta line, badges appended after with no leading dot,
+ * actions right-aligned. Values below are the approved mockup's exact
+ * measurements, not independently re-derived.
+ * ---------------------------------------------------------------------- */
+.ui-detail-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ui-space-lg);
+}
+.ui-detail-hero-left {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-md);
+  min-width: 0;
+}
+.ui-detail-hero-heading {
+  min-width: 0;
+}
+.ui-detail-hero-title {
+  margin: 0;
+}
+.ui-detail-hero-meta {
+  margin-top: var(--ui-space-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-sm);
+  flex-wrap: wrap;
+  font-size: 0.84375rem;
+  color: var(--ui-muted);
+}
+.ui-detail-hero-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-muted-subtle);
+  flex-shrink: 0;
+}
+.ui-detail-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-sm);
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Sites-grid (Client detail, Sites tab) — table + a narrow "Locations" map
+ * side-card, from the approved Option C client-detail mockup. Client/
+ * address-specific (any address-bearing entity's own site list), NOT part
+ * of the generic `DetailHero` pattern above — referenced directly by class
+ * name from `app/(app)/clients/[id]/sites-panel.tsx`, same documented-
+ * utility pattern as `.ui-row-actions`.
+ * ---------------------------------------------------------------------- */
+.ui-sites-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .ui-sites-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ui-sites-map-head {
+  padding: 0.75rem 0.875rem 0;
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ui-muted);
+}
+.ui-sites-map-frame {
+  margin: 0.625rem;
+  border-radius: var(--ui-radius-md);
+  overflow: hidden;
+}
+.ui-sites-map-legend {
+  padding: 0 0.875rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-sm);
+}
+.ui-sites-map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-sm);
+  font-size: 0.78125rem;
+  color: var(--ui-fg-secondary);
+}
+.ui-sites-map-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ui-radius-full);
+  flex-shrink: 0;
+}
+.ui-sites-map-legend-dot-accent {
+  background: var(--ui-accent-strong);
+}
+.ui-sites-map-legend-dot-muted {
+  background: var(--ui-fg-secondary);
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1714,10 +1850,19 @@ a:focus-visible > .ui-card-interactive,
 .ui-dropdown-menu-trigger {
   display: inline-flex;
 }
+/* Portaled straight to `document.body` (see `DropdownMenu.Content`'s doc
+   comment) — this z-index is now compared at the ROOT stacking context, not
+   scoped inside whatever chrome the trigger happens to live in. Must stay
+   BELOW every chrome-level stacking context this system already defines
+   (`.ui-sidebar`'s 1, `.ui-toolbar`'s 20) so a still-in-place (non-portaled)
+   `.ui-dropdown-menu-content` nested in one of those remains clickable/on
+   top of the backdrop, while staying ABOVE ordinary page content (which has
+   no explicit z-index) so a click anywhere else on the page still reaches
+   it and closes the menu. */
 .ui-dropdown-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 10;
 }
 .ui-dropdown-menu-content {
   position: absolute;
@@ -2394,6 +2539,26 @@ a:focus-visible > .ui-card-interactive,
   color: var(--ui-fg-secondary);
   font-weight: 550;
   text-align: right;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Real Leaflet map integration — the actual `react-leaflet` `MapContainer`
+ * used by the app's `assets/components/asset-map.tsx` and
+ * `clients/[id]/site-map.tsx` (both dynamically imported, `ssr: false`;
+ * see each file's own doc comment), NOT the decorative `MapSurface` above.
+ *
+ * Leaflet's own stylesheet (`leaflet/dist/leaflet.css`) gives its internal
+ * panes/controls (`.leaflet-pane`, `.leaflet-top`/`.leaflet-bottom`,
+ * `.leaflet-control`) z-index values up to ~1000 — high enough to compete
+ * with app-level overlays like `.ui-dialog-overlay` (z-index: 100 above).
+ * `.leaflet-container` is `position: relative` but doesn't establish a new
+ * stacking context on its own, so those high z-indexes leak out past the
+ * map and render in front of dialogs opened elsewhere on the page (e.g.
+ * "Add site" opening behind the map). `isolation: isolate` scopes Leaflet's
+ * internal stacking to the map itself, whatever card/container it's in.
+ * ---------------------------------------------------------------------- */
+.leaflet-container {
+  isolation: isolate;
 }
 
 /* ---------------------------------------------------------------------- *

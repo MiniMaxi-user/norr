@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, Heading, Stack, Text } from "@yourorg/ui";
-import type { ClientRecord } from "./actions";
+import type { ClientRecord, SiteRecord } from "./actions";
 import { groupClientsForKanban } from "./kanban";
 import { ClientsTable } from "./clients-table";
 
@@ -20,12 +20,17 @@ export function ClientsKanban({
   clients,
   canWrite,
   onDelete,
+  primarySiteByClientId,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
   onDelete: (client: ClientRecord) => void;
+  /** Threaded straight through to `ClientsTable` (each column reuses it),
+   * and to `groupClientsForKanban`'s "onboarded" heuristic — see
+   * `kanban.ts`. */
+  primarySiteByClientId: Record<string, SiteRecord | null>;
 }) {
-  const columns = groupClientsForKanban(clients);
+  const columns = groupClientsForKanban(clients, primarySiteByClientId);
 
   return (
     <Stack gap="lg">
@@ -39,7 +44,12 @@ export function ClientsKanban({
             {column.clients.length === 0 ? (
               <Text tone="muted">No clients in this stage.</Text>
             ) : (
-              <ClientsTable clients={column.clients} canWrite={canWrite} onDelete={onDelete} />
+              <ClientsTable
+                clients={column.clients}
+                canWrite={canWrite}
+                onDelete={onDelete}
+                primarySiteByClientId={primarySiteByClientId}
+              />
             )}
           </Stack>
         </Card>

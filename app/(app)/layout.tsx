@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { MainSkeleton } from "@/components/shell/main-skeleton";
+import { PageHeaderProvider, PageHeaderSlot } from "@/components/shell/page-header-context";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { requireSession } from "@/lib/auth/session";
 
@@ -25,12 +26,15 @@ export default async function AppRouteLayout({
   const defaultSidebarCollapsed = await preferencesStore.getSidebarCollapsed(session.userId);
 
   return (
-    <AppShell
-      defaultSidebarCollapsed={defaultSidebarCollapsed}
-      organization={session.organization}
-      user={{ email: session.email, fullName: session.fullName, role: session.role }}
-    >
-      <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
-    </AppShell>
+    <PageHeaderProvider>
+      <AppShell
+        defaultSidebarCollapsed={defaultSidebarCollapsed}
+        organization={session.organization}
+        user={{ email: session.email, fullName: session.fullName, role: session.role }}
+        title={<PageHeaderSlot />}
+      >
+        <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
+      </AppShell>
+    </PageHeaderProvider>
   );
 }

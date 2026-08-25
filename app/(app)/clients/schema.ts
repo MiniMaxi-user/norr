@@ -25,11 +25,6 @@ export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   email: z.preprocess(emptyToUndefined, z.string().trim().email("Invalid email address.").max(320).optional()),
   phone: optionalText(50),
-  addressLine1: optionalText(200),
-  addressLine2: optionalText(200),
-  postalCode: optionalText(20),
-  city: optionalText(100),
-  country: optionalText(100),
   notes: optionalText(5000),
 });
 
@@ -41,26 +36,86 @@ export const clientUpdateSchema = clientCreateSchema.partial();
 
 export type ClientUpdateInput = z.infer<typeof clientUpdateSchema>;
 
-export const siteCreateSchema = z.object({
+/** Friendly mirror of the DB's `sites_at_least_one_purpose` CHECK
+ * (`is_visit_address or is_invoice_address or is_delivery_address`), issue
+ * #41 redo ("Sites as client addresses",
+ * `supabase/migrations/20260825090000_sites_addresses.sql`). Surfaced as a
+ * field error on `isVisitAddress` (the first of the three) rather than a raw
+ * `23514` constraint violation. Exported so `app/(app)/clients/actions.ts`
+ * can reuse the exact same message for the equivalent check it has to do by
+ * hand on `updateSite` (a partial update may omit all three flags, which
+ * `.refine()` on a `.partial()` schema can't express — see `siteUpdateSchema`
+ * below — so `updateSite` re-derives "at least one true" after merging with
+ * the existing row and needs the same wording). */
+export const SITE_PURPOSE_REQUIRED_MESSAGE =
+  "Select at least one purpose: visit, invoice, or delivery address.";
+
+/**
+ * Un-refined base shape shared by `siteCreateSchema` (refined, below) and
+ * `siteUpdateSchema` (`.partial()`, below) — a `.refine()`-wrapped schema
+ * can't itself be `.partial()`'d in zod, so the refine and the partial each
+ * have to be layered on top of this plain object instead of on one another
+ * (same shape `contactCreateSchema`/`contactUpdateSchema` above use, minus
+ * the cross-field refine those don't need).
+ *
+ * `addressLine1`/`postalCode`/`city`/`country` are required (non-empty) as
+ * of issue #41 redo — these are now the load-bearing address fields for the
+ * whole feature (they were `optionalText` before, when a site was more of an
+ * afterthought hanging off an asset). `latitude`/`longitude` are deliberately
+ * NOT here at all: they're no longer client-submittable — repurposed to a
+ * server-computed geocoding cache written by `createSite`/`updateSite` via
+ * `lib/geocoding/nominatim.ts`, never entered manually. See
+ * `supabase/migrations/20260825090000_sites_addresses.sql`.
+ */
+export const siteBaseSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
-  addressLine1: optionalText(200),
+  addressLine1: z.string().trim().min(1, "Address is required.").max(200, "Address is too long."),
   addressLine2: optionalText(200),
-  postalCode: optionalText(20),
-  city: optionalText(100),
-  country: optionalText(100),
-  latitude: z.preprocess(emptyToUndefined, z.coerce.number().min(-90).max(90).optional()),
-  longitude: z.preprocess(emptyToUndefined, z.coerce.number().min(-180).max(180).optional()),
+  postalCode: z.string().trim().min(1, "Postal code is required.").max(20, "Postal code is too long."),
+  city: z.string().trim().min(1, "City is required.").max(100, "City is too long."),
+  country: z.string().trim().min(1, "Country is required.").max(100, "Country is too long."),
+  /** Visit / invoice / delivery address — at least one must be true
+   * per row (see `SITE_PURPOSE_REQUIRED_MESSAGE`). All three optional here
+   * at the field level (a partial update may touch none of them); enforced
+   * as "at least one" by `siteCreateSchema`'s `.refine()` below, and by hand
+   * in `updateSite` after merging with the existing row. */
+  isVisitAddress: z.boolean().optional(),
+  isInvoiceAddress: z.boolean().optional(),
+  isDeliveryAddress: z.boolean().optional(),
+  /** At most one `true` per client — enforced by the DB
+   * (`enforce_single_primary_site` + `sites_one_primary_per_client_idx`),
+   * not re-validated here, mirroring `contactCreateSchema.isPrimary` above. */
+  isPrimary: z.boolean().optional(),
   notes: optionalText(5000),
 });
 
+/** `.refine()` requires at least one purpose flag `true` — mirrors the DB's
+ * `sites_at_least_one_purpose` CHECK, giving a friendly field error instead
+ * of a raw `23514`. Note: `createSite` still applies its own "first site for
+ * this client" override (forcing all three flags + `isPrimary` to `true`
+ * regardless of what was submitted) *before* this would otherwise reject an
+ * unpurposed first-site submission — see `createSite` in `actions.ts`, which
+ * parses against the un-refined base shape directly for that reason rather
+ * than against this schema. */
+export const siteCreateSchema = siteBaseSchema.refine(
+  (data) => Boolean(data.isVisitAddress || data.isInvoiceAddress || data.isDeliveryAddress),
+  { message: SITE_PURPOSE_REQUIRED_MESSAGE, path: ["isVisitAddress"] },
+);
+
 export type SiteCreateInput = z.infer<typeof siteCreateSchema>;
 
-/** `clientId` stays optional-but-allowed on update (moving a site to a
- * different client of the *same* organization is a legitimate edit; moving
- * it across organizations is blocked at the DB trigger layer regardless —
- * see `derive_site_organization_id` in the clients/sites/assets migration). */
-export const siteUpdateSchema = siteCreateSchema.partial();
+/** Every field optional for update (partial edit); still validated the same
+ * way when present. Built from `siteBaseSchema` (not from the refined
+ * `siteCreateSchema` — refine + partial doesn't compose in zod). `clientId`
+ * stays optional-but-allowed on update (moving a site to a different client
+ * of the *same* organization is a legitimate edit; moving it across
+ * organizations is blocked at the DB trigger layer regardless — see
+ * `derive_site_organization_id` in the clients/sites/assets migration).
+ * The "at least one purpose flag true" invariant can't be fully checked here
+ * in isolation (a partial update may omit all three, meaning "leave
+ * as-is") — `updateSite` re-checks it after merging with the existing row. */
+export const siteUpdateSchema = siteBaseSchema.partial();
 
 export type SiteUpdateInput = z.infer<typeof siteUpdateSchema>;
 

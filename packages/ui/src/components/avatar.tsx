@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from "react";
 import { cx } from "../cx";
 
-export type AvatarSize = "sm" | "md";
+export type AvatarSize = "sm" | "md" | "lg";
 
 export interface AvatarProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   name: string;
@@ -22,6 +22,12 @@ function getInitials(name: string): string {
  * caller still renders the name as real text beside it, so this is
  * `aria-hidden` rather than handing screen readers a redundant two-letter
  * node.
+ *
+ * `size="lg"` (56px) is the "hero mark" variant used by `DetailHero` — a
+ * rounded-square (not circular) serif-face mark, deliberately breaking from
+ * `sm`/`md`'s sans-face circle for the editorial detail-page header. That's
+ * an intentional divergence for the statement/hero context, not an
+ * inconsistency to reconcile with `sm`/`md`.
  */
 export function Avatar({ name, size, className, ...rest }: AvatarProps) {
   return (

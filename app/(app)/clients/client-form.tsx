@@ -3,18 +3,8 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  Button,
-  Card,
-  FormGrid,
-  FormGridFull,
-  FormSection,
-  Label,
-  Stack,
-  Text,
-  Textarea,
-} from "@yourorg/ui";
-import { FileText, MapPin, Users } from "@yourorg/ui/icons";
+import { Button, Card, FormGrid, FormSection, Label, Stack, Text, Textarea } from "@yourorg/ui";
+import { FileText, Users } from "@yourorg/ui/icons";
 import { createClient, updateClient, type ClientRecord } from "./actions";
 import { FormField } from "./form-field";
 
@@ -31,10 +21,16 @@ const initialState: ClientFormState = {};
  * Create/edit form for a client, rendered as a real page (`/clients/new`,
  * `/clients/[id]/edit`) rather than a `Dialog` — see docs/ARCHITECTURE.md
  * "Popup vs. full page — pick by weight, not habit". Field grouping
- * (Contact/Address/Notes via `FormSection`/`FormGrid`) is carried over
- * unchanged from the old `client-form-dialog.tsx`; only the container
- * changed (a `Card` on a page instead of a `Dialog`), and success now
- * navigates to a URL instead of closing an overlay.
+ * (Contact/Notes via `FormSection`/`FormGrid`) is carried over unchanged
+ * from the old `client-form-dialog.tsx`; only the container changed (a
+ * `Card` on a page instead of a `Dialog`), and success now navigates to a
+ * URL instead of closing an overlay.
+ *
+ * No Address section here (issue #41 redo, "Sites as client addresses") —
+ * `ClientRecord` no longer carries flat address columns at all. A client's
+ * address(es) are managed exclusively via the Sites tab on the client detail
+ * page (`sites-panel.tsx`), created in context per docs/ARCHITECTURE.md
+ * "Relational detail pages", not on this top-level form.
  *
  * Route-level RBAC gating (`can(actor, "clients", "create"|"update")`)
  * happens in the page Server Component before this ever renders — this
@@ -89,38 +85,6 @@ export function ClientForm({ client }: { client?: ClientRecord | null }) {
                 errors={state.fieldErrors?.email}
               />
               <FormField label="Phone" name="phone" defaultValue={client?.phone} errors={state.fieldErrors?.phone} />
-            </FormGrid>
-          </FormSection>
-
-          <FormSection title="Address" icon={<MapPin />}>
-            <FormField
-              label="Address line 1"
-              name="addressLine1"
-              defaultValue={client?.address_line1}
-              errors={state.fieldErrors?.addressLine1}
-            />
-            <FormField
-              label="Address line 2"
-              name="addressLine2"
-              defaultValue={client?.address_line2}
-              errors={state.fieldErrors?.addressLine2}
-            />
-            <FormGrid>
-              <FormField
-                label="Postal code"
-                name="postalCode"
-                defaultValue={client?.postal_code}
-                errors={state.fieldErrors?.postalCode}
-              />
-              <FormField label="City" name="city" defaultValue={client?.city} errors={state.fieldErrors?.city} />
-              <FormGridFull>
-                <FormField
-                  label="Country"
-                  name="country"
-                  defaultValue={client?.country}
-                  errors={state.fieldErrors?.country}
-                />
-              </FormGridFull>
             </FormGrid>
           </FormSection>
 

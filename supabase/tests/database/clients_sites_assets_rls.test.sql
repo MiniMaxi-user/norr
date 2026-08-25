@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(37);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner)
@@ -124,8 +124,8 @@ select is(
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, name, city)
-     values ('f0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a', 'Main Site', 'Amsterdam') $$,
+  $$ insert into public.sites (id, client_id, name, city, is_visit_address)
+     values ('f0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a', 'Main Site', 'Amsterdam', true) $$,
   'owner_a can insert a site under client A (org_a)'
 ); -- 8
 
@@ -136,8 +136,8 @@ select is(
 ); -- 9
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name, organization_id)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Spoofed Site', 'd0000000-0000-0000-0000-00000000000a') $$,
+  $$ insert into public.sites (client_id, name, organization_id, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', 'Spoofed Site', 'd0000000-0000-0000-0000-00000000000a', true) $$,
   '42501',
   null,
   'owner_a cannot set sites.organization_id directly on insert (column-level grant withheld)'
@@ -153,8 +153,8 @@ select is(
 ); -- 11
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Planner Site') $$,
+  $$ insert into public.sites (client_id, name, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', 'Planner Site', true) $$,
   '42501',
   null,
   'planner_a (non-owner) cannot INSERT a site (RLS owner-only backstop)'
@@ -170,8 +170,8 @@ select is(
 ); -- 13
 
 select throws_ok(
-  $$ insert into public.sites (client_id, name)
-     values ('e0000000-0000-0000-0000-00000000000a', 'Hostile Reparent Attempt') $$,
+  $$ insert into public.sites (client_id, name, is_visit_address)
+     values ('e0000000-0000-0000-0000-00000000000a', 'Hostile Reparent Attempt', true) $$,
   '42501',
   null,
   'owner_b cannot insert a site under org_a''s client (not is_org_owner of org_a; USING/CHECK on the derived organization_id blocks it)'
@@ -325,6 +325,64 @@ select lives_ok(
   $$ delete from public.sites where id = 'f0000000-0000-0000-0000-00000000000a' $$,
   'owner_a can delete a site in org_a'
 ); -- 29
+
+-- ---------------------------------------------------------------------------
+-- sites: purpose-flag CHECK, is_primary auto-unset/uniqueness, and legacy
+-- clients.address_* columns dropped (issue #41 redo, "Sites as client
+-- addresses" — supabase/migrations/20260825090000_sites_addresses.sql).
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select throws_ok(
+  $$ insert into public.sites (client_id, name, is_visit_address, is_invoice_address, is_delivery_address)
+     values ('e0000000-0000-0000-0000-00000000000a', 'No Purpose Site', false, false, false) $$,
+  '23514',
+  null,
+  'a site with all three purpose flags false violates sites_at_least_one_purpose'
+); -- 30
+
+select lives_ok(
+  $$ insert into public.sites (id, client_id, name, is_visit_address, is_primary)
+     values ('f0000000-0000-0000-0000-00000000000b', 'e0000000-0000-0000-0000-00000000000a', 'Address 1', true, true) $$,
+  'owner_a can insert a primary site (address 1) under client A'
+); -- 31
+
+select lives_ok(
+  $$ insert into public.sites (id, client_id, name, is_invoice_address, is_primary)
+     values ('f0000000-0000-0000-0000-00000000000c', 'e0000000-0000-0000-0000-00000000000a', 'Address 2', true, true) $$,
+  'owner_a can insert a second primary site (address 2) under client A'
+); -- 32
+
+select is(
+  (select is_primary from public.sites where id = 'f0000000-0000-0000-0000-00000000000b'),
+  false,
+  'inserting a new primary site (address 2) auto-unset the previous primary (address 1) via enforce_single_primary_site'
+); -- 33
+
+select is(
+  (select count(*)::int from public.sites where client_id = 'e0000000-0000-0000-0000-00000000000a' and is_primary),
+  1,
+  'exactly one primary site remains for client A after the second primary insert (sites_one_primary_per_client_idx never violated)'
+); -- 34
+
+select lives_ok(
+  $$ update public.sites set is_primary = true where id = 'f0000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can re-promote address 1 back to primary via UPDATE'
+); -- 35
+
+select is(
+  (select is_primary from public.sites where id = 'f0000000-0000-0000-0000-00000000000c'),
+  false,
+  'the UPDATE-path re-promotion also auto-unset address 2''s is_primary (enforce_single_primary_site fires on UPDATE OF is_primary too)'
+); -- 36
+
+select throws_ok(
+  $$ insert into public.clients (organization_id, name, address_line1)
+     values ('d0000000-0000-0000-0000-00000000000a', 'Legacy Address Client', '123 Old Street') $$,
+  '42703',
+  null,
+  'clients.address_line1 no longer exists (dropped by 20260825090000_sites_addresses.sql; sites is now the sole client-address model)'
+); -- 37
 
 select * from finish();
 rollback;
