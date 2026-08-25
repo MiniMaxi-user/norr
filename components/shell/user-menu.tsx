@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Avatar, Badge, DropdownMenu, Inline, Stack, Text } from "@yourorg/ui";
+import { Avatar, DropdownMenu, Stack, Text } from "@yourorg/ui";
 import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon, UserRound } from "@yourorg/ui/icons";
 import { logOutAction } from "@/lib/auth/actions";
 
@@ -19,19 +19,16 @@ import { logOutAction } from "@/lib/auth/actions";
  * note that non-functional chrome is fine for now. "Instellingen" links to
  * the real `/settings` route. "Uitloggen" posts the real `logOutAction`.
  *
- * `isPlatformAdmin` (issue #45, `session.isPlatformAdmin`) renders a small
- * "Platform Admin" badge next to the name, both in the trigger button and
- * the dropdown label — the one visual indicator this cross-tenant flag has
- * anywhere in the chrome.
+ * The "Platform Admin" indicator (issue #45, `session.isPlatformAdmin`)
+ * lives in `Topbar` itself now, to the left of the search bar — not here —
+ * per explicit product feedback moving it out of this menu.
  */
 export function UserMenu({
   name,
   role,
-  isPlatformAdmin = false,
 }: {
   name: string;
   role?: string | null;
-  isPlatformAdmin?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : null;
@@ -57,12 +54,7 @@ export function UserMenu({
         >
           <Avatar name={name} size="md" />
           <span className="ui-user-menu-trigger-meta">
-            <span className="ui-user-menu-trigger-name">
-              <Inline gap="xs" align="center">
-                {name}
-                {isPlatformAdmin && <Badge variant="accent">Platform Admin</Badge>}
-              </Inline>
-            </span>
+            <span className="ui-user-menu-trigger-name">{name}</span>
             {roleLabel && <span className="ui-user-menu-trigger-role">{roleLabel}</span>}
           </span>
           <ChevronDown aria-hidden className="ui-user-menu-trigger-chevron" />
@@ -72,10 +64,7 @@ export function UserMenu({
       <DropdownMenu.Content open={open} onClose={() => setOpen(false)} align="end">
         <DropdownMenu.Label>
           <Stack gap="xs">
-            <Inline gap="xs" align="center">
-              <span>{name}</span>
-              {isPlatformAdmin && <Badge variant="accent">Platform Admin</Badge>}
-            </Inline>
+            <span>{name}</span>
             {roleLabel && <Text tone="muted">{roleLabel}</Text>}
           </Stack>
         </DropdownMenu.Label>
@@ -90,8 +79,15 @@ export function UserMenu({
           Instellingen
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
+        {/* No `onClick={() => setOpen(false)}` here (unlike "Instellingen"
+            above) — this is a `type="submit"` button inside a real `<form>`.
+            Synchronously closing the dropdown on click unmounts the form
+            before the browser's native `submit` event can fire on it,
+            silently cancelling the logout action entirely. `logOutAction`
+            redirects to `/login` server-side on success, which unmounts
+            this whole tree anyway, so there's nothing to manually close. */}
         <form action={logOutAction}>
-          <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger onClick={() => setOpen(false)}>
+          <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger>
             Uitloggen
           </DropdownMenu.Item>
         </form>

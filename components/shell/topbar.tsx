@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Toolbar, IconButton, Separator, Tooltip } from "@yourorg/ui";
+import { Badge, Toolbar, IconButton, Separator, Tooltip } from "@yourorg/ui";
 import { Bell, CircleHelp } from "@yourorg/ui/icons";
 import { CommandPalette } from "./command-palette";
 import { ThemeToggle } from "./theme-toggle";
@@ -39,8 +39,9 @@ export function Topbar({
   title?: ReactNode;
   navItems: ResolvedNavItem[];
   user: Pick<CurrentSession, "email" | "fullName" | "role">;
-  /** `session.isPlatformAdmin` (issue #45) — passed straight through to
-   * `UserMenu` for the "Platform Admin" badge next to the user's name. */
+  /** `session.isPlatformAdmin` (issue #45) — renders a "Platform Admin"
+   * badge to the left of the search bar (product feedback: not in the user
+   * menu). */
   isPlatformAdmin: boolean;
 }) {
   const displayName = memberDisplayName({ email: user.email, full_name: user.fullName });
@@ -49,6 +50,7 @@ export function Topbar({
     <Toolbar>
       <Toolbar.Section>{title}</Toolbar.Section>
       <Toolbar.Section align="end">
+        {isPlatformAdmin && <Badge variant="accent">Platform Admin</Badge>}
         <CommandPalette navItems={toCommandPaletteItems(navItems)} />
         <ThemeToggle />
 
@@ -65,7 +67,7 @@ export function Topbar({
 
         <Separator orientation="vertical" />
 
-        <UserMenu name={displayName} role={user.role} isPlatformAdmin={isPlatformAdmin} />
+        <UserMenu name={displayName} role={user.role} />
       </Toolbar.Section>
     </Toolbar>
   );
