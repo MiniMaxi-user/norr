@@ -2,7 +2,22 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Breadcrumbs, Button, DetailHero, Dialog, Heading, Inline, Stack, Tabs, Text } from "@yourorg/ui";
+import {
+  Badge,
+  Breadcrumbs,
+  Button,
+  Card,
+  DefinitionList,
+  DetailHero,
+  DetailLayout,
+  Dialog,
+  Heading,
+  Inline,
+  Separator,
+  Stack,
+  Tabs,
+  Text,
+} from "@yourorg/ui";
 import { Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
@@ -14,7 +29,7 @@ import { setTenantActive, type TenantAccessStatus } from "../platform-access-act
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { EditClientPanel } from "../edit-client-panel";
-import { formatSiteAddress } from "../format-site-address";
+import { formatSiteAddress, formatSiteAddressShort } from "../format-site-address";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { AccessPanel } from "./access-panel";
@@ -24,6 +39,7 @@ import { ContactsPanel } from "./contacts-panel";
 import { ContractsPanel } from "./contracts-panel";
 import { ModulesPanel } from "./modules-panel";
 import { QuotesPanel } from "./quotes-panel";
+import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
 import { SitesPanel } from "./sites-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
 
@@ -81,17 +97,35 @@ export interface ClientDetailProps {
  * `components/shell/page-header-context.tsx`). The client's own fields are
  * the "Option C" editorial `DetailHero` (`@yourorg/ui`) — an initials hero
  * mark, the client's name as the page's serif `Heading level={1}`, a
- * dot-separated phone/primary-address meta line — the phone shown is the
- * primary site's own `phone` (moved off `clients` onto `sites`, migration
- * `20260826130000_sites_phone.sql`), not a client-level field, since a
- * client no longer has its own phone at all (no email either — `clients.email`
- * was dropped in issue #43; a client's contact email now only lives on its
- * `Contact` rows, see the Contacts tab), and "Primary"/
- * "Client since" badges — the now-canonical header pattern for a top-level
- * entity's detail page (see `stories/EditorialDetailPage.stories.tsx` and
- * docs/ARCHITECTURE.md's "Relational detail pages" section). `client.notes`
- * has no slot in that hero (the approved mockup's meta-line doesn't carry
- * it), so it renders as a small muted line just below, only when present.
+ * dot-separated primary-address meta line, and "Primary"/"Client since"
+ * badges — the now-canonical header pattern for a top-level entity's detail
+ * page (see `stories/EditorialDetailPage.stories.tsx` and
+ * docs/ARCHITECTURE.md's "Relational detail pages" section).
+ *
+ * Below the hero, `<Tabs>` is wrapped in `@yourorg/ui`'s `DetailLayout`,
+ * which adds a fixed 340px sticky rail OUTSIDE the tabs (`.ui-detail-rail`
+ * in styles.css) — it stays visible across every tab instead of only
+ * whichever one happens to be selected. The rail, top to bottom:
+ *  - Company: `client.kvk_number`/`vat_number`/`iban` plus the primary
+ *    site's own `phone` (moved off `clients` onto `sites`, migration
+ *    `20260826130000_sites_phone.sql` — a client no longer has its own
+ *    phone at all, no email either, `clients.email` was dropped in issue
+ *    #43; a client's contact email now only lives on its `Contact` rows,
+ *    see the Contacts tab) — with an inline "Edit" opening the same
+ *    `EditClientPanel` the hero's own Edit button opens;
+ *  - Relationship: "Client since" plus Sites/Assets/Orders/Quotes counters,
+ *    each counter gated behind its own `*Enabled` flag (Sites has none —
+ *    always shown);
+ *  - Platform (platform-admin-only, `tenantAccessVisible`, accent-tinted):
+ *    tenant active/deactivated status and a read-only modules line — pure
+ *    read-out, management stays exclusively in the Modules tab;
+ *  - Locations: the real Leaflet map (`SiteMapLoader`/`site-map.tsx`) with
+ *    a pin per geocoded site, moved here from the Sites tab's old
+ *    side-by-side `.ui-sites-grid` (see `sites-panel.tsx`, now a full-width
+ *    table) so it's visible regardless of which tab is open, plus the same
+ *    primary/other-sites legend that grid used to carry;
+ *  - Notes: `client.notes`, only when present (previously a plain muted
+ *    line directly under the hero — moved into the rail as its own card).
  */
 export function ClientDetail({
   client,
@@ -142,6 +176,29 @@ export function ClientDetail({
   // uses on the matching row in the Sites tab.
   const primarySite = useMemo(() => sites.find((site) => site.is_primary) ?? null, [sites]);
 
+  // Rail "Locations" card map pins — moved here from `sites-panel.tsx`
+  // (previously derived inside the Sites tab for its now-removed
+  // `.ui-sites-grid` side-card) so the map lives outside the tabs and stays
+  // visible regardless of which tab is selected. See that file's prior
+  // version for the identical derivation this was copied from.
+  const mapPins = useMemo<SiteMapPin[]>(
+    () =>
+      sites
+        .filter((site) => site.latitude != null && site.longitude != null)
+        .map((site) => ({
+          siteId: site.id,
+          addressLabel: formatSiteAddressShort(site) ?? "Unnamed site",
+          latitude: site.latitude as number,
+          longitude: site.longitude as number,
+          addressLine1: site.address_line1,
+          city: site.city,
+          isPrimary: site.is_primary,
+        })),
+    [sites],
+  );
+  const primaryPin = mapPins.find((pin) => pin.isPrimary) ?? null;
+  const otherPins = mapPins.filter((pin) => !pin.isPrimary);
+
   const breadcrumbItems = useMemo(
     () => [{ label: "Clients", href: "/clients" }, { label: client.name }],
     [client.name],
@@ -165,7 +222,11 @@ export function ClientDetail({
     selectTab("assets");
   }
 
-  const heroMeta = [primarySite?.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
+  // Phone no longer appears here (design decision, rail redesign): it now
+  // only lives in the rail's Company card (`primarySite.phone` below), so it
+  // doesn't double up between the hero meta line and the rail. Only the
+  // primary address stays in the hero.
+  const heroMeta = [primarySite ? formatSiteAddress(primarySite) : null].filter(
     (item): item is string => Boolean(item),
   );
 
@@ -193,6 +254,139 @@ export function ClientDetail({
   // false — there'd be nothing to show anyway. Reactivating (still visible
   // via the hero action below) is the way back in.
   const tenantAccessVisible = isPlatformAdmin && isActiveTenant;
+
+  // Rail "Relationship" card counters — Sites has no `*Enabled` flag (a
+  // client's sites always render), the rest mirror the same flags already
+  // gating their own tab above.
+  const relationshipStats = [
+    { key: "sites", label: "Sites", value: sites.length, show: true },
+    { key: "assets", label: "Assets", value: assets.length, show: assetsEnabled },
+    { key: "workOrders", label: "Orders", value: workOrders.length, show: workOrdersEnabled },
+    { key: "quotes", label: "Quotes", value: quotes.length, show: quotesEnabled },
+  ].filter((stat) => stat.show);
+
+  // Rail "Platform" card's read-only modules line. There's no persisted
+  // per-tenant module entitlement yet (see `ModulesPanel`'s doc comment —
+  // its toggles are a local-state-only stub), so this reuses the same
+  // `*Enabled` flags already threaded down to gate this page's own tabs,
+  // rather than inventing a new fetch — the best available read of "which
+  // modules this client/tenant currently has visible".
+  const activeModuleLabels = [
+    assetsEnabled && "Assets",
+    workOrdersEnabled && "Work Orders",
+    contractsEnabled && "Contracts",
+    quotesEnabled && "Quotes",
+  ].filter((label): label is string => Boolean(label));
+
+  const rail = (
+    <>
+      <Card>
+        <Stack gap="sm">
+          <Inline justify="between" align="center">
+            <Heading level={6}>Company</Heading>
+            {canWrite && (
+              <Button variant="link" size="sm" onClick={() => setEditOpen(true)}>
+                Edit
+              </Button>
+            )}
+          </Inline>
+          <DefinitionList
+            items={[
+              { label: "KvK", value: client.kvk_number || <Text tone="muted">—</Text> },
+              { label: "VAT", value: client.vat_number || <Text tone="muted">—</Text> },
+              { label: "IBAN", value: client.iban || <Text tone="muted">—</Text> },
+              { label: "Phone", value: primarySite?.phone || <Text tone="muted">—</Text> },
+            ]}
+          />
+        </Stack>
+      </Card>
+
+      <Card>
+        <Stack gap="sm">
+          <Heading level={6}>Relationship</Heading>
+          <DefinitionList items={[{ label: "Client since", value: formatClientSinceDate(client.created_at) }]} />
+          <Separator />
+          <div className="ui-detail-rail-stats">
+            {relationshipStats.map((stat) => (
+              <div className="ui-detail-rail-stat" key={stat.key}>
+                <div className="ui-detail-rail-stat-value">{stat.value}</div>
+                <Text tone="muted" className="ui-detail-rail-stat-label">
+                  {stat.label}
+                </Text>
+              </div>
+            ))}
+          </div>
+        </Stack>
+      </Card>
+
+      {/* Platform-admin-only, same `tenantAccessVisible` gate as the Access/
+          Modules tabs above — a pure read-out (tenant status + which
+          modules are currently visible), no management controls; managing
+          either one stays exclusively in those tabs. */}
+      {tenantAccessVisible && (
+        <Card className="ui-card-accent">
+          <Stack gap="sm">
+            <Inline justify="between" align="center">
+              <Heading level={6}>Platform</Heading>
+              <Badge variant="accent">Admin only</Badge>
+            </Inline>
+            <DefinitionList
+              items={[
+                {
+                  label: "Tenant",
+                  value: isActiveTenant ? (
+                    <Badge variant="success">Active</Badge>
+                  ) : (
+                    <Badge variant="danger">Deactivated</Badge>
+                  ),
+                },
+                {
+                  label: "Modules",
+                  value:
+                    activeModuleLabels.length > 0 ? activeModuleLabels.join(", ") : <Text tone="muted">—</Text>,
+                },
+              ]}
+            />
+          </Stack>
+        </Card>
+      )}
+
+      {/* Site-address map — moved here from the Sites tab's old side-by-side
+          `.ui-sites-grid` (see `sites-panel.tsx`) so it stays visible
+          regardless of which tab is open. */}
+      <Card className="ui-card-flush">
+        <div className="ui-sites-map-head">Locations</div>
+        <div className="ui-sites-map-frame">
+          <SiteMapLoader pins={mapPins} />
+        </div>
+        {(primaryPin || otherPins.length > 0) && (
+          <div className="ui-sites-map-legend">
+            {primaryPin && (
+              <div className="ui-sites-map-legend-item">
+                <span className="ui-sites-map-legend-dot ui-sites-map-legend-dot-accent" aria-hidden="true" />
+                <Text>{primaryPin.addressLabel}</Text>
+              </div>
+            )}
+            {otherPins.length > 0 && (
+              <div className="ui-sites-map-legend-item">
+                <span className="ui-sites-map-legend-dot ui-sites-map-legend-dot-muted" aria-hidden="true" />
+                <Text tone="muted">{otherPins.map((pin) => pin.city || pin.addressLabel).join(" · ")}</Text>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {client.notes && (
+        <Card>
+          <Stack gap="sm">
+            <Heading level={6}>Notes</Heading>
+            <Text tone="muted">{client.notes}</Text>
+          </Stack>
+        </Card>
+      )}
+    </>
+  );
 
   return (
     <Stack gap="lg">
@@ -234,108 +428,108 @@ export function ClientDetail({
         }
       />
 
-      {client.notes && <Text tone="muted">{client.notes}</Text>}
+      <DetailLayout rail={rail}>
+        <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
+          <Tabs.List aria-label="Client detail">
+            <Tabs.Tab value="sites" icon={<MapPin />}>
+              Sites{sites.length > 0 ? ` (${sites.length})` : ""}
+            </Tabs.Tab>
+            {assetsEnabled && (
+              <Tabs.Tab value="assets" icon={<Boxes />}>
+                Assets{assets.length > 0 ? ` (${assets.length})` : ""}
+              </Tabs.Tab>
+            )}
+            <Tabs.Tab value="contacts" icon={<Users />}>
+              Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
+            </Tabs.Tab>
+            {workOrdersEnabled && (
+              <Tabs.Tab value="workOrders" icon={<ClipboardList />}>
+                Work Orders{workOrders.length > 0 ? ` (${workOrders.length})` : ""}
+              </Tabs.Tab>
+            )}
+            {contractsEnabled && (
+              <Tabs.Tab value="contracts" icon={<FileText />}>
+                Contracts{contracts.length > 0 ? ` (${contracts.length})` : ""}
+              </Tabs.Tab>
+            )}
+            {quotesEnabled && (
+              <Tabs.Tab value="quotes" icon={<Receipt />}>
+                Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
+              </Tabs.Tab>
+            )}
+            {tenantAccessVisible && (
+              <Tabs.Tab value="access" icon={<ShieldCheck />}>
+                Access
+              </Tabs.Tab>
+            )}
+            {tenantAccessVisible && (
+              <Tabs.Tab value="modules" icon={<Settings />}>
+                Modules
+              </Tabs.Tab>
+            )}
+          </Tabs.List>
 
-      <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
-        <Tabs.List aria-label="Client detail">
-          <Tabs.Tab value="sites" icon={<MapPin />}>
-            Sites{sites.length > 0 ? ` (${sites.length})` : ""}
-          </Tabs.Tab>
-          {assetsEnabled && (
-            <Tabs.Tab value="assets" icon={<Boxes />}>
-              Assets{assets.length > 0 ? ` (${assets.length})` : ""}
-            </Tabs.Tab>
-          )}
-          <Tabs.Tab value="contacts" icon={<Users />}>
-            Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
-          </Tabs.Tab>
-          {workOrdersEnabled && (
-            <Tabs.Tab value="workOrders" icon={<ClipboardList />}>
-              Work Orders{workOrders.length > 0 ? ` (${workOrders.length})` : ""}
-            </Tabs.Tab>
-          )}
-          {contractsEnabled && (
-            <Tabs.Tab value="contracts" icon={<FileText />}>
-              Contracts{contracts.length > 0 ? ` (${contracts.length})` : ""}
-            </Tabs.Tab>
-          )}
-          {quotesEnabled && (
-            <Tabs.Tab value="quotes" icon={<Receipt />}>
-              Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
-            </Tabs.Tab>
-          )}
-          {tenantAccessVisible && (
-            <Tabs.Tab value="access" icon={<ShieldCheck />}>
-              Access
-            </Tabs.Tab>
-          )}
-          {tenantAccessVisible && (
-            <Tabs.Tab value="modules" icon={<Settings />}>
-              Modules
-            </Tabs.Tab>
-          )}
-        </Tabs.List>
-
-        <Tabs.Panel value="sites">
-          <SitesPanel
-            clientId={client.id}
-            sites={sites}
-            canWrite={canWrite}
-            assetCountBySiteId={assetCountBySiteId}
-            assetsEnabled={assetsEnabled}
-            onViewAssets={assetsEnabled ? viewAssetsForSite : undefined}
-          />
-        </Tabs.Panel>
-
-        {assetsEnabled && (
-          <Tabs.Panel value="assets">
-            <AssetsPanel
+          <Tabs.Panel value="sites">
+            <SitesPanel
               clientId={client.id}
               sites={sites}
-              assets={assets}
-              canCreate={canCreateAssets}
-              canEdit={canEditAssets}
-              canDelete={canDeleteAssets}
-              focusSiteId={focusSite.siteId}
-              focusToken={focusSite.token}
+              canWrite={canWrite}
+              assetCountBySiteId={assetCountBySiteId}
+              assetsEnabled={assetsEnabled}
+              onViewAssets={assetsEnabled ? viewAssetsForSite : undefined}
             />
           </Tabs.Panel>
-        )}
 
-        <Tabs.Panel value="contacts">
-          <ContactsPanel clientId={client.id} contacts={contacts} contactRoles={contactRoles} canWrite={canWrite} />
-        </Tabs.Panel>
+          {assetsEnabled && (
+            <Tabs.Panel value="assets">
+              <AssetsPanel
+                clientId={client.id}
+                sites={sites}
+                assets={assets}
+                canCreate={canCreateAssets}
+                canEdit={canEditAssets}
+                canDelete={canDeleteAssets}
+                focusSiteId={focusSite.siteId}
+                focusToken={focusSite.token}
+              />
+            </Tabs.Panel>
+          )}
 
-        {workOrdersEnabled && (
-          <Tabs.Panel value="workOrders">
-            <WorkOrdersPanel workOrders={workOrders} />
+          <Tabs.Panel value="contacts">
+            <ContactsPanel clientId={client.id} contacts={contacts} contactRoles={contactRoles} canWrite={canWrite} />
           </Tabs.Panel>
-        )}
 
-        {contractsEnabled && (
-          <Tabs.Panel value="contracts">
-            <ContractsPanel contracts={contracts} />
-          </Tabs.Panel>
-        )}
+          {workOrdersEnabled && (
+            <Tabs.Panel value="workOrders">
+              <WorkOrdersPanel workOrders={workOrders} />
+            </Tabs.Panel>
+          )}
 
-        {quotesEnabled && (
-          <Tabs.Panel value="quotes">
-            <QuotesPanel quotes={quotes} />
-          </Tabs.Panel>
-        )}
+          {contractsEnabled && (
+            <Tabs.Panel value="contracts">
+              <ContractsPanel contracts={contracts} />
+            </Tabs.Panel>
+          )}
 
-        {tenantAccessVisible && (
-          <Tabs.Panel value="access">
-            <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
-          </Tabs.Panel>
-        )}
+          {quotesEnabled && (
+            <Tabs.Panel value="quotes">
+              <QuotesPanel quotes={quotes} />
+            </Tabs.Panel>
+          )}
 
-        {tenantAccessVisible && (
-          <Tabs.Panel value="modules">
-            <ModulesPanel />
-          </Tabs.Panel>
-        )}
-      </Tabs>
+          {tenantAccessVisible && (
+            <Tabs.Panel value="access">
+              <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
+            </Tabs.Panel>
+          )}
+
+          {tenantAccessVisible && (
+            <Tabs.Panel value="modules">
+              <ModulesPanel />
+            </Tabs.Panel>
+          )}
+        </Tabs>
+      </DetailLayout>
 
       {canWrite && (
         <>
@@ -503,13 +697,21 @@ function TenantActiveToggleAction({ clientId, isActive }: { clientId: string; is
   );
 }
 
+/** Just the "{month} {year}" part, no "Client since" prefix — shared by
+ * `formatClientSince` below (the hero's badge) and the rail's Relationship
+ * card, which pairs it with its own "Client since" `DefinitionList` label
+ * instead of repeating the phrase inside the value. */
+function formatClientSinceDate(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
 /** Same "Client since {month} {year}" convention as `clients-table.tsx`'s
  * own `formatClientSince` (not imported from there — that one is a private
  * helper local to the table, not exported) — feeds the hero's "Client
  * since" badge, the only real (non-fabricated) client-tenure signal
  * available on `ClientRecord`. */
 function formatClientSince(createdAt: string): string {
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return "Client since —";
-  return `Client since ${date.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`;
+  return `Client since ${formatClientSinceDate(createdAt)}`;
 }

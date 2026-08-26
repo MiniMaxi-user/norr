@@ -71,6 +71,13 @@ export { Avatar, type AvatarProps, type AvatarSize } from "./components/avatar";
 export { Breadcrumbs, type BreadcrumbsProps, type BreadcrumbItem } from "./components/breadcrumbs";
 export { DetailHero, type DetailHeroProps } from "./components/detail-hero";
 export {
+  DetailLayout,
+  DefinitionList,
+  type DetailLayoutProps,
+  type DefinitionListProps,
+  type DefinitionListItem,
+} from "./components/detail-layout";
+export {
   Label,
   Input,
   Select,

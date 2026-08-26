@@ -54,9 +54,10 @@ function FitBounds({ pins }: { pins: SiteMapPin[] }) {
  * map-surface.tsx`'s own doc comment ruling itself out for this).
  *
  * Deliberately much shorter (190px) than `AssetMap`'s 480px — this is an
- * at-a-glance pin reference housed in the Sites tab's narrow "Locations"
- * side-card (`sites-panel.tsx`'s `.ui-sites-grid`), not a dominant element
- * competing with the sites table for width.
+ * at-a-glance pin reference housed in `client-detail.tsx`'s sticky rail
+ * "Locations" card (outside the Tabs, so it stays visible on every tab, not
+ * just Sites), not a dominant element competing with the tab content for
+ * width.
  *
  * Must only ever render on the client (Leaflet touches `window`/`document`
  * at import time) — see `site-map-loader.tsx`, which `next/dynamic`s this

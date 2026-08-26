@@ -1044,24 +1044,103 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* ---------------------------------------------------------------------- *
- * Sites-grid (Client detail, Sites tab) — table + a narrow "Locations" map
- * side-card, from the approved Option C client-detail mockup. Client/
- * address-specific (any address-bearing entity's own site list), NOT part
- * of the generic `DetailHero` pattern above — referenced directly by class
- * name from `app/(app)/clients/[id]/sites-panel.tsx`, same documented-
- * utility pattern as `.ui-row-actions`.
+ * Detail layout — a fixed-width rail alongside a detail page's main content,
+ * living OUTSIDE that content (e.g. outside `Tabs`) so it stays visible
+ * across every tab and stays sticky on scroll. See
+ * components/detail-layout.tsx (`DetailLayout`/`DefinitionList`) and
+ * app/(app)/clients/[id]/client-detail.tsx for the reference usage
+ * (Company/Relationship/Platform/Locations/Notes rail cards).
  * ---------------------------------------------------------------------- */
-.ui-sites-grid {
+.ui-detail-layout {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--ui-space-lg);
   align-items: start;
 }
-@media (max-width: 960px) {
-  .ui-sites-grid {
+@media (max-width: 1100px) {
+  .ui-detail-layout {
     grid-template-columns: 1fr;
   }
+  .ui-detail-rail {
+    position: static;
+  }
 }
+.ui-detail-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-md);
+  position: sticky;
+  top: 0;
+}
+
+/* Whole-card accent-tint modifier — for a card that itself needs to read as
+   "special" (e.g. the platform-admin-only "Platform" rail card), the same
+   `--ui-accent-tint`/`--ui-accent-tint-border` pair small chips elsewhere
+   already use (`.ui-form-section-icon`), applied to an entire `Card`. */
+.ui-card-accent {
+  background: var(--ui-accent-tint);
+  border-color: var(--ui-accent-tint-border);
+}
+
+/* Definition list — label/value rows (e.g. a rail card's KvK/VAT/IBAN/phone
+   or Tenant/Modules rows). Two-column grid so labels align regardless of
+   value length; `dt`/`dd` render directly as siblings inside the `dl` (no
+   wrapper element needed — CSS grid auto-places each one into the next
+   grid cell in DOM order), margins zeroed since browsers default `dl`/`dt`/
+   `dd` to non-zero margins. See components/detail-layout.tsx
+   `DefinitionList`. */
+.ui-def-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--ui-space-md);
+  row-gap: var(--ui-space-sm);
+  align-items: baseline;
+}
+.ui-def-list-label {
+  margin: 0;
+  font-size: var(--ui-text-xs);
+  color: var(--ui-muted);
+  white-space: nowrap;
+}
+.ui-def-list-value {
+  margin: 0;
+  min-width: 0;
+}
+
+/* Rail "counters" row (Client detail's Relationship card: Sites/Assets/
+   Orders/Quotes) — flex, not a fixed-column grid, so it distributes evenly
+   whichever subset of counters is actually rendered (some are gated behind
+   feature flags) rather than always reserving four fixed columns. */
+.ui-detail-rail-stats {
+  display: flex;
+  gap: var(--ui-space-sm);
+}
+.ui-detail-rail-stat {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+.ui-detail-rail-stat-value {
+  font-size: var(--ui-text-lg);
+  font-weight: 650;
+  color: var(--ui-fg);
+}
+.ui-detail-rail-stat-label {
+  font-size: var(--ui-text-xs);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Site address map (Client detail rail "Locations" card) — a real Leaflet
+ * map (`app/(app)/clients/[id]/site-map.tsx`/`site-map-loader.tsx`) housed
+ * in a flush `Card` with a small uppercase head label and a primary/other-
+ * sites legend below, from the approved Option C client-detail mockup.
+ * Client/address-specific (any address-bearing entity's own site list), NOT
+ * part of the generic `DetailHero`/`DetailLayout` patterns above —
+ * referenced directly by class name from
+ * `app/(app)/clients/[id]/client-detail.tsx`, same documented-utility
+ * pattern as `.ui-row-actions`.
+ * ---------------------------------------------------------------------- */
 .ui-sites-map-head {
   padding: 0.75rem 0.875rem 0;
   font-size: var(--ui-text-xs);
