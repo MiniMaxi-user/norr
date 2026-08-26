@@ -46,7 +46,6 @@ export interface ClientRecord {
   id: string;
   organization_id: string;
   name: string;
-  phone: string | null;
   /** Dutch Chamber of Commerce (KvK) registration number — see migration
    * `20260825150000_clients_business_fields.sql`. `email` was dropped from
    * this table in the same migration (issue #43): a client's contact email
@@ -62,6 +61,19 @@ export interface ClientRecord {
    * `20260825160000_clients_represents_organization.sql` and
    * `activateAsTenant` below. `null` for an ordinary CRM client. */
   represents_organization_id: string | null;
+  /** Whether the linked tenant organization is currently active (issue #47),
+   * i.e. `organizations.is_active` for the org `represents_organization_id`
+   * points at — see migration `20260826120000_organizations_is_active.sql`.
+   * `null` when this client has never been activated as a tenant
+   * (`represents_organization_id` is `null`), in which case "active" isn't a
+   * meaningful question. Populated only by `getClient` below, via an
+   * embedded join on `organizations` — `listClients`/`createClient`/
+   * `updateClient`/`activateAsTenant` don't render the tenant-status UI and
+   * would otherwise pay for a join whose result is never read, so they leave
+   * this `undefined` on the objects they return (harmless: this field is
+   * only ever read by UI that already has a `getClient` result). Toggled by
+   * `setTenantActive` in `./platform-access-actions.ts`. */
+  organization_is_active: boolean | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -83,6 +95,10 @@ export interface SiteRecord {
   is_invoice_address: boolean;
   is_delivery_address: boolean;
   is_primary: boolean;
+  /** This site's own contact number — phone lives on the site, not the
+   * client (a client can have multiple sites, each with its own number). See
+   * migration `20260826130000_sites_phone.sql`. */
+  phone: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -100,7 +116,6 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
   return {
     organization_id: organizationId,
     name: input.name,
-    phone: input.phone ?? null,
     kvk_number: input.kvkNumber ?? null,
     vat_number: input.vatNumber ?? null,
     iban: input.iban ?? null,
@@ -111,7 +126,6 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
 function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
-  if (input.phone !== undefined) row.phone = input.phone ?? null;
   if (input.kvkNumber !== undefined) row.kvk_number = input.kvkNumber ?? null;
   if (input.vatNumber !== undefined) row.vat_number = input.vatNumber ?? null;
   if (input.iban !== undefined) row.iban = input.iban ?? null;
@@ -142,6 +156,7 @@ function toSiteInsertRow(
     is_invoice_address: purpose.isInvoiceAddress,
     is_delivery_address: purpose.isDeliveryAddress,
     is_primary: purpose.isPrimary,
+    phone: input.phone ?? null,
     latitude: geocoded?.latitude ?? null,
     longitude: geocoded?.longitude ?? null,
     geocoded_at: geocoded ? new Date().toISOString() : null,
@@ -169,6 +184,7 @@ function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; 
   if (input.isInvoiceAddress !== undefined) row.is_invoice_address = input.isInvoiceAddress;
   if (input.isDeliveryAddress !== undefined) row.is_delivery_address = input.isDeliveryAddress;
   if (input.isPrimary !== undefined) row.is_primary = input.isPrimary;
+  if (input.phone !== undefined) row.phone = input.phone ?? null;
   if (geocoded) {
     row.latitude = geocoded.latitude;
     row.longitude = geocoded.longitude;
@@ -225,7 +241,22 @@ export async function getClient(
 
   const supabase = await createSupabaseServerClient();
   const [clientResult, sitesResult] = await Promise.all([
-    supabase.from("clients").select("*").eq("id", idResult.data).maybeSingle(),
+    // `organizations!represents_organization_id(is_active)`: `clients` has
+    // TWO foreign keys into `organizations` (`organization_id`, the client's
+    // own tenant, and `represents_organization_id`, the tenant it activates
+    // — see migration `20260825160000_clients_represents_organization.sql`),
+    // so the embed must name the FK column after `!` to disambiguate which
+    // relationship PostgREST should follow; without it this select would
+    // fail with an "more than one relationship was found" error. This is a
+    // many-to-one embed from `clients`' side of a *unique* FK
+    // (`clients_represents_organization_id_idx`), so PostgREST returns a
+    // single object (or `null` when `represents_organization_id` is `null`),
+    // never an array — see the destructuring below.
+    supabase
+      .from("clients")
+      .select("*, organizations!represents_organization_id(is_active)")
+      .eq("id", idResult.data)
+      .maybeSingle(),
     // `sites.name` no longer exists (issue #42) — ordered by address line 1
     // instead, the closest equivalent to an alphabetical "name" ordering now
     // that a site is identified purely by its address.
@@ -236,8 +267,16 @@ export async function getClient(
   if (!clientResult.data) return fail("Client not found.");
   if (sitesResult.error) return fail(mapDbError(sitesResult.error));
 
+  // Peel the embedded `organizations` object off the row before casting the
+  // rest to `ClientRecord` (which models `organization_is_active` as a flat
+  // boolean, not a nested join result) — `null` when never activated as a
+  // tenant, matching `organization_is_active`'s own doc comment above.
+  const { organizations: linkedOrganization, ...clientRow } = clientResult.data as ClientRecord & {
+    organizations: { is_active: boolean } | null;
+  };
+
   return ok({
-    client: clientResult.data as ClientRecord,
+    client: { ...clientRow, organization_is_active: linkedOrganization?.is_active ?? null } as ClientRecord,
     sites: (sitesResult.data ?? []) as SiteRecord[],
   });
 }

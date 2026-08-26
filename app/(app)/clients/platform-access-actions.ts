@@ -308,6 +308,75 @@ export async function resendOrResetTenantAccess(
   return ok({ mode: "invited", inviteUrl: first.data!.inviteUrl });
 }
 
+/**
+ * Deactivate/reactivate a tenant (issue #47, stage 2 — the toggle half; the
+ * schema/RLS half already landed in
+ * `supabase/migrations/20260826120000_organizations_is_active.sql`, read its
+ * header comment in full before touching this).
+ *
+ * Reuses `requireActivatedTenantContext` unchanged for BOTH directions of the
+ * toggle: it only checks that `represents_organization_id` is set (i.e. this
+ * Client row already represents *some* tenant org), never `is_active` itself
+ * — so the very same preamble that gates "manage this tenant's login access"
+ * also correctly gates "flip this tenant's active flag", in either direction.
+ *
+ * Service-role client, for the same reason as every other write in this
+ * file (see header comment): a platform admin is never a real member of the
+ * target tenant org, so an ordinary RLS-scoped `update organizations ...`
+ * under the caller's own session would find zero rows to update — worse,
+ * once `is_active` is false, `organizations_select_creator_or_member`'s
+ * `created_by = auth.uid()` branch is the ONLY RLS path back to that row
+ * (see the migration's section 3 comment), and that branch depends on the
+ * `organizations.created_by` set by `activateAsTenant` being the same user
+ * as the caller here — true for the platform admin who originally activated
+ * it, but not guaranteed for every platform admin in general (e.g. a second
+ * platform-admin account). Using the service-role client sidesteps that
+ * entirely rather than depending on which specific platform admin happens to
+ * be signed in.
+ *
+ * Deliberately a single action taking the target state as a boolean argument
+ * (`setTenantActive`), rather than two separately-named actions
+ * (`deactivateTenant`/`reactivateTenant`): unlike `inviteTenantOwner`/
+ * `resendOrResetTenantAccess` (which have genuinely different request/
+ * response shapes — an invite email vs. nothing, an `inviteUrl` vs. an
+ * `actionLink`), both directions of this toggle share the exact same
+ * preamble, DB write shape, and result shape (`{ isActive }`) — only the
+ * value written differs, so one action with a boolean parameter is more
+ * consistent with this file's principle of "one action per distinct
+ * operation" than two thin wrappers would be. `frontend-ui-engineer` can
+ * still render this as two different buttons (e.g. "Deactivate" /
+ * "Reactivate") that each call this with a fixed `active` value.
+ */
+export interface TenantActiveResult {
+  isActive: boolean;
+}
+
+export async function setTenantActive(
+  clientId: string,
+  active: boolean,
+): Promise<ActionResult<TenantActiveResult>> {
+  const idResult = uuidSchema.safeParse(clientId);
+  if (!idResult.success) return fail("Invalid client id.");
+
+  const tenantCtx = await requireActivatedTenantContext(idResult.data);
+  if (!tenantCtx.ok) return fail(tenantCtx.error);
+  const { tenantOrganizationId } = tenantCtx.value;
+
+  // Service-role: see this function's own doc comment above.
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("organizations")
+    .update({ is_active: active })
+    .eq("id", tenantOrganizationId)
+    .select("is_active")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Tenant organization not found.");
+
+  return ok({ isActive: data.is_active as boolean });
+}
+
 export type TenantAccessStatus = "none" | "invited" | "active";
 
 /**

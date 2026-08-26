@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isTenantRole, TENANT_ROLES } from "@/lib/rbac/permissions";
 import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
 
@@ -167,6 +168,59 @@ export async function logInAction(
 
   if (error) {
     return { error: "Invalid email or password." };
+  }
+
+  // Deactivated-tenant login gate (issue #47, stage 2). See
+  // `supabase/migrations/20260826120000_organizations_is_active.sql` for the
+  // RLS half this backs up: once `organizations.is_active = false`,
+  // `is_member_of_org`/`is_org_owner` already make that org's data
+  // invisible/unwritable, but a still-valid session/JWT would otherwise let
+  // the user reach this app's shell and sit on a "not a member of any
+  // organization" error rather than being told plainly that their account
+  // was deactivated. This check closes that gap by refusing the login
+  // outright.
+  //
+  // Deliberately uses the SERVICE-ROLE client (`lib/supabase/admin.ts`), not
+  // the caller's own just-established session client, for this one lookup:
+  // as of this migration, RLS on `memberships` (`memberships_select_self_or_
+  // same_org`) requires the target organization to be active even for the
+  // "see your own row" branch, so under the caller's own session there is no
+  // way to distinguish "this user has no membership at all" from "this
+  // user's only membership is for a deactivated org" — both read back as
+  // zero rows. Only a query that bypasses RLS can tell them apart, which is
+  // exactly what's needed here. This mirrors `getCurrentSession`'s own
+  // membership-lookup shape (`memberships` joined to `organizations`,
+  // oldest-first, `limit(1)`) so "the org this check looks at" and "the org
+  // `getCurrentSession` would have resolved after login" are always the same
+  // one — just run here via `createAdminClient()` instead of the session
+  // client, and only ever used to read `organizations.is_active`, nothing
+  // else.
+  //
+  // Runs before `ensureOwnOrganizationBootstrapped` below (an inactive-org
+  // user must never trigger a bootstrap side effect) and unconditionally,
+  // regardless of `next` — a user redeeming an invite
+  // (`next.startsWith("/invite/")`) has zero memberships yet by definition
+  // (the invite hasn't been redeemed), so `membership` below naturally comes
+  // back `null` for them and this check is a no-op, exactly like every other
+  // brand-new/platform-admin-only account with no tenant membership.
+  if (data.user) {
+    const admin = createAdminClient();
+    const { data: membership } = await admin
+      .from("memberships")
+      .select("organization:organizations(is_active)")
+      .eq("user_id", data.user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const organization = membership?.organization as { is_active: boolean } | null | undefined;
+    if (organization && organization.is_active === false) {
+      // Invalidate the session `signInWithPassword` just established above —
+      // otherwise the browser would be left holding a live, valid session
+      // cookie for an account we're about to tell the user is deactivated.
+      await supabase.auth.signOut();
+      return { error: "This account has been deactivated. Contact your administrator." };
+    }
   }
 
   if (!next.startsWith("/invite/") && data.user) {

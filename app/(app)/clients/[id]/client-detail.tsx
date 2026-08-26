@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, Breadcrumbs, Button, DetailHero, Inline, Stack, Tabs, Text } from "@yourorg/ui";
+import { Badge, Breadcrumbs, Button, DetailHero, Dialog, Heading, Inline, Stack, Tabs, Text } from "@yourorg/ui";
 import { Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
@@ -11,9 +10,10 @@ import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
 import { activateAsTenant, type ClientRecord, type SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
-import type { TenantAccessStatus } from "../platform-access-actions";
+import { setTenantActive, type TenantAccessStatus } from "../platform-access-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteClientDialog } from "../delete-client-dialog";
+import { EditClientPanel } from "../edit-client-panel";
 import { formatSiteAddress } from "../format-site-address";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
@@ -81,7 +81,10 @@ export interface ClientDetailProps {
  * `components/shell/page-header-context.tsx`). The client's own fields are
  * the "Option C" editorial `DetailHero` (`@yourorg/ui`) — an initials hero
  * mark, the client's name as the page's serif `Heading level={1}`, a
- * dot-separated phone/primary-address meta line (no email — `clients.email`
+ * dot-separated phone/primary-address meta line — the phone shown is the
+ * primary site's own `phone` (moved off `clients` onto `sites`, migration
+ * `20260826130000_sites_phone.sql`), not a client-level field, since a
+ * client no longer has its own phone at all (no email either — `clients.email`
  * was dropped in issue #43; a client's contact email now only lives on its
  * `Contact` rows, see the Contacts tab), and "Primary"/
  * "Client since" badges — the now-canonical header pattern for a top-level
@@ -113,6 +116,7 @@ export function ClientDetail({
 }: ClientDetailProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<ClientDetailTab>(defaultTab);
   const [focusSite, setFocusSite] = useState<{ siteId: string | null; token: number }>({
     siteId: null,
@@ -161,17 +165,34 @@ export function ClientDetail({
     selectTab("assets");
   }
 
-  const heroMeta = [client.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
+  const heroMeta = [primarySite?.phone, primarySite ? formatSiteAddress(primarySite) : null].filter(
     (item): item is string => Boolean(item),
   );
 
   // Issue #45: this client already represents a real platform tenant once
   // `represents_organization_id` is set — the "Activate as tenant" hero
-  // action only makes sense before that (one-way, no un-activate), and the
-  // "Access"/"Modules" tabs only make sense after it.
+  // action only makes sense before that.
+  //
+  // Issue #47 overturns the old "one-way, no un-activate" assumption that
+  // used to live here: an activated tenant can now be deactivated and later
+  // reactivated (`setTenantActive`, `../platform-access-actions.ts`), so
+  // `isActivatedTenant` alone is no longer enough to decide what the hero
+  // shows.
   const isActivatedTenant = Boolean(client.represents_organization_id);
+  const isActiveTenant = client.organization_is_active === true;
+  const isDeactivatedTenant = isActivatedTenant && client.organization_is_active === false;
   const showActivateTenant = isPlatformAdmin && !isActivatedTenant;
-  const tenantAccessVisible = isPlatformAdmin && isActivatedTenant;
+  // The "Access"/"Modules" tabs manage a tenant's real login/module access —
+  // once a tenant is deactivated its users can no longer log in at all (the
+  // login-gate half of issue #47), so letting a platform admin click into
+  // "invite a user" or "toggle a module" for an org that currently can't log
+  // in either way would just be confusing/dead UI on top of RLS already
+  // blocking the underlying reads. Hiding the tabs outright (rather than a
+  // disabled/explanatory state) also keeps this in sync with `page.tsx`,
+  // which skips the `getTenantAccessStatus` fetch entirely once this is
+  // false — there'd be nothing to show anyway. Reactivating (still visible
+  // via the hero action below) is the way back in.
+  const tenantAccessVisible = isPlatformAdmin && isActiveTenant;
 
   return (
     <Stack gap="lg">
@@ -183,24 +204,31 @@ export function ClientDetail({
           <>
             {primarySite && <Badge variant="accent">Primary</Badge>}
             <Badge variant="muted">{formatClientSince(client.created_at)}</Badge>
+            {/* Issue #47 acceptance criterion 1: visible to anyone who can see
+                this page (not just the platform admin) whenever this client
+                IS a tenant, active or not — a plain "is this a tenant" fact,
+                distinct from the platform-admin-only manage actions below. */}
+            {isActiveTenant && <Badge variant="success">Tenant</Badge>}
+            {isDeactivatedTenant && <Badge variant="danger">Tenant deactivated</Badge>}
           </>
         }
         actions={
-          canWrite || showActivateTenant ? (
+          canWrite || showActivateTenant || (isPlatformAdmin && isActivatedTenant) ? (
             <>
               {canWrite && (
                 <>
-                  <Link href={`/clients/${client.id}/edit`}>
-                    <Button variant="outline" size="sm">
-                      Edit
-                    </Button>
-                  </Link>
+                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                    Edit
+                  </Button>
                   <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
                     Delete
                   </Button>
                 </>
               )}
               {showActivateTenant && <ActivateTenantAction clientId={client.id} />}
+              {isPlatformAdmin && isActivatedTenant && (
+                <TenantActiveToggleAction clientId={client.id} isActive={client.organization_is_active} />
+              )}
             </>
           ) : undefined
         }
@@ -310,25 +338,33 @@ export function ClientDetail({
       </Tabs>
 
       {canWrite && (
-        <DeleteClientDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          client={client}
-          onDeleted={() => router.push("/clients")}
-        />
+        <>
+          <EditClientPanel client={client} open={editOpen} onOpenChange={setEditOpen} />
+          <DeleteClientDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            client={client}
+            onDeleted={() => router.push("/clients")}
+          />
+        </>
       )}
     </Stack>
   );
 }
 
 /**
- * "Activate as tenant" hero action (issue #45) — platform-admin-only,
- * one-way (there's no "un-activate"), so a plain click isn't enough: the
+ * "Activate as tenant" hero action (issue #45) — platform-admin-only. Linking
+ * a Client to a real `organizations` row (`represents_organization_id`) is
+ * still one-way (there's no "un-link"), so a plain click isn't enough: the
  * first click swaps the button for an inline "Confirm"/"Cancel" pair rather
  * than opening a full `Dialog` (per the story: this doesn't warrant one).
  * On success, `router.refresh()` re-fetches the page's server data, which
  * both flips `client.represents_organization_id` (so this action itself
  * disappears) and reveals the new "Access"/"Modules" tabs.
+ *
+ * Once linked, whether that tenant can actually log in/use those tabs is a
+ * separate, reversible flag — see `TenantActiveToggleAction` below
+ * (issue #47).
  */
 function ActivateTenantAction({ clientId }: { clientId: string }) {
   const router = useRouter();
@@ -362,7 +398,7 @@ function ActivateTenantAction({ clientId }: { clientId: string }) {
         <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={pending}>
           Cancel
         </Button>
-        <Button variant="primary" size="sm" onClick={handleActivate} disabled={pending}>
+        <Button variant="success" size="sm" onClick={handleActivate} disabled={pending}>
           {pending ? "Activating…" : "Confirm"}
         </Button>
       </Inline>
@@ -372,10 +408,98 @@ function ActivateTenantAction({ clientId }: { clientId: string }) {
   return (
     <Inline gap="xs" align="center">
       {error && <Text tone="danger">{error}</Text>}
-      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+      <Button variant="success" size="sm" onClick={() => setConfirming(true)}>
         Activate as tenant
       </Button>
     </Inline>
+  );
+}
+
+/**
+ * Deactivate/reactivate hero action (issue #47) — platform-admin-only,
+ * rendered next to `ActivateTenantAction` once a client is already an
+ * activated tenant. Calls `setTenantActive` (`../platform-access-actions.ts`)
+ * with a fixed `active` value per direction, exactly as that action's own doc
+ * comment anticipates.
+ *
+ * Deactivating immediately cuts off real users' login (issue #47 criterion
+ * 4), so unlike the plain inline "Confirm"/"Cancel" pair `ActivateTenantAction`
+ * uses, this warrants a real `Dialog` per this design system's confirmation
+ * convention (mirrors `DeleteClientDialog`) — it's reversible, but the blast
+ * radius (every user at that tenant losing access right now) is bigger than
+ * a plain inline confirm reads as. Reactivating is fully additive (nobody
+ * loses anything), so it needs no confirmation at all.
+ */
+function TenantActiveToggleAction({ clientId, isActive }: { clientId: string; isActive: boolean | null }) {
+  const router = useRouter();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function applyToggle(next: boolean) {
+    setError(null);
+    setPending(true);
+    setTenantActive(clientId, next)
+      .then((result) => {
+        setPending(false);
+        if (result.error || !result.data) {
+          setError(result.error ?? "Could not update this tenant's active status.");
+          return;
+        }
+        setConfirmOpen(false);
+        router.refresh();
+      })
+      .catch(() => {
+        setPending(false);
+        setError("Could not update this tenant's active status.");
+      });
+  }
+
+  // `organization_is_active` is only ever `null` before a client is
+  // activated as a tenant at all (see its doc comment in `../actions.ts`) —
+  // this component only renders once `represents_organization_id` is set, so
+  // in practice it's always a real boolean here. Treat anything other than
+  // `true` as "not active" defensively rather than assuming that invariant.
+  const active = isActive === true;
+
+  return (
+    <>
+      <Inline gap="xs" align="center">
+        {error && <Text tone="danger">{error}</Text>}
+        {active ? (
+          <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
+            Deactivate tenant
+          </Button>
+        ) : (
+          <Button variant="success" size="sm" onClick={() => applyToggle(true)} disabled={pending}>
+            {pending ? "Reactivating…" : "Reactivate tenant"}
+          </Button>
+        )}
+      </Inline>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen} size="sm">
+        <Dialog.Header>
+          <Heading level={3}>Deactivate this tenant?</Heading>
+        </Dialog.Header>
+        <Dialog.Body>
+          <Stack gap="sm">
+            {error && <Text tone="danger">{error}</Text>}
+            <Text tone="muted">
+              Everyone at this organization will immediately lose the ability to log in. You can reactivate this
+              tenant at any time to restore their access.
+            </Text>
+          </Stack>
+        </Dialog.Body>
+        <Dialog.Footer>
+          <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="danger" onClick={() => applyToggle(false)} disabled={pending}>
+            {pending ? "Deactivating…" : "Deactivate tenant"}
+          </Button>
+        </Dialog.Footer>
+      </Dialog>
+    </>
   );
 }
 

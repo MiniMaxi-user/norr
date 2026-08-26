@@ -21,13 +21,20 @@ import { useEscapeToClose } from "./use-escape-to-close";
  * since a brand-new client always has zero prior sites), and no `notes`
  * (this panel has no "site notes" field — only the client's own `notes`,
  * which is a different field entirely; see `action()` below for why the two
- * must never be conflated even though both are named `notes` in `FormData`). */
+ * must never be conflated even though both are named `notes` in `FormData`).
+ * `phone` IS included here even though it's rendered under this panel's
+ * "Address" section below: phone lives on `sites`, not `clients` (see
+ * migration `20260826130000_sites_phone.sql`), so "this new client's first
+ * phone number" is really this new site's phone number — collected once in
+ * this single-panel flow, but routed through `createSite` below, never
+ * `createClient`. */
 const newClientAddressSchema = siteBaseSchema.pick({
   addressLine1: true,
   addressLine2: true,
   postalCode: true,
   city: true,
   country: true,
+  phone: true,
 });
 
 interface NewClientFormValues {
@@ -67,8 +74,9 @@ const initialState: NewClientFormState = {};
  * default "Popup vs. full page" rule (a top-level module's own record
  * normally gets a real page, never a `Dialog`; see docs/ARCHITECTURE.md).
  * Replaces the old full-page `/clients/new` flow (route deleted in the same
- * change). `/clients/[id]/edit` is untouched — editing still goes through
- * the full-page `ClientForm`; only creation moved.
+ * change). As of issue #46, editing a client is the same kind of override —
+ * `EditClientPanel` (`edit-client-panel.tsx`), opened instead of navigating
+ * to the (now-deleted) full-page `/clients/[id]/edit` route.
  *
  * Collects the client's own fields AND its first address in the SAME panel
  * (no separate "add a site" step) — on submit, `action()`:
@@ -155,6 +163,7 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
       postalCode: input.postalCode,
       city: input.city,
       country: input.country,
+      phone: input.phone,
     });
     if (siteResult.error || !siteResult.data) {
       // Rare: the address was already validated locally above, so a failure
@@ -213,19 +222,13 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
               </Stack>
             )}
 
-            <FormSection title="Contact" icon={<Users />}>
+            <FormSection title="Client" icon={<Users />}>
               <FormField
                 label="Name"
                 name="name"
                 defaultValue={textDefault(values?.name)}
                 required
                 errors={state.fieldErrors?.name}
-              />
-              <FormField
-                label="Phone"
-                name="phone"
-                defaultValue={textDefault(values?.phone)}
-                errors={state.fieldErrors?.phone}
               />
             </FormSection>
 
@@ -258,7 +261,12 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
                 client always has zero prior sites, so `createSite`'s
                 existing "first site is forced to all-purposes + primary"
                 override already guarantees the outcome those controls would
-                otherwise let the user (redundantly) choose. */}
+                otherwise let the user (redundantly) choose. `phone` lives
+                here (not in the "Client" section above) because it's a
+                site-level field now — see `newClientAddressSchema`'s doc
+                comment above — and a phone number for "how to reach someone
+                at this address" belongs conceptually with the address it's
+                attached to. */}
             <FormSection title="Address" icon={<Building2 />}>
               <FormField
                 label="Address line 1"
@@ -272,6 +280,12 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
                 name="addressLine2"
                 defaultValue={textDefault(values?.addressLine2)}
                 errors={state.fieldErrors?.addressLine2}
+              />
+              <FormField
+                label="Phone"
+                name="phone"
+                defaultValue={textDefault(values?.phone)}
+                errors={state.fieldErrors?.phone}
               />
               <FormGrid columns={3}>
                 <FormField

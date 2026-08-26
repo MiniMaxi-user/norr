@@ -647,6 +647,23 @@ a {
 .ui-button-danger:hover {
   background: var(--ui-danger-tint);
 }
+/* Filled, like `.ui-button-primary`, not outline like `.ui-button-danger` —
+   this is for an affirmative/safe action (e.g. "Activate as tenant") that
+   should read as a clear positive, not a cautious one. `--ui-gray-50` (not
+   `--ui-accent-fg`/gray-900) for the label: `--ui-success` is a mid-tone
+   green, dark text on it doesn't hold the same contrast `--ui-accent`'s
+   bright brass does — same light-on-dark pairing already used for
+   `--ui-tooltip-fg` on `--ui-tooltip-bg`. */
+.ui-button-success {
+  background: var(--ui-success);
+  border-color: var(--ui-success);
+  color: var(--ui-gray-50);
+  box-shadow: var(--ui-shadow-sm);
+}
+.ui-button-success:hover {
+  background: var(--ui-success-strong);
+  border-color: var(--ui-success-strong);
+}
 .ui-button-ghost {
   background: transparent;
   border-color: transparent;

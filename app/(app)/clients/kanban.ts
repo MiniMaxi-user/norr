@@ -30,6 +30,18 @@ import type { ClientRecord, SiteRecord } from "./actions";
  * that instead. Everything downstream (`ClientsKanban`) only depends on the
  * `ClientKanbanColumn[]` shape, not how it's computed, so the swap is
  * isolated to this one file.
+ *
+ * Site-first, THEN phone-completeness (as of migration
+ * `20260826130000_sites_phone.sql`, moving `phone` off `clients` onto
+ * `sites`): the three stages used to be "no phone" / "phone but no site" /
+ * "phone and site", using `client.phone` directly. Once phone only ever
+ * exists attached to a site, "has a phone but no site" became structurally
+ * impossible (a phone can't exist without a site to carry it) — that middle
+ * bucket would always be empty. The heuristic is now: no site at all yet ->
+ * has a site but that site has no phone on file -> has a site with a phone
+ * on file. This reads as "onboarding progress" in the same spirit as before,
+ * just re-ordered around what can actually happen now that phone is a
+ * site-level field.
  */
 export type ClientStage = "new" | "contacted" | "onboarded";
 
@@ -51,12 +63,15 @@ export function groupClientsForKanban(
     // contact email now only ever lives on its `Contact` rows, which aren't
     // plumbed into this list/kanban fetch (see `clients-board.tsx`; adding
     // that here would be a bigger detour than this heuristic warrants).
-    // `phone` alone is a reasonable minimal "has contact info" signal.
-    const hasContact = Boolean(client.phone);
-    const hasSite = Boolean(primarySiteByClientId[client.id]);
-    if (!hasContact) {
+    // `phone` now lives on the site, not the client (migration
+    // `20260826130000_sites_phone.sql`) — so "has a site" is the first gate,
+    // and that site's own `phone` is the completeness signal within it.
+    const primarySite = primarySiteByClientId[client.id];
+    const hasSite = Boolean(primarySite);
+    const hasPhone = Boolean(primarySite?.phone);
+    if (!hasSite) {
       buckets.new.push(client);
-    } else if (!hasSite) {
+    } else if (!hasPhone) {
       buckets.contacted.push(client);
     } else {
       buckets.onboarded.push(client);
@@ -64,17 +79,17 @@ export function groupClientsForKanban(
   }
 
   return [
-    { stage: "new", label: "New", description: "No phone on file yet", clients: buckets.new },
+    { stage: "new", label: "New", description: "No site on file yet", clients: buckets.new },
     {
       stage: "contacted",
       label: "Contacted",
-      description: "Has a phone number, no site/address yet",
+      description: "Has a site, no phone on file yet",
       clients: buckets.contacted,
     },
     {
       stage: "onboarded",
       label: "Onboarded",
-      description: "Contact info and at least one site on file",
+      description: "Site and phone number on file",
       clients: buckets.onboarded,
     },
   ];

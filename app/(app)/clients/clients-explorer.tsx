@@ -8,6 +8,7 @@ import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
 import { DeleteClientDialog } from "./delete-client-dialog";
+import { EditClientPanel } from "./edit-client-panel";
 import { NewClientPanel } from "./new-client-panel";
 import { ViewToggle, type ViewOption } from "./view-toggle";
 
@@ -22,14 +23,17 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * Client component owning all Clients-list interactivity: search/filter
  * (client-side, over the already-fetched page — server-side search is a
  * later improvement per the task spec), the list/kanban view switch, the
- * "Add client" slide-in panel, and the delete confirmation dialog. As of
- * issue #43, creating a client opens `NewClientPanel` (a `Dialog`
- * `size="panel"`) instead of navigating to a full page — an explicit,
- * confirmed override of this app's usual "Popup vs. full page" default (see
- * that component's doc comment). Editing is still a real page
- * (`/clients/[id]/edit`, unchanged by this issue — docs/ARCHITECTURE.md
- * "Popup vs. full page — pick by weight, not habit"). `clients`/`count` are
- * fetched once server-side (`clients-board.tsx`) and
+ * "Add client" slide-in panel, the "Edit" slide-in panel, and the delete
+ * confirmation dialog. As of issue #43, creating a client opens
+ * `NewClientPanel` (a `Dialog` `size="panel"`) instead of navigating to a
+ * full page; as of issue #46, editing a client opens `EditClientPanel` the
+ * same way instead of navigating to the old `/clients/[id]/edit` route
+ * (route deleted) — both are explicit, confirmed overrides of this app's
+ * usual "Popup vs. full page" default (see docs/ARCHITECTURE.md "Popup vs.
+ * full page — pick by weight, not habit", and each panel's own doc comment).
+ * `editTarget` mirrors `deleteTarget`'s lifted-dialog pattern: whichever
+ * client is currently being edited, or `null` when the panel is closed.
+ * `clients`/`count` are fetched once server-side (`clients-board.tsx`) and
  * passed down as props; a delete calls `router.refresh()` (inside the
  * dialog) to re-fetch rather than mutating this component's local copy,
  * keeping this component's own state limited to pure UI state (search text,
@@ -68,6 +72,7 @@ export function ClientsExplorer({
   const [view, setView] = useState<ClientsView>(defaultView);
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ClientRecord | null>(null);
+  const [editTarget, setEditTarget] = useState<ClientRecord | null>(null);
   const [newClientOpen, setNewClientOpen] = useState(false);
 
   const filtered = useMemo(() => {
@@ -75,7 +80,7 @@ export function ClientsExplorer({
     if (!query) return clients;
     return clients.filter((client) => {
       const primarySite = primarySiteByClientId[client.id];
-      return [client.name, client.phone, primarySite?.city].some((field) =>
+      return [client.name, primarySite?.phone, primarySite?.city].some((field) =>
         (field ?? "").toLowerCase().includes(query),
       );
     });
@@ -128,6 +133,7 @@ export function ClientsExplorer({
         <ClientsTable
           clients={filtered}
           canWrite={canWrite}
+          onEdit={setEditTarget}
           onDelete={setDeleteTarget}
           primarySiteByClientId={primarySiteByClientId}
         />
@@ -135,12 +141,23 @@ export function ClientsExplorer({
         <ClientsKanban
           clients={filtered}
           canWrite={canWrite}
+          onEdit={setEditTarget}
           onDelete={setDeleteTarget}
           primarySiteByClientId={primarySiteByClientId}
         />
       )}
 
       <ClientsPagination page={page} pageSize={pageSize} count={count} />
+
+      {canWrite && editTarget && (
+        <EditClientPanel
+          client={editTarget}
+          open={Boolean(editTarget)}
+          onOpenChange={(open) => {
+            if (!open) setEditTarget(null);
+          }}
+        />
+      )}
 
       {canWrite && (
         <DeleteClientDialog

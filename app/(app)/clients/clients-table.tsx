@@ -21,11 +21,16 @@ import type { ClientRecord, SiteRecord } from "./actions";
 export function ClientsTable({
   clients,
   canWrite,
+  onEdit,
   onDelete,
   primarySiteByClientId,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
+  /** Opens `EditClientPanel` for this client — lifted up to whichever parent
+   * owns that panel's open/state (`ClientsExplorer`), mirroring `onDelete`'s
+   * existing lifted-dialog pattern (issue #46). */
+  onEdit: (client: ClientRecord) => void;
   onDelete: (client: ClientRecord) => void;
   /** Each client's primary site (or `null`), keyed by `client.id` — see
    * `clients-explorer.tsx`. `ClientRecord` itself no longer carries any
@@ -72,10 +77,10 @@ export function ClientsTable({
                 </Inline>
               </Table.Cell>
               <Table.Cell>
-                {client.phone ? (
+                {primarySite?.phone ? (
                   <Inline gap="xs">
                     <Phone aria-hidden />
-                    <Text>{client.phone}</Text>
+                    <Text>{primarySite.phone}</Text>
                   </Inline>
                 ) : (
                   <Text tone="muted">No phone</Text>
@@ -100,7 +105,7 @@ export function ClientsTable({
               {canWrite && (
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
-                    <Button variant="outline" size="sm" onClick={() => router.push(`/clients/${client.id}/edit`)}>
+                    <Button variant="outline" size="sm" onClick={() => onEdit(client)}>
                       Edit
                     </Button>
                     <Button variant="danger" size="sm" onClick={() => onDelete(client)}>

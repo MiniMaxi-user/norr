@@ -19,11 +19,13 @@ import { ClientsTable } from "./clients-table";
 export function ClientsKanban({
   clients,
   canWrite,
+  onEdit,
   onDelete,
   primarySiteByClientId,
 }: {
   clients: ClientRecord[];
   canWrite: boolean;
+  onEdit: (client: ClientRecord) => void;
   onDelete: (client: ClientRecord) => void;
   /** Threaded straight through to `ClientsTable` (each column reuses it),
    * and to `groupClientsForKanban`'s "onboarded" heuristic — see
@@ -47,6 +49,7 @@ export function ClientsKanban({
               <ClientsTable
                 clients={column.clients}
                 canWrite={canWrite}
+                onEdit={onEdit}
                 onDelete={onDelete}
                 primarySiteByClientId={primarySiteByClientId}
               />

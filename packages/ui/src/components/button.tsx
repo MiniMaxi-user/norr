@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cx } from "../cx";
 
-export type ButtonVariant = "primary" | "outline" | "danger" | "ghost" | "link";
+export type ButtonVariant = "primary" | "outline" | "danger" | "success" | "ghost" | "link";
 export type ButtonSize = "sm";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

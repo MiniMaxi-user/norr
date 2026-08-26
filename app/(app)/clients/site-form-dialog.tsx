@@ -40,6 +40,7 @@ interface SiteFormValues {
   postalCode?: string;
   city?: string;
   country?: string;
+  phone?: string;
   notes?: string;
   isVisitAddress?: boolean;
   isInvoiceAddress?: boolean;
@@ -147,6 +148,7 @@ export function SiteFormDialog({
       postalCode: String(formData.get("postalCode") ?? ""),
       city: String(formData.get("city") ?? ""),
       country: String(formData.get("country") ?? ""),
+      phone: String(formData.get("phone") ?? ""),
       notes: String(formData.get("notes") ?? ""),
       isVisitAddress: forcePurpose ? undefined : (input.isVisitAddress as boolean),
       isInvoiceAddress: forcePurpose ? undefined : (input.isInvoiceAddress as boolean),
@@ -259,6 +261,12 @@ export function SiteFormDialog({
                   errors={state.fieldErrors?.country}
                 />
               </FormGrid>
+              <FormField
+                label="Phone"
+                name="phone"
+                defaultValue={textDefault(values?.phone, site?.phone)}
+                errors={state.fieldErrors?.phone}
+              />
             </FormSection>
 
             {/* Purpose and Notes don't depend on each other, so they sit

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { TenantRole } from "@/lib/rbac/permissions";
 
 /**
@@ -39,13 +40,38 @@ import type { TenantRole } from "@/lib/rbac/permissions";
  *    Calling this here means ANY authenticated request with no organization
  *    self-heals on its very next page load, regardless of which path
  *    established the session.
+ *
+ * The "do I already have a membership" existence check below deliberately
+ * uses the SERVICE-ROLE client (`lib/supabase/admin.ts`), not the caller's
+ * own RLS-scoped `supabase` client that's passed in for everything else
+ * here — a real bug found in review of issue #47's tenant-deactivation
+ * feature. `supabase/migrations/20260826120000_organizations_is_active.sql`
+ * made `memberships_select_self_or_same_org`'s "see your own row" branch
+ * also require the row's own organization to be `is_active`, so under RLS a
+ * user whose only membership is for a just-deactivated org now reads back
+ * zero membership rows — indistinguishable, under the caller's own session,
+ * from a user who genuinely has none. Left unfixed, this function would
+ * treat "my org was deactivated" as "I've never had an org" and silently
+ * bootstrap a brand-new, active, empty organization for that user on their
+ * very next page load (this function is called from `getCurrentSession` on
+ * every request) — completely defeating the login gate for anyone with an
+ * already-open session. The service-role client sidesteps that ambiguity by
+ * seeing the real row regardless of `is_active`, mirroring the identical fix
+ * `logInAction` (`lib/auth/actions.ts`) already needed for this exact
+ * scenario at login time. Everything AFTER this check (the actual org/
+ * membership INSERTs) deliberately keeps using the caller's own RLS-scoped
+ * `supabase` client — that's not incidental, it's what lets those inserts
+ * rely on `memberships_insert_bootstrap_or_owner`'s "only while the org has
+ * zero members" guard as a real security backstop, not just an application-
+ * level check.
  */
 export async function ensureOwnOrganizationBootstrapped(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   organizationNameHint?: string,
 ): Promise<{ error?: string }> {
-  const { data: existingMemberships } = await supabase
+  const admin = createAdminClient();
+  const { data: existingMemberships } = await admin
     .from("memberships")
     .select("id")
     .eq("user_id", userId)

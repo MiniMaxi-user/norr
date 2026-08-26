@@ -68,10 +68,18 @@ async function ClientDetailContent({ id }: { id: string }) {
 
   // Issue #45: the "Access"/"Modules" tabs are platform-admin-only, and only
   // once this client has actually been activated as a tenant
-  // (`represents_organization_id` set) — same visibility rule `ClientDetail`
-  // itself re-derives for the tab triggers/panels, computed here too since it
-  // gates whether `getTenantAccessStatus` below is worth calling at all.
-  const tenantAccessVisible = session.isPlatformAdmin && Boolean(result.data.client.represents_organization_id);
+  // (`represents_organization_id` set).
+  //
+  // Issue #47: on top of that, the tenant must currently be ACTIVE
+  // (`organization_is_active === true`), not merely activated-and-then-
+  // deactivated — once a tenant is deactivated its users can no longer log
+  // in at all, so managing their login access/modules is meaningless until
+  // it's reactivated. Hidden outright rather than shown disabled, which also
+  // means the `getTenantAccessStatus` lookup below is skipped for a
+  // deactivated org's contacts (nothing meaningful for it to return). Same
+  // condition `ClientDetail` itself re-derives for the tab triggers/panels
+  // (`tenantAccessVisible` there) — keep both in sync.
+  const tenantAccessVisible = session.isPlatformAdmin && result.data.client.organization_is_active === true;
 
   // The Assets tab is itself a view onto the (separately-entitled) Assets
   // module — per docs/ARCHITECTURE.md, a module that isn't entitled/

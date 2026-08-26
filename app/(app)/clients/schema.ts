@@ -23,7 +23,6 @@ function optionalText(max: number) {
 
 export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
-  phone: optionalText(50),
   /** Dutch Chamber of Commerce (KvK) registration number — plain text, no
    * format validation at the DB or app layer (see migration
    * `20260825150000_clients_business_fields.sql`). */
@@ -99,6 +98,11 @@ export const siteBaseSchema = z.object({
    * (`enforce_single_primary_site` + `sites_one_primary_per_client_idx`),
    * not re-validated here, mirroring `contactCreateSchema.isPrimary` above. */
   isPrimary: z.boolean().optional(),
+  /** A site's own contact number (issue: phone relocated from `clients` to
+   * `sites` — a client can have multiple sites/locations, each potentially
+   * with its own number, so phone belongs here, not on the client). See
+   * migration `20260826130000_sites_phone.sql`. */
+  phone: optionalText(50),
   notes: optionalText(5000),
 });
 
