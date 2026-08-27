@@ -1,6 +1,8 @@
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@yourorg/ui";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { listAssetModels } from "@/lib/asset-models/actions";
 import { ReferenceListManager } from "../components/reference-list-manager";
+import { AssetModelManager } from "../components/asset-model-manager";
 
 // This file is a Server Component (`ReferenceListsBoard` is `async`, doing
 // its own data fetch), composing `Tabs` directly — so it MUST use the
@@ -36,6 +38,11 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Asset Sub-type",
     description:
       "Finer-grained equipment categories, each scoped to one Asset Type — e.g. Compressor, Thermostat, and Ductwork all belong under HVAC.",
+  },
+  {
+    key: "asset_brand",
+    title: "Asset Brand",
+    description: "Manufacturer brands used across your assets — e.g. Kyocera, Canon, Ricoh, Xerox.",
   },
   {
     key: "contact_role",
@@ -81,9 +88,10 @@ const REFERENCE_LIST_SECTIONS = [
  * streaming") so the page shell (heading, back link) paints immediately.
  */
 export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
-  const results = await Promise.all(
-    REFERENCE_LIST_SECTIONS.map((section) => listReferenceItems(section.key)),
-  );
+  const [results, assetModelsResult] = await Promise.all([
+    Promise.all(REFERENCE_LIST_SECTIONS.map((section) => listReferenceItems(section.key))),
+    listAssetModels(),
+  ]);
 
   // Every section's items, keyed by its own `list_key` — looked up below for
   // whichever section turns out to be *dependent* (`parentListKey` non-null
@@ -101,6 +109,14 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
     REFERENCE_LIST_SECTIONS.map((section) => [section.key, section.title]),
   );
 
+  // Asset Model manager (see `../components/asset-model-manager.tsx`) needs
+  // its Brand/Type/Sub-type combobox options from the same reference-list
+  // items already fetched above — no extra round trip beyond the model rows
+  // themselves.
+  const assetBrandItems = itemsByListKey.get("asset_brand") ?? [];
+  const assetTypeItems = itemsByListKey.get("asset_type") ?? [];
+  const assetSubtypeItems = itemsByListKey.get("asset_subtype") ?? [];
+
   return (
     <Tabs defaultValue={REFERENCE_LIST_SECTIONS[0].key}>
       <TabsList aria-label="Reference lists">
@@ -109,6 +125,7 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
             {section.title}
           </TabsTab>
         ))}
+        <TabsTab value="asset_models">Asset Model</TabsTab>
       </TabsList>
 
       {REFERENCE_LIST_SECTIONS.map((section, index) => {
@@ -129,6 +146,17 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
           </TabsPanel>
         );
       })}
+
+      <TabsPanel value="asset_models">
+        <AssetModelManager
+          models={assetModelsResult.data?.models ?? []}
+          loadError={assetModelsResult.error}
+          canWrite={canWrite}
+          brandItems={assetBrandItems}
+          typeItems={assetTypeItems}
+          subtypeItems={assetSubtypeItems}
+        />
+      </TabsPanel>
     </Tabs>
   );
 }

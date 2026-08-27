@@ -50,8 +50,30 @@ export interface DialogProps {
 export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
   if (!open) return null;
 
+  // Close-on-outside-click needs the *press* to have started on the overlay
+  // itself, not just the *release* — a plain `onClick` fires on the nearest
+  // common ancestor of the mousedown and mouseup targets, so dragging a text
+  // selection from an input inside the dialog out past its edge (a normal
+  // way to select an email address, say) ends the drag over the overlay and
+  // was closing the dialog out from under that selection. `pointerDownOnOverlay`
+  // is a plain per-render closure variable, not state — this component is
+  // deliberately hook-free (see the file doc comment: it's bundled where the
+  // RSC compiler forbids hooks), and a plain variable is sufficient here
+  // since a mousedown→click gesture completes synchronously well within one
+  // render; the only failure mode if a re-render did land in between is the
+  // conservative one (an outside click gets ignored, not a false close).
+  let pointerDownOnOverlay = false;
+
   return (
-    <div className="ui-dialog-overlay" onClick={() => onOpenChange(false)}>
+    <div
+      className="ui-dialog-overlay"
+      onMouseDown={(event) => {
+        pointerDownOnOverlay = event.target === event.currentTarget;
+      }}
+      onClick={(event) => {
+        if (pointerDownOnOverlay && event.target === event.currentTarget) onOpenChange(false);
+      }}
+    >
       <div
         className={cx("ui-dialog", size && `ui-dialog-${size}`)}
         role="dialog"

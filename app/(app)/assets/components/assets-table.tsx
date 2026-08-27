@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
+import { AssetFormDialog } from "./asset-form-dialog";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
 
 export interface AssetsTableProps {
@@ -18,10 +19,10 @@ export interface AssetsTableProps {
  * (server-side filtering already narrows by client/site — see
  * `AssetsFilters` — free-text search here is a fast, no-round-trip refinement
  * on top of that). Row click navigates to the detail page; the row-level
- * Edit action navigates to `/assets/[id]/edit` (a real page, docs/
- * ARCHITECTURE.md "Popup vs. full page — pick by weight, not habit") instead
- * of opening a dialog; Delete stays a lightweight confirmation `Dialog` (a
- * single flat-record removal, not a relational form).
+ * Edit action opens the slide-in `AssetFormDialog` (issue #53, docs/
+ * ARCHITECTURE.md "Popup vs. full page — pick by weight, not habit"); Delete
+ * stays a lightweight confirmation `Dialog` (a single flat-record removal,
+ * not a relational form).
  *
  * `stickyHeader`/`maxHeight` keep a long page of assets scrolling under a
  * fixed header instead of pushing the pagination row off-screen (docs/
@@ -32,6 +33,7 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
+  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,8 +42,9 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
       [
         asset.name,
         asset.asset_type?.label,
-        asset.manufacturer,
-        asset.model,
+        asset.asset_brand?.label,
+        asset.asset_model?.name,
+        asset.external_reference,
         asset.serial_number,
         clientNameById.get(asset.client_id),
       ]
@@ -57,7 +60,7 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
       <Stack gap="md">
         <Input
           aria-label="Search assets on this page"
-          placeholder="Search by name, type, manufacturer, serial…"
+          placeholder="Search by name, type, brand, model, serial…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -101,12 +104,7 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
                         for keyboard navigation. */}
                     <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                       {canEdit && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => router.push(`/assets/${asset.id}/edit`)}
-                        >
+                        <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
                           Edit
                         </Button>
                       )}
@@ -136,6 +134,15 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
           asset={deletingAsset}
           open
           onOpenChange={(next) => !next && setDeletingAsset(null)}
+        />
+      )}
+
+      {editingAsset && (
+        <AssetFormDialog
+          asset={editingAsset}
+          mode="edit"
+          open
+          onOpenChange={(next) => !next && setEditingAsset(null)}
         />
       )}
     </>

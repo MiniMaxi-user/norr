@@ -1,0 +1,323 @@
+"use client";
+// New primitive (issue #54): the shared "search field with a dropdown of
+// matching options, filtered as you type" pattern needed for Brand/Type/
+// Sub-type/Model pickers (this issue's Asset Model manager, and issue #53's
+// Asset form once unblocked). Genuinely interactive (owns open/query/
+// highlighted-index state), so — same as client.tsx/tabs.tsx/toast.tsx — it
+// needs its OWN dedicated "use client" tsup build entry rather than living
+// in the hook-free main index.js bundle Server Components import; see
+// tsup.config.ts's top-of-file comment for the full "why a sibling file, not
+// inlined into index.ts" story. Lives at the top level of `src/` (not under
+// `src/components/`), same as client.tsx/tabs.tsx/toast.tsx — required, not
+// just cosmetic: `index.ts` imports this module as the literal relative
+// specifier `"./combobox.js"`, which the CJS build (the one build config
+// where this module is NOT marked `external` — see tsup.config.ts) must be
+// able to physically resolve on disk relative to `index.ts`'s own directory;
+// nesting it under `components/` broke exactly that resolution (confirmed
+// empirically: `npm run build -w @yourorg/ui` failed with "Could not resolve
+// './combobox.js'" until this file was moved back up to `src/`).
+
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { cx } from "./cx";
+import { Check, ChevronDown, X } from "./icons";
+
+export interface ComboboxOption {
+  value: string;
+  label: string;
+}
+
+export interface ComboboxProps {
+  /** Every selectable option — this component filters internally as the
+   * user types, so callers pass the full unfiltered list once (same
+   * "caller passes everything, component derives the filtered view"
+   * contract as `CascadingSelect`). */
+  options: ComboboxOption[];
+  /** Selected option's `value`. `""`/`undefined` means no selection. */
+  value?: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  id?: string;
+  /** Mirrors `value` into a same-named `<input type="hidden">`, so this
+   * component works as a real named form control inside a plain
+   * `<form action={...}>` / `FormData`-based submit — read
+   * `formData.get(name)` in the Server Action exactly like any other named
+   * field (see `Select`). Omit when the call site reads `value` from its
+   * own controlled state instead (e.g. because it also needs that value to
+   * drive a dependent field). */
+  name?: string;
+  /** Applied to the visible text field for basic HTML5 "you must select
+   * something" UX — the underlying Server Action's Zod validation is always
+   * the real backstop, same as every other form field in this codebase. */
+  required?: boolean;
+  /** Shown in the dropdown when the filtered list has zero matches. */
+  emptyMessage?: string;
+  /** Shows a small "x" button once a value is selected, clearing it back to
+   * no selection — for optional fields (e.g. Asset Sub-type) where "no
+   * value" is a state the user legitimately needs to get back to. */
+  clearable?: boolean;
+  className?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+}
+
+/**
+ * Shared type-to-filter combobox — the acceptance-criteria pattern for every
+ * search field with a dropdown of matching options ("als je begint met
+ * typen worden de juiste opties getoond"): full keyboard support (Up/Down/
+ * Home/End to move, Enter to select, Escape to close), and
+ * click-outside-to-close using the same "the press must both START and END
+ * outside" mechanism `Dialog` uses (see that component's doc comment) —
+ * critical here because selecting/dragging text inside the filter input
+ * must never close the dropdown out from under that selection. Deliberately
+ * does NOT itself implement cascading/dependent filtering (unlike
+ * `CascadingSelect`, which owns that logic for the native-`<select>` case) —
+ * a caller with a dependent field (e.g. Asset Sub-type scoped by Asset Type)
+ * passes it an already-filtered `options` array and remounts via
+ * `key={typeValue}` or clears `value` itself when the parent changes, same
+ * general shape `CascadingSelect`'s own doc comment describes.
+ */
+export function Combobox({
+  options,
+  value,
+  onChange,
+  placeholder = "Search…",
+  disabled,
+  id,
+  name,
+  required,
+  emptyMessage = "No matches",
+  clearable,
+  className,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+}: ComboboxProps) {
+  const generatedId = useId();
+  const baseId = id ?? generatedId;
+  const listboxId = `${baseId}-listbox`;
+
+  const selectedOption = useMemo(() => options.find((option) => option.value === value), [options, value]);
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(selectedOption?.label ?? "");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pointerDownOutsideRef = useRef(false);
+
+  // Keep the visible text in sync with the *selected* option whenever the
+  // dropdown is closed (covers an external `value` change — e.g. a parent
+  // form resetting this field — as well as closing without picking anything
+  // new). While open, the input shows whatever the user is typing instead.
+  useEffect(() => {
+    if (!open) setQuery(selectedOption?.label ?? "");
+  }, [open, selectedOption?.label]);
+
+  const filteredOptions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!open || !q) return options;
+    return options.filter((option) => option.label.toLowerCase().includes(q));
+  }, [options, query, open]);
+
+  useEffect(() => {
+    if (highlightedIndex >= filteredOptions.length) {
+      setHighlightedIndex(Math.max(0, filteredOptions.length - 1));
+    }
+  }, [filteredOptions.length, highlightedIndex]);
+
+  function close() {
+    setOpen(false);
+    setQuery(selectedOption?.label ?? "");
+  }
+
+  // Click-outside-to-close: only when a single press both STARTS and ENDS
+  // outside this component — see Dialog's identical fix (its own doc
+  // comment has the full story). Tracked via plain document pointer
+  // listeners rather than `onBlur`, so dragging a text selection out of the
+  // input and releasing over unrelated page content can never be
+  // misread as "the user clicked away" mid-selection.
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event: PointerEvent) {
+      pointerDownOutsideRef.current = !containerRef.current?.contains(event.target as Node);
+    }
+    function handlePointerUp(event: PointerEvent) {
+      const endedOutside = !containerRef.current?.contains(event.target as Node);
+      if (pointerDownOutsideRef.current && endedOutside) close();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+    // `close` intentionally omitted — it only reads `selectedOption?.label`,
+    // which does not need to force this listener to be torn down/re-added.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function selectOption(option: ComboboxOption) {
+    onChange(option.value);
+    setQuery(option.label);
+    setOpen(false);
+    setHighlightedIndex(0);
+  }
+
+  function handleClear(event: ReactMouseEvent) {
+    event.stopPropagation();
+    onChange("");
+    setQuery("");
+    setOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (disabled) return;
+
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        if (!open) {
+          setOpen(true);
+          return;
+        }
+        setHighlightedIndex((index) => (filteredOptions.length === 0 ? 0 : (index + 1) % filteredOptions.length));
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        if (!open) {
+          setOpen(true);
+          return;
+        }
+        setHighlightedIndex((index) =>
+          filteredOptions.length === 0 ? 0 : (index - 1 + filteredOptions.length) % filteredOptions.length,
+        );
+        return;
+      case "Enter": {
+        if (!open) return;
+        const option = filteredOptions[highlightedIndex];
+        if (!option) return;
+        event.preventDefault();
+        selectOption(option);
+        return;
+      }
+      case "Escape":
+        if (!open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      case "Home":
+        if (!open) return;
+        event.preventDefault();
+        setHighlightedIndex(0);
+        return;
+      case "End":
+        if (!open) return;
+        event.preventDefault();
+        setHighlightedIndex(Math.max(0, filteredOptions.length - 1));
+        return;
+      default:
+        return;
+    }
+  }
+
+  const activeOptionId =
+    open && filteredOptions[highlightedIndex]
+      ? `${baseId}-option-${filteredOptions[highlightedIndex].value}`
+      : undefined;
+
+  return (
+    <div className={cx("ui-combobox", className)} ref={containerRef}>
+      <div className="ui-combobox-control">
+        <input
+          ref={inputRef}
+          id={baseId}
+          type="text"
+          role="combobox"
+          className="ui-combobox-input"
+          autoComplete="off"
+          value={query}
+          disabled={disabled}
+          required={required}
+          placeholder={placeholder}
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeOptionId}
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
+          onFocus={(event) => {
+            setOpen(true);
+            event.currentTarget.select();
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+            setHighlightedIndex(0);
+          }}
+          onKeyDown={handleKeyDown}
+        />
+        {clearable && value ? (
+          <button
+            type="button"
+            className="ui-combobox-clear"
+            onClick={handleClear}
+            disabled={disabled}
+            aria-label="Clear selection"
+            tabIndex={-1}
+          >
+            <X />
+          </button>
+        ) : null}
+        <span className="ui-combobox-caret" aria-hidden="true">
+          <ChevronDown />
+        </span>
+      </div>
+
+      {name ? <input type="hidden" name={name} value={value ?? ""} /> : null}
+
+      {open && !disabled ? (
+        <ul id={listboxId} role="listbox" className="ui-combobox-listbox">
+          {filteredOptions.length === 0 ? (
+            <li className="ui-combobox-empty">{emptyMessage}</li>
+          ) : (
+            filteredOptions.map((option, index) => {
+              const selected = option.value === value;
+              const highlighted = index === highlightedIndex;
+              return (
+                <li
+                  key={option.value}
+                  id={`${baseId}-option-${option.value}`}
+                  role="option"
+                  aria-selected={selected}
+                  className={cx(
+                    "ui-combobox-option",
+                    highlighted && "ui-combobox-option-highlighted",
+                    selected && "ui-combobox-option-selected",
+                  )}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  onClick={() => selectOption(option)}
+                >
+                  <span>{option.label}</span>
+                  {selected ? <Check className="ui-combobox-option-check" aria-hidden="true" /> : null}
+                </li>
+              );
+            })
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
+}

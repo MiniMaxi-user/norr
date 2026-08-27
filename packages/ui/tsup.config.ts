@@ -9,6 +9,18 @@ import { defineConfig } from "tsup";
 // "Server Components by default" architecture (CLAUDE.md rule 5) intact
 // for every other primitive this package exports.
 //
+// `combobox.tsx` joined this list for the same reason — it owns real
+// open/query/highlighted-index state (issue #54) — and gets its own
+// `dist/combobox.js` entry below exactly the same way. It lives at the same
+// top level of `src/` as the other three (not under `src/components/`,
+// unlike every other component in this package) — required, not cosmetic:
+// `index.ts` imports it via the literal relative specifier `"./combobox.js"`,
+// which the CJS build below must physically resolve on disk relative to
+// `index.ts`'s own directory (that build does NOT mark these four modules
+// `external` — see its own comment) — confirmed empirically, nesting it
+// under `components/` broke that resolution with "Could not resolve
+// './combobox.js'".
+//
 // The app imports `ThemeProvider`/`Tabs` from the package's *main* entry
 // (`@yourorg/ui`), not a `./client`/`./tabs` subpath, so `index.ts`
 // re-exports them — which is the tricky part, confirmed empirically while
@@ -42,7 +54,7 @@ import { defineConfig } from "tsup";
 // Jest/ts-node) doesn't need any of this: each entry is fully
 // self-contained there, which is fine since CJS output isn't what Next's
 // RSC module graph walks.
-const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js"];
+const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js", "./combobox.js"];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
 export default defineConfig([
@@ -62,6 +74,7 @@ export default defineConfig([
       client: "src/client.tsx",
       tabs: "src/tabs.tsx",
       toast: "src/toast.tsx",
+      combobox: "src/combobox.tsx",
     },
     format: ["esm"],
     dts: true,
@@ -80,6 +93,7 @@ export default defineConfig([
       client: "src/client.tsx",
       tabs: "src/tabs.tsx",
       toast: "src/toast.tsx",
+      combobox: "src/combobox.tsx",
     },
     format: ["cjs"],
     dts: false,

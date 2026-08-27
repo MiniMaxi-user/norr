@@ -106,16 +106,18 @@ export interface ClientDetailProps {
  * which adds a fixed 340px sticky rail OUTSIDE the tabs (`.ui-detail-rail`
  * in styles.css) — it stays visible across every tab instead of only
  * whichever one happens to be selected. The rail, top to bottom:
+ *  - Relationship: "Client since" plus Sites/Assets/Orders/Quotes counters,
+ *    each counter gated behind its own `*Enabled` flag (Sites has none —
+ *    always shown) — leads the rail since it's the read-at-a-glance
+ *    summary, ahead of Company's edit-oriented business details;
  *  - Company: `client.kvk_number`/`vat_number`/`iban` plus the primary
  *    site's own `phone` (moved off `clients` onto `sites`, migration
  *    `20260826130000_sites_phone.sql` — a client no longer has its own
  *    phone at all, no email either, `clients.email` was dropped in issue
  *    #43; a client's contact email now only lives on its `Contact` rows,
- *    see the Contacts tab) — with an inline "Edit" opening the same
- *    `EditClientPanel` the hero's own Edit button opens;
- *  - Relationship: "Client since" plus Sites/Assets/Orders/Quotes counters,
- *    each counter gated behind its own `*Enabled` flag (Sites has none —
- *    always shown);
+ *    see the Contacts tab) — no inline Edit of its own (removed — it opened
+ *    the exact same `EditClientPanel` as the hero's own Edit button, one hop
+ *    away at the top of the page);
  *  - Platform (platform-admin-only, `tenantAccessVisible`, accent-tinted):
  *    tenant active/deactivated status and a read-only modules line — pure
  *    read-out, management stays exclusively in the Modules tab;
@@ -282,27 +284,6 @@ export function ClientDetail({
     <>
       <Card>
         <Stack gap="sm">
-          <Inline justify="between" align="center">
-            <Heading level={6}>Company</Heading>
-            {canWrite && (
-              <Button variant="link" size="sm" onClick={() => setEditOpen(true)}>
-                Edit
-              </Button>
-            )}
-          </Inline>
-          <DefinitionList
-            items={[
-              { label: "KvK", value: client.kvk_number || <Text tone="muted">—</Text> },
-              { label: "VAT", value: client.vat_number || <Text tone="muted">—</Text> },
-              { label: "IBAN", value: client.iban || <Text tone="muted">—</Text> },
-              { label: "Phone", value: primarySite?.phone || <Text tone="muted">—</Text> },
-            ]}
-          />
-        </Stack>
-      </Card>
-
-      <Card>
-        <Stack gap="sm">
           <Heading level={6}>Relationship</Heading>
           <DefinitionList items={[{ label: "Client since", value: formatClientSinceDate(client.created_at) }]} />
           <Separator />
@@ -316,6 +297,20 @@ export function ClientDetail({
               </div>
             ))}
           </div>
+        </Stack>
+      </Card>
+
+      <Card>
+        <Stack gap="sm">
+          <Heading level={6}>Company</Heading>
+          <DefinitionList
+            items={[
+              { label: "KvK", value: client.kvk_number || <Text tone="muted">—</Text> },
+              { label: "VAT", value: client.vat_number || <Text tone="muted">—</Text> },
+              { label: "IBAN", value: client.iban || <Text tone="muted">—</Text> },
+              { label: "Phone", value: primarySite?.phone || <Text tone="muted">—</Text> },
+            ]}
+          />
         </Stack>
       </Card>
 
@@ -477,6 +472,8 @@ export function ClientDetail({
               assetCountBySiteId={assetCountBySiteId}
               assetsEnabled={assetsEnabled}
               onViewAssets={assetsEnabled ? viewAssetsForSite : undefined}
+              contacts={contacts}
+              contactRoles={contactRoles}
             />
           </Tabs.Panel>
 

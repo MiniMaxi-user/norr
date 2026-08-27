@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Table } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
+import { AssetFormDialog } from "@/app/(app)/assets/components/asset-form-dialog";
 import { DeleteAssetDialog } from "@/app/(app)/assets/components/delete-asset-dialog";
 
 export interface SiteAssetsTableProps {
@@ -17,15 +18,16 @@ export interface SiteAssetsTableProps {
  * page's Assets tab — deliberately a smaller sibling of
  * `app/(app)/assets/components/assets-table.tsx` rather than that component
  * reused as-is: there's no "Client" column here (every row already belongs
- * to the site/client this whole page is about). Edit navigates to the full
- * `/assets/[id]/edit` page (docs/ARCHITECTURE.md "Popup vs. full page — pick
- * by weight, not habit"), same as the standalone Assets module; delete stays
- * a lightweight confirmation `Dialog` (a single flat-record removal, not a
- * relational form).
+ * to the site/client this whole page is about). Edit opens the slide-in
+ * `AssetFormDialog` (issue #53, docs/ARCHITECTURE.md "Popup vs. full page —
+ * pick by weight, not habit"), same as the standalone Assets module; delete
+ * stays a lightweight confirmation `Dialog` (a single flat-record removal,
+ * not a relational form).
  */
 export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableProps) {
   const router = useRouter();
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
+  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
   const showActionsColumn = canEdit || canDelete;
 
   return (
@@ -55,12 +57,7 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                     {canEdit && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push(`/assets/${asset.id}/edit`)}
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
                         Edit
                       </Button>
                     )}
@@ -79,6 +76,10 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
 
       {deletingAsset && (
         <DeleteAssetDialog asset={deletingAsset} open onOpenChange={(next) => !next && setDeletingAsset(null)} />
+      )}
+
+      {editingAsset && (
+        <AssetFormDialog asset={editingAsset} mode="edit" open onOpenChange={(next) => !next && setEditingAsset(null)} />
       )}
     </>
   );

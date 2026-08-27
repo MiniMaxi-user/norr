@@ -30,7 +30,13 @@ export default async function AppRouteLayout({
       <AppShell
         defaultSidebarCollapsed={defaultSidebarCollapsed}
         organization={session.organization}
-        user={{ email: session.email, fullName: session.fullName, role: session.role }}
+        user={{
+          email: session.email,
+          fullName: session.fullName,
+          role: session.role,
+          avatarUrl: session.avatarUrl,
+          locale: session.locale,
+        }}
         isPlatformAdmin={session.isPlatformAdmin}
         title={<PageHeaderSlot />}
       >

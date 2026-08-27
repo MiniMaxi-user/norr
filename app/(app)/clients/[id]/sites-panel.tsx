@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { SiteRecord } from "../actions";
+import type { ContactRecord } from "../contacts-actions";
 import { DeleteSiteDialog } from "../delete-site-dialog";
 import { formatSiteAddressShort } from "../format-site-address";
 import { SiteFormDialog } from "../site-form-dialog";
@@ -12,6 +14,14 @@ export interface SitesPanelProps {
   clientId: string;
   sites: SiteRecord[];
   canWrite: boolean;
+  /** This client's own contacts, and this org's `contact_role` picklist —
+   * issue #52's per-purpose (visit/invoice/delivery) contact-person picker,
+   * threaded straight through to `SiteFormDialog` (single dialog instance
+   * shared by both the "Add site" button and every row's "Edit"). Same
+   * "fetch once in `client-detail.tsx`, pass down" convention `contacts`/
+   * `contactRoles` already follow into `ContactsPanel`. */
+  contacts: ContactRecord[];
+  contactRoles: ReferenceListItemRecord[];
   /** Asset count per `site.id`, computed once by the parent from the same
    * `listAssets({ clientId })` fetch the Assets tab uses — keeps "3 assets"
    * here and the Assets tab's own grouping in sync without a second fetch. */
@@ -60,6 +70,8 @@ export function SitesPanel({
   assetCountBySiteId,
   assetsEnabled,
   onViewAssets,
+  contacts,
+  contactRoles,
 }: SitesPanelProps) {
   const [siteForm, setSiteForm] = useState<{ open: boolean; site: SiteRecord | null }>({
     open: false,
@@ -184,6 +196,8 @@ export function SitesPanel({
             site={siteForm.site}
             isFirstSite={sites.length === 0}
             hasPrimarySite={sites.some((s) => s.is_primary)}
+            contacts={contacts}
+            contactRoles={contactRoles}
           />
           <DeleteSiteDialog
             open={Boolean(deleteSiteTarget)}

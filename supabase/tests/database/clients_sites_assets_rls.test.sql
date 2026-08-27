@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(59);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner)
@@ -383,6 +383,256 @@ select throws_ok(
   null,
   'clients.address_line1 no longer exists (dropped by 20260825090000_sites_addresses.sql; sites is now the sole client-address model)'
 ); -- 37
+
+-- ---------------------------------------------------------------------------
+-- sites: visit_contact_id / delivery_contact_id / invoice_contact_id (issue
+-- #52, supabase/migrations/20260826150000_sites_contact_persons.sql).
+-- Requires a second client under org_a (so we can distinguish "same
+-- organization, different client" from "different organization" when
+-- exercising validate_site_contact_persons) and a contacts fixture per
+-- client.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.clients (id, organization_id, name)
+     values ('e0000000-0000-0000-0000-00000000000c', 'd0000000-0000-0000-0000-00000000000a', 'Client A2') $$,
+  'owner_a can insert a second client (Client A2) into org_a (fixture for site-contact same-org/different-client test)'
+); -- 38
+
+select lives_ok(
+  $$ insert into public.contacts (id, client_id, name)
+     values ('c1000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-00000000000a', 'Contact A1') $$,
+  'owner_a can insert a contact under Client A'
+); -- 39
+
+select lives_ok(
+  $$ insert into public.contacts (id, client_id, name)
+     values ('c1000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-00000000000c', 'Contact A2') $$,
+  'owner_a can insert a contact under Client A2 (different client, same org_a)'
+); -- 40
+
+select pg_temp.act_as('b3333333-3333-3333-3333-333333333333');
+
+select lives_ok(
+  $$ insert into public.contacts (id, client_id, name)
+     values ('c1000000-0000-0000-0000-000000000003', 'e0000000-0000-0000-0000-00000000000b', 'Contact B1') $$,
+  'owner_b can insert a contact under Client B (org_b)'
+); -- 41
+
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.sites (id, client_id, is_visit_address, is_delivery_address, is_invoice_address,
+       visit_contact_id, delivery_contact_id, invoice_contact_id)
+     values ('f0000000-0000-0000-0000-00000000000d', 'e0000000-0000-0000-0000-00000000000a', true, true, true,
+       'c1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001') $$,
+  'owner_a can insert a Client A site with visit/delivery/invoice_contact_id all set to Contact A1 (same client)'
+); -- 42
+
+select is(
+  (select visit_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
+  'c1000000-0000-0000-0000-000000000001'::uuid,
+  'the new site''s visit_contact_id was persisted as Contact A1'
+); -- 43
+
+select throws_ok(
+  $$ insert into public.sites (client_id, is_visit_address, visit_contact_id)
+     values ('e0000000-0000-0000-0000-00000000000a', true, 'c1000000-0000-0000-0000-000000000002') $$,
+  '23514',
+  null,
+  'a Client A site cannot use Contact A2 (Client A2''s contact — same organization, different client) as visit_contact_id (validate_site_contact_persons)'
+); -- 44
+
+select throws_ok(
+  $$ insert into public.sites (client_id, is_delivery_address, delivery_contact_id)
+     values ('e0000000-0000-0000-0000-00000000000a', true, 'c1000000-0000-0000-0000-000000000003') $$,
+  '23514',
+  null,
+  'a Client A site cannot use Contact B1 (a different organization''s contact) as delivery_contact_id (validate_site_contact_persons)'
+); -- 45
+
+select lives_ok(
+  $$ delete from public.contacts where id = 'c1000000-0000-0000-0000-000000000001' $$,
+  'owner_a can delete Contact A1'
+); -- 46
+
+select is(
+  (select visit_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
+  null::uuid,
+  'deleting Contact A1 cleared (not blocked, not cascade-deleted) the site''s visit_contact_id (on delete set null)'
+); -- 47
+
+select is(
+  (select delivery_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
+  null::uuid,
+  'deleting Contact A1 also cleared the site''s delivery_contact_id'
+); -- 48
+
+select is(
+  (select invoice_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
+  null::uuid,
+  'deleting Contact A1 also cleared the site''s invoice_contact_id'
+); -- 49
+
+select lives_ok(
+  $$ insert into public.sites (id, client_id, is_invoice_address, invoice_contact_id)
+     values ('f0000000-0000-0000-0000-00000000000e', 'e0000000-0000-0000-0000-00000000000c', true, 'c1000000-0000-0000-0000-000000000002') $$,
+  'owner_a can insert a Client A2 site with invoice_contact_id = Contact A2 (same client)'
+); -- 50
+
+select throws_ok(
+  $$ update public.sites set client_id = 'e0000000-0000-0000-0000-00000000000a' where id = 'f0000000-0000-0000-0000-00000000000e' $$,
+  '23514',
+  null,
+  're-parenting the site from Client A2 to Client A is rejected because its invoice_contact_id (Contact A2) would no longer belong to the new client_id (validate_site_contact_persons re-checked on UPDATE OF client_id)'
+); -- 51
+
+-- ---------------------------------------------------------------------------
+-- assets: brand_item_id / model_id (QA finding on issue #53,
+-- supabase/migrations/20260826170000_assets_external_reference_brand_model.sql).
+-- Same validate_asset_reference_items trigger already exercised above for
+-- type_id/status_id (tests 18-26), extended with two more branches. Needs an
+-- org_a asset_models fixture row (asset_models isn't auto-seeded, unlike
+-- asset_type/asset_status/asset_brand — see
+-- supabase/tests/database/asset_brand_and_models_rls.test.sql for that
+-- table's own dedicated coverage) plus a captured org_b asset_brand item id
+-- (a random uuid generated by the seed function, so it can't be hardcoded
+-- like the asset_models fixture ids below) for the cross-org rejection
+-- tests.
+-- ---------------------------------------------------------------------------
+create table pg_temp.brand_model_captured_ids (key text primary key, val uuid not null);
+-- Explicit grant: a temp table created while running as the connecting
+-- (superuser/owner) role is not automatically writable after `set local
+-- role authenticated` — this table is written to below by both owner_a and
+-- owner_b sessions (both simulated as `authenticated`), so it needs this
+-- grant to remain insertable across those role switches, independent of
+-- which role created it. (Confirmed live: the same captured-id pattern
+-- without this grant fails 42501 "permission denied for table" under
+-- `authenticated` once the creating session's role differs.)
+grant all on pg_temp.brand_model_captured_ids to authenticated;
+
+select pg_temp.act_as('b3333333-3333-3333-3333-333333333333');
+
+insert into pg_temp.brand_model_captured_ids (key, val)
+select 'org_b_asset_brand_id', rli.id
+from public.reference_list_items rli
+join public.reference_lists rl on rl.id = rli.reference_list_id
+where rl.organization_id = 'd0000000-0000-0000-0000-00000000000b'
+  and rl.list_key = 'asset_brand' and rli.value = 'kyocera';
+
+-- org_b asset_models fixture, for the cross-org model_id rejection test below.
+insert into public.asset_models (id, organization_id, brand_item_id, type_item_id, name)
+select
+  'bb000000-0000-0000-0000-00000000000b',
+  'd0000000-0000-0000-0000-00000000000b',
+  brand.id, hvac.id, 'Org B Model'
+from public.reference_list_items brand
+join public.reference_lists brand_list on brand_list.id = brand.reference_list_id
+join public.reference_list_items hvac on true
+join public.reference_lists hvac_list on hvac_list.id = hvac.reference_list_id
+where brand_list.organization_id = 'd0000000-0000-0000-0000-00000000000b'
+  and brand_list.list_key = 'asset_brand' and brand.value = 'kyocera'
+  and hvac_list.organization_id = 'd0000000-0000-0000-0000-00000000000b'
+  and hvac_list.list_key = 'asset_type' and hvac.value = 'hvac';
+
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.asset_models (id, organization_id, brand_item_id, type_item_id, name)
+     select
+       'bb000000-0000-0000-0000-00000000000a',
+       'd0000000-0000-0000-0000-00000000000a',
+       brand.id, hvac.id, 'Org A Model'
+     from public.reference_list_items brand
+     join public.reference_lists brand_list on brand_list.id = brand.reference_list_id
+     join public.reference_list_items hvac on true
+     join public.reference_lists hvac_list on hvac_list.id = hvac.reference_list_id
+     where brand_list.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+       and brand_list.list_key = 'asset_brand' and brand.value = 'kyocera'
+       and hvac_list.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+       and hvac_list.list_key = 'asset_type' and hvac.value = 'hvac' $$,
+  'owner_a can insert an org_a asset_models fixture (brand=kyocera, type=hvac), for the assets.model_id acceptance test below'
+); -- 52
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, name, type_id, brand_item_id)
+     select
+       'aa000000-0000-0000-0000-00000000000a',
+       'f0000000-0000-0000-0000-00000000000d',
+       'Printer 1',
+       hvac.id,
+       brand.id
+     from public.reference_list_items brand
+     join public.reference_lists brand_list on brand_list.id = brand.reference_list_id
+     join public.reference_list_items hvac on true
+     join public.reference_lists hvac_list on hvac_list.id = hvac.reference_list_id
+     where brand_list.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+       and brand_list.list_key = 'asset_brand' and brand.value = 'kyocera'
+       and hvac_list.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+       and hvac_list.list_key = 'asset_type' and hvac.value = 'hvac' $$,
+  'owner_a can insert an asset under site f0000000...000d (org_a) with brand_item_id resolved from org_a''s seeded asset_brand list (value=kyocera)'
+); -- 53
+
+select is(
+  (select rli.value
+     from public.assets a
+     join public.reference_list_items rli on rli.id = a.brand_item_id
+     where a.id = 'aa000000-0000-0000-0000-00000000000a'),
+  'kyocera',
+  'the new asset''s brand_item_id was persisted and resolves to the asset_brand item value=kyocera'
+); -- 54
+
+select throws_ok(
+  $$ update public.assets set brand_item_id = (
+       select rli.id from public.reference_list_items rli
+         join public.reference_lists rl on rl.id = rli.reference_list_id
+         where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+           and rl.list_key = 'asset_type' and rli.value = 'hvac'
+     ) where id = 'aa000000-0000-0000-0000-00000000000a' $$,
+  '23514',
+  null,
+  'assets.brand_item_id must reference an item from the asset_brand list, not asset_type (validate_asset_reference_items rejects the wrong list_key)'
+); -- 55
+
+select throws_ok(
+  $$ update public.assets set brand_item_id = (
+       select val from pg_temp.brand_model_captured_ids where key = 'org_b_asset_brand_id'
+     ) where id = 'aa000000-0000-0000-0000-00000000000a' $$,
+  '23514',
+  null,
+  'assets.brand_item_id from a different organization''s asset_brand list (org_b''s kyocera item) is rejected even though owner_a passes RLS (validate_asset_reference_items resolves it via SECURITY DEFINER and detects the organization mismatch)'
+); -- 56
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, name, type_id, model_id)
+     values (
+       'aa000000-0000-0000-0000-00000000000b',
+       'f0000000-0000-0000-0000-00000000000d',
+       'Printer 2',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac'),
+       'bb000000-0000-0000-0000-00000000000a'
+     ) $$,
+  'owner_a can insert an asset under site f0000000...000d (org_a) with model_id set to the org_a asset_models fixture from test 52'
+); -- 57
+
+select is(
+  (select am.name from public.assets a
+     join public.asset_models am on am.id = a.model_id
+     where a.id = 'aa000000-0000-0000-0000-00000000000b'),
+  'Org A Model',
+  'the new asset''s model_id was persisted and resolves to the org_a asset_models fixture (name=Org A Model)'
+); -- 58
+
+select throws_ok(
+  $$ update public.assets set model_id = 'bb000000-0000-0000-0000-00000000000b' where id = 'aa000000-0000-0000-0000-00000000000b' $$,
+  '23514',
+  null,
+  'assets.model_id from a different organization''s asset_models row (org_b''s fixture) is rejected (validate_asset_reference_items checks asset_models.organization_id = assets.organization_id)'
+); -- 59
 
 select * from finish();
 rollback;

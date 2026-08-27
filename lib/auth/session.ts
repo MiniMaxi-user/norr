@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { TenantRole } from "@/lib/rbac/permissions";
 import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
+import { getAvatarUrl } from "@/lib/profile/avatar-url";
+import type { Locale } from "@/lib/profile/locale";
 
 export interface CurrentOrganization {
   id: string;
@@ -22,6 +24,15 @@ export interface CurrentSession {
   /** `users.is_platform_admin` — cross-tenant, never a tenant role. See
    * lib/rbac/permissions.ts `PermissionActor`. */
   isPlatformAdmin: boolean;
+  /** Public URL for the signed-in user's profile photo (issue #49), derived
+   * server-side from `users.avatar_path`/`avatar_updated_at` — `null` when
+   * no photo has been uploaded. See `lib/profile/avatar-url.ts`. Identity-
+   * level, not gated by `hasFeature()` — every authenticated user has one. */
+  avatarUrl: string | null;
+  /** `users.locale` — stored UI-language preference only; there is no
+   * i18n/translation system in this app yet (see the migration's column
+   * comment). Read by the profile panel's language select. */
+  locale: Locale;
   /**
    * The signed-in user's first organization membership (ordered by
    * `created_at`), or `null` if they have none (e.g. a platform-admin-only
@@ -62,7 +73,11 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
       .maybeSingle();
 
   const [profileResult, membershipResult] = await Promise.all([
-    supabase.from("users").select("is_platform_admin, full_name").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("users")
+      .select("is_platform_admin, full_name, avatar_path, avatar_updated_at, locale")
+      .eq("id", user.id)
+      .maybeSingle(),
     membershipQuery(),
   ]);
 
@@ -83,13 +98,21 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     membership = retry.data as typeof membership;
   }
 
-  const profile = profileResult.data as { is_platform_admin: boolean; full_name: string | null } | null;
+  const profile = profileResult.data as {
+    is_platform_admin: boolean;
+    full_name: string | null;
+    avatar_path: string | null;
+    avatar_updated_at: string | null;
+    locale: Locale;
+  } | null;
 
   return {
     userId: user.id,
     email: user.email ?? "",
     fullName: profile?.full_name ?? null,
     isPlatformAdmin: profile?.is_platform_admin ?? false,
+    avatarUrl: getAvatarUrl(profile?.avatar_path ?? null, profile?.avatar_updated_at ?? null),
+    locale: profile?.locale ?? "nl",
     organization: membership?.organization ?? null,
     role: membership?.role ?? null,
   };

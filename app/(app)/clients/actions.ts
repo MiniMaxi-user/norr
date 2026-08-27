@@ -12,6 +12,7 @@ import {
   siteBaseSchema,
   siteUpdateSchema,
   SITE_PURPOSE_REQUIRED_MESSAGE,
+  siteContactRequiredMessage,
   type SiteCreateInput,
   type SiteUpdateInput,
 } from "./schema";
@@ -94,6 +95,13 @@ export interface SiteRecord {
   is_visit_address: boolean;
   is_invoice_address: boolean;
   is_delivery_address: boolean;
+  /** The visit/invoice/delivery contact person (issue #52) — a
+   * `public.contacts.id` belonging to this same site's `client_id`
+   * (`validate_site_contact_persons` trigger), or `null` when the matching
+   * `is_*_address` flag above is false. */
+  visit_contact_id: string | null;
+  invoice_contact_id: string | null;
+  delivery_contact_id: string | null;
   is_primary: boolean;
   /** This site's own contact number — phone lives on the site, not the
    * client (a client can have multiple sites, each with its own number). See
@@ -155,6 +163,15 @@ function toSiteInsertRow(
     is_visit_address: purpose.isVisitAddress,
     is_invoice_address: purpose.isInvoiceAddress,
     is_delivery_address: purpose.isDeliveryAddress,
+    // Not part of `purpose` (unlike the flags above): the first-site
+    // override forces every purpose flag true but does NOT require these —
+    // see `createSite`'s contact-requiredness check below, which only runs
+    // for the normal (non-first-site) path. A forced-true first site simply
+    // gets whatever contact (if any) was submitted, same as any other
+    // optional field.
+    visit_contact_id: input.visitContactId ?? null,
+    invoice_contact_id: input.invoiceContactId ?? null,
+    delivery_contact_id: input.deliveryContactId ?? null,
     is_primary: purpose.isPrimary,
     phone: input.phone ?? null,
     latitude: geocoded?.latitude ?? null,
@@ -183,6 +200,9 @@ function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; 
   if (input.isVisitAddress !== undefined) row.is_visit_address = input.isVisitAddress;
   if (input.isInvoiceAddress !== undefined) row.is_invoice_address = input.isInvoiceAddress;
   if (input.isDeliveryAddress !== undefined) row.is_delivery_address = input.isDeliveryAddress;
+  if (input.visitContactId !== undefined) row.visit_contact_id = input.visitContactId ?? null;
+  if (input.invoiceContactId !== undefined) row.invoice_contact_id = input.invoiceContactId ?? null;
+  if (input.deliveryContactId !== undefined) row.delivery_contact_id = input.deliveryContactId ?? null;
   if (input.isPrimary !== undefined) row.is_primary = input.isPrimary;
   if (input.phone !== undefined) row.phone = input.phone ?? null;
   if (geocoded) {
@@ -581,6 +601,23 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
     if (!purpose.isVisitAddress && !purpose.isInvoiceAddress && !purpose.isDeliveryAddress) {
       return fail("Please fix the highlighted fields.", { isVisitAddress: [SITE_PURPOSE_REQUIRED_MESSAGE] });
     }
+    // Issue #52: a checked purpose needs its matching contact person. Not
+    // required for the forced-first-site branch above — see
+    // `toSiteInsertRow`'s comment on why contacts stay independent of the
+    // `purpose` override there.
+    if (purpose.isVisitAddress && !parsed.data.visitContactId) {
+      return fail("Please fix the highlighted fields.", { visitContactId: [siteContactRequiredMessage("visit")] });
+    }
+    if (purpose.isInvoiceAddress && !parsed.data.invoiceContactId) {
+      return fail("Please fix the highlighted fields.", {
+        invoiceContactId: [siteContactRequiredMessage("invoice")],
+      });
+    }
+    if (purpose.isDeliveryAddress && !parsed.data.deliveryContactId) {
+      return fail("Please fix the highlighted fields.", {
+        deliveryContactId: [siteContactRequiredMessage("delivery")],
+      });
+    }
   }
 
   // Story requirement: "Pin op kaart wordt bepaald door adres gegevens, niet
@@ -672,6 +709,46 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
     parsed.data.isPrimary = false;
   }
 
+  // Issue #52: same "merge with existing row, then require if the merged
+  // purpose flag is true" treatment as `mergedPurpose` above. On reparent,
+  // an existing contact reference isn't carried over — it belongs to the
+  // OLD client, and `validate_site_contact_persons` would reject the write
+  // outright if it stayed pointed at a contact from a different client than
+  // this site is about to have. A contact resubmitted in this same update is
+  // still honored (and gets freshly validated, against the *new* client, by
+  // that same trigger); only a non-resubmitted one is cleared.
+  const mergedContacts = {
+    visit_contact_id:
+      parsed.data.visitContactId !== undefined
+        ? parsed.data.visitContactId
+        : isReparenting
+          ? null
+          : existingSite.visit_contact_id,
+    invoice_contact_id:
+      parsed.data.invoiceContactId !== undefined
+        ? parsed.data.invoiceContactId
+        : isReparenting
+          ? null
+          : existingSite.invoice_contact_id,
+    delivery_contact_id:
+      parsed.data.deliveryContactId !== undefined
+        ? parsed.data.deliveryContactId
+        : isReparenting
+          ? null
+          : existingSite.delivery_contact_id,
+  };
+  if (mergedPurpose.is_visit_address && !mergedContacts.visit_contact_id) {
+    return fail("Please fix the highlighted fields.", { visitContactId: [siteContactRequiredMessage("visit")] });
+  }
+  if (mergedPurpose.is_invoice_address && !mergedContacts.invoice_contact_id) {
+    return fail("Please fix the highlighted fields.", { invoiceContactId: [siteContactRequiredMessage("invoice")] });
+  }
+  if (mergedPurpose.is_delivery_address && !mergedContacts.delivery_contact_id) {
+    return fail("Please fix the highlighted fields.", {
+      deliveryContactId: [siteContactRequiredMessage("delivery")],
+    });
+  }
+
   const droppedPurposes = SITE_PURPOSE_KEYS.filter((key) => {
     if (existingSite[key] !== true) return false;
     return isReparenting || mergedPurpose[key] === false;
@@ -718,6 +795,17 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
   }
 
   const row = toSiteUpdateRow(parsed.data, geocoded);
+  // See `mergedContacts` above: a reparent clears any contact id this update
+  // didn't itself resubmit, so `row` (built purely from what was submitted)
+  // needs the same explicit clearing — otherwise a non-resubmitted old-client
+  // contact reference would simply be left out of `row` entirely and survive
+  // in the DB untouched, tripping `validate_site_contact_persons` against
+  // the new `client_id`.
+  if (isReparenting) {
+    if (parsed.data.visitContactId === undefined) row.visit_contact_id = null;
+    if (parsed.data.invoiceContactId === undefined) row.invoice_contact_id = null;
+    if (parsed.data.deliveryContactId === undefined) row.delivery_contact_id = null;
+  }
   if (Object.keys(row).length === 0) {
     return fail("No changes provided.");
   }

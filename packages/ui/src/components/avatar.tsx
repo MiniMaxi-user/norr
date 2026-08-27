@@ -6,6 +6,18 @@ export type AvatarSize = "sm" | "md" | "lg";
 export interface AvatarProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   name: string;
   size?: AvatarSize;
+  /** Public URL of a profile photo — when present, renders an `<img>`
+   * filling the circle (`object-fit: cover`) instead of initials. Pass
+   * `undefined`/`null` (or omit) for the initials fallback. Deliberately no
+   * `onError` handler here (that would require making this a `"use client"`
+   * component, which this package's client boundary is intentionally
+   * limited to `ThemeProvider`/`useTheme`/`Tabs` — see
+   * docs/ARCHITECTURE.md's "Design system consumption" section). Callers
+   * only ever set this immediately after a confirmed-successful upload (see
+   * `avatar_path`'s fixed-filename-overwrite model,
+   * `supabase/migrations/20260826140000_user_profile_avatar_locale.sql`), so
+   * a broken-image edge case shouldn't occur in normal operation. */
+  photoUrl?: string | null;
 }
 
 function getInitials(name: string): string {
@@ -29,10 +41,10 @@ function getInitials(name: string): string {
  * an intentional divergence for the statement/hero context, not an
  * inconsistency to reconcile with `sm`/`md`.
  */
-export function Avatar({ name, size, className, ...rest }: AvatarProps) {
+export function Avatar({ name, size, photoUrl, className, ...rest }: AvatarProps) {
   return (
     <span className={cx("ui-avatar", size && `ui-avatar-${size}`, className)} aria-hidden {...rest}>
-      {getInitials(name)}
+      {photoUrl ? <img className="ui-avatar-img" src={photoUrl} alt="" /> : getInitials(name)}
     </span>
   );
 }

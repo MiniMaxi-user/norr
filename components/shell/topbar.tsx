@@ -38,7 +38,7 @@ export function Topbar({
 }: {
   title?: ReactNode;
   navItems: ResolvedNavItem[];
-  user: Pick<CurrentSession, "email" | "fullName" | "role">;
+  user: Pick<CurrentSession, "email" | "fullName" | "role" | "avatarUrl" | "locale">;
   /** `session.isPlatformAdmin` (issue #45) — renders a "Platform Admin"
    * badge to the left of the search bar (product feedback: not in the user
    * menu). */
@@ -67,7 +67,14 @@ export function Topbar({
 
         <Separator orientation="vertical" />
 
-        <UserMenu name={displayName} role={user.role} />
+        <UserMenu
+          name={displayName}
+          role={user.role}
+          email={user.email}
+          fullName={user.fullName}
+          avatarUrl={user.avatarUrl}
+          locale={user.locale}
+        />
       </Toolbar.Section>
     </Toolbar>
   );

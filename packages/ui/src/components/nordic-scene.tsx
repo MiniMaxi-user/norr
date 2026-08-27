@@ -20,16 +20,23 @@ const VIEW_W = 900;
 const VIEW_H = 1400;
 const SHORE_Y = 1000;
 
+/** One conifer silhouette's outline, kept separate per tree (rather than
+ * joined into the row's single path string) so each can sway independently
+ * — see `ForestRow`. */
+interface TreeShape {
+  d: string;
+}
+
 /** A row of stepped-tier conifer silhouettes, deterministically varied — no Math.random. */
-function pineRow(baseY: number, count: number, spacing: number, offset: number, minH: number, maxH: number) {
-  const trees: string[] = [];
+function pineRow(baseY: number, count: number, spacing: number, offset: number, minH: number, maxH: number): TreeShape[] {
+  const trees: TreeShape[] = [];
   for (let i = 0; i < count; i++) {
     const x = offset + i * spacing;
     const h = minH + ((i * 47) % (maxH - minH));
     const w = h * 0.62;
     const y = baseY;
-    trees.push(
-      [
+    trees.push({
+      d: [
         `M${x - w / 2},${y}`,
         `L${x - w / 6},${y}`,
         `L${x - w / 2.6},${y - h * 0.38}`,
@@ -45,9 +52,9 @@ function pineRow(baseY: number, count: number, spacing: number, offset: number, 
         `L${x + w / 2},${y}`,
         "Z",
       ].join(" "),
-    );
+    });
   }
-  return trees.join(" ");
+  return trees;
 }
 
 /** A jagged distant-ridge silhouette between two x bounds. */
@@ -78,6 +85,35 @@ function ReflectionGroup({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** One depth-graded forest row, rendered as individually-swaying trees
+ * rather than one flattened path — each tree's `animation-duration`/`-delay`
+ * is deterministically varied by index (same no-Math.random convention as
+ * `pineRow`'s height jitter) so the row doesn't sway in lockstep; the actual
+ * `ns-sway` keyframes/timing-function/iteration-count live on the shared
+ * `.ns-tree` class (see the `<style>` block in `NordicScene`). Trees are
+ * grouped under one `<g fill/opacity>` rather than each carrying its own —
+ * SVG composites a group's `opacity` as a single flattened layer, so
+ * neighboring trees' overlapping silhouettes still merge seamlessly at the
+ * row's opacity instead of double-blending at the overlap like independent
+ * per-path opacity would. */
+function ForestRow({ trees, fill, opacity }: { trees: TreeShape[]; fill: string; opacity: number }) {
+  return (
+    <g fill={fill} opacity={opacity}>
+      {trees.map((tree, i) => (
+        <path
+          key={i}
+          d={tree.d}
+          className="ns-tree"
+          style={{
+            animationDuration: `${5.5 + ((i * 13) % 6)}s`,
+            animationDelay: `-${(i * 7) % 6}s`,
+          }}
+        />
+      ))}
+    </g>
+  );
+}
+
 export type NordicSceneProps = SVGProps<SVGSVGElement>;
 
 export function NordicScene({ className, ...rest }: NordicSceneProps) {
@@ -90,6 +126,33 @@ export function NordicScene({ className, ...rest }: NordicSceneProps) {
       focusable="false"
       {...rest}
     >
+      <style>
+        {`
+          .ns-tree {
+            transform-box: fill-box;
+            transform-origin: 50% 100%;
+            animation-name: ns-sway;
+            animation-timing-function: ease-in-out;
+            animation-iteration-count: infinite;
+          }
+          .ns-sun-glow {
+            transform-box: fill-box;
+            transform-origin: 50% 50%;
+            animation: ns-glow-pulse 7.5s ease-in-out infinite;
+          }
+          @keyframes ns-sway {
+            0%, 100% { transform: rotate(-1deg); }
+            50% { transform: rotate(1deg); }
+          }
+          @keyframes ns-glow-pulse {
+            0%, 100% { opacity: 0.85; transform: scale(0.97); }
+            50% { opacity: 1; transform: scale(1.06); }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .ns-tree, .ns-sun-glow { animation: none; }
+          }
+        `}
+      </style>
       <defs>
         <linearGradient id="ns-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" style={{ stopColor: "var(--ui-brand-fjord)" }} />
@@ -160,7 +223,7 @@ export function NordicScene({ className, ...rest }: NordicSceneProps) {
           opacity={0.08}
           filter="url(#ns-blur-soft)"
         />
-        <circle cx={660} cy={410} r={200} fill="url(#ns-glow)" />
+        <circle className="ns-sun-glow" cx={660} cy={410} r={200} fill="url(#ns-glow)" />
         <circle cx={660} cy={410} r={48} fill="var(--ui-brand-massing)" opacity={0.95} />
       </g>
 
@@ -176,21 +239,21 @@ export function NordicScene({ className, ...rest }: NordicSceneProps) {
       {/* forest — three depth-graded rows, darkest and sharpest nearest the
           shore, each seam softened by a mist band so the layers read as
           distance rather than stacked cutouts */}
-      <path d={forestBack} fill="color-mix(in srgb, var(--ui-brand-fjord) 88%, black)" opacity={0.7} />
+      <ForestRow trees={forestBack} fill="color-mix(in srgb, var(--ui-brand-fjord) 88%, black)" opacity={0.7} />
       <ellipse cx={VIEW_W / 2} cy={958} rx={VIEW_W * 0.58} ry={22} fill="var(--ui-brand-snow)" opacity={0.06} filter="url(#ns-blur-mist)" />
-      <path d={forestMid} fill="color-mix(in srgb, var(--ui-brand-fjord) 94%, black)" opacity={0.85} />
+      <ForestRow trees={forestMid} fill="color-mix(in srgb, var(--ui-brand-fjord) 94%, black)" opacity={0.85} />
       <ellipse cx={VIEW_W / 2} cy={992} rx={VIEW_W * 0.56} ry={20} fill="var(--ui-brand-snow)" opacity={0.08} filter="url(#ns-blur-mist)" />
-      <path d={forestFront} fill="var(--ui-brand-fjord)" />
+      <ForestRow trees={forestFront} fill="var(--ui-brand-fjord)" opacity={1} />
 
       {/* lake */}
       <rect x="0" y={SHORE_Y} width={VIEW_W} height={VIEW_H - SHORE_Y} fill="url(#ns-lake)" />
       <g clipPath="url(#ns-lake-clip)">
         <ReflectionGroup>
-          <circle cx={660} cy={230} r={150} fill="url(#ns-glow)" />
+          <circle className="ns-sun-glow" cx={660} cy={230} r={150} fill="url(#ns-glow)" />
           <circle cx={660} cy={230} r={54} fill="var(--ui-brand-massing)" />
           <path d={backRidge} fill="color-mix(in srgb, var(--ui-brand-fjord) 60%, var(--ui-brand-massing))" />
           <path d={frontRidge} fill="color-mix(in srgb, var(--ui-brand-fjord) 78%, var(--ui-brand-massing))" />
-          <path d={forestFront} fill="var(--ui-brand-fjord)" />
+          <ForestRow trees={forestFront} fill="var(--ui-brand-fjord)" opacity={1} />
         </ReflectionGroup>
         {/* light ripples */}
         {[1030, 1080, 1140, 1210, 1290, 1360].map((y, i) => (

@@ -1,39 +1,50 @@
-import Link from "next/link";
-import { Button } from "@yourorg/ui";
+"use client";
+
+import { useState } from "react";
+import { Button, type ButtonSize } from "@yourorg/ui";
+import { AssetFormDialog } from "./asset-form-dialog";
 
 export interface CreateAssetButtonProps {
-  /** Pre-scopes the create page to a single client (`/assets/new?clientId=...`)
-   * — passed by the Clients detail page's Assets tab so the client picker
-   * arrives already locked, matching the old dialog's `lockedClientId`
-   * behavior. */
+  /** Pre-scopes the dialog to a single client (locks the client picker,
+   * hides it entirely) — passed by the Clients detail page's Assets tab. */
   clientId?: string;
-  /** Pre-selects (without locking) a site on the create page
-   * (`/assets/new?siteId=...`). */
+  /** Pre-selects (without locking) a site in the dialog. */
   siteId?: string;
   /** Overrides the default "Add asset" label — the Clients detail page uses
    * a shorter "Add asset" too, but a future call site might want e.g. "Add
    * asset to this site". */
   label?: string;
+  /** The standalone Assets module page (`assets-screen.tsx`) wants its own
+   * default (larger) toolbar button; a client-detail tab's toolbar wants
+   * `"sm"` to match every other tab's "Add X" button there (Sites, Contacts
+   * — issue #51). Left undefined (default size) for the module page, passed
+   * explicitly as `"sm"` from `clients/[id]/assets-panel.tsx`. */
+  size?: ButtonSize;
 }
 
 /**
- * Owner-only "Add asset" trigger — navigates to the full-page create form
- * (`/assets/new`, docs/ARCHITECTURE.md "Popup vs. full page — pick by
- * weight, not habit") instead of opening a `Dialog`. A plain Server
- * Component now (no dialog state to manage), used from both the toolbar and
- * the empty state's CTA.
+ * Owner-only "Add asset" trigger — opens the slide-in `AssetFormDialog`
+ * (issue #53: "Asset edit pagina is omgebouwd als slider popup", see that
+ * component's own doc comment and docs/ARCHITECTURE.md "Popup vs. full
+ * page") instead of navigating to the old `/assets/new` route (deleted). A
+ * `"use client"` component now (owns the dialog's `open` state) rather than
+ * the previous plain `<Link>` Server Component.
  */
-export function CreateAssetButton({ clientId, siteId, label }: CreateAssetButtonProps) {
-  const params = new URLSearchParams();
-  if (clientId) params.set("clientId", clientId);
-  if (siteId) params.set("siteId", siteId);
-  const query = params.toString();
+export function CreateAssetButton({ clientId, siteId, label, size }: CreateAssetButtonProps) {
+  const [open, setOpen] = useState(false);
 
   return (
-    <Link href={query ? `/assets/new?${query}` : "/assets/new"}>
-      <Button type="button" variant="primary">
+    <>
+      <Button type="button" variant="primary" size={size} onClick={() => setOpen(true)}>
         {label ?? "Add asset"}
       </Button>
-    </Link>
+      <AssetFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        mode="create"
+        lockedClientId={clientId}
+        initialSiteId={siteId}
+      />
+    </>
   );
 }
