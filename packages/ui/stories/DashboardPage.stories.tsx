@@ -38,7 +38,7 @@ function DashboardPage() {
           <Card>
             <Stack gap="md">
               <Heading level={5} style={{ margin: 0 }}>
-                Today's jobs
+                Today&apos;s jobs
               </Heading>
               <Table>
                 <Table.Head>

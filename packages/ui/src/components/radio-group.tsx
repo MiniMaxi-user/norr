@@ -1,7 +1,7 @@
 import type { HTMLAttributes, InputHTMLAttributes } from "react";
 import { cx } from "../cx";
 
-export interface RadioGroupProps extends HTMLAttributes<HTMLDivElement> {}
+export type RadioGroupProps = HTMLAttributes<HTMLDivElement>;
 
 /** Layout wrapper for a set of mutually-exclusive `RadioGroupItem`s. Native
  * `<input type="radio">` elements sharing a `name` already group and
