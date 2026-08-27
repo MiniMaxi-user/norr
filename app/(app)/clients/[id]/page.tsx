@@ -5,6 +5,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { listAccountManagers } from "@/lib/account-managers/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { getTenantAccessStatus } from "../platform-access-actions";
@@ -124,24 +125,31 @@ async function ClientDetailContent({ id }: { id: string }) {
   // unlike Assets/Work Orders/Contracts/Quotes, this data is always fetched
   // here rather than gated behind its own `hasFeature`/`canAccessModule`
   // check.
-  const [assetsResult, contactsResult, contactRolesResult, workOrdersResult, contractsResult, quotesResult, lastUsedTab] =
-    await Promise.all([
-      assetsModuleVisible
-        ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT })
-        : Promise.resolve(null),
-      listContacts(id),
-      listReferenceItems("contact_role"),
-      workOrdersModuleVisible
-        ? listWorkOrders({ clientId: id, limit: ALL_CLIENT_WORK_ORDERS_LIMIT })
-        : Promise.resolve(null),
-      contractsModuleVisible
-        ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
-        : Promise.resolve(null),
-      quotesModuleVisible
-        ? listQuotes({ clientId: id, limit: ALL_CLIENT_QUOTES_LIMIT })
-        : Promise.resolve(null),
-      preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
-    ]);
+  const [
+    assetsResult,
+    contactsResult,
+    contactRolesResult,
+    workOrdersResult,
+    contractsResult,
+    quotesResult,
+    lastUsedTab,
+    accountManagersResult,
+  ] = await Promise.all([
+    assetsModuleVisible ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT }) : Promise.resolve(null),
+    listContacts(id),
+    listReferenceItems("contact_role"),
+    workOrdersModuleVisible
+      ? listWorkOrders({ clientId: id, limit: ALL_CLIENT_WORK_ORDERS_LIMIT })
+      : Promise.resolve(null),
+    contractsModuleVisible
+      ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
+      : Promise.resolve(null),
+    quotesModuleVisible ? listQuotes({ clientId: id, limit: ALL_CLIENT_QUOTES_LIMIT }) : Promise.resolve(null),
+    preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
+    // Issue #58: `EditClientPanel`'s "Account manager" picker, same
+    // "fetch once, pass down" convention `contactRoles` above already uses.
+    listAccountManagers(),
+  ]);
 
   // Access-status lookup (issue #45): only run once the "Access" tab could
   // actually be visible (see `tenantAccessVisible` above) — same
@@ -205,6 +213,7 @@ async function ClientDetailContent({ id }: { id: string }) {
       isPlatformAdmin={session.isPlatformAdmin}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}
+      accountManagers={accountManagersResult.data?.accountManagers ?? []}
     />
   );
 }

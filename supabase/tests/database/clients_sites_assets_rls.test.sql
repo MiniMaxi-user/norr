@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(59);
+select plan(82);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner)
@@ -633,6 +633,169 @@ select throws_ok(
   null,
   'assets.model_id from a different organization''s asset_models row (org_b''s fixture) is rejected (validate_asset_reference_items checks asset_models.organization_id = assets.organization_id)'
 ); -- 59
+
+-- ---------------------------------------------------------------------------
+-- clients: status / account_manager_id / potential_value / client_since /
+-- won_at (issue #58, real Kanban board -
+-- supabase/migrations/20260827090000_account_managers.sql +
+-- 20260827100000_clients_kanban_status.sql). Requires an account_managers
+-- fixture per org (org_a and org_b) to exercise
+-- validate_client_account_manager's cross-org rejection.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select is(
+  (select status from public.clients where id = 'e0000000-0000-0000-0000-00000000000a'),
+  'lead',
+  'clients.status defaults to ''lead'' when omitted on insert (Client A, inserted in test 1 before this column existed in this test file, still resolves to the column''s own default)'
+); -- 60
+
+select lives_ok(
+  $$ insert into public.account_managers (id, organization_id, first_name, last_name)
+     values ('c4000000-0000-0000-0000-00000000000c', 'd0000000-0000-0000-0000-00000000000a', 'Anna', 'Bakker') $$,
+  'owner_a can insert an account_managers fixture into org_a (for clients.account_manager_id tests)'
+); -- 61
+
+select pg_temp.act_as('b3333333-3333-3333-3333-333333333333');
+
+select lives_ok(
+  $$ insert into public.account_managers (id, organization_id, first_name, last_name)
+     values ('c4000000-0000-0000-0000-00000000000d', 'd0000000-0000-0000-0000-00000000000b', 'Bram', 'Jansen') $$,
+  'owner_b can insert an account_managers fixture into org_b'
+); -- 62
+
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.clients (id, organization_id, name, status, account_manager_id, potential_value, client_since)
+     values ('e5000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-00000000000a', 'Kanban Client',
+       'qualified', 'c4000000-0000-0000-0000-00000000000c', 1000.50, '2026-01-15') $$,
+  'owner_a can insert a client with status/account_manager_id/potential_value/client_since all set'
+); -- 63
+
+select is(
+  (select status from public.clients where id = 'e5000000-0000-0000-0000-00000000000a'),
+  'qualified',
+  'the new client''s status was persisted as qualified'
+); -- 64
+
+select is(
+  (select account_manager_id from public.clients where id = 'e5000000-0000-0000-0000-00000000000a'),
+  'c4000000-0000-0000-0000-00000000000c'::uuid,
+  'the new client''s account_manager_id was persisted'
+); -- 65
+
+select is(
+  (select potential_value from public.clients where id = 'e5000000-0000-0000-0000-00000000000a'),
+  1000.50::numeric(12,2),
+  'the new client''s potential_value was persisted'
+); -- 66
+
+select is(
+  (select client_since from public.clients where id = 'e5000000-0000-0000-0000-00000000000a'),
+  '2026-01-15'::date,
+  'the new client''s client_since was persisted'
+); -- 67
+
+select is(
+  (select won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000a'),
+  null::timestamptz,
+  'won_at stays null for a client inserted with a non-won status'
+); -- 68
+
+select throws_ok(
+  $$ insert into public.clients (organization_id, name, status)
+     values ('d0000000-0000-0000-0000-00000000000a', 'Bad Status Client', 'negotiating') $$,
+  '23514',
+  null,
+  'a client status outside lead/qualified/proposal/won is rejected (clients_status_check)'
+); -- 69
+
+select throws_ok(
+  $$ insert into public.clients (organization_id, name, potential_value)
+     values ('d0000000-0000-0000-0000-00000000000a', 'Negative Value Client', -1) $$,
+  '23514',
+  null,
+  'a negative potential_value is rejected (clients_potential_value_non_negative)'
+); -- 70
+
+select throws_ok(
+  $$ insert into public.clients (organization_id, name, account_manager_id)
+     values ('d0000000-0000-0000-0000-00000000000a', 'Cross Org AM Client', 'c4000000-0000-0000-0000-00000000000d') $$,
+  '23514',
+  null,
+  'a client cannot use org_b''s account_manager (cross-organization) as account_manager_id (validate_client_account_manager)'
+); -- 71
+
+select throws_ok(
+  $$ insert into public.clients (organization_id, name, won_at)
+     values ('d0000000-0000-0000-0000-00000000000a', 'Spoofed Won At Client', now()) $$,
+  '42501',
+  null,
+  'owner_a cannot set clients.won_at directly on insert (column-level grant withheld -- trigger-only)'
+); -- 72
+
+select lives_ok(
+  $$ insert into public.clients (id, organization_id, name, status)
+     values ('e5000000-0000-0000-0000-00000000000b', 'd0000000-0000-0000-0000-00000000000a', 'Won On Insert Client', 'won') $$,
+  'owner_a can insert a client directly with status=won'
+); -- 73
+
+select isnt(
+  (select won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000b'),
+  null::timestamptz,
+  'won_at was auto-set (trigger) for a client inserted directly with status=won'
+); -- 74
+
+select lives_ok(
+  $$ update public.clients set status = 'qualified' where id = 'e5000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can move the client from won back to qualified'
+); -- 75
+
+select is(
+  (select won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000b'),
+  null::timestamptz,
+  'won_at was cleared back to null when status moved away from won (set_client_won_at)'
+); -- 76
+
+select lives_ok(
+  $$ update public.clients set status = 'won' where id = 'e5000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can move the client back into won a second time'
+); -- 77
+
+create table pg_temp.clients_kanban_captured (key text primary key, val timestamptz);
+grant all on pg_temp.clients_kanban_captured to authenticated;
+
+insert into pg_temp.clients_kanban_captured (key, val)
+select 'won_at_second_time', won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000b';
+
+select isnt(
+  (select val from pg_temp.clients_kanban_captured where key = 'won_at_second_time'),
+  null::timestamptz,
+  'won_at was set again on re-entering won -- "became Won" semantics, not "was ever Won once"'
+); -- 78
+
+select lives_ok(
+  $$ update public.clients set status = 'won' where id = 'e5000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can re-run UPDATE ... SET status = ''won'' while status is already won'
+); -- 79
+
+select is(
+  (select won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000b'),
+  (select val from pg_temp.clients_kanban_captured where key = 'won_at_second_time'),
+  'won_at is left untouched when status is set to won while it was already won (stayed won->won)'
+); -- 80
+
+select lives_ok(
+  $$ update public.clients set potential_value = 500 where id = 'e5000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can update an unrelated column (potential_value) on a won client without touching status'
+); -- 81
+
+select is(
+  (select won_at from public.clients where id = 'e5000000-0000-0000-0000-00000000000b'),
+  (select val from pg_temp.clients_kanban_captured where key = 'won_at_second_time'),
+  'won_at is unchanged when a column other than status is updated (the trigger only fires ON UPDATE OF status)'
+); -- 82
 
 select * from finish();
 rollback;

@@ -19,6 +19,7 @@ import {
   Text,
 } from "@yourorg/ui";
 import { Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
@@ -81,6 +82,10 @@ export interface ClientDetailProps {
    * otherwise, in which case the tab itself doesn't render either. */
   accessStatusByEmail: Record<string, TenantAccessStatus> | null;
   defaultTab: ClientDetailTab;
+  /** Fetched once in `page.tsx`, passed down — populates `EditClientPanel`'s
+   * "Account manager" `<Select>` (issue #58), same as `clients-board.tsx` ->
+   * `ClientsExplorer` -> `EditClientPanel` on the list/kanban screen. */
+  accountManagers: AccountManagerRecord[];
 }
 
 /**
@@ -149,6 +154,7 @@ export function ClientDetail({
   isPlatformAdmin,
   accessStatusByEmail,
   defaultTab,
+  accountManagers,
 }: ClientDetailProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -530,7 +536,12 @@ export function ClientDetail({
 
       {canWrite && (
         <>
-          <EditClientPanel client={client} open={editOpen} onOpenChange={setEditOpen} />
+          <EditClientPanel
+            client={client}
+            accountManagers={accountManagers}
+            open={editOpen}
+            onOpenChange={setEditOpen}
+          />
           <DeleteClientDialog
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
