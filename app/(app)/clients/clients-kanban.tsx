@@ -2,11 +2,22 @@
 
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, Board, Button, Inline, Select, Stack, Text } from "@yourorg/ui";
+import { Avatar, Badge, Board, Button, Inline, Select, Stack, Text, type BadgeVariant } from "@yourorg/ui";
 import { MapPin } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { updateClient, type ClientRecord, type SiteRecord } from "./actions";
 import { CLIENT_STATUS_OPTIONS, formatPotentialValue, groupClientsForKanban, type ClientStatus } from "./kanban";
+
+/** Status badge color per column — mirrors the same accent grouping
+ * `kanban.ts`'s `COLUMN_DEFINITIONS` already uses for each column's top
+ * border (gray/accent/warning/success for lead/qualified/proposal/won), so
+ * a card's status badge always agrees with the column it's sitting in. */
+const STATUS_BADGE_VARIANT: Record<ClientStatus, BadgeVariant> = {
+  lead: "muted",
+  qualified: "accent",
+  proposal: "warning",
+  won: "success",
+};
 
 /** Cards beyond this count in a column collapse behind a "+ N more" toggle
  * (per-column `useState`, plain and simple) — the kanban fetches an
@@ -201,9 +212,9 @@ function ClientKanbanCard({
     <Board.Card draggable={canWrite} onDragStart={canWrite ? onDragStart : undefined} onClick={onOpen}>
       <Stack gap="sm">
         <Inline gap="sm" align="center">
-          <Avatar name={client.name} size="sm" />
+          <Avatar name={client.name} />
           <Stack gap="xs">
-            <Text>{client.name}</Text>
+            <Text className="ui-client-card-name">{client.name}</Text>
             {city && (
               <Inline gap="xs" align="center">
                 <MapPin aria-hidden />
@@ -213,12 +224,46 @@ function ClientKanbanCard({
           </Stack>
         </Inline>
 
-        {client.potential_value !== null && (
-          <Inline justify="between" align="center">
-            <Text tone="muted">Potential</Text>
-            <Text>{formatPotentialValue(client.potential_value)}</Text>
-          </Inline>
-        )}
+        <Inline justify="between" align="end" gap="sm">
+          <Stack gap="xs">
+            <Text className="ui-client-card-potential-label">Potential</Text>
+            <Text className="ui-client-card-potential-value">{formatPotentialValue(client.potential_value)}</Text>
+          </Stack>
+          {/* Status shown as a badge, right-aligned beside Potential — for
+           * `canWrite` this is still the real `<Select>` (kept for the
+           * keyboard-accessible non-drag way to move a card, see this
+           * component's own doc comment above), just reskinned to look like
+           * a badge via `.ui-client-card-status-select`; read-only viewers
+           * get a plain `Badge` with the same color mapping. */}
+          <div className="ui-client-card-status-cell">
+            {canWrite ? (
+              <Select
+                aria-label={`Move ${client.name} to a different status`}
+                className="ui-client-card-status-select"
+                value={client.status}
+                // Both handlers stop the click/keydown from bubbling up to
+                // the card's own `onClick`/Enter-Space handling — without
+                // this, interacting with the select would also "open" the
+                // card.
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                onChange={(event) => onStatusChange(event.target.value as ClientStatus)}
+              >
+                {CLIENT_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Badge variant={STATUS_BADGE_VARIANT[client.status as ClientStatus]}>
+                {CLIENT_STATUS_OPTIONS.find((option) => option.value === client.status)?.label}
+              </Badge>
+            )}
+          </div>
+        </Inline>
+
+        <div className="ui-client-card-divider" />
 
         {accountManager && (
           <Inline gap="xs" align="center">
@@ -227,25 +272,6 @@ function ClientKanbanCard({
               {accountManager.first_name} {accountManager.last_name}
             </Text>
           </Inline>
-        )}
-
-        {canWrite && (
-          <Select
-            aria-label={`Move ${client.name} to a different status`}
-            value={client.status}
-            // Both handlers stop the click/keydown from bubbling up to the
-            // card's own `onClick`/Enter-Space handling — without this,
-            // interacting with the select would also "open" the card.
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            onChange={(event) => onStatusChange(event.target.value as ClientStatus)}
-          >
-            {CLIENT_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
         )}
       </Stack>
     </Board.Card>

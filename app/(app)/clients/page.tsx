@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { Heading, Stack, Text } from "@yourorg/ui";
 import { requireSession } from "@/lib/auth/session";
 import type { PermissionActor } from "@/lib/rbac/permissions";
 import { ClientsBoard } from "./clients-board";
@@ -28,17 +27,8 @@ export default async function ClientsPage({
   const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 
   return (
-    <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Clients</Heading>
-        <Text tone="muted">
-          Your organization&rsquo;s customer records — the sites and assets you service live underneath each one.
-        </Text>
-      </Stack>
-
-      <Suspense key={page} fallback={<ClientsSkeleton />}>
-        <ClientsBoard page={page} userId={session.userId} actor={actor} />
-      </Suspense>
-    </Stack>
+    <Suspense key={page} fallback={<ClientsSkeleton />}>
+      <ClientsBoard page={page} userId={session.userId} actor={actor} />
+    </Suspense>
   );
 }
