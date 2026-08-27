@@ -47,7 +47,7 @@ export function Topbar({
   const displayName = memberDisplayName({ email: user.email, full_name: user.fullName });
 
   return (
-    <Toolbar className="ui-topbar">
+    <Toolbar>
       <Toolbar.Section>{title}</Toolbar.Section>
       <Toolbar.Section align="end">
         {isPlatformAdmin && <Badge variant="accent">Platform Admin</Badge>}
