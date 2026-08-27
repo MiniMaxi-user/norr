@@ -595,6 +595,25 @@ a {
   margin-left: auto;
 }
 
+/* `--ui-toolbar-bg` is deliberately translucent (see `.ui-toolbar`'s own
+   `backdrop-filter: blur(10px)` glass effect above) — by design the SAME
+   color as the page behind it, just alpha'd, so the blur reads as depth,
+   not a hue shift. That only holds when the page behind the topbar is
+   ALSO that color, which is true in real dark mode (the whole page shares
+   `.ui-topbar`'s dark tokens via `html.dark` above) but not here: only
+   `.ui-topbar` itself is forced dark, so in an otherwise-light page the
+   light content scrolling underneath shows through the blur, visibly
+   lightening/shifting the bar's color depending on what's behind it at any
+   given scroll position — not the fixed, dark-mode-identical color product
+   feedback asked for. Opaque or not, `--ui-bg` is already the exact same
+   color `--ui-toolbar-bg` targets (see the shared `html.dark, .ui-topbar`
+   rule above), so this just drops the alpha channel — same rule, later in
+   source order, wins for this one property at equal (single-class)
+   specificity. */
+.ui-topbar {
+  --ui-toolbar-bg: var(--ui-bg);
+}
+
 /* Carve-out, per explicit product feedback: the user menu's dropdown
    (`.ui-dropdown-menu-content` — only its backdrop is portaled, see
    `dropdown-menu.tsx`'s own doc comment, so its content stays a DOM
