@@ -27,6 +27,11 @@ interface ContactFormState {
   error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
   success?: boolean;
+  /** The just-created/updated row, only present on success — added for
+   * issue #52's nested "+ New contact" flow (see `onCreated` below), which
+   * needs the fresh `ContactRecord` (id, in particular) to select it in the
+   * caller's own contact `<Select>` without a `router.refresh()`. */
+  contact?: ContactRecord;
 }
 
 const initialState: ContactFormState = {};
@@ -53,6 +58,7 @@ export function ContactFormDialog({
   clientId,
   contact,
   contactRoles,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -64,6 +70,22 @@ export function ContactFormDialog({
    * "fetch once, pass down" convention `AssetFormDialog` uses for
    * `assetTypes`/`assetStatuses`). */
   contactRoles: ReferenceListItemRecord[];
+  /** Issue #52: when this dialog is opened FROM another already-open dialog
+   * (`SiteFormDialog`'s per-purpose "+ New contact" trigger) rather than
+   * from `ContactsPanel` directly, the normal success path — `onOpenChange
+   * (false)` + `router.refresh()` — is wrong on two counts: `router.refresh
+   * ()` re-fetches the whole page's server data, which would also blow away
+   * whatever the caller's own in-progress, not-yet-submitted form state was
+   * (the entire point of "don't lose the rest of the in-progress site form"
+   * per issue #52's brief); and the caller needs the fresh contact to select
+   * it in its own `<Select>` immediately, before any refresh could even
+   * deliver it back down as a new prop. When provided, this replaces that
+   * default success path entirely: called with the new/updated contact, and
+   * the caller is responsible for closing this dialog itself (typically
+   * immediately, by flipping its own `open` state) — no `router.refresh()`
+   * happens here in that case, since the caller's own eventual site-save
+   * will trigger one anyway once the whole flow completes. */
+  onCreated?: (contact: ContactRecord) => void;
 }) {
   const isEdit = Boolean(contact);
   const router = useRouter();
@@ -78,18 +100,33 @@ export function ContactFormDialog({
     if (result.error || !result.data) {
       return { error: result.error ?? "Something went wrong.", fieldErrors: result.fieldErrors };
     }
-    return { success: true };
+    return { success: true, contact: result.data.contact };
   }
 
   const [state, formAction] = useActionState(action, initialState);
 
   useEffect(() => {
-    if (state.success) {
-      onOpenChange(false);
-      router.refresh();
+    if (!state.success) return;
+    if (onCreated && state.contact) {
+      onCreated(state.contact);
+      return;
     }
+    onOpenChange(false);
+    router.refresh();
+    // Depends on the whole `state` object, NOT `state.success` — issue #52's
+    // nested "+ New contact" flow keeps this component mounted across
+    // multiple opens (`SitePurposeFields` renders one `ContactFormDialog`
+    // instance for all three purposes, only its `open` prop toggles), so a
+    // SECOND successful create in the same session would produce a new
+    // `state` object whose `success` field is still literally `true` —
+    // `Object.is(true, true)` sees no change, and a `[state.success]`
+    // dependency would silently skip this effect the second time around
+    // (missing the second `onCreated` call and, in the non-nested case,
+    // leaving the dialog open with `router.refresh()` never called). `state`
+    // itself is always a fresh object reference on every dispatch, so
+    // depending on it directly re-fires every time, repeats included.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.success]);
+  }, [state]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="lg">

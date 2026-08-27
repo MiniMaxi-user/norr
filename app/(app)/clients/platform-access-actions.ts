@@ -309,6 +309,76 @@ export async function resendOrResetTenantAccess(
 }
 
 /**
+ * Revokes a contact's login access to the tenant org (issue #48): cancels a
+ * still-PENDING invite, or removes an already-ACCEPTED member's
+ * `memberships` row for THIS tenant org specifically — never a global
+ * Supabase Auth ban, since a contact's `auth.users` row is one account that
+ * could in principle hold memberships in more than one org (per the user's
+ * own call on this during story clarification: "disable" means losing
+ * access to this tenant, not being locked out everywhere).
+ *
+ * There is deliberately no separate "enable" action/endpoint: once disabled,
+ * `getTenantAccessStatus` naturally reports "none" again (no pending invite,
+ * no membership row), so the existing "Request access" button already
+ * covers re-granting access — same UI path as a contact who was never
+ * invited.
+ */
+export async function disableTenantAccess(
+  clientId: string,
+  email: string,
+): Promise<ActionResult<{ disabled: true }>> {
+  const idResult = uuidSchema.safeParse(clientId);
+  if (!idResult.success) return fail("Invalid client id.");
+
+  const emailResult = tenantOwnerEmailSchema.safeParse(email);
+  if (!emailResult.success) {
+    return fail("Please fix the highlighted fields.", emailFieldError(emailResult.error));
+  }
+  const normalizedEmail = emailResult.data.toLowerCase();
+
+  const tenantCtx = await requireActivatedTenantContext(idResult.data);
+  if (!tenantCtx.ok) return fail(tenantCtx.error);
+  const { tenantOrganizationId } = tenantCtx.value;
+
+  // Service-role: see this file's header comment.
+  const admin = createAdminClient();
+
+  const { data: pending, error: pendingError } = await admin
+    .from("invites")
+    .select("id")
+    .eq("organization_id", tenantOrganizationId)
+    .is("accepted_at", null)
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
+  if (pendingError) return fail(mapDbError(pendingError));
+
+  if (pending) {
+    const { error: deleteError } = await admin.from("invites").delete().eq("id", pending.id);
+    if (deleteError) return fail(mapDbError(deleteError));
+    return ok({ disabled: true });
+  }
+
+  const { data: existingUser, error: userError } = await admin
+    .from("users")
+    .select("id")
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
+  if (userError) return fail(mapDbError(userError));
+
+  if (existingUser) {
+    const { error: membershipDeleteError } = await admin
+      .from("memberships")
+      .delete()
+      .eq("organization_id", tenantOrganizationId)
+      .eq("user_id", existingUser.id);
+    if (membershipDeleteError) return fail(mapDbError(membershipDeleteError));
+    return ok({ disabled: true });
+  }
+
+  return fail("This contact has no access to disable.");
+}
+
+/**
  * Deactivate/reactivate a tenant (issue #47, stage 2 — the toggle half; the
  * schema/RLS half already landed in
  * `supabase/migrations/20260826120000_organizations_is_active.sql`, read its

@@ -13,8 +13,10 @@ interface AppShellProps {
    * `resolveNavItems` for real `hasFeature()` gating (issue #4). */
   organization: FeatureOrganization | null;
   /** Real signed-in user, for the topbar avatar/dropdown (issue #3's
-   * `requireSession()` guarantees one exists by the time this renders). */
-  user: Pick<CurrentSession, "email" | "fullName" | "role">;
+   * `requireSession()` guarantees one exists by the time this renders).
+   * `avatarUrl`/`locale` (issue #49) are threaded through to `UserMenu`'s
+   * `ProfilePanel`, not just displayed. */
+  user: Pick<CurrentSession, "email" | "fullName" | "role" | "avatarUrl" | "locale">;
   /** `session.isPlatformAdmin` (issue #45) — threaded to `resolveNavItems`
    * so the "Platform settings" nav item can resolve `enabled` outside the
    * normal `hasFeature(organization, ...)` path (see that function's own

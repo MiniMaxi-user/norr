@@ -949,6 +949,16 @@ a:focus-visible > .ui-card-interactive,
   font-weight: 600;
   letter-spacing: normal;
 }
+/* Real profile photo (issue #49) — fills the same circle/rounded-square the
+   initials fallback occupies, regardless of size variant. `object-fit:
+   cover` so a non-square source (shouldn't happen given the crop tool always
+   exports a square, but cheap insurance) never distorts. */
+.ui-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
 
 /* ---------------------------------------------------------------------- *
  * Breadcrumbs — see components/breadcrumbs.tsx
@@ -1246,6 +1256,122 @@ a:focus-visible > .ui-card-interactive,
   transform: translateY(-50%);
   color: var(--ui-muted);
   pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Combobox — see components/combobox.tsx. Text-field chrome mirrors
+ * .ui-input/.ui-select; the popover mirrors .ui-dropdown-menu-content.
+ * ---------------------------------------------------------------------- */
+.ui-combobox {
+  position: relative;
+  width: 100%;
+}
+.ui-combobox-control {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.ui-combobox-input {
+  font: inherit;
+  font-size: var(--ui-text-base);
+  padding: 0.5rem 4rem 0.5rem 0.75rem;
+  border-radius: var(--ui-radius-md);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  width: 100%;
+  transition: border-color var(--ui-duration-fast) var(--ui-ease), box-shadow var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-combobox-input::placeholder {
+  color: var(--ui-muted-subtle);
+}
+.ui-combobox-input:hover {
+  border-color: var(--ui-border-strong);
+}
+.ui-combobox-input:focus-visible,
+.ui-combobox-input:focus {
+  outline: none;
+  border-color: var(--ui-accent-strong);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring);
+}
+.ui-combobox-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--ui-surface);
+}
+.ui-combobox-clear {
+  position: absolute;
+  top: 50%;
+  right: 2.1rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-radius-sm, 4px);
+  background: transparent;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+.ui-combobox-clear:hover {
+  color: var(--ui-fg);
+  background: var(--ui-surface-hover);
+}
+.ui-combobox-caret {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
+  color: var(--ui-muted);
+  pointer-events: none;
+  display: inline-flex;
+}
+.ui-combobox-listbox {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  right: 0;
+  z-index: 91;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.375rem;
+  list-style: none;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-lg);
+  animation: ui-dialog-in var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-combobox-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-fg);
+  font-size: var(--ui-text-base);
+  cursor: pointer;
+}
+.ui-combobox-option-highlighted {
+  background: var(--ui-surface-hover);
+}
+.ui-combobox-option-selected {
+  color: var(--ui-accent-strong);
+  font-weight: 600;
+}
+.ui-combobox-option-check {
+  flex-shrink: 0;
+  color: var(--ui-accent-strong);
+}
+.ui-combobox-empty {
+  padding: 0.5rem 0.625rem;
+  color: var(--ui-muted-subtle);
+  font-size: var(--ui-text-sm);
 }
 
 .ui-checkbox {
@@ -2293,6 +2419,56 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* ---------------------------------------------------------------------- *
+ * Slider — see components/slider.tsx. A native `<input type="range">`,
+ * restyled cross-browser via the vendor-prefixed track/thumb pseudo-
+ * elements (there's no unprefixed standard for these yet, hence the
+ * duplicated -webkit-/-moz- rule blocks below).
+ * ---------------------------------------------------------------------- */
+.ui-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+.ui-slider::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-border-strong);
+}
+.ui-slider::-moz-range-track {
+  height: 0.375rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-border-strong);
+}
+.ui-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: -0.4375rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--ui-accent);
+  border: 2px solid #fff;
+  box-shadow: var(--ui-shadow-sm);
+  cursor: pointer;
+}
+.ui-slider::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--ui-accent);
+  border: 2px solid #fff;
+  box-shadow: var(--ui-shadow-sm);
+  cursor: pointer;
+}
+.ui-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- *
  * Radio group — see components/radio-group.tsx. Native `<input
  * type="radio">`s sharing a `name` group themselves in the browser, so
  * (unlike the switch above, which needs the same `appearance:none` trick)
@@ -2790,4 +2966,25 @@ a:focus-visible > .ui-card-interactive,
     opacity: 1;
     transform: none;
   }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Utilities
+ * ---------------------------------------------------------------------- */
+/* Standard "sr-only"-style visually-hidden pattern — for a native control
+   that needs to stay in the DOM/tab order (e.g. a `<input type="file">`
+   triggered by a styled `Button`, first used by the profile panel's avatar
+   uploader, issue #49) but must render with zero visual footprint rather
+   than `display: none` (which would also drop it from the accessibility
+   tree / keyboard flow). */
+.ui-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

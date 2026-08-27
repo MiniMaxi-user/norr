@@ -75,8 +75,9 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
         <Stack gap="md">
           <DetailRow label="Type" value={asset.asset_type?.label ?? "—"} />
           <DetailRow label="Sub-type" value={asset.asset_subtype?.label ?? "—"} />
-          <DetailRow label="Manufacturer" value={asset.manufacturer ?? "—"} />
-          <DetailRow label="Model" value={asset.model ?? "—"} />
+          <DetailRow label="Brand" value={asset.asset_brand?.label ?? "—"} />
+          <DetailRow label="Model" value={asset.asset_model?.name ?? "—"} />
+          <DetailRow label="External reference" value={asset.external_reference ?? "—"} />
           <DetailRow label="Serial number" value={asset.serial_number ?? "—"} />
           <DetailRow label="Installed on" value={formatDate(asset.installed_at)} />
           <DetailRow label="Warranty until" value={formatDate(asset.warranty_until)} />

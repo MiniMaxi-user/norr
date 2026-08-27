@@ -21,6 +21,15 @@ function optionalText(max: number) {
   return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
 }
 
+/** Same empty-string-to-undefined treatment as `optionalText`, for a
+ * `<select>`-sourced uuid field (visit/delivery/invoice contact) whose
+ * "nothing selected" option submits `""`, not simply absent — without this,
+ * `z.string().uuid()` would reject that empty string outright instead of
+ * treating it as "not provided". */
+function optionalUuid() {
+  return z.preprocess(emptyToUndefined, z.string().uuid("Invalid contact.").optional());
+}
+
 export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   /** Dutch Chamber of Commerce (KvK) registration number — plain text, no
@@ -58,6 +67,14 @@ export type ClientUpdateInput = z.infer<typeof clientUpdateSchema>;
 export const SITE_PURPOSE_REQUIRED_MESSAGE =
   "Select at least one purpose: visit, invoice, or delivery address.";
 
+/** Issue #52: each purpose that's checked needs its own contact person.
+ * Same "friendly schema message, but the real enforcement is manual"
+ * relationship to the DB as `SITE_PURPOSE_REQUIRED_MESSAGE` — see that
+ * constant's own comment and `createSite`/`updateSite` in `actions.ts`. */
+export function siteContactRequiredMessage(purpose: "visit" | "invoice" | "delivery"): string {
+  return `Select a ${purpose} contact, or uncheck ${purpose} address.`;
+}
+
 /**
  * Un-refined base shape shared by `siteCreateSchema` (refined, below) and
  * `siteUpdateSchema` (`.partial()`, below) — a `.refine()`-wrapped schema
@@ -94,6 +111,17 @@ export const siteBaseSchema = z.object({
   isVisitAddress: z.boolean().optional(),
   isInvoiceAddress: z.boolean().optional(),
   isDeliveryAddress: z.boolean().optional(),
+  /** The visit/invoice/delivery contact person (issue #52) — each required
+   * only when its matching purpose flag above is true (see
+   * `siteContactRequiredMessage`; enforced by hand in `createSite`/
+   * `updateSite`, not by a `.refine()` alone, same reasoning as the purpose
+   * flags themselves). Must be a contact belonging to this SAME site's
+   * `clientId` — the DB's `validate_site_contact_persons` trigger
+   * (`supabase/migrations/20260826150000_sites_contact_persons.sql`) is the
+   * actual backstop for that, not this schema. */
+  visitContactId: optionalUuid(),
+  invoiceContactId: optionalUuid(),
+  deliveryContactId: optionalUuid(),
   /** At most one `true` per client — enforced by the DB
    * (`enforce_single_primary_site` + `sites_one_primary_per_client_idx`),
    * not re-validated here, mirroring `contactCreateSchema.isPrimary` above. */
@@ -114,10 +142,23 @@ export const siteBaseSchema = z.object({
  * unpurposed first-site submission — see `createSite` in `actions.ts`, which
  * parses against the un-refined base shape directly for that reason rather
  * than against this schema. */
-export const siteCreateSchema = siteBaseSchema.refine(
-  (data) => Boolean(data.isVisitAddress || data.isInvoiceAddress || data.isDeliveryAddress),
-  { message: SITE_PURPOSE_REQUIRED_MESSAGE, path: ["isVisitAddress"] },
-);
+export const siteCreateSchema = siteBaseSchema
+  .refine((data) => Boolean(data.isVisitAddress || data.isInvoiceAddress || data.isDeliveryAddress), {
+    message: SITE_PURPOSE_REQUIRED_MESSAGE,
+    path: ["isVisitAddress"],
+  })
+  .refine((data) => !data.isVisitAddress || Boolean(data.visitContactId), {
+    message: siteContactRequiredMessage("visit"),
+    path: ["visitContactId"],
+  })
+  .refine((data) => !data.isInvoiceAddress || Boolean(data.invoiceContactId), {
+    message: siteContactRequiredMessage("invoice"),
+    path: ["invoiceContactId"],
+  })
+  .refine((data) => !data.isDeliveryAddress || Boolean(data.deliveryContactId), {
+    message: siteContactRequiredMessage("delivery"),
+    path: ["deliveryContactId"],
+  });
 
 export type SiteCreateInput = z.infer<typeof siteCreateSchema>;
 

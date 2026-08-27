@@ -72,8 +72,16 @@ export interface AssetRecord {
   site_id: string;
   name: string;
   type_id: string;
-  manufacturer: string | null;
-  model: string | null;
+  /** Free-text external/legacy reference. No FK, no validation — see
+   * `schema.ts`'s `externalReference` field comment. */
+  external_reference: string | null;
+  /** FK into this org's `asset_brand` reference list. Nullable — Brand is
+   * not required at the asset level. Replaces the old free-text
+   * `manufacturer` column. */
+  brand_item_id: string | null;
+  /** FK into `asset_models`. Nullable. Replaces the old free-text `model`
+   * column. */
+  model_id: string | null;
   serial_number: string | null;
   status_id: string;
   /** FK into this org's `asset_subtype` reference list. Nullable — not every
@@ -98,6 +106,27 @@ export interface AssetRecord {
   /** Embedded via `reference_list_items!assets_subtype_id_fkey(...)`. `null`
    * whenever `subtype_id` is `null` (no sub-type set on this asset). */
   asset_subtype: ResolvedReferenceItem | null;
+  /** Embedded via `reference_list_items!assets_brand_item_id_fkey(...)`.
+   * `null` whenever `brand_item_id` is `null`. */
+  asset_brand: ResolvedReferenceItem | null;
+  /**
+   * Embedded via `asset_models!assets_model_id_fkey(...)`. `null` whenever
+   * `model_id` is `null`. Deliberately a SHALLOW embed (id/name/
+   * default_warranty_months only), not a further nested embed of the
+   * model's own brand/type/subtype reference items: PostgREST supports
+   * multi-level embeds, but a three-way nested embed here (assets ->
+   * asset_models -> reference_list_items x3, each needing its own FK-name
+   * disambiguation) would duplicate data the frontend already gets, fully
+   * resolved, from `listAssetModels()` in `lib/asset-models/actions.ts`
+   * (which returns `brand_item_id`/`type_item_id`/`subtype_item_id` plus
+   * their resolved labels for every model in one call). The "select a
+   * Model, auto-fill Type/Sub-type/Brand" cascade the frontend needs is
+   * therefore a client-side cross-reference against that already-fetched
+   * model list, not something this query needs to duplicate. This shallow
+   * embed exists only so list/detail views can show the Model's name
+   * without a second round trip.
+   */
+  asset_model: { id: string; name: string; default_warranty_months: number } | null;
 }
 
 /**
@@ -117,9 +146,22 @@ export interface AssetRecord {
  * `alter table assets add column subtype_id uuid references
  * reference_list_items (id)` in
  * supabase/migrations/20260823090000_contacts_dependent_reference_lists.sql.
+ * Extended (issue #53) with two more embeds for the new `brand_item_id`/
+ * `model_id` columns added in
+ * `supabase/migrations/20260826170000_assets_external_reference_brand_model.sql`:
+ * `asset_brand` via `assets_brand_item_id_fkey` (same reference_list_items
+ * pattern as the three embeds above) and `asset_model` via
+ * `assets_model_id_fkey`, this time into the `asset_models` table rather
+ * than `reference_list_items` — a shallow embed only (see the `asset_model`
+ * field comment on `AssetRecord` above for why it doesn't also nest that
+ * model's own brand/type/subtype). Both FK names confirmed live against the
+ * linked project (`fxpjzcyeevtaadexnkub`) via
+ * `select conname from pg_constraint where conname in
+ * ('assets_brand_item_id_fkey', 'assets_model_id_fkey')`, same discipline
+ * as the original comment's confirmation of `assets_type_id_fkey` etc.
  */
 const ASSET_SELECT =
-  "*, asset_type:reference_list_items!assets_type_id_fkey(value,label,color), asset_status:reference_list_items!assets_status_id_fkey(value,label,color), asset_subtype:reference_list_items!assets_subtype_id_fkey(value,label,color)";
+  "*, asset_type:reference_list_items!assets_type_id_fkey(value,label,color), asset_status:reference_list_items!assets_status_id_fkey(value,label,color), asset_subtype:reference_list_items!assets_subtype_id_fkey(value,label,color), asset_brand:reference_list_items!assets_brand_item_id_fkey(value,label,color), asset_model:asset_models!assets_model_id_fkey(id,name,default_warranty_months)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -158,13 +200,68 @@ async function validateAssetSubtype(
   return { ok: true };
 }
 
+/**
+ * Defense-in-depth shape check for `brandItemId`, same pattern as
+ * `validateAssetSubtype` immediately above: confirms the id resolves to an
+ * item on the `asset_brand` list (RLS already scopes the lookup to the
+ * caller's own organization) before the insert/update is attempted, so a
+ * bad value comes back as a clean field error instead of the DB's generic
+ * `23514` message from `validate_asset_reference_items`.
+ */
+async function validateAssetBrand(
+  supabase: SupabaseServerClient,
+  brandItemId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await supabase
+    .from("reference_list_items")
+    .select("id, reference_list:reference_lists(list_key)")
+    .eq("id", brandItemId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: mapDbError(error) };
+
+  const listKey = (data?.reference_list as unknown as { list_key: string } | null)?.list_key;
+  if (!data || listKey !== "asset_brand") {
+    return { ok: false, error: "Invalid brand — it must be a value from the Asset Brand list." };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Defense-in-depth existence check for `modelId`. Unlike `validateAssetBrand`/
+ * `validateAssetSubtype`, there is no `list_key` to check — `asset_models`
+ * is its own dedicated table, not a `reference_list_items` row (see
+ * `supabase/migrations/20260826160000_asset_brand_and_models.sql`'s design
+ * note) — so this is a plain existence check. RLS already scopes the lookup
+ * to the caller's own organization, matching
+ * `validate_asset_reference_items`'s own `model_id` check (organization
+ * match only, deliberately not cross-checked against this asset's own
+ * type/subtype/brand — see design note 3 in
+ * `20260826170000_assets_external_reference_brand_model.sql`).
+ */
+async function validateAssetModel(
+  supabase: SupabaseServerClient,
+  modelId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await supabase.from("asset_models").select("id").eq("id", modelId).maybeSingle();
+
+  if (error) return { ok: false, error: mapDbError(error) };
+  if (!data) {
+    return { ok: false, error: "Invalid model — it does not exist, or you do not have access to it." };
+  }
+
+  return { ok: true };
+}
+
 function toAssetInsertRow(input: ReturnType<typeof assetCreateSchema.parse>) {
   const row: Record<string, unknown> = {
     site_id: input.siteId,
     name: input.name,
     type_id: input.typeId,
-    manufacturer: input.manufacturer ?? null,
-    model: input.model ?? null,
+    external_reference: input.externalReference ?? null,
+    brand_item_id: input.brandItemId ?? null,
+    model_id: input.modelId ?? null,
     serial_number: input.serialNumber ?? null,
     subtype_id: input.subtypeId ?? null,
     installed_at: input.installedAt ?? null,
@@ -187,8 +284,9 @@ function toAssetUpdateRow(input: ReturnType<typeof assetUpdateSchema.parse>) {
   if (input.siteId !== undefined) row.site_id = input.siteId;
   if (input.name !== undefined) row.name = input.name;
   if (input.typeId !== undefined) row.type_id = input.typeId;
-  if (input.manufacturer !== undefined) row.manufacturer = input.manufacturer ?? null;
-  if (input.model !== undefined) row.model = input.model ?? null;
+  if (input.externalReference !== undefined) row.external_reference = input.externalReference ?? null;
+  if (input.brandItemId !== undefined) row.brand_item_id = input.brandItemId ?? null;
+  if (input.modelId !== undefined) row.model_id = input.modelId ?? null;
   if (input.serialNumber !== undefined) row.serial_number = input.serialNumber ?? null;
   if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.subtypeId !== undefined) row.subtype_id = input.subtypeId ?? null;
@@ -285,6 +383,20 @@ export async function createAsset(input: unknown): Promise<ActionResult<{ asset:
     }
   }
 
+  if (parsed.data.brandItemId !== undefined) {
+    const brandCheck = await validateAssetBrand(supabase, parsed.data.brandItemId);
+    if (!brandCheck.ok) {
+      return fail(brandCheck.error, { brandItemId: [brandCheck.error] });
+    }
+  }
+
+  if (parsed.data.modelId !== undefined) {
+    const modelCheck = await validateAssetModel(supabase, parsed.data.modelId);
+    if (!modelCheck.ok) {
+      return fail(modelCheck.error, { modelId: [modelCheck.error] });
+    }
+  }
+
   const { data, error } = await supabase
     .from("assets")
     .insert(toAssetInsertRow(parsed.data))
@@ -330,6 +442,20 @@ export async function updateAsset(id: string, input: unknown): Promise<ActionRes
     const subtypeCheck = await validateAssetSubtype(supabase, parsed.data.subtypeId);
     if (!subtypeCheck.ok) {
       return fail(subtypeCheck.error, { subtypeId: [subtypeCheck.error] });
+    }
+  }
+
+  if (parsed.data.brandItemId !== undefined) {
+    const brandCheck = await validateAssetBrand(supabase, parsed.data.brandItemId);
+    if (!brandCheck.ok) {
+      return fail(brandCheck.error, { brandItemId: [brandCheck.error] });
+    }
+  }
+
+  if (parsed.data.modelId !== undefined) {
+    const modelCheck = await validateAssetModel(supabase, parsed.data.modelId);
+    if (!modelCheck.ok) {
+      return fail(modelCheck.error, { modelId: [modelCheck.error] });
     }
   }
 

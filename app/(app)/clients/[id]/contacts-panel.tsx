@@ -50,11 +50,11 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
   return (
     <Stack gap="sm">
       {canWrite && (
-        <div>
+        <Inline justify="end">
           <Button variant="primary" size="sm" onClick={openAddContact}>
             Add contact
           </Button>
-        </div>
+        </Inline>
       )}
 
       {contacts.length === 0 ? (

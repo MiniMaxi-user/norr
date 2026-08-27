@@ -314,3 +314,31 @@ export const CreditCard = createIcon("CreditCard", (
     <line x1={7} y1={14.5} x2={11} y2={14.5} />
   </>
 ));
+
+// Profile panel's avatar section (issue #49) — photo upload affordance.
+export const Camera = createIcon("Camera", (
+  <>
+    <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" />
+    <circle cx={12} cy={13} r={3.5} />
+  </>
+));
+
+// Profile panel's password section (issue #49).
+export const Lock = createIcon("Lock", (
+  <>
+    <rect x={5} y={11} width={14} height={9} rx={2} />
+    <path d="M8 11V7.5a4 4 0 0 1 8 0V11" />
+  </>
+));
+
+// Profile panel's language-preference section (issue #49).
+export const Globe = createIcon("Globe", (
+  <>
+    <circle cx={12} cy={12} r={9} />
+    <line x1={3} y1={12} x2={21} y2={12} />
+    <path d="M12 3c2.5 2.5 3.75 5.8 3.75 9s-1.25 6.5-3.75 9c-2.5-2.5-3.75-5.8-3.75-9S9.5 5.5 12 3z" />
+  </>
+));
+
+// Combobox's selected-option indicator (issue #54).
+export const Check = createIcon("Check", <path d="M5 12.5 9.5 17 19 6.5" />);

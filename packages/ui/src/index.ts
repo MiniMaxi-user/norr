@@ -100,6 +100,11 @@ export {
   type CascadingSelectProps,
   type CascadingSelectOption,
 } from "./components/cascading-select";
+// Combobox (issue #54) has real interactive state (open/query/highlighted-
+// index) — its own dedicated "use client" build entry, same reasoning and
+// same ".js" re-export requirement as ThemeProvider/Tabs above (see
+// tsup.config.ts's top-of-file comment).
+export { Combobox, type ComboboxProps, type ComboboxOption } from "./combobox.js";
 export { Skeleton, type SkeletonProps } from "./components/skeleton";
 export {
   CommandPalette,
@@ -128,6 +133,7 @@ export {
   type DisclosureContentProps,
 } from "./components/disclosure";
 export { Switch, type SwitchProps } from "./components/switch";
+export { Slider, type SliderProps } from "./components/slider";
 export {
   RadioGroup,
   RadioGroupItem,

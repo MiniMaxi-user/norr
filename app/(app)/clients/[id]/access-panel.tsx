@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Avatar, Badge, Button, EmptyState, Inline, Input, Stack, Table, Text } from "@yourorg/ui";
+import { Avatar, Badge, Button, Dialog, EmptyState, Heading, Inline, Input, Stack, Table, Text } from "@yourorg/ui";
 import { ShieldCheck } from "@yourorg/ui/icons";
 import type { ContactRecord } from "../contacts-actions";
 import {
@@ -9,6 +9,7 @@ import {
   resendOrResetTenantAccess,
   type TenantAccessStatus,
 } from "../platform-access-actions";
+import { DisableAccessDialog } from "./disable-access-dialog";
 
 export interface AccessPanelProps {
   clientId: string;
@@ -39,11 +40,16 @@ interface RevealedLink {
   link: string;
 }
 
+interface RevealDialogState {
+  contact: ContactRecord;
+  revealed: RevealedLink;
+}
+
 /**
  * "Access" tab on the Client detail page, platform-admin-only (issue #45) —
  * shown only once a client has been activated as a real tenant
  * (`client.represents_organization_id` set). Lists the client's contacts
- * with each one's login-access status and a "Send invitation"/"Reset
+ * with each one's login-access status and a "Request access"/"Reset
  * password" action, backed by the service-role actions in
  * `../platform-access-actions.ts` (a platform admin is never a member of the
  * tenant org they're managing, so those actions can't run under the
@@ -51,14 +57,19 @@ interface RevealedLink {
  *
  * There's no outbound email in this app yet (confirmed — both actions
  * return a link instead of sending mail), so a successful call reveals the
- * link inline as a read-only, selectable `Input` next to a "Copy" button
- * rather than silently succeeding with no way to retrieve it.
+ * link in a popup (`RevealedLinkDialog`) as a read-only, selectable `Input`
+ * next to a "Copy" button, rather than silently succeeding with no way to
+ * retrieve it. A popup rather than the inline-in-row field this replaced —
+ * one link at a time, no per-row layout shift, and the same treatment for
+ * every action that reveals a link (first invite, resend, and password
+ * reset alike) instead of just some of them.
  */
 export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusByEmail }: AccessPanelProps) {
   const [statusByEmail, setStatusByEmail] = useState(initialStatusByEmail);
-  const [reveal, setReveal] = useState<Record<string, RevealedLink>>({});
+  const [revealDialog, setRevealDialog] = useState<RevealDialogState | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [disableTarget, setDisableTarget] = useState<ContactRecord | null>(null);
 
   function statusFor(contact: ContactRecord): TenantAccessStatus {
     if (!contact.email) return "none";
@@ -77,7 +88,7 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
       return;
     }
     setStatusByEmail((prev) => ({ ...prev, [normalizeEmail(email)]: "invited" }));
-    setReveal((prev) => ({ ...prev, [contact.id]: { mode: "invited", link: result.data!.inviteUrl } }));
+    setRevealDialog({ contact, revealed: { mode: "invited", link: result.data!.inviteUrl } });
   }
 
   async function handleReset(contact: ContactRecord) {
@@ -93,10 +104,20 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
     }
     if (result.data.mode === "invited") {
       setStatusByEmail((prev) => ({ ...prev, [normalizeEmail(email)]: "invited" }));
-      setReveal((prev) => ({ ...prev, [contact.id]: { mode: "invited", link: result.data!.inviteUrl! } }));
+      setRevealDialog({ contact, revealed: { mode: "invited", link: result.data!.inviteUrl! } });
     } else {
-      setReveal((prev) => ({ ...prev, [contact.id]: { mode: "reset", link: result.data!.actionLink! } }));
+      setRevealDialog({ contact, revealed: { mode: "reset", link: result.data!.actionLink! } });
     }
+  }
+
+  /** Called by `DisableAccessDialog` once `disableTenantAccess` succeeds —
+   * mirrors what `getTenantAccessStatus` would now report (no pending
+   * invite, no membership ⇒ "none") without a full page refresh. */
+  function handleDisabled(contact: ContactRecord) {
+    if (!contact.email) return;
+    setStatusByEmail((prev) => ({ ...prev, [normalizeEmail(contact.email!)]: "none" }));
+    setRevealDialog((prev) => (prev?.contact.id === contact.id ? null : prev));
+    setRowErrors((prev) => ({ ...prev, [contact.id]: "" }));
   }
 
   if (contacts.length === 0) {
@@ -110,55 +131,87 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
   }
 
   return (
-    <Table>
-      <Table.Head>
-        <Table.Row>
-          <Table.HeaderCell>Contact</Table.HeaderCell>
-          <Table.HeaderCell>Email</Table.HeaderCell>
-          <Table.HeaderCell align="center">Status</Table.HeaderCell>
-          <Table.HeaderCell align="center">Action</Table.HeaderCell>
-        </Table.Row>
-      </Table.Head>
-      <Table.Body>
-        {contacts.map((contact) => {
-          const status = statusFor(contact);
-          const isPending = pendingId === contact.id;
-          const revealed = reveal[contact.id];
-          const rowError = rowErrors[contact.id];
-          return (
-            <Table.Row key={contact.id}>
-              <Table.Cell>
-                <Inline gap="sm">
-                  <Avatar name={contact.name} size="sm" />
-                  <Text>{contact.name}</Text>
-                </Inline>
-              </Table.Cell>
-              <Table.Cell>{contact.email || <Text tone="muted">—</Text>}</Table.Cell>
-              <Table.Cell align="center">
-                <StatusBadge status={status} />
-              </Table.Cell>
-              <Table.Cell align="center">
-                <Stack gap="xs">
-                  {!contact.email ? (
-                    <Text tone="muted">Add an email on this contact first</Text>
-                  ) : status === "none" ? (
-                    <Button variant="outline" size="sm" onClick={() => handleInvite(contact)} disabled={isPending}>
-                      {isPending ? "Sending…" : "Send invitation"}
-                    </Button>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => handleReset(contact)} disabled={isPending}>
-                      {isPending ? "Working…" : "Reset password"}
-                    </Button>
-                  )}
-                  {rowError && <Text tone="danger">{rowError}</Text>}
-                  {revealed && <RevealedLinkField revealed={revealed} />}
-                </Stack>
-              </Table.Cell>
-            </Table.Row>
-          );
-        })}
-      </Table.Body>
-    </Table>
+    <>
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeaderCell>Contact</Table.HeaderCell>
+            <Table.HeaderCell>Email</Table.HeaderCell>
+            <Table.HeaderCell align="center">Status</Table.HeaderCell>
+            <Table.HeaderCell align="center">Action</Table.HeaderCell>
+          </Table.Row>
+        </Table.Head>
+        <Table.Body>
+          {contacts.map((contact) => {
+            const status = statusFor(contact);
+            const isPending = pendingId === contact.id;
+            const rowError = rowErrors[contact.id];
+            return (
+              <Table.Row key={contact.id}>
+                <Table.Cell>
+                  <Inline gap="sm">
+                    <Avatar name={contact.name} size="sm" />
+                    <Text>{contact.name}</Text>
+                  </Inline>
+                </Table.Cell>
+                <Table.Cell>{contact.email || <Text tone="muted">—</Text>}</Table.Cell>
+                <Table.Cell align="center">
+                  <StatusBadge status={status} />
+                </Table.Cell>
+                <Table.Cell align="center">
+                  <Stack gap="xs">
+                    {!contact.email ? (
+                      <Text tone="muted">Add an email on this contact first</Text>
+                    ) : (
+                      <Inline gap="xs">
+                        {status === "none" ? (
+                          <Button variant="outline" size="sm" onClick={() => handleInvite(contact)} disabled={isPending}>
+                            {isPending ? "Sending…" : "Request access"}
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => handleReset(contact)} disabled={isPending}>
+                            {isPending ? "Working…" : status === "active" ? "Reset password" : "Resend request"}
+                          </Button>
+                        )}
+                        {(status === "invited" || status === "active") && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => setDisableTarget(contact)}
+                            disabled={isPending}
+                          >
+                            Disable access
+                          </Button>
+                        )}
+                      </Inline>
+                    )}
+                    {rowError && <Text tone="danger">{rowError}</Text>}
+                  </Stack>
+                </Table.Cell>
+              </Table.Row>
+            );
+          })}
+        </Table.Body>
+      </Table>
+      <DisableAccessDialog
+        open={disableTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisableTarget(null);
+        }}
+        clientId={clientId}
+        contact={disableTarget}
+        onDisabled={() => {
+          if (disableTarget) handleDisabled(disableTarget);
+        }}
+      />
+      <RevealedLinkDialog
+        open={revealDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevealDialog(null);
+        }}
+        state={revealDialog}
+      />
+    </>
   );
 }
 
@@ -168,35 +221,71 @@ function StatusBadge({ status }: { status: TenantAccessStatus }) {
   return <Badge variant="muted">No access</Badge>;
 }
 
-/** Read-only, selectable link + a best-effort "Copy" button (falls back to
- * silently doing nothing if `navigator.clipboard` isn't available — the
- * link is already selectable text either way, so copying by hand always
- * works even then). */
-function RevealedLinkField({ revealed }: { revealed: RevealedLink }) {
+/**
+ * Popup revealing the link a "Request access"/"Resend request"/"Reset
+ * password" click just produced — read-only, selectable `Input` + a
+ * best-effort "Copy" button (falls back to silently doing nothing if
+ * `navigator.clipboard` isn't available; the input is still selectable text
+ * either way, so copying by hand always works even then). Same shape as
+ * `DisableAccessDialog` (plain popup, no form), just showing a result
+ * instead of confirming an action.
+ *
+ * Takes `state` rather than separate `contact`/`revealed` props so the
+ * dialog can render its previous content while its close transition plays
+ * (`open={false}` but `state` still set) instead of blanking immediately —
+ * `AccessPanel` clears `state` to `null` only on the next reveal, never on
+ * close.
+ */
+function RevealedLinkDialog({
+  open,
+  onOpenChange,
+  state,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  state: RevealDialogState | null;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
+    if (!state) return;
     try {
-      await navigator.clipboard.writeText(revealed.link);
+      await navigator.clipboard.writeText(state.revealed.link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API unavailable/denied — the link below is still
+      // Clipboard API unavailable/denied — the field below is still
       // selectable text, so the admin can copy it by hand.
     }
   }
 
+  const isInvite = state?.revealed.mode === "invited";
+
   return (
-    <Stack gap="xs">
-      <Text tone="muted">
-        {revealed.mode === "invited" ? "Invitation link — send this to the contact:" : "Password reset link:"}
-      </Text>
-      <Inline gap="xs">
-        <Input readOnly value={revealed.link} onFocus={(event) => event.currentTarget.select()} />
-        <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
-          {copied ? "Copied" : "Copy"}
+    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
+      <Dialog.Header>
+        <Heading level={3}>{isInvite ? "Invitation link" : "Password reset link"}</Heading>
+      </Dialog.Header>
+      <Dialog.Body>
+        <Stack gap="sm">
+          <Text tone="muted">
+            {isInvite
+              ? `Send this link to ${state?.contact.name ?? "the contact"} — there's no outbound email yet, so this is the only way for them to get it.`
+              : `Send this link to ${state?.contact.name ?? "the contact"} so they can set a new password.`}
+          </Text>
+          <Inline gap="xs">
+            <Input readOnly value={state?.revealed.link ?? ""} onFocus={(event) => event.currentTarget.select()} />
+            <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </Inline>
+        </Stack>
+      </Dialog.Body>
+      <Dialog.Footer>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Done
         </Button>
-      </Inline>
-    </Stack>
+      </Dialog.Footer>
+    </Dialog>
   );
 }

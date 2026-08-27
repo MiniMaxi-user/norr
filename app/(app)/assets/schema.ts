@@ -32,8 +32,28 @@ export const assetCreateSchema = z.object({
    * server-side by the `validate_asset_reference_items` DB trigger (must
    * belong to the `asset_type` list, same organization). */
   typeId: z.string().uuid("Invalid asset type."),
-  manufacturer: optionalText(200),
-  model: optionalText(200),
+  /** Free-text external/legacy reference (e.g. an ERP or previous system's
+   * asset id) — see `assets.external_reference`'s column comment in
+   * `supabase/migrations/20260826170000_assets_external_reference_brand_model.sql`.
+   * No FK, no validation, same shape as `notes`. */
+  externalReference: optionalText(200),
+  /** FK into this org's `asset_brand` reference list
+   * (`reference_list_items.id`). Replaces the old free-text `manufacturer`
+   * field. Optional/nullable — Brand is not required at the asset level.
+   * Validated server-side by the `validate_asset_reference_items` DB
+   * trigger (must belong to the `asset_brand` list, same organization); a
+   * defense-in-depth shape check also runs in `actions.ts` before insert/
+   * update, mirroring `validateAssetSubtype`. */
+  brandItemId: z.string().uuid("Invalid brand.").optional(),
+  /** FK into `asset_models` (see
+   * `supabase/migrations/20260826160000_asset_brand_and_models.sql`).
+   * Replaces the old free-text `model` field. Optional/nullable. Validated
+   * server-side to belong to the asset's own organization — deliberately
+   * NOT cross-checked against this asset's own `typeId`/`subtypeId`/
+   * `brandItemId` (see design note 3 in the `20260826170000` migration);
+   * auto-filling those fields from a selected model is a UI convenience,
+   * not a DB invariant. */
+  modelId: z.string().uuid("Invalid model.").optional(),
   serialNumber: optionalText(200),
   /** FK into this org's `asset_status` reference list. Optional on create —
    * the `derive_asset_org_and_client` DB trigger fills in the org's default

@@ -48,8 +48,12 @@ function formDataToAssetInput(formData: FormData) {
     siteId: readField(formData, "siteId"),
     name: readField(formData, "name"),
     typeId: readField(formData, "typeId"),
-    manufacturer: readField(formData, "manufacturer"),
-    model: readField(formData, "model"),
+    externalReference: readField(formData, "externalReference"),
+    // Optional, same as `statusId`/`subtypeId` below — the Brand/Model
+    // search dropdowns leave their underlying hidden input empty when
+    // nothing is selected, and an asset legitimately has neither set.
+    brandItemId: readOptionalField(formData, "brandItemId"),
+    modelId: readOptionalField(formData, "modelId"),
     serialNumber: readField(formData, "serialNumber"),
     statusId: readOptionalField(formData, "statusId"),
     // Optional, same as `statusId` — the Sub-type `<CascadingSelect>` in
