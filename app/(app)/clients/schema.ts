@@ -30,6 +30,51 @@ function optionalUuid() {
   return z.preprocess(emptyToUndefined, z.string().uuid("Invalid contact.").optional());
 }
 
+/** Same empty-string-to-undefined treatment as `optionalUuid`, for the
+ * kanban's Account Manager `<select>` (issue #58) — "nothing selected"
+ * submits `""`, not simply absent. */
+function optionalAccountManagerId() {
+  return z.preprocess(emptyToUndefined, z.string().uuid("Invalid account manager.").optional());
+}
+
+/** `YYYY-MM-DD` date-only string, same shape/pattern as
+ * `assets.installedAt`/`warrantyUntil` in `app/(app)/assets/schema.ts` —
+ * `clients.client_since` is a plain `date` column, not `timestamptz`. Reused
+ * verbatim rather than re-invented (issue #58). */
+const optionalIsoDateSchema = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format.")
+    .optional(),
+);
+
+/**
+ * Optional money amount with at most 2 decimal places, matching
+ * `clients.potential_value numeric(12,2)` (issue #58). Same pattern as
+ * `contracts.schema.ts`'s `optionalMoneySchema`, plus a `.min(0, ...)` this
+ * one needs and that one doesn't — `clients.potential_value`'s own CHECK
+ * constraint additionally requires non-negative (`potential_value is null or
+ * potential_value >= 0`), unlike `contracts.value`.
+ */
+const optionalPotentialValueSchema = z.preprocess(
+  emptyToUndefined,
+  z
+    .coerce.number({ invalid_type_error: "Potential value must be a number." })
+    .finite("Potential value must be a finite number.")
+    .min(0, "Potential value must be zero or more.")
+    .refine((value) => Math.abs(value - Math.round(value * 100) / 100) < 1e-9, {
+      message: "Potential value must have at most 2 decimal places.",
+    })
+    .optional(),
+);
+
+/** The kanban's 4 fixed columns (issue #58) — mirrors `clients.status`'s
+ * CHECK constraint exactly (see migration
+ * `20260827100000_clients_kanban_status.sql`). Optional: the DB's own
+ * `not null default 'lead'` already covers an omitted value on create. */
+export const clientStatusSchema = z.enum(["lead", "qualified", "proposal", "won"]);
+
 export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   /** Dutch Chamber of Commerce (KvK) registration number — plain text, no
@@ -43,6 +88,22 @@ export const clientCreateSchema = z.object({
    * (Malta/Saint Lucia use the longest IBAN format, 34 characters). */
   iban: optionalText(34),
   notes: optionalText(5000),
+  /** Optional here (and only here, matching `assetModelCreateSchema`'s own
+   * "optional on create, DB default covers it" precedent) — the DB's
+   * `not null default 'lead'` applies when omitted. In practice every create
+   * flow submits `'lead'` explicitly (issue #58's "New client" form default),
+   * but the schema itself doesn't require it. */
+  status: clientStatusSchema.optional(),
+  /** FK into `account_managers` — validated server-side to belong to the
+   * same organization as the client by the DB's
+   * `validate_client_account_manager` trigger (issue #58), not re-checked
+   * here. */
+  accountManagerId: optionalAccountManagerId(),
+  potentialValue: optionalPotentialValueSchema,
+  /** The app defaults this to today only on CREATE (pure UI-layer default,
+   * `clients.client_since` itself has no DB default) — the schema just
+   * accepts whatever the form submits. */
+  clientSince: optionalIsoDateSchema,
 });
 
 export type ClientCreateInput = z.infer<typeof clientCreateSchema>;

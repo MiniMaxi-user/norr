@@ -12,6 +12,7 @@ export function FormField({
   name,
   type = "text",
   step,
+  min,
   defaultValue,
   required,
   errors,
@@ -20,6 +21,7 @@ export function FormField({
   name: string;
   type?: string;
   step?: string;
+  min?: string | number;
   defaultValue?: string | number | null;
   required?: boolean;
   errors?: string[];
@@ -35,6 +37,7 @@ export function FormField({
         name={name}
         type={type}
         step={step}
+        min={min}
         defaultValue={defaultValue ?? ""}
         required={required}
       />

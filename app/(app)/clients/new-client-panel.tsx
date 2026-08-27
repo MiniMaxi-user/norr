@@ -4,10 +4,12 @@ import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, FormGrid, FormSection, Heading, Label, Stack, Text, Textarea } from "@yourorg/ui";
-import { Building2, CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import { Button, Dialog, FormGrid, FormSection, Heading, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { BarChart3, Building2, CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { createClient, createSite } from "./actions";
 import { FormField } from "./form-field";
+import { CLIENT_STATUS_OPTIONS } from "./kanban";
 import { clientCreateSchema, siteBaseSchema } from "./schema";
 import { useEscapeToClose } from "./use-escape-to-close";
 
@@ -49,6 +51,10 @@ interface NewClientFormValues {
   postalCode?: string;
   city?: string;
   country?: string;
+  status?: string;
+  accountManagerId?: string;
+  potentialValue?: string;
+  clientSince?: string;
 }
 
 interface NewClientFormState {
@@ -106,7 +112,22 @@ const initialState: NewClientFormState = {};
  * any prop-derived default, so nothing the user typed is ever silently
  * dropped by a re-render.
  */
-export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function NewClientPanel({
+  open,
+  onOpenChange,
+  accountManagers,
+  todayIso,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Fetched once in `clients-board.tsx`, passed down — populates the
+   * "Account manager" `<Select>` below (issue #58). */
+  accountManagers: AccountManagerRecord[];
+  /** Server-computed `YYYY-MM-DD` "today" — the default "Client since" value
+   * on this (CREATE-only) panel. See `clients-board.tsx` for why this is
+   * computed server-side rather than via the visitor's local browser date. */
+  todayIso: string;
+}) {
   const router = useRouter();
   useEscapeToClose(open, onOpenChange);
 
@@ -125,6 +146,10 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
       postalCode: String(formData.get("postalCode") ?? ""),
       city: String(formData.get("city") ?? ""),
       country: String(formData.get("country") ?? ""),
+      status: String(formData.get("status") ?? ""),
+      accountManagerId: String(formData.get("accountManagerId") ?? ""),
+      potentialValue: String(formData.get("potentialValue") ?? ""),
+      clientSince: String(formData.get("clientSince") ?? ""),
     };
 
     // Validate both shapes up front (see this component's doc comment for
@@ -230,6 +255,69 @@ export function NewClientPanel({ open, onOpenChange }: { open: boolean; onOpenCh
                 required
                 errors={state.fieldErrors?.name}
               />
+            </FormSection>
+
+            {/* Pipeline fields (issue #58) — same field set on both the New
+                and Edit panels ("zelfde als client edit"), only the
+                defaults differ: Status defaults to "Lead" here (matches the
+                DB default, shown/editable so a prospect that's already past
+                Lead isn't forced into a follow-up edit); Client since
+                defaults to today's date here (never auto-filled on Edit —
+                see that panel's own comment). */}
+            <FormSection title="Pipeline" icon={<BarChart3 />}>
+              <FormGrid columns={2}>
+                <Stack gap="xs">
+                  <Label htmlFor="new-client-status">Status</Label>
+                  <Select id="new-client-status" name="status" defaultValue={values?.status || "lead"}>
+                    {CLIENT_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.status?.map((message) => (
+                    <Text key={message} tone="danger">
+                      {message}
+                    </Text>
+                  ))}
+                </Stack>
+                <Stack gap="xs">
+                  <Label htmlFor="new-client-account-manager">Account manager</Label>
+                  <Select
+                    id="new-client-account-manager"
+                    name="accountManagerId"
+                    defaultValue={textDefault(values?.accountManagerId)}
+                  >
+                    <option value="">No account manager</option>
+                    {accountManagers.map((manager) => (
+                      <option key={manager.id} value={manager.id}>
+                        {manager.first_name} {manager.last_name}
+                      </option>
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.accountManagerId?.map((message) => (
+                    <Text key={message} tone="danger">
+                      {message}
+                    </Text>
+                  ))}
+                </Stack>
+                <FormField
+                  label="Potential"
+                  name="potentialValue"
+                  type="number"
+                  step="1"
+                  min="0"
+                  defaultValue={values?.potentialValue}
+                  errors={state.fieldErrors?.potentialValue}
+                />
+                <FormField
+                  label="Client since"
+                  name="clientSince"
+                  type="date"
+                  defaultValue={values?.clientSince || todayIso}
+                  errors={state.fieldErrors?.clientSince}
+                />
+              </FormGrid>
             </FormSection>
 
             <FormSection title="Business details" icon={<CreditCard />}>

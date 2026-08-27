@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button, Card, EmptyState, Input, Stack, Text } from "@yourorg/ui";
-import { Users } from "@yourorg/ui/icons";
+import { Breadcrumbs, Button, Card, EmptyState, Heading, Input, Select, Stack, Text } from "@yourorg/ui";
+import { Users, X } from "@yourorg/ui/icons";
+import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ClientRecord, SiteRecord } from "./actions";
+import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "./kanban";
 import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
@@ -39,13 +41,23 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * keeping this component's own state limited to pure UI state (search text,
  * which view, which client is pending deletion).
  *
- * NOTE on scope: kanban groups the SAME single fetched page as the list
- * view (`pageSize` clients), not the organization's entire client base —
- * paging through the list also changes what the kanban board shows. A
- * board that always reflects every client regardless of the list's current
- * page would need either a much larger unpaginated fetch or a dedicated
- * aggregate endpoint; kept simple for v1 and worth revisiting if kanban
- * becomes a primary way of working rather than a secondary view.
+ * NOTE on scope: as of issue #58, list and kanban no longer share the same
+ * fetched dataset — `clients-board.tsx` fetches a single paginated page for
+ * List, but the (near-)whole org's clients (up to 200, unpaginated) for
+ * Kanban, since a kanban board needs every status to group correctly rather
+ * than whichever page the list happens to be on. Which fetch actually ran is
+ * decided server-side from the user's last-used-view preference BEFORE this
+ * component renders — flipping the `ViewToggle` mid-session doesn't
+ * retroactively re-fetch; a page reload picks the newly-appropriate fetch
+ * back up (same class of simplification the pre-#58 version of this note
+ * already flagged for the list/kanban split in general).
+ *
+ * Kanban view additionally gets its own page-level dark header band (issue
+ * #58's design mockup) — breadcrumb, serif H1, "Klanten"/"Pipeline
+ * potential" stats, the `ViewToggle` + "Add client" button, and a filter row
+ * (search + Account manager + Status). This is intentionally a DIFFERENT
+ * header than List view's existing plain `Card`-based one — the story is
+ * scoped to kanban view only, so List view's header/layout is untouched.
  */
 export function ClientsExplorer({
   clients,
@@ -55,6 +67,8 @@ export function ClientsExplorer({
   canWrite,
   defaultView,
   primarySiteByClientId,
+  accountManagers,
+  todayIso,
 }: {
   clients: ClientRecord[];
   count: number;
@@ -68,13 +82,30 @@ export function ClientsExplorer({
    * standard client overview shows the same primary-address data
    * ("Primary adres is zichtbaar in alle standaardoverzichten"). */
   primarySiteByClientId: Record<string, SiteRecord | null>;
+  /** Every account manager in this org (issue #58) — fetched once in
+   * `clients-board.tsx`, threaded down into `ClientsKanban` (each card's
+   * Account Manager row), the kanban header's Account manager filter
+   * `<Select>`, and both client forms' own Account manager picker. */
+  accountManagers: AccountManagerRecord[];
+  /** Server-computed `YYYY-MM-DD` "today", for `NewClientPanel`'s "Client
+   * since" default — see `clients-board.tsx`. */
+  todayIso: string;
 }) {
   const [view, setView] = useState<ClientsView>(defaultView);
   const [search, setSearch] = useState("");
+  const [kanbanSearch, setKanbanSearch] = useState("");
+  const [kanbanAccountManagerId, setKanbanAccountManagerId] = useState("");
+  const [kanbanStatus, setKanbanStatus] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ClientRecord | null>(null);
   const [editTarget, setEditTarget] = useState<ClientRecord | null>(null);
   const [newClientOpen, setNewClientOpen] = useState(false);
 
+  const accountManagerById = useMemo(
+    () => new Map(accountManagers.map((manager) => [manager.id, manager])),
+    [accountManagers],
+  );
+
+  // List view's own search — unchanged from before issue #58 (name/phone/city).
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return clients;
@@ -85,6 +116,34 @@ export function ClientsExplorer({
       );
     });
   }, [clients, search, primarySiteByClientId]);
+
+  // Kanban view's own filter set (issue #58): search matches name/city/
+  // account-manager-name; Account manager and Status each narrow to one
+  // specific value or "All ...". Filtering by status here just hides 3 of
+  // the 4 columns entirely (status is what determines a card's column in
+  // the first place) — matches the design mockup's own behavior.
+  const kanbanFiltered = useMemo(() => {
+    const query = kanbanSearch.trim().toLowerCase();
+    return clients.filter((client) => {
+      if (kanbanStatus && client.status !== kanbanStatus) return false;
+      if (kanbanAccountManagerId && client.account_manager_id !== kanbanAccountManagerId) return false;
+      if (!query) return true;
+      const primarySite = primarySiteByClientId[client.id];
+      const manager = client.account_manager_id ? accountManagerById.get(client.account_manager_id) : undefined;
+      const managerName = manager ? `${manager.first_name} ${manager.last_name}` : "";
+      return [client.name, primarySite?.city, managerName].some((field) =>
+        (field ?? "").toLowerCase().includes(query),
+      );
+    });
+  }, [clients, kanbanSearch, kanbanStatus, kanbanAccountManagerId, primarySiteByClientId, accountManagerById]);
+
+  const kanbanFiltersActive = Boolean(kanbanSearch.trim() || kanbanAccountManagerId || kanbanStatus);
+
+  function clearKanbanFilters() {
+    setKanbanSearch("");
+    setKanbanAccountManagerId("");
+    setKanbanStatus("");
+  }
 
   if (clients.length === 0) {
     return (
@@ -101,57 +160,142 @@ export function ClientsExplorer({
             ) : undefined
           }
         />
-        {canWrite && <NewClientPanel open={newClientOpen} onOpenChange={setNewClientOpen} />}
+        {canWrite && (
+          <NewClientPanel
+            open={newClientOpen}
+            onOpenChange={setNewClientOpen}
+            accountManagers={accountManagers}
+            todayIso={todayIso}
+          />
+        )}
       </>
     );
   }
 
   return (
     <Stack gap="lg">
-      <Card>
-        <Stack gap="sm">
-          <Input
-            aria-label="Search clients"
-            placeholder="Search by name, phone, or city…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <div>
-            <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
-            {canWrite && (
-              <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                Add client
+      {view === "kanban" ? (
+        <div className="ui-clients-kanban-header">
+          <Breadcrumbs items={[{ label: "Norr", href: "/" }, { label: "Clients" }]} />
+          <div className="ui-clients-kanban-header-row">
+            <Heading level={1}>Customer overview</Heading>
+            <div className="ui-clients-kanban-header-actions">
+              <div className="ui-clients-kanban-stats">
+                <div className="ui-clients-kanban-stat">
+                  <div className="ui-clients-kanban-stat-label">Klanten</div>
+                  <div className="ui-clients-kanban-stat-value">{kanbanFiltered.length}</div>
+                </div>
+                <div className="ui-clients-kanban-stat">
+                  <div className="ui-clients-kanban-stat-label">Pipeline potential</div>
+                  <div className="ui-clients-kanban-stat-value">
+                    {formatPotentialValue(
+                      kanbanFiltered.reduce((sum, client) => sum + (client.potential_value ?? 0), 0),
+                    )}
+                  </div>
+                </div>
+              </div>
+              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
+              {canWrite && (
+                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                  Add client
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="ui-clients-kanban-filters">
+            <div className="ui-clients-kanban-filters-search">
+              <Input
+                aria-label="Search clients"
+                placeholder="Search by name, city, or account manager…"
+                value={kanbanSearch}
+                onChange={(event) => setKanbanSearch(event.target.value)}
+              />
+            </div>
+            <div className="ui-clients-kanban-filters-select">
+              <Select
+                aria-label="Filter by account manager"
+                value={kanbanAccountManagerId}
+                onChange={(event) => setKanbanAccountManagerId(event.target.value)}
+              >
+                <option value="">All account managers</option>
+                {accountManagers.map((manager) => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.first_name} {manager.last_name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="ui-clients-kanban-filters-select">
+              <Select
+                aria-label="Filter by status"
+                value={kanbanStatus}
+                onChange={(event) => setKanbanStatus(event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {CLIENT_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {kanbanFiltersActive && (
+              <Button type="button" variant="ghost" size="sm" onClick={clearKanbanFilters}>
+                <X aria-hidden /> Clear filters
               </Button>
             )}
           </div>
-        </Stack>
-      </Card>
+        </div>
+      ) : (
+        <Card>
+          <Stack gap="sm">
+            <Input
+              aria-label="Search clients"
+              placeholder="Search by name, phone, or city…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <div>
+              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
+              {canWrite && (
+                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                  Add client
+                </Button>
+              )}
+            </div>
+          </Stack>
+        </Card>
+      )}
 
-      {filtered.length === 0 ? (
-        <Text tone="muted">No clients match &ldquo;{search}&rdquo;.</Text>
-      ) : view === "list" ? (
-        <ClientsTable
-          clients={filtered}
-          canWrite={canWrite}
-          onEdit={setEditTarget}
-          onDelete={setDeleteTarget}
-          primarySiteByClientId={primarySiteByClientId}
-        />
+      {view === "list" ? (
+        filtered.length === 0 ? (
+          <Text tone="muted">No clients match &ldquo;{search}&rdquo;.</Text>
+        ) : (
+          <ClientsTable
+            clients={filtered}
+            canWrite={canWrite}
+            onEdit={setEditTarget}
+            onDelete={setDeleteTarget}
+            primarySiteByClientId={primarySiteByClientId}
+          />
+        )
+      ) : kanbanFiltered.length === 0 ? (
+        <Text tone="muted">No clients match the current filters.</Text>
       ) : (
         <ClientsKanban
-          clients={filtered}
+          clients={kanbanFiltered}
           canWrite={canWrite}
-          onEdit={setEditTarget}
-          onDelete={setDeleteTarget}
           primarySiteByClientId={primarySiteByClientId}
+          accountManagers={accountManagers}
         />
       )}
 
-      <ClientsPagination page={page} pageSize={pageSize} count={count} />
+      {view === "list" && <ClientsPagination page={page} pageSize={pageSize} count={count} />}
 
       {canWrite && editTarget && (
         <EditClientPanel
           client={editTarget}
+          accountManagers={accountManagers}
           open={Boolean(editTarget)}
           onOpenChange={(open) => {
             if (!open) setEditTarget(null);
@@ -169,7 +313,14 @@ export function ClientsExplorer({
         />
       )}
 
-      {canWrite && <NewClientPanel open={newClientOpen} onOpenChange={setNewClientOpen} />}
+      {canWrite && (
+        <NewClientPanel
+          open={newClientOpen}
+          onOpenChange={setNewClientOpen}
+          accountManagers={accountManagers}
+          todayIso={todayIso}
+        />
+      )}
     </Stack>
   );
 }

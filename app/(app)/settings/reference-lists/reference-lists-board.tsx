@@ -1,8 +1,10 @@
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@yourorg/ui";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels } from "@/lib/asset-models/actions";
+import { listAccountManagers } from "@/lib/account-managers/actions";
 import { ReferenceListManager } from "../components/reference-list-manager";
 import { AssetModelManager } from "../components/asset-model-manager";
+import { AccountManagerManager } from "../components/account-manager-manager";
 
 // This file is a Server Component (`ReferenceListsBoard` is `async`, doing
 // its own data fetch), composing `Tabs` directly — so it MUST use the
@@ -88,9 +90,15 @@ const REFERENCE_LIST_SECTIONS = [
  * streaming") so the page shell (heading, back link) paints immediately.
  */
 export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
-  const [results, assetModelsResult] = await Promise.all([
+  const [results, assetModelsResult, accountManagersResult] = await Promise.all([
     Promise.all(REFERENCE_LIST_SECTIONS.map((section) => listReferenceItems(section.key))),
     listAssetModels(),
+    // Account Managers (issue #58) — not a `reference_list_items` row (its
+    // own dedicated `account_managers` table, see
+    // `lib/account-managers/actions.ts`), same reasoning `asset_models`
+    // already documents for itself; fetched alongside the reference-list
+    // items and asset models this board already fetches.
+    listAccountManagers(),
   ]);
 
   // Every section's items, keyed by its own `list_key` — looked up below for
@@ -126,6 +134,7 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
           </TabsTab>
         ))}
         <TabsTab value="asset_models">Asset Model</TabsTab>
+        <TabsTab value="account_managers">Account Managers</TabsTab>
       </TabsList>
 
       {REFERENCE_LIST_SECTIONS.map((section, index) => {
@@ -155,6 +164,14 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
           brandItems={assetBrandItems}
           typeItems={assetTypeItems}
           subtypeItems={assetSubtypeItems}
+        />
+      </TabsPanel>
+
+      <TabsPanel value="account_managers">
+        <AccountManagerManager
+          accountManagers={accountManagersResult.data?.accountManagers ?? []}
+          loadError={accountManagersResult.error}
+          canWrite={canWrite}
         />
       </TabsPanel>
     </Tabs>

@@ -75,6 +75,26 @@ export interface ClientRecord {
    * only ever read by UI that already has a `getClient` result). Toggled by
    * `setTenantActive` in `./platform-access-actions.ts`. */
   organization_is_active: boolean | null;
+  /** The kanban's 4 fixed columns (issue #58): `lead` | `qualified` |
+   * `proposal` | `won`. See `clientStatusSchema` in `./schema.ts` and
+   * migration `20260827100000_clients_kanban_status.sql`. */
+  status: string;
+  /** FK into `public.account_managers` — the client's default Account
+   * Manager, shown on its kanban card. `null` when unset. */
+  account_manager_id: string | null;
+  /** A potential deal amount (issue #58) — explicitly NOT "ARR". `null` when
+   * unset. */
+  potential_value: number | null;
+  /** Nullable date. The app defaults this to today only on create; see
+   * `clientSince` in `./schema.ts`. */
+  client_since: string | null;
+  /** Read-only — maintained entirely by the DB's `set_client_won_at`
+   * trigger, never written by `createClient`/`updateClient`. Timestamp of
+   * when this client most recently became `status = 'won'`; drives the
+   * kanban's "Won" column 4-week visibility window. `null` if never won (or
+   * no longer currently won — see the trigger's "became Won" semantics in
+   * the migration's doc comment). */
+  won_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -128,16 +148,63 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
     vat_number: input.vatNumber ?? null,
     iban: input.iban ?? null,
     notes: input.notes ?? null,
+    // `status` omitted (left out of the row entirely, not written as
+    // `null`) when the caller didn't submit one — the DB's own
+    // `not null default 'lead'` covers that case, same "let the DB default
+    // apply" treatment `typeId`/`statusId` get elsewhere in this codebase
+    // (e.g. `assets`/`contracts`' own derive-default triggers) rather than
+    // this app layer re-deriving 'lead' itself.
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    account_manager_id: input.accountManagerId ?? null,
+    potential_value: input.potentialValue ?? null,
+    client_since: input.clientSince ?? null,
+    // `won_at` is never written here — trigger-only, excluded from this
+    // table's INSERT column grants entirely (see
+    // `20260827100000_clients_kanban_status.sql`).
   };
 }
 
-function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>) {
+function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>, rawInput: Record<string, unknown>) {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
   if (input.kvkNumber !== undefined) row.kvk_number = input.kvkNumber ?? null;
   if (input.vatNumber !== undefined) row.vat_number = input.vatNumber ?? null;
   if (input.iban !== undefined) row.iban = input.iban ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
+  if (input.status !== undefined) row.status = input.status;
+  // `accountManagerId` needs special handling unlike every other optional
+  // field above: `optionalAccountManagerId()`'s empty-string-to-undefined
+  // preprocessing (needed so the edit panel's <select> "No account manager"
+  // option doesn't fail uuid validation) makes "field not submitted at all"
+  // and "submitted as the clear option" collapse to the same `undefined` in
+  // `input` (parsed) — indistinguishable from that point on. The edit panel
+  // always submits this field as part of a full form render (never a
+  // genuinely partial caller), so an empty string in `rawInput` (pre-zod)
+  // unambiguously means "the user picked 'No account manager'", not "field
+  // omitted" — checked against `rawInput` specifically to recover that
+  // distinction zod's own preprocessing already erased.
+  if (input.accountManagerId !== undefined) {
+    row.account_manager_id = input.accountManagerId;
+  } else if (rawInput.accountManagerId === "") {
+    row.account_manager_id = null;
+  }
+  // Same clear-vs-omitted ambiguity as `accountManagerId` above, and the
+  // same fix: `optionalPotentialValueSchema`/`optionalIsoDateSchema` also
+  // preprocess an empty string to `undefined` (a cleared number/date input
+  // submits `""` in `FormData`, same as a cleared `<select>`), so an
+  // explicit clear on the edit form would otherwise silently no-op instead
+  // of nulling out an already-set value.
+  if (input.potentialValue !== undefined) {
+    row.potential_value = input.potentialValue;
+  } else if (rawInput.potentialValue === "") {
+    row.potential_value = null;
+  }
+  if (input.clientSince !== undefined) {
+    row.client_since = input.clientSince;
+  } else if (rawInput.clientSince === "") {
+    row.client_since = null;
+  }
+  // `won_at` is never written here — see `toClientInsertRow`'s comment above.
   return row;
 }
 
@@ -344,7 +411,7 @@ export async function updateClient(
     return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
   }
 
-  const row = toClientUpdateRow(parsed.data);
+  const row = toClientUpdateRow(parsed.data, input && typeof input === "object" ? (input as Record<string, unknown>) : {});
   if (Object.keys(row).length === 0) {
     return fail("No changes provided.");
   }

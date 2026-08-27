@@ -3,10 +3,12 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, FormGrid, FormSection, Heading, Label, Stack, Text, Textarea } from "@yourorg/ui";
-import { CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import { Button, Dialog, FormGrid, FormSection, Heading, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { BarChart3, CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { updateClient, type ClientRecord } from "./actions";
 import { FormField } from "./form-field";
+import { CLIENT_STATUS_OPTIONS } from "./kanban";
 import { useEscapeToClose } from "./use-escape-to-close";
 
 interface EditClientFormState {
@@ -44,10 +46,15 @@ const initialState: EditClientFormState = {};
  */
 export function EditClientPanel({
   client,
+  accountManagers,
   open,
   onOpenChange,
 }: {
   client: ClientRecord;
+  /** Fetched once in `clients-board.tsx`, passed down — populates the
+   * "Account manager" `<Select>` below (issue #58), same as
+   * `NewClientPanel`. */
+  accountManagers: AccountManagerRecord[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -91,6 +98,69 @@ export function EditClientPanel({
                 required
                 errors={state.fieldErrors?.name}
               />
+            </FormSection>
+
+            {/* Pipeline fields (issue #58) — same field set as `NewClientPanel`'s
+                own "Pipeline" section. Unlike that panel, "Client since"
+                defaults to the client's EXISTING stored value here, never
+                today's date — per the story's explicit "Bij het bewerken van
+                een client mag je deze datum niet vullen alleen als het om een
+                nieuwe klant gaat." (only default it to today on a brand-new
+                client). */}
+            <FormSection title="Pipeline" icon={<BarChart3 />}>
+              <FormGrid columns={2}>
+                <Stack gap="xs">
+                  <Label htmlFor="edit-client-status">Status</Label>
+                  <Select id="edit-client-status" name="status" defaultValue={client.status}>
+                    {CLIENT_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.status?.map((message) => (
+                    <Text key={message} tone="danger">
+                      {message}
+                    </Text>
+                  ))}
+                </Stack>
+                <Stack gap="xs">
+                  <Label htmlFor="edit-client-account-manager">Account manager</Label>
+                  <Select
+                    id="edit-client-account-manager"
+                    name="accountManagerId"
+                    defaultValue={client.account_manager_id ?? ""}
+                  >
+                    <option value="">No account manager</option>
+                    {accountManagers.map((manager) => (
+                      <option key={manager.id} value={manager.id}>
+                        {manager.first_name} {manager.last_name}
+                      </option>
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.accountManagerId?.map((message) => (
+                    <Text key={message} tone="danger">
+                      {message}
+                    </Text>
+                  ))}
+                </Stack>
+                <FormField
+                  label="Potential"
+                  name="potentialValue"
+                  type="number"
+                  step="1"
+                  min="0"
+                  defaultValue={client.potential_value}
+                  errors={state.fieldErrors?.potentialValue}
+                />
+                <FormField
+                  label="Client since"
+                  name="clientSince"
+                  type="date"
+                  defaultValue={client.client_since}
+                  errors={state.fieldErrors?.clientSince}
+                />
+              </FormGrid>
             </FormSection>
 
             <FormSection title="Business details" icon={<CreditCard />}>
