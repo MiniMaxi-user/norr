@@ -56,6 +56,23 @@ function purposeChecked(
 
 type PurposeKey = "visit" | "invoice" | "delivery";
 
+/** Issue #55: a brand-new site's visit/invoice/delivery contact pickers all
+ * default to this same client contact — its primary contact if one is set,
+ * else the most recently added contact, else left blank (no contacts at
+ * all). Only consulted for a pristine CREATE (see `contactIdByPurpose`'s
+ * lazy initializer in `SiteFormBody`) — an edit always shows the site's own
+ * already-saved contact per purpose, `null` included, and a failed-submit
+ * re-render echoes back exactly what the user had picked, not this default. */
+function defaultContactId(contacts: ContactRecord[]): string {
+  const primary = contacts.find((contact) => contact.is_primary);
+  if (primary) return primary.id;
+  const mostRecent = contacts.reduce<ContactRecord | null>((latest, contact) => {
+    if (!latest || contact.created_at > latest.created_at) return contact;
+    return latest;
+  }, null);
+  return mostRecent?.id ?? "";
+}
+
 /** `${name} — ${role or email}`, falling back to just the name — same
  * "short useful label" idea `ContactsPanel`'s own role badge affords, kept
  * to plain text here since a `<select>`'s `<option>` can't render a real
@@ -401,11 +418,19 @@ function SiteFormBody({
     invoice: purposeChecked(forcePurpose, isEdit, values?.isInvoiceAddress, site?.is_invoice_address),
     delivery: purposeChecked(forcePurpose, isEdit, values?.isDeliveryAddress, site?.is_delivery_address),
   }));
-  const [contactIdByPurpose, setContactIdByPurpose] = useState<Record<PurposeKey, string>>(() => ({
-    visit: textDefault(values?.visitContactId, site?.visit_contact_id),
-    invoice: textDefault(values?.invoiceContactId, site?.invoice_contact_id),
-    delivery: textDefault(values?.deliveryContactId, site?.delivery_contact_id),
-  }));
+  const [contactIdByPurpose, setContactIdByPurpose] = useState<Record<PurposeKey, string>>(() => {
+    // Pristine create (never submitted yet) is the only case issue #55's
+    // default applies to — see `defaultContactId`'s doc comment.
+    if (!isEdit && !values) {
+      const fallback = defaultContactId(contacts);
+      return { visit: fallback, invoice: fallback, delivery: fallback };
+    }
+    return {
+      visit: textDefault(values?.visitContactId, site?.visit_contact_id),
+      invoice: textDefault(values?.invoiceContactId, site?.invoice_contact_id),
+      delivery: textDefault(values?.deliveryContactId, site?.delivery_contact_id),
+    };
+  });
   // Contacts created THIS dialog session via "+ New contact" — merged into
   // `contacts` for every purpose's `<select>`, not just the one it was
   // created for (the same person can plausibly end up as e.g. both the
