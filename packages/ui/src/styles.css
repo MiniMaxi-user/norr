@@ -1251,40 +1251,13 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* ---------------------------------------------------------------------- *
- * Clients kanban page header (issue #58) — a dark "ink surface" band, kanban
+ * Clients kanban page header (issue #58) — a plain `Card` surface, kanban
  * view only, scoped to `app/(app)/clients/clients-explorer.tsx`'s own render
- * tree (NOT the global app topbar, `components/shell/topbar.tsx`, which
- * stays untouched — this is a page-level header specific to this one
- * screen's kanban mode). Same permanent-dark-regardless-of-theme treatment
- * `.ui-sidebar`/`.ui-topbar` already use (re-pointing the semantic `--ui-*`
- * tokens, not `html.dark`'s own block) — chosen over just a couple of direct
- * color declarations because this band, like the sidebar/topbar, houses real
- * nested components (`Breadcrumbs`, `ViewToggle`'s `Button`s, `Input`,
- * `Select`) that all consume the semantic tokens themselves; repointing them
- * once here fixes every child for free, the same reasoning `.ui-sidebar`'s
- * own comment gives for doing the same thing.
+ * tree, matching every other page's header (no bespoke dark palette). This
+ * rule only adds the vertical layout `Card` itself doesn't provide —
+ * surface/border/padding/shadow all come from `.ui-card`.
  * ---------------------------------------------------------------------- */
 .ui-clients-kanban-header {
-  --ui-bg: #14252c;
-  --ui-bg-inset: #0f1d23;
-  --ui-surface: #1a2e36;
-  --ui-surface-hover: #223a43;
-  --ui-surface-2: #2a444e;
-  --ui-border: #2f4952;
-  --ui-border-strong: #3e5c64;
-  --ui-fg: var(--ui-brand-snow);
-  --ui-fg-secondary: #c3cbc6;
-  --ui-muted: #93a29c;
-  --ui-muted-subtle: #6f8078;
-  --ui-accent-tint: rgba(199, 154, 62, 0.16);
-  --ui-accent-tint-border: rgba(199, 154, 62, 0.34);
-  --ui-accent-strong: var(--ui-accent-500);
-
-  background: var(--ui-bg);
-  color: var(--ui-fg);
-  border-radius: var(--ui-radius-lg);
-  padding: var(--ui-space-lg);
-  box-shadow: var(--ui-shadow-lg);
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-md);
@@ -1334,6 +1307,53 @@ a:focus-visible > .ui-card-interactive,
 .ui-clients-kanban-filters-select {
   flex: 0 0 auto;
   min-width: 180px;
+}
+
+/* Clients kanban card — name (brand-navy, heavier than the default
+   `.ui-text` secondary color) and the "Potential" amount (small uppercase
+   label stacked above a larger serif figure, not label-left/value-right). */
+.ui-client-card-name {
+  color: var(--ui-brand-fjord);
+  font-size: var(--ui-text-md);
+  font-weight: 650;
+}
+.ui-client-card-divider {
+  height: 1px;
+  background: var(--ui-border);
+}
+.ui-client-card-status-cell {
+  flex: none;
+}
+.ui-client-card-status-cell .ui-select-wrap {
+  width: auto;
+}
+.ui-client-card-status-cell .ui-select-caret {
+  right: 0.4rem;
+  width: 12px;
+  height: 12px;
+}
+select.ui-client-card-status-select {
+  width: auto;
+  padding: 0.25rem 1.7rem 0.25rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-surface-2);
+  color: var(--ui-fg-secondary);
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+}
+.ui-client-card-potential-label {
+  font-size: var(--ui-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ui-muted-subtle);
+}
+.ui-client-card-potential-value {
+  font-family: var(--ui-font-serif);
+  font-size: var(--ui-text-lg);
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ui-fg);
 }
 
 /* ---------------------------------------------------------------------- *
@@ -2943,8 +2963,9 @@ a:focus-visible > .ui-card-interactive,
   font-weight: 650;
 }
 .ui-board-column-subtitle {
-  font-size: var(--ui-text-sm);
-  color: var(--ui-muted);
+  font-size: var(--ui-text-md);
+  font-weight: 650;
+  color: var(--ui-board-column-accent, var(--ui-muted));
 }
 .ui-board-column-body {
   display: flex;

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Breadcrumbs, Button, Card, EmptyState, Heading, Input, Select, Stack, Text } from "@yourorg/ui";
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
+import { usePageHeader } from "@/components/shell/page-header-context";
 import type { ClientRecord, SiteRecord } from "./actions";
 import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "./kanban";
 import { ClientsKanban } from "./clients-kanban";
@@ -52,12 +53,13 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * back up (same class of simplification the pre-#58 version of this note
  * already flagged for the list/kanban split in general).
  *
- * Kanban view additionally gets its own page-level dark header band (issue
- * #58's design mockup) — breadcrumb, serif H1, "Klanten"/"Pipeline
- * potential" stats, the `ViewToggle` + "Add client" button, and a filter row
- * (search + Account manager + Status). This is intentionally a DIFFERENT
- * header than List view's existing plain `Card`-based one — the story is
- * scoped to kanban view only, so List view's header/layout is untouched.
+ * Kanban view gets its own header (issue #58's design mockup) — serif H1,
+ * "Klanten"/"Pipeline potential" stats, the `ViewToggle` + "Add client"
+ * button, and a filter row (search + Account manager + Status), rendered on
+ * the same `Card` surface every other page's header uses (no bespoke dark
+ * palette). Its breadcrumb lives in the Topbar via `usePageHeader`, mirroring
+ * `client-detail.tsx`'s pattern, and only while kanban view is active — List
+ * view has never shown a breadcrumb.
  */
 export function ClientsExplorer({
   clients,
@@ -145,6 +147,18 @@ export function ClientsExplorer({
     setKanbanStatus("");
   }
 
+  // Breadcrumb lives in the Topbar (`usePageHeader`), not inline in the page
+  // body — mirrors `client-detail.tsx`'s exact pattern. Only kanban view
+  // shows one (List view never has); `usePageHeader` itself is still called
+  // unconditionally since it's a hook, we just vary what's passed to it.
+  const breadcrumbItems = useMemo(() => [{ label: "Norr", href: "/" }, { label: "Clients" }], []);
+  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
+  const activeHeaderNode = useMemo(
+    () => (view === "kanban" ? breadcrumbNode : null),
+    [view, breadcrumbNode],
+  );
+  usePageHeader(activeHeaderNode);
+
   if (clients.length === 0) {
     return (
       <>
@@ -175,10 +189,9 @@ export function ClientsExplorer({
   return (
     <Stack gap="lg">
       {view === "kanban" ? (
-        <div className="ui-clients-kanban-header">
-          <Breadcrumbs items={[{ label: "Norr", href: "/" }, { label: "Clients" }]} />
+        <Card className="ui-clients-kanban-header">
           <div className="ui-clients-kanban-header-row">
-            <Heading level={1}>Customer overview</Heading>
+            <Heading level={1}>Customer kanban</Heading>
             <div className="ui-clients-kanban-header-actions">
               <div className="ui-clients-kanban-stats">
                 <div className="ui-clients-kanban-stat">
@@ -245,26 +258,35 @@ export function ClientsExplorer({
               </Button>
             )}
           </div>
-        </div>
-      ) : (
-        <Card>
-          <Stack gap="sm">
-            <Input
-              aria-label="Search clients"
-              placeholder="Search by name, phone, or city…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <div>
-              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
-              {canWrite && (
-                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                  Add client
-                </Button>
-              )}
-            </div>
-          </Stack>
         </Card>
+      ) : (
+        <>
+          <Stack gap="xs">
+            <Heading level={1}>Clients</Heading>
+            <Text tone="muted">
+              Your organization&rsquo;s customer records — the sites and assets you service live underneath each
+              one.
+            </Text>
+          </Stack>
+          <Card>
+            <Stack gap="sm">
+              <Input
+                aria-label="Search clients"
+                placeholder="Search by name, phone, or city…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <div>
+                <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
+                {canWrite && (
+                  <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                    Add client
+                  </Button>
+                )}
+              </div>
+            </Stack>
+          </Card>
+        </>
       )}
 
       {view === "list" ? (
