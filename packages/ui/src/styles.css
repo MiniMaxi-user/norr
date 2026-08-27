@@ -169,8 +169,17 @@
    logo itself flips (fjord-on-light / snö-on-dark). Mässing is preserved
    as the one accent, at its true brand value since brass-on-dark-teal reads
    with plenty of contrast without needing to be darkened the way it is on
-   a light background. */
-html.dark {
+   a light background.
+
+   `.ui-topbar` (the fixed app-shell topbar, see `components/shell/topbar.tsx`
+   — the only call site passing this class) shares this exact rule rather
+   than repeating its own copy of these values: product feedback asked for
+   the topbar to always look like it already does in dark mode, regardless
+   of the page's own light/dark toggle, framing the app in dark chrome on
+   both edges the same way `.ui-sidebar`'s own permanent ink surface
+   (below) already does. */
+html.dark,
+.ui-topbar {
   --ui-bg: #14252c;
   --ui-bg-inset: #0f1d23;
   --ui-surface: #1a2e36;
@@ -584,6 +593,38 @@ a {
 }
 .ui-toolbar-section-end {
   margin-left: auto;
+}
+
+/* Carve-out, per explicit product feedback: the user menu's dropdown
+   (`.ui-dropdown-menu-content` — only its backdrop is portaled, see
+   `dropdown-menu.tsx`'s own doc comment, so its content stays a DOM
+   descendant of `.ui-topbar` above) and the command palette overlay
+   (`.ui-command-overlay`, likewise unportaled) should keep following the
+   page's own theme when open, not `.ui-topbar`'s forced-dark surface.
+   Higher selector specificity than plain `.ui-topbar` (two/three classes
+   vs. one) is what makes these win for the same custom properties on the
+   same element, regardless of source order. */
+.ui-topbar .ui-dropdown-menu-content,
+.ui-topbar .ui-command-overlay {
+  --ui-bg: #ffffff;
+  --ui-border: var(--ui-gray-200);
+  --ui-surface-hover: var(--ui-gray-100);
+  --ui-fg: var(--ui-gray-900);
+  --ui-muted-subtle: var(--ui-gray-500);
+  --ui-danger: var(--ui-danger-500);
+  --ui-danger-tint: var(--ui-danger-50);
+  --ui-danger-strong: var(--ui-danger-600);
+}
+html.dark .ui-topbar .ui-dropdown-menu-content,
+html.dark .ui-topbar .ui-command-overlay {
+  --ui-bg: #14252c;
+  --ui-border: #2f4952;
+  --ui-surface-hover: #223a43;
+  --ui-fg: #dfe4e0;
+  --ui-muted-subtle: #6f8078;
+  --ui-danger: #e08476;
+  --ui-danger-tint: rgba(224, 132, 118, 0.14);
+  --ui-danger-strong: #eba99e;
 }
 
 /* ---------------------------------------------------------------------- *
