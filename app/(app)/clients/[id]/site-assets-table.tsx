@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Table } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { AssetFormDialog } from "@/app/(app)/assets/components/asset-form-dialog";
@@ -18,14 +17,19 @@ export interface SiteAssetsTableProps {
  * page's Assets tab — deliberately a smaller sibling of
  * `app/(app)/assets/components/assets-table.tsx` rather than that component
  * reused as-is: there's no "Client" column here (every row already belongs
- * to the site/client this whole page is about). Edit opens the slide-in
- * `AssetFormDialog` (issue #53, docs/ARCHITECTURE.md "Popup vs. full page —
- * pick by weight, not habit"), same as the standalone Assets module; delete
- * stays a lightweight confirmation `Dialog` (a single flat-record removal,
- * not a relational form).
+ * to the site/client this whole page is about). A row click and its Edit
+ * button both open the same slide-in `AssetFormDialog` (issue #56 — this
+ * tab previously sent a row click to the standalone `/assets/[id]` full
+ * page, inconsistent with Edit already opening the dialog right here;
+ * `AssetFormDialog`'s fields already cover every value that full page showed
+ * except the Client link, which is redundant on a client's own detail page).
+ * Row click is gated on `canEdit` (no full-page fallback for a view-only
+ * actor — this tab has no read-only detail view of its own), same
+ * `canWrite ? handler : undefined` pattern `sites-panel.tsx`'s own table
+ * uses. Delete stays a lightweight confirmation `Dialog` (a single
+ * flat-record removal, not a relational form).
  */
 export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableProps) {
-  const router = useRouter();
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
   const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
   const showActionsColumn = canEdit || canDelete;
@@ -44,7 +48,7 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
         </Table.Head>
         <Table.Body>
           {assets.map((asset) => (
-            <Table.Row key={asset.id} onClick={() => router.push(`/assets/${asset.id}`)}>
+            <Table.Row key={asset.id} onClick={canEdit ? () => setEditingAsset(asset) : undefined}>
               <Table.Cell>{asset.name}</Table.Cell>
               <Table.Cell>{asset.asset_type?.label ?? "—"}</Table.Cell>
               <Table.Cell>{asset.serial_number ?? "—"}</Table.Cell>
