@@ -53,11 +53,13 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * back up (same class of simplification the pre-#58 version of this note
  * already flagged for the list/kanban split in general).
  *
- * Kanban view gets its own header (issue #58's design mockup) — serif H1,
- * "Klanten"/"Pipeline potential" stats, the `ViewToggle` + "Add client"
- * button, and a filter row (search + Account manager + Status), rendered on
- * the same `Card` surface every other page's header uses (no bespoke dark
- * palette). Its breadcrumb lives in the Topbar via `usePageHeader`, mirroring
+ * Both views share one header shape (issue #58's kanban design mockup,
+ * extended to List thereafter): "Customer overview" H1 + `ViewToggle` +
+ * "Add client" on the right, on the same `Card` surface every other page's
+ * header uses (no bespoke dark palette), with a filter row below. Kanban's
+ * filter row additionally carries the "Klanten"/"Pipeline potential" stats
+ * and the Account manager/Status selects — List's is just its own search
+ * input. Its breadcrumb lives in the Topbar via `usePageHeader`, mirroring
  * `client-detail.tsx`'s pattern, and only while kanban view is active — List
  * view has never shown a breadcrumb.
  */
@@ -189,10 +191,10 @@ export function ClientsExplorer({
   return (
     <Stack gap="lg">
       {view === "kanban" ? (
-        <Card className="ui-clients-kanban-header">
-          <div className="ui-clients-kanban-header-row">
-            <Heading level={1}>Customer kanban</Heading>
-            <div className="ui-clients-kanban-header-actions">
+        <Card className="ui-clients-page-header">
+          <div className="ui-clients-page-header-row">
+            <Heading level={1}>Customer overview</Heading>
+            <div className="ui-clients-page-header-actions">
               <div className="ui-clients-kanban-stats">
                 <div className="ui-clients-kanban-stat">
                   <div className="ui-clients-kanban-stat-label">Klanten</div>
@@ -215,8 +217,8 @@ export function ClientsExplorer({
               )}
             </div>
           </div>
-          <div className="ui-clients-kanban-filters">
-            <div className="ui-clients-kanban-filters-search">
+          <div className="ui-clients-page-filters">
+            <div className="ui-clients-page-filters-search">
               <Input
                 aria-label="Search clients"
                 placeholder="Search by name, city, or account manager…"
@@ -260,33 +262,29 @@ export function ClientsExplorer({
           </div>
         </Card>
       ) : (
-        <>
-          <Stack gap="xs">
-            <Heading level={1}>Clients</Heading>
-            <Text tone="muted">
-              Your organization&rsquo;s customer records — the sites and assets you service live underneath each
-              one.
-            </Text>
-          </Stack>
-          <Card>
-            <Stack gap="sm">
+        <Card className="ui-clients-page-header">
+          <div className="ui-clients-page-header-row">
+            <Heading level={1}>Customer overview</Heading>
+            <div className="ui-clients-page-header-actions">
+              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
+              {canWrite && (
+                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+                  Add client
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="ui-clients-page-filters">
+            <div className="ui-clients-page-filters-search">
               <Input
                 aria-label="Search clients"
                 placeholder="Search by name, phone, or city…"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
-              <div>
-                <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />{" "}
-                {canWrite && (
-                  <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                    Add client
-                  </Button>
-                )}
-              </div>
-            </Stack>
-          </Card>
-        </>
+            </div>
+          </div>
+        </Card>
       )}
 
       {view === "list" ? (

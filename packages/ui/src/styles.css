@@ -1251,25 +1251,26 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* ---------------------------------------------------------------------- *
- * Clients kanban page header (issue #58) — a plain `Card` surface, kanban
- * view only, scoped to `app/(app)/clients/clients-explorer.tsx`'s own render
- * tree, matching every other page's header (no bespoke dark palette). This
- * rule only adds the vertical layout `Card` itself doesn't provide —
- * surface/border/padding/shadow all come from `.ui-card`.
+ * Clients page header (issue #58, extended to List view thereafter) — a
+ * plain `Card` surface shared by both List and Kanban, scoped to
+ * `app/(app)/clients/clients-explorer.tsx`'s own render tree, matching every
+ * other page's header (no bespoke dark palette). This rule only adds the
+ * vertical layout `Card` itself doesn't provide — surface/border/padding/
+ * shadow all come from `.ui-card`.
  * ---------------------------------------------------------------------- */
-.ui-clients-kanban-header {
+.ui-clients-page-header {
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-md);
 }
-.ui-clients-kanban-header-row {
+.ui-clients-page-header-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--ui-space-lg);
   flex-wrap: wrap;
 }
-.ui-clients-kanban-header-actions {
+.ui-clients-page-header-actions {
   display: flex;
   align-items: center;
   gap: var(--ui-space-md);
@@ -1294,13 +1295,13 @@ a:focus-visible > .ui-card-interactive,
   font-weight: 650;
   color: var(--ui-fg);
 }
-.ui-clients-kanban-filters {
+.ui-clients-page-filters {
   display: flex;
   align-items: center;
   gap: var(--ui-space-sm);
   flex-wrap: wrap;
 }
-.ui-clients-kanban-filters-search {
+.ui-clients-page-filters-search {
   flex: 1 1 240px;
   min-width: 200px;
 }
