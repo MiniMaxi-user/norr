@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Inline, Stack, Table, Text } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
+import { ActivityFormPanel } from "./activity-form-panel";
 import { ActivityQuickViewDialog } from "./activity-quick-view-dialog";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 
@@ -35,14 +35,13 @@ function descriptionSnippet(value: string): string {
  * List view table for Activities — same client-side-search-over-current-page
  * shape as `WorkOrdersTable`/`AssetsTable`. Unlike those, row click opens the
  * read-only `ActivityQuickViewDialog` slide-in (there is no `/activities/[id]`
- * detail page — only `/activities/[id]/edit`, per the acceptance criteria's
- * scope) rather than navigating away immediately; the row-level Edit action
- * still jumps straight to the real edit page.
+ * detail page, only the edit panel) rather than navigating away immediately;
+ * the row-level Edit action opens `ActivityFormPanel` directly instead.
  */
 export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTableProps) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
+  const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<ActivityRecord | null>(null);
 
   const filtered = useMemo(() => {
@@ -114,7 +113,7 @@ export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTa
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => router.push(`/activities/${activity.id}/edit`)}
+                            onClick={() => setEditingActivity(activity)}
                           >
                             Edit
                           </Button>
@@ -157,6 +156,15 @@ export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTa
           activity={deletingActivity}
           open
           onOpenChange={(next) => !next && setDeletingActivity(null)}
+        />
+      )}
+
+      {editingActivity && (
+        <ActivityFormPanel
+          mode="edit"
+          activity={editingActivity}
+          open
+          onOpenChange={(next) => !next && setEditingActivity(null)}
         />
       )}
     </>

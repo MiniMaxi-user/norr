@@ -37,17 +37,16 @@ function formatDateTime(value: string): string {
  * client already on screen, not a link out to the standalone `/activities`
  * module list.
  *
- * "Create in context": the tab's own "New activity" button pre-scopes the
- * real create PAGE to this client (`/activities/new?clientId=...`) — Popup
- * vs. full page still applies (Activities' own primary create/edit stays a
- * real page, unlike Contacts/Sites), the "create in context" part is just
- * the pre-filled query param, same as `CreateAssetButton`'s `clientId` prop
- * on the Assets tab.
+ * "Create in context": the tab's own "New activity" button pre-scopes
+ * `ActivityFormPanel` (a slide-in, per `docs/ARCHITECTURE.md` "Popup vs.
+ * full page") to this client via `CreateActivityButton`'s `clientId` prop,
+ * same shape as `CreateAssetButton`'s `clientId` prop on the Assets tab.
  *
  * Row click deliberately opens the read-only `ActivityQuickViewDialog`
  * slide-in instead of navigating away from the client page immediately — the
  * AC's explicit "slider popup" request for this exact entry point — with an
- * "Edit" button inside that dialog for the actual full-page edit form.
+ * "Edit" button inside that dialog that opens `ActivityFormPanel` on top of
+ * it.
  */
 export function ActivitiesPanel({ clientId, activities, canCreate, canEdit, canDelete }: ActivitiesPanelProps) {
   const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);

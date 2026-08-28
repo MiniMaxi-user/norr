@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Badge, Button, DefinitionList, Dialog, Heading, Inline, Stack, Text } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
 import { useEscapeToClose } from "@/app/(app)/clients/use-escape-to-close";
+import { ActivityFormPanel } from "./activity-form-panel";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 
 export interface ActivityQuickViewDialogProps {
@@ -38,11 +38,11 @@ function formatDateTime(value: string | null | undefined): string {
  * size="panel"`) — the AC's explicit request for the Client detail page's
  * Activiteiten tab ("bij het klikken op de melding vanuit de klantkaart komt
  * er een slider popup"), also reused by the main `/activities` overview
- * table's own row click for the same "peek before committing to a full page"
- * UX. A small, secondary, read-only view of an already-on-screen row — not a
- * create/edit surface, so this doesn't reopen the "Popup vs. full page"
- * question docs/ARCHITECTURE.md settles for Activities' own primary
- * create/edit forms (those stay real pages, linked from here via "Edit").
+ * table's own row click for the same "peek before committing to editing" UX.
+ * A small, secondary, read-only view of an already-on-screen row — its own
+ * "Edit" button opens `ActivityFormPanel` (also a slide-in panel, per
+ * `docs/ARCHITECTURE.md` "Popup vs. full page") on top of this one rather
+ * than navigating anywhere.
  */
 export function ActivityQuickViewDialog({
   activity,
@@ -54,6 +54,7 @@ export function ActivityQuickViewDialog({
 }: ActivityQuickViewDialogProps) {
   useEscapeToClose(open, onOpenChange);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
 
@@ -106,11 +107,9 @@ export function ActivityQuickViewDialog({
             </Button>
           )}
           {canEdit && (
-            <Link href={`/activities/${activity.id}/edit`}>
-              <Button type="button" variant="primary">
-                Edit
-              </Button>
-            </Link>
+            <Button type="button" variant="primary" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
           )}
         </Dialog.Footer>
       </Dialog>
@@ -123,6 +122,20 @@ export function ActivityQuickViewDialog({
           onDeleted={() => {
             onOpenChange(false);
             onDeleted?.();
+          }}
+        />
+      )}
+
+      {editing && (
+        <ActivityFormPanel
+          mode="edit"
+          activity={activity}
+          open
+          onOpenChange={(next) => {
+            if (!next) {
+              setEditing(false);
+              onOpenChange(false);
+            }
           }}
         />
       )}

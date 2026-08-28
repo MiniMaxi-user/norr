@@ -58,9 +58,11 @@ export function PageHeaderSlot() {
  * pattern (the element itself is built with `useMemo`, not just the props
  * fed into it).
  *
- * Scoped narrowly today — only `app/(app)/clients/[id]/client-detail.tsx`
- * calls this; every other detail page still renders its own inline
- * `Breadcrumbs` (out of scope for this change, see that route's own code).
+ * Scoped narrowly today — `app/(app)/clients/[id]/client-detail.tsx` and
+ * `app/(app)/clients/clients-explorer.tsx` (kanban view only) call this;
+ * every other detail page still renders its own inline `Breadcrumbs`. Any
+ * *new* page should call this instead of adding another inline instance —
+ * see docs/ARCHITECTURE.md's "Breadcrumb the hierarchy" note.
  */
 export function usePageHeader(node: ReactNode) {
   const ctx = useContext(PageHeaderContext);

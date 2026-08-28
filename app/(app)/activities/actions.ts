@@ -311,6 +311,33 @@ export async function getActivity(id: string): Promise<ActionResult<{ activity: 
 }
 
 /**
+ * The bits of the signed-in actor `ActivityFormPanel` needs but can't get
+ * from a plain reference-data list — `currentUserId` (to pin "Action
+ * holder" for a caller who can only ever act as themselves) and
+ * `canAssignOthers` (whether the "Action holder" picker is open to any org
+ * member or locked to `currentUserId`). One boolean covers both create and
+ * edit: `create`/`update` are always granted together in `activities`'
+ * permission matrix (owner/planner get both unscoped, engineer gets neither
+ * unscoped — only `create_own`/`update_own`), so there's no case where a
+ * caller can assign others on one and not the other.
+ */
+export async function getActivityFormContext(): Promise<
+  ActionResult<{ currentUserId: string; canAssignOthers: boolean }>
+> {
+  const ctx = await requireModuleContext("activities");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "activities", ["create", "create_own", "update", "update_own"])) {
+    return fail("You do not have permission to manage activities.");
+  }
+
+  return ok({
+    currentUserId: ctx.context.session.userId,
+    canAssignOthers: can(ctx.context.actor, "activities", "create"),
+  });
+}
+
+/**
  * Creates an activity. Gated on `canAny(actor, "activities", ["create",
  * "create_own"])` — owner/planner (unscoped `create`) or an engineer
  * (`create_own`, always pinned to their own id as `action_holder_id`, see
