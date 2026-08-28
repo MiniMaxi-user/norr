@@ -53,6 +53,12 @@ export type FeatureKey =
   // `quotes` module. Every action in that file calls `hasFeature()` first per
   // CLAUDE.md rule 3.
   | "quotes"
+  // Activities / "Meldingen" (issue #59) — see
+  // `lib/rbac/permissions.ts`'s dedicated `activities` module and
+  // `components/shell/nav-items.ts`'s "Meldingen" nav entry. Every Server
+  // Action for this module must call `hasFeature()` first per CLAUDE.md
+  // rule 3.
+  | "activities"
   | "reporting"
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
@@ -123,6 +129,14 @@ export type FeatureKey =
  * `checklists`/`contracts`/`planning` above. Same omission flagged again in
  * `supabase/migrations/20260824090000_quotes_core.sql`'s hand-off notes —
  * double-checked it's actually in this Set, not just the `FeatureKey` union.
+ *
+ * `activities` added alongside the Activities/"Meldingen" module (issue #59
+ * — `supabase/migrations/20260828090000_activities_core.sql`'s RLS already
+ * shipped): every Activities Server Action (once `api-backend-engineer`
+ * lands them) will call `hasFeature()` first per CLAUDE.md rule 3 — same
+ * reasoning as `quotes`/`checklists`/`contracts`/`planning` above. Adding the
+ * key here now (rather than waiting for the actions file to exist) avoids
+ * repeating the exact omission flagged twice already in this comment block.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -133,6 +147,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "contracts",
   "checklists",
   "quotes",
+  "activities",
 ]);
 
 /**

@@ -18,8 +18,9 @@ import {
   Tabs,
   Text,
 } from "@yourorg/ui";
-import { Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { Bell, Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
+import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
@@ -28,6 +29,7 @@ import { activateAsTenant, type ClientRecord, type SiteRecord } from "../actions
 import type { ContactRecord } from "../contacts-actions";
 import { setTenantActive, type TenantAccessStatus } from "../platform-access-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { ActivitiesPanel } from "./activities-panel";
 import { DeleteClientDialog } from "../delete-client-dialog";
 import { EditClientPanel } from "../edit-client-panel";
 import { formatSiteAddress, formatSiteAddressShort } from "../format-site-address";
@@ -51,6 +53,7 @@ export type ClientDetailTab =
   | "workOrders"
   | "contracts"
   | "quotes"
+  | "activities"
   | "access"
   | "modules";
 
@@ -71,6 +74,11 @@ export interface ClientDetailProps {
   contractsEnabled: boolean;
   quotes: QuoteRecord[];
   quotesEnabled: boolean;
+  activities: ActivityRecord[];
+  activitiesEnabled: boolean;
+  canCreateActivities: boolean;
+  canEditActivities: boolean;
+  canDeleteActivities: boolean;
   /** `session.isPlatformAdmin` (issue #45), threaded down the same way
    * `canWrite` etc. already are — gates the "Activate as tenant" hero action
    * and the "Access"/"Modules" tabs below. */
@@ -151,6 +159,11 @@ export function ClientDetail({
   contractsEnabled,
   quotes,
   quotesEnabled,
+  activities,
+  activitiesEnabled,
+  canCreateActivities,
+  canEditActivities,
+  canDeleteActivities,
   isPlatformAdmin,
   accessStatusByEmail,
   defaultTab,
@@ -271,6 +284,7 @@ export function ClientDetail({
     { key: "assets", label: "Assets", value: assets.length, show: assetsEnabled },
     { key: "workOrders", label: "Orders", value: workOrders.length, show: workOrdersEnabled },
     { key: "quotes", label: "Quotes", value: quotes.length, show: quotesEnabled },
+    { key: "activities", label: "Meldingen", value: activities.length, show: activitiesEnabled },
   ].filter((stat) => stat.show);
 
   // Rail "Platform" card's read-only modules line. There's no persisted
@@ -458,6 +472,11 @@ export function ClientDetail({
                 Quotes{quotes.length > 0 ? ` (${quotes.length})` : ""}
               </Tabs.Tab>
             )}
+            {activitiesEnabled && (
+              <Tabs.Tab value="activities" icon={<Bell />}>
+                Activiteiten{activities.length > 0 ? ` (${activities.length})` : ""}
+              </Tabs.Tab>
+            )}
             {tenantAccessVisible && (
               <Tabs.Tab value="access" icon={<ShieldCheck />}>
                 Access
@@ -517,6 +536,18 @@ export function ClientDetail({
           {quotesEnabled && (
             <Tabs.Panel value="quotes">
               <QuotesPanel quotes={quotes} />
+            </Tabs.Panel>
+          )}
+
+          {activitiesEnabled && (
+            <Tabs.Panel value="activities">
+              <ActivitiesPanel
+                clientId={client.id}
+                activities={activities}
+                canCreate={canCreateActivities}
+                canEdit={canEditActivities}
+                canDelete={canDeleteActivities}
+              />
             </Tabs.Panel>
           )}
 

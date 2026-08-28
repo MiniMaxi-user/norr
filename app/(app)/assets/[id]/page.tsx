@@ -4,10 +4,11 @@ import { notFound } from "next/navigation";
 import { Badge, Breadcrumbs, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
-import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
 import { getAsset } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
 import { AssetDetailActions } from "./asset-detail-actions";
 
 export const metadata = { title: "Asset details" };
@@ -53,6 +54,16 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
   const canEdit = can(actor, "assets", "update") || can(actor, "assets", "update_own");
   const canDelete = can(actor, "assets", "delete");
 
+  // "New activity" entry point (issue #59, AC: "Activiteit kan vanaf een
+  // asset gemaakt worden") — a separately-entitled module, gated the same
+  // way every other cross-module surface on this page would be (checked
+  // here, before rendering, not just disabled).
+  const canCreateActivityFromAsset =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "activities")) &&
+    canAccessModule(actor, "activities") &&
+    canAny(actor, "activities", ["create", "create_own"]);
+
   return (
     <Stack gap="lg">
       <Breadcrumbs items={[{ label: "Assets", href: "/assets" }, { label: asset.name }]} />
@@ -67,6 +78,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
           </Stack>
         </Toolbar.Section>
         <Toolbar.Section align="end">
+          {canCreateActivityFromAsset && <CreateActivityButton assetId={asset.id} label="New activity" />}
           <AssetDetailActions asset={asset} canEdit={canEdit} canDelete={canDelete} />
         </Toolbar.Section>
       </Toolbar>

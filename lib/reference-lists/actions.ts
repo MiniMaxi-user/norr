@@ -58,6 +58,13 @@ export interface ReferenceListItemRecord {
   value: string;
   label: string;
   color: string | null;
+  /** Generic icon slot (added by `supabase/migrations/20260828090000_activities_core.sql`
+   * alongside the Activities module) — an exact `@yourorg/ui/icons` export
+   * name, or `null` for a picklist that doesn't use icons. First used by
+   * `activity_type`'s 5 items, but reusable by any future picklist, same as
+   * `color` already is. `select("*")` in this file's queries already
+   * returned this column; it was just missing from this type until now. */
+  icon: string | null;
   sort_order: number;
   is_default: boolean;
   /** FK to the parent list's item this item belongs under — non-null exactly

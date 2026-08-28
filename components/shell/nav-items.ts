@@ -10,6 +10,7 @@ import {
   Receipt,
   Settings,
   ShieldCheck,
+  Bell,
 } from "@yourorg/ui/icons";
 import { hasFeature, type FeatureKey, type FeatureOrganization } from "@/lib/rbac/features";
 
@@ -60,6 +61,13 @@ export const NAV_ITEMS: NavItem[] = [
   // matches the `quotes` feature key/RBAC module both already registered in
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
   { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
+  // Activities / "Meldingen" (issue #59) — the ticket-like entity that
+  // precedes a Work Order (call-back, storing, onderhoud, afspraak, e-mail
+  // opvolging). `moduleKey`/label are Dutch throughout this domain, matching
+  // the "Facturatie" precedent for billing. Grouped with the other
+  // operational entities that precede/feed a Work Order (Clients/Assets/
+  // Contracts/Work Orders), not "Insights".
+  { moduleKey: "activities", label: "Meldingen", href: "/activities", icon: Bell, group: "Operations" },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3, group: "Insights" },
   { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt, group: "Insights" },
   // Everyone can *view* Settings (read-only for non-owners — see

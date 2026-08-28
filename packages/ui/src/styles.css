@@ -2687,6 +2687,64 @@ select.ui-client-card-status-select {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Icon tile select — see components/icon-tile-select.tsx. A row of
+ * icon+label tiles acting as a single-select radiogroup (Activity Type's
+ * "kies dmv icons" picker) — same selected/hover language as
+ * `.ui-card-interactive` (accent border + lift), just sized/centered as a
+ * compact square tile instead of a full card.
+ * ---------------------------------------------------------------------- */
+.ui-icon-tile-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-sm);
+}
+.ui-icon-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-xs);
+  min-width: 6.5rem;
+  padding: var(--ui-space-md) var(--ui-space-sm);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-bg);
+  color: var(--ui-fg-secondary);
+  cursor: pointer;
+  transition: border-color var(--ui-duration-fast) var(--ui-ease), box-shadow var(--ui-duration-fast) var(--ui-ease),
+    transform var(--ui-duration-fast) var(--ui-ease), color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-icon-tile:hover {
+  border-color: var(--ui-accent-tint-border);
+  transform: translateY(-1px);
+}
+.ui-icon-tile:focus-visible {
+  outline: 2px solid var(--ui-accent-strong);
+  outline-offset: 2px;
+}
+.ui-icon-tile-selected {
+  border-color: var(--ui-accent-strong);
+  background: var(--ui-accent-tint);
+  color: var(--ui-fg);
+  box-shadow: var(--ui-shadow-sm);
+}
+.ui-icon-tile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.ui-icon-tile-icon {
+  display: inline-flex;
+  font-size: 1.5rem;
+}
+.ui-icon-tile-label {
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ---------------------------------------------------------------------- *
  * Progress — see components/progress.tsx. Two nested divs, `value`
  * expressed as an inline `width` on the indicator — no library.
  * ---------------------------------------------------------------------- */

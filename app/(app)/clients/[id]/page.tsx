@@ -2,13 +2,14 @@ import { Suspense } from "react";
 import { BackLink, Heading, Stack, Text } from "@yourorg/ui";
 import { requireSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
-import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { getTenantAccessStatus } from "../platform-access-actions";
+import { listActivities } from "@/app/(app)/activities/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listContracts } from "@/app/(app)/contracts/actions";
@@ -34,6 +35,10 @@ const ALL_CLIENT_CONTRACTS_LIMIT = 500;
 /** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the read-only
  * Quotes tab (issue #16). */
 const ALL_CLIENT_QUOTES_LIMIT = 500;
+
+/** Same reasoning as `ALL_CLIENT_ASSETS_LIMIT` above, for the Activiteiten
+ * tab (issue #59). */
+const ALL_CLIENT_ACTIVITIES_LIMIT = 500;
 
 export default async function ClientDetailPage({
   params,
@@ -120,6 +125,16 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "quotes")) &&
     canAccessModule(actor, "quotes");
 
+  // The Activiteiten tab is likewise a view onto a separately-entitled
+  // module (issue #59) — gated server-side the same way as Assets/Work
+  // Orders/Contracts/Quotes above, before any activity data is fetched, so a
+  // tenant/role without Activities access never sees the tab render at all
+  // (not just disabled).
+  const activitiesModuleVisible =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "activities")) &&
+    canAccessModule(actor, "activities");
+
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
   // unlike Assets/Work Orders/Contracts/Quotes, this data is always fetched
@@ -132,6 +147,7 @@ async function ClientDetailContent({ id }: { id: string }) {
     workOrdersResult,
     contractsResult,
     quotesResult,
+    activitiesResult,
     lastUsedTab,
     accountManagersResult,
   ] = await Promise.all([
@@ -145,6 +161,9 @@ async function ClientDetailContent({ id }: { id: string }) {
       ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
       : Promise.resolve(null),
     quotesModuleVisible ? listQuotes({ clientId: id, limit: ALL_CLIENT_QUOTES_LIMIT }) : Promise.resolve(null),
+    activitiesModuleVisible
+      ? listActivities({ clientId: id, limit: ALL_CLIENT_ACTIVITIES_LIMIT })
+      : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
     // Issue #58: `EditClientPanel`'s "Account manager" picker, same
     // "fetch once, pass down" convention `contactRoles` above already uses.
@@ -184,11 +203,13 @@ async function ClientDetailContent({ id }: { id: string }) {
             ? "contracts"
             : requestedTab === "quotes" && quotesModuleVisible
               ? "quotes"
-              : requestedTab === "access" && tenantAccessVisible
-                ? "access"
-                : requestedTab === "modules" && tenantAccessVisible
-                  ? "modules"
-                  : "sites";
+              : requestedTab === "activities" && activitiesModuleVisible
+                ? "activities"
+                : requestedTab === "access" && tenantAccessVisible
+                  ? "access"
+                  : requestedTab === "modules" && tenantAccessVisible
+                    ? "modules"
+                    : "sites";
 
   return (
     <ClientDetail
@@ -210,6 +231,11 @@ async function ClientDetailContent({ id }: { id: string }) {
       contractsEnabled={contractsModuleVisible}
       quotes={quotesResult?.data?.quotes ?? []}
       quotesEnabled={quotesModuleVisible}
+      activities={activitiesResult?.data?.activities ?? []}
+      activitiesEnabled={activitiesModuleVisible}
+      canCreateActivities={activitiesModuleVisible && canAny(actor, "activities", ["create", "create_own"])}
+      canEditActivities={activitiesModuleVisible && canAny(actor, "activities", ["update", "update_own"])}
+      canDeleteActivities={activitiesModuleVisible && can(actor, "activities", "delete")}
       isPlatformAdmin={session.isPlatformAdmin}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}

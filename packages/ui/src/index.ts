@@ -100,6 +100,11 @@ export {
   type CascadingSelectProps,
   type CascadingSelectOption,
 } from "./components/cascading-select";
+export {
+  IconTileSelect,
+  type IconTileSelectProps,
+  type IconTileOption,
+} from "./components/icon-tile-select";
 // Combobox (issue #54) has real interactive state (open/query/highlighted-
 // index) — its own dedicated "use client" build entry, same reasoning and
 // same ".js" re-export requirement as ThemeProvider/Tabs above (see

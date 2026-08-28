@@ -52,6 +52,7 @@ export type Module =
   | "planning"
   | "checklists"
   | "quotes"
+  | "activities"
   | "reporting"
   | "dashboard"
   | "billing"
@@ -102,6 +103,7 @@ const NONE: readonly Action[] = [] as const;
  * | Planning   | CRUD  | CRUD    | Read/Update/Create own| Read   | Read           |
  * | Checklists | CRUD  | CRUD    | Read/Update own      | Read    | Read           |
  * | Quotes     | CRUD  | CRUD    | Read                 | Read    | Read           |
+ * | Activities | CRUD  | CRUD    | Create/Read/Update own| Read   | Read           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
@@ -189,6 +191,23 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Activities (issue #59, "melding"): a NEW top-level module (a ticket-like
+  // entity preceding a Work Order), a NEW shape — not a `planning` alias, per
+  // the issue's explicit instruction — mirroring
+  // supabase/migrations/20260828090000_activities_core.sql's RLS exactly:
+  // owner/planner CRUD (all rows); engineer create_own/read_own/update_own
+  // only, where "own" = `action_holder_id = auth.uid()` (no delete —
+  // deliberately narrower than `planning`'s engineer row, which has no
+  // create_own+read_own+update_own combined the same way, and unlike
+  // `checklists`' engineer row, which has no create at all); finance/
+  // administratie plain read (all rows, no `_own` scoping).
+  activities: {
+    owner: CRUD,
+    planner: CRUD,
+    engineer: ["create_own", "read_own", "update_own"],
+    finance: READ_ONLY,
+    administratie: READ_ONLY,
+  },
   reporting: {
     owner: READ_ONLY,
     planner: READ_ONLY,
@@ -256,6 +275,9 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // Quotes' Platform Admin column) — same NONE shape as `planning`/
   // `checklists`/`settings`.
   quotes: NONE,
+  // No "Read (support only)"-style cross-tenant carve-out documented for
+  // Activities either — same NONE shape as `planning`/`checklists`/`quotes`.
+  activities: NONE,
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,
