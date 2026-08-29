@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
 import { articleCreateSchema, articleSearchSchema, articleUpdateSchema } from "./schema";
+import { buildArticleSearchFilter } from "./search-filter";
 
 /**
  * Server Actions for the Articles module (issue #92, "Artikel database") —
@@ -124,27 +125,6 @@ const ARTICLE_COMPONENT_SELECT =
   "*, component_article:articles!article_components_component_article_id_fkey(id,article_number,description,image_url,is_active,unit_item_id,article_unit:reference_list_items!articles_unit_item_id_fkey(value,label,color))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
-
-/**
- * Turns a user-supplied search term into a safe PostgREST `.or()` filter
- * string across `article_number`/`description`/`ean`/`gtin`/`mpn`. Exported
- * (not just a local helper) so issue #95's quote/line-item article picker can
- * reuse this exact search shape rather than reimplementing it, per this
- * task's instruction to build the search capability once, reusably.
- *
- * Escapes the user's own `%`/`_` (SQL `LIKE` wildcards) so a literal percent
- * sign in a search term doesn't act as a wildcard, then wraps the resulting
- * pattern in double quotes — PostgREST's `.or()` filter syntax requires
- * quoting any value that itself contains a comma or parenthesis (both of
- * which are structural characters in that mini-language), and a user-typed
- * search term can legitimately contain either.
- */
-export function buildArticleSearchFilter(term: string): string {
-  const escapedWildcards = term.replace(/[%_]/g, (match) => `\\${match}`);
-  const escapedQuotes = escapedWildcards.replace(/"/g, '\\"');
-  const pattern = `"%${escapedQuotes}%"`;
-  return ["article_number", "description", "ean", "gtin", "mpn"].map((column) => `${column}.ilike.${pattern}`).join(",");
-}
 
 function toArticleInsertRow(input: ReturnType<typeof articleCreateSchema.parse>, organizationId: string) {
   const row: Record<string, unknown> = {
