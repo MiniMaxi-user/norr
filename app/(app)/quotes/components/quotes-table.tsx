@@ -5,23 +5,14 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { QuoteRecord } from "../actions";
 import { DeleteQuoteDialog } from "./delete-quote-dialog";
+import { formatDate } from "@/lib/format/date";
+import { formatCurrency } from "@/lib/format/currency";
 
 export interface QuotesTableProps {
   quotes: QuoteRecord[];
   clientNameById: Map<string, string>;
   canEdit: boolean;
   canDelete: boolean;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatTotal(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 /**
@@ -80,7 +71,7 @@ export function QuotesTable({ quotes, clientNameById, canEdit, canDelete }: Quot
                   </Badge>
                 </Table.Cell>
                 <Table.Cell>{formatDate(quote.valid_until)}</Table.Cell>
-                <Table.Cell>{formatTotal(quote.total)}</Table.Cell>
+                <Table.Cell>{formatCurrency(quote.total)}</Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">
                     <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>

@@ -30,6 +30,7 @@ import { listContacts, type ContactRecord } from "@/app/(app)/clients/contacts-a
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listOrgMembers, type OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
+import { formatDateTime } from "@/lib/format/date";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 const initialState: ActivityFormState = { ok: false };
@@ -152,19 +153,6 @@ interface ActivityFormBodyProps {
   formAction: (formData: FormData) => void;
   state: ActivityFormState;
   onCancel: () => void;
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 /**

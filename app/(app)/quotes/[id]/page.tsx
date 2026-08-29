@@ -11,6 +11,8 @@ import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address"
 import { listAssets } from "@/app/(app)/assets/actions";
 import { QuoteDetailActions } from "./quote-detail-actions";
 import { QuoteLineItemsPanel } from "./quote-line-items-panel";
+import { formatDate } from "@/lib/format/date";
+import { formatCurrency } from "@/lib/format/currency";
 
 export const metadata = { title: "Quote details" };
 
@@ -33,16 +35,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-}
-
-function formatTotal(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
-}
 
 /**
  * Quote detail page — same visual weight as the Client/Asset/Work Order/
@@ -113,11 +105,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
           <DetailRow label="Site" value={quote.site_id ? siteLabelById.get(quote.site_id) ?? "—" : "—"} />
-          <DetailRow label="Valid until" value={formatDate(quote.valid_until)} />
+          <DetailRow label="Valid until" value={formatDate(quote.valid_until, { month: "long" })} />
           <DetailRow label="Notes" value={quote.notes ?? "—"} />
           <Stack gap="xs">
             <Text tone="muted">Total</Text>
-            <Heading level={2}>{formatTotal(quote.total)}</Heading>
+            <Heading level={2}>{formatCurrency(quote.total)}</Heading>
           </Stack>
         </Stack>
       </Card>

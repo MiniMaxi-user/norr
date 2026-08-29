@@ -10,6 +10,7 @@ import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { TimeEntryEditDialog } from "./time-entry-edit-dialog";
 import { DeleteTimeEntryDialog } from "./delete-time-entry-dialog";
+import { formatDateTime } from "@/lib/format/date";
 
 export interface TimeEntriesPanelProps {
   workOrderId: string;
@@ -154,8 +155,8 @@ export function TimeEntriesPanel({
                         {entry.time_entry_type?.label ?? "—"}
                       </Badge>
                     </Table.Cell>
-                    <Table.Cell>{formatDateTime(entry.started_at)}</Table.Cell>
-                    <Table.Cell>{entry.ended_at ? formatDateTime(entry.ended_at) : "—"}</Table.Cell>
+                    <Table.Cell>{formatDateTime(entry.started_at, { year: false })}</Table.Cell>
+                    <Table.Cell>{entry.ended_at ? formatDateTime(entry.ended_at, { year: false }) : "—"}</Table.Cell>
                     <Table.Cell>{formatDuration(entry.started_at, entry.ended_at)}</Table.Cell>
                     <Table.Cell>{entry.notes ?? "—"}</Table.Cell>
                     {showActionsColumn && (
@@ -245,17 +246,6 @@ export function TimeEntriesPanel({
       )}
     </Card>
   );
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 /** `null` `endedAt` means "currently running" (see `time_entries.ended_at`'s

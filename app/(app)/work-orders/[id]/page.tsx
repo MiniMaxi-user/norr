@@ -18,6 +18,7 @@ import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { WorkOrderDetailActions } from "./work-order-detail-actions";
 import { TimeEntriesPanel } from "./time-entries-panel";
 import { ChecklistPanel } from "./checklist-panel";
+import { formatDateTime } from "@/lib/format/date";
 
 export const metadata = { title: "Work order details" };
 
@@ -34,18 +35,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 /**
  * Work order detail page — same visual weight as the Client/Asset detail
@@ -175,8 +164,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             value={workOrder.contract ? <Link href={`/contracts/${workOrder.contract.id}`}>{workOrder.contract.name}</Link> : "—"}
           />
           <DetailRow label="Assigned to" value={memberDisplayName(assignedMember)} />
-          <DetailRow label="Scheduled for" value={formatDateTime(workOrder.scheduled_at)} />
-          <DetailRow label="Completed at" value={formatDateTime(workOrder.completed_at)} />
+          <DetailRow label="Scheduled for" value={formatDateTime(workOrder.scheduled_at, { month: "long" })} />
+          <DetailRow label="Completed at" value={formatDateTime(workOrder.completed_at, { month: "long" })} />
           <DetailRow label="Description" value={workOrder.description ?? "—"} />
           <DetailRow label="Notes" value={workOrder.notes ?? "—"} />
         </Stack>

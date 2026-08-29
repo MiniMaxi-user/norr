@@ -7,6 +7,7 @@ import type { WorkOrderRecord } from "../actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import { DeleteWorkOrderDialog } from "./delete-work-order-dialog";
+import { formatDateTime } from "@/lib/format/date";
 
 export interface WorkOrdersTableProps {
   workOrders: WorkOrderRecord[];
@@ -14,19 +15,6 @@ export interface WorkOrdersTableProps {
   memberById: Map<string, OrgMemberRecord>;
   canEdit: boolean;
   canDelete: boolean;
-}
-
-function formatScheduledAt(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 /**
@@ -103,7 +91,7 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
                 <Table.Cell>
                   {workOrder.assigned_to ? memberDisplayName(memberById.get(workOrder.assigned_to)) : "Unassigned"}
                 </Table.Cell>
-                <Table.Cell>{formatScheduledAt(workOrder.scheduled_at)}</Table.Cell>
+                <Table.Cell>{formatDateTime(workOrder.scheduled_at)}</Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">
                     <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>

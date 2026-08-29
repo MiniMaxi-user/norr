@@ -8,6 +8,7 @@ import type { QuoteLineItemRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { QuoteLineItemDialog } from "./quote-line-item-dialog";
 import { DeleteQuoteLineItemDialog } from "./delete-quote-line-item-dialog";
+import { formatCurrency } from "@/lib/format/currency";
 
 export interface QuoteLineItemsPanelProps {
   quoteId: string;
@@ -23,10 +24,6 @@ export interface QuoteLineItemsPanelProps {
   canEdit: boolean;
   /** Gated on `can(actor, "quotes", "delete")`. */
   canDelete: boolean;
-}
-
-function formatMoney(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 function lineTotal(item: QuoteLineItemRecord): number {
@@ -102,8 +99,8 @@ export function QuoteLineItemsPanel({
                         {item.asset_id ? asset ? <Link href={`/assets/${asset.id}`}>{asset.name}</Link> : "Unknown asset" : "—"}
                       </Table.Cell>
                       <Table.Cell align="center">{Number(item.quantity)}</Table.Cell>
-                      <Table.Cell>{formatMoney(Number(item.unit_price))}</Table.Cell>
-                      <Table.Cell>{formatMoney(lineTotal(item))}</Table.Cell>
+                      <Table.Cell>{formatCurrency(Number(item.unit_price))}</Table.Cell>
+                      <Table.Cell>{formatCurrency(lineTotal(item))}</Table.Cell>
                       {showActionsColumn && (
                         <Table.Cell align="center">
                           {canEdit && (
@@ -125,7 +122,7 @@ export function QuoteLineItemsPanel({
             </Table>
 
             <Text>
-              <strong>Total: {formatMoney(grandTotal)}</strong>
+              <strong>Total: {formatCurrency(grandTotal)}</strong>
             </Text>
 
             {canCreate && (

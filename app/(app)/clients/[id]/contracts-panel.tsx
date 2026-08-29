@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
-import { formatDate } from "./format-date";
+import { formatDate } from "@/lib/format/date";
 
 export interface ContractsPanelProps {
   contracts: ContractRecord[];

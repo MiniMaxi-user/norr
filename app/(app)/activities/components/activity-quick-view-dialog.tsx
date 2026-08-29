@@ -5,6 +5,7 @@ import { Badge, Button, DefinitionList, Dialog, Heading, Inline, Stack, Text, us
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
+import { formatDateTime } from "@/lib/format/date";
 import { ActivityFormPanel } from "./activity-form-panel";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 
@@ -17,19 +18,6 @@ export interface ActivityQuickViewDialogProps {
   /** Called after a successful delete, so the caller (a table/panel holding
    * a list of activities) can drop this row without a full page reload. */
   onDeleted?: () => void;
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 /**

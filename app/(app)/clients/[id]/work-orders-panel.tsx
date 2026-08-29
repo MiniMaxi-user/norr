@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { CalendarDays } from "@yourorg/ui/icons";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
-import { formatDateTime } from "./format-date";
+import { formatDateTime } from "@/lib/format/date";
 
 export interface WorkOrdersPanelProps {
   workOrders: WorkOrderRecord[];

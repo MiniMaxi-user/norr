@@ -4,14 +4,11 @@ import { useRouter } from "next/navigation";
 import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { ClipboardList } from "@yourorg/ui/icons";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
-import { formatDate } from "./format-date";
+import { formatDate } from "@/lib/format/date";
+import { formatCurrency } from "@/lib/format/currency";
 
 export interface QuotesPanelProps {
   quotes: QuoteRecord[];
-}
-
-function formatTotal(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 /**
@@ -48,7 +45,7 @@ export function QuotesPanel({ quotes }: QuotesPanelProps) {
           ),
         },
         { header: "Valid until", render: (quote) => formatDate(quote.valid_until) },
-        { header: "Total", render: (quote) => formatTotal(quote.total) },
+        { header: "Total", render: (quote) => formatCurrency(quote.total) },
       ]}
     />
   );

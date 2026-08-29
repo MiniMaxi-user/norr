@@ -5,24 +5,14 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { ContractRecord } from "../actions";
 import { DeleteContractDialog } from "./delete-contract-dialog";
+import { formatDate } from "@/lib/format/date";
+import { formatCurrency } from "@/lib/format/currency";
 
 export interface ContractsTableProps {
   contracts: ContractRecord[];
   clientNameById: Map<string, string>;
   canEdit: boolean;
   canDelete: boolean;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatValue(value: number | null): string {
-  if (value === null) return "—";
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 /**
@@ -102,7 +92,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
                 <Table.Cell>{contract.billing_terms?.label ?? "—"}</Table.Cell>
                 <Table.Cell>{formatDate(contract.start_date)}</Table.Cell>
                 <Table.Cell>{formatDate(contract.end_date)}</Table.Cell>
-                <Table.Cell>{formatValue(contract.value)}</Table.Cell>
+                <Table.Cell>{formatCurrency(contract.value)}</Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">
                     <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>

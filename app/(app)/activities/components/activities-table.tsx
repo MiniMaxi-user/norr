@@ -5,6 +5,7 @@ import { Badge, Button, Input, Inline, Stack, Table, Text } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
+import { formatDateTime } from "@/lib/format/date";
 import { ActivityFormPanel } from "./activity-form-panel";
 import { ActivityQuickViewDialog } from "./activity-quick-view-dialog";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
@@ -13,18 +14,6 @@ export interface ActivitiesTableProps {
   activities: ActivityRecord[];
   canEdit: boolean;
   canDelete: boolean;
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function descriptionSnippet(value: string): string {

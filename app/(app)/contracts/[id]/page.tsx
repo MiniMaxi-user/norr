@@ -11,6 +11,8 @@ import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address"
 import { listAssets } from "@/app/(app)/assets/actions";
 import { ContractDetailActions } from "./contract-detail-actions";
 import { ContractAssetsPanel } from "./contract-assets-panel";
+import { formatDate } from "@/lib/format/date";
+import { formatCurrency } from "@/lib/format/currency";
 
 export const metadata = { title: "Contract details" };
 
@@ -33,17 +35,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-}
-
-function formatValue(value: number | null): string {
-  if (value === null) return "—";
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD" });
-}
 
 /**
  * Contract detail page — same visual weight as the Client/Asset/Work Order
@@ -116,10 +107,10 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
           <DetailRow label="Billing terms" value={contract.billing_terms?.label ?? "—"} />
-          <DetailRow label="Value" value={formatValue(contract.value)} />
+          <DetailRow label="Value" value={formatCurrency(contract.value)} />
           <DetailRow label="Auto-renews" value={contract.auto_renew ? "Yes" : "No"} />
-          <DetailRow label="Start date" value={formatDate(contract.start_date)} />
-          <DetailRow label="End date" value={formatDate(contract.end_date)} />
+          <DetailRow label="Start date" value={formatDate(contract.start_date, { month: "long" })} />
+          <DetailRow label="End date" value={formatDate(contract.end_date, { month: "long" })} />
           <DetailRow label="Notes" value={contract.notes ?? "—"} />
         </Stack>
       </Card>

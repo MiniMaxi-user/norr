@@ -9,6 +9,7 @@ import { getAsset } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
+import { formatDate } from "@/lib/format/date";
 import { AssetDetailActions } from "./asset-detail-actions";
 
 export const metadata = { title: "Asset details" };
@@ -24,13 +25,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
       <Text>{value}</Text>
     </Stack>
   );
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
 export default async function AssetDetailPage({ params }: AssetDetailPageProps) {
@@ -91,8 +85,8 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
           <DetailRow label="Model" value={asset.asset_model?.name ?? "—"} />
           <DetailRow label="External reference" value={asset.external_reference ?? "—"} />
           <DetailRow label="Serial number" value={asset.serial_number ?? "—"} />
-          <DetailRow label="Installed on" value={formatDate(asset.installed_at)} />
-          <DetailRow label="Warranty until" value={formatDate(asset.warranty_until)} />
+          <DetailRow label="Installed on" value={formatDate(asset.installed_at, { month: "long" })} />
+          <DetailRow label="Warranty until" value={formatDate(asset.warranty_until, { month: "long" })} />
           <DetailRow
             label="Client"
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
