@@ -146,6 +146,43 @@ function emailFieldError(error: z.ZodError): Record<string, string[]> {
 }
 
 /**
+ * Shared by `resendOrResetTenantAccess` and `disableTenantAccess`, which
+ * both need to know whether a still-PENDING invite already exists for this
+ * org+email before deciding what to do next. `.ilike(email, normalizedEmail)`
+ * with no wildcard characters is a case-insensitive equality match — the
+ * same matching the table's own `invites_pending_org_email_idx` partial
+ * unique index performs via `lower(email)` — so this is guaranteed to find
+ * the same row that index would treat as "the" pending invite for this
+ * org+email, regardless of what case it happened to be stored in.
+ */
+async function findPendingInvite(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  normalizedEmail: string,
+): Promise<ActionResult<{ id: string } | null>> {
+  const { data, error } = await admin
+    .from("invites")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .is("accepted_at", null)
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
+  if (error) return fail(mapDbError(error));
+  return ok(data);
+}
+
+/** Shared by `resendOrResetTenantAccess` and `disableTenantAccess` — see
+ * `findPendingInvite`'s doc comment for the case-insensitivity reasoning. */
+async function findUserByEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  normalizedEmail: string,
+): Promise<ActionResult<{ id: string } | null>> {
+  const { data, error } = await admin.from("users").select("id").ilike("email", normalizedEmail).maybeSingle();
+  if (error) return fail(mapDbError(error));
+  return ok(data);
+}
+
+/**
  * Sends the first invite for a contact of an activated tenant client,
  * inviting them as `owner` of the tenant org the client represents. See
  * this file's header comment for why the SERVICE-ROLE client is required
@@ -223,20 +260,9 @@ export async function resendOrResetTenantAccess(
   // `inviteTenantOwner` does — see this file's header comment.
   const admin = createAdminClient();
 
-  // `.ilike(email, normalizedEmail)` with no wildcard characters is a
-  // case-insensitive equality match — the same matching the table's own
-  // `invites_pending_org_email_idx` partial unique index performs via
-  // `lower(email)` — so this is guaranteed to find the same row that index
-  // would treat as "the" pending invite for this org+email, regardless of
-  // what case it happened to be stored in.
-  const { data: pending, error: pendingError } = await admin
-    .from("invites")
-    .select("id")
-    .eq("organization_id", tenantOrganizationId)
-    .is("accepted_at", null)
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-  if (pendingError) return fail(mapDbError(pendingError));
+  const pendingResult = await findPendingInvite(admin, tenantOrganizationId, normalizedEmail);
+  if (pendingResult.error) return fail(pendingResult.error);
+  const pending = pendingResult.data;
 
   if (pending) {
     const { error: deleteError } = await admin.from("invites").delete().eq("id", pending.id);
@@ -247,12 +273,9 @@ export async function resendOrResetTenantAccess(
     return ok({ mode: "invited", inviteUrl: inserted.data!.inviteUrl });
   }
 
-  const { data: existingUser, error: userError } = await admin
-    .from("users")
-    .select("id")
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-  if (userError) return fail(mapDbError(userError));
+  const userResult = await findUserByEmail(admin, normalizedEmail);
+  if (userResult.error) return fail(userResult.error);
+  const existingUser = userResult.data;
 
   if (existingUser) {
     const { data: membership, error: membershipError } = await admin
@@ -332,14 +355,9 @@ export async function disableTenantAccess(
   // Service-role: see this file's header comment.
   const admin = createAdminClient();
 
-  const { data: pending, error: pendingError } = await admin
-    .from("invites")
-    .select("id")
-    .eq("organization_id", tenantOrganizationId)
-    .is("accepted_at", null)
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-  if (pendingError) return fail(mapDbError(pendingError));
+  const pendingResult = await findPendingInvite(admin, tenantOrganizationId, normalizedEmail);
+  if (pendingResult.error) return fail(pendingResult.error);
+  const pending = pendingResult.data;
 
   if (pending) {
     const { error: deleteError } = await admin.from("invites").delete().eq("id", pending.id);
@@ -347,12 +365,9 @@ export async function disableTenantAccess(
     return ok({ disabled: true });
   }
 
-  const { data: existingUser, error: userError } = await admin
-    .from("users")
-    .select("id")
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-  if (userError) return fail(mapDbError(userError));
+  const userResult = await findUserByEmail(admin, normalizedEmail);
+  if (userResult.error) return fail(userResult.error);
+  const existingUser = userResult.data;
 
   if (existingUser) {
     const { error: membershipDeleteError } = await admin
