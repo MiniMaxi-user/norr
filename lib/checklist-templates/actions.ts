@@ -130,6 +130,42 @@ export async function getChecklistTemplate(
   });
 }
 
+/**
+ * Bulk counterpart to `getChecklistTemplate`, for the Settings management
+ * screen (`ChecklistTemplatesBoard`, issue #85) which needs every visible
+ * template's items up front — one query instead of one `getChecklistTemplate`
+ * round-trip per template. Same permission boundary as `listChecklistTemplates`
+ * (any org member can read). Result is grouped by `checklist_template_id`,
+ * each group already ordered by `sort_order` (Postgres preserves per-partition
+ * order from a single `order by` when the caller groups client-side).
+ */
+export async function listChecklistTemplateItemsForTemplates(
+  templateIds: string[],
+): Promise<ActionResult<{ itemsByTemplateId: Record<string, ChecklistTemplateItemRecord[]> }>> {
+  const ctx = await requireModuleContext("settings");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "settings", "read")) {
+    return fail("You do not have permission to view checklist templates.");
+  }
+
+  const itemsByTemplateId: Record<string, ChecklistTemplateItemRecord[]> = {};
+  if (templateIds.length === 0) return ok({ itemsByTemplateId });
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("checklist_template_items")
+    .select("*")
+    .in("checklist_template_id", templateIds)
+    .order("sort_order", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+  for (const item of (data ?? []) as ChecklistTemplateItemRecord[]) {
+    (itemsByTemplateId[item.checklist_template_id] ??= []).push(item);
+  }
+  return ok({ itemsByTemplateId });
+}
+
 /** Owner only (per the `settings` RBAC entry + RLS, both agree). */
 export async function createChecklistTemplate(
   input: unknown,
