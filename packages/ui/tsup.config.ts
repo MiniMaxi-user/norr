@@ -25,6 +25,14 @@ import { defineConfig } from "tsup";
 // reason again — it owns checking/error/deleting state — same top-level
 // `src/` placement, same `"./confirm-delete-dialog.js"` re-export shape.
 //
+// `use-escape-to-close.ts` (issue #67) SHOULD have joined this list when it
+// was added and didn't — a real regression, not a hypothetical: it owns
+// hook state (`useEffect`/`useRef`) exactly like every module above, so
+// once it was reachable from `index.js` (imported by `app/layout.tsx`),
+// `next build` failed with "You're importing a component that needs
+// useEffect" — `tsc --noEmit` alone never catches this, only a real
+// `next build` does. Fixed by giving it the same dedicated-entry treatment.
+//
 // The app imports `ThemeProvider`/`Tabs` from the package's *main* entry
 // (`@yourorg/ui`), not a `./client`/`./tabs` subpath, so `index.ts`
 // re-exports them — which is the tricky part, confirmed empirically while
@@ -58,7 +66,14 @@ import { defineConfig } from "tsup";
 // Jest/ts-node) doesn't need any of this: each entry is fully
 // self-contained there, which is fine since CJS output isn't what Next's
 // RSC module graph walks.
-const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js", "./combobox.js", "./confirm-delete-dialog.js"];
+const clientBoundaryModules = [
+  "./client.js",
+  "./tabs.js",
+  "./toast.js",
+  "./combobox.js",
+  "./confirm-delete-dialog.js",
+  "./use-escape-to-close.js",
+];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
 export default defineConfig([
@@ -80,6 +95,7 @@ export default defineConfig([
       toast: "src/toast.tsx",
       combobox: "src/combobox.tsx",
       "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
+      "use-escape-to-close": "src/use-escape-to-close.ts",
     },
     format: ["esm"],
     dts: true,
@@ -100,6 +116,7 @@ export default defineConfig([
       toast: "src/toast.tsx",
       combobox: "src/combobox.tsx",
       "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
+      "use-escape-to-close": "src/use-escape-to-close.ts",
     },
     format: ["cjs"],
     dts: false,

@@ -1,3 +1,17 @@
+"use client";
+// Genuinely interactive (owns real hook state via useEffect/useRef), so —
+// same as client.tsx/tabs.tsx/toast.tsx/combobox.tsx/confirm-delete-dialog.tsx
+// — it needs its OWN dedicated "use client" tsup build entry rather than
+// living in the hook-free main index.js bundle Server Components import
+// (confirmed the hard way: `next build` fails with "You're importing a
+// component that needs useEffect" once this file is reachable from
+// `app/layout.tsx` via the plain index.js bundle — `tsc --noEmit` does not
+// catch this, only a real `next build` does). See tsup.config.ts's
+// top-of-file comment for the full "why a sibling file, not inlined into
+// index.ts" story. Lives at the top level of `src/` (not under
+// `src/components/`), same as those other dedicated-entry modules —
+// required, not just cosmetic, per that same comment.
+
 import { useEffect, useRef } from "react";
 
 /**

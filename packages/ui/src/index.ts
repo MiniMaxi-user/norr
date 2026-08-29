@@ -130,7 +130,11 @@ export {
   type TableCellProps,
 } from "./components/table";
 export { Dialog, type DialogProps, type DialogSize, type DialogSectionProps } from "./components/dialog";
-export { useEscapeToClose } from "./use-escape-to-close";
+// useEscapeToClose has real hook state (useEffect/useRef) — its own
+// dedicated "use client" build entry, same reasoning and same ".js"
+// re-export requirement as ThemeProvider/Tabs above (see tsup.config.ts's
+// top-of-file comment).
+export { useEscapeToClose } from "./use-escape-to-close.js";
 // ConfirmDeleteDialog (issue #77) has real interactive state (checking/
 // error/deleting) — its own dedicated "use client" build entry, same
 // reasoning and same ".js" re-export requirement as ThemeProvider/Tabs
