@@ -3,7 +3,20 @@
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, FormGrid, FormSection, Heading, Input, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import {
+  Button,
+  Dialog,
+  FormGrid,
+  FormSection,
+  Heading,
+  Input,
+  Label,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  useEscapeToClose,
+} from "@yourorg/ui";
 import { updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
@@ -63,6 +76,7 @@ export interface TimeEntryEditDialogProps {
  */
 export function TimeEntryEditDialog({ open, onOpenChange, timeEntry, entryTypes }: TimeEntryEditDialogProps) {
   const router = useRouter();
+  useEscapeToClose(open, onOpenChange);
   const [startedAtLocal, setStartedAtLocal] = useState(toDatetimeLocalValue(timeEntry.started_at));
   const [endedAtLocal, setEndedAtLocal] = useState(toDatetimeLocalValue(timeEntry.ended_at));
 
