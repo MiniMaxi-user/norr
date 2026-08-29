@@ -1,0 +1,38 @@
+-- Follow-up to 20260829100000_articles_core.sql (issue #92): grant INSERT on
+-- the `id` column for article_groups/articles/article_components.
+--
+-- Discovered while writing/running this module's own RLS test
+-- (supabase/tests/database/articles_rls.test.sql) against the linked
+-- project: Postgres requires column-level INSERT privilege for `id` the
+-- moment a caller supplies an explicit value for it (not just `DEFAULT`),
+-- even though the column has `default gen_random_uuid()` — the "receives
+-- its value from a column default" carve-out in the INSERT privilege model
+-- only applies when the column is omitted from the INSERT entirely (or
+-- explicitly given the keyword DEFAULT), not when a caller-supplied literal
+-- happens to look like it could've been a default. This module's own
+-- migration (like several existing ones — e.g. `asset_models`,
+-- `account_managers`) never explicitly granted `insert (id)`, on the
+-- (incorrect, now-confirmed-empirically) assumption that INSERT privilege
+-- on `id` is irrelevant since the app always lets the DB generate it.
+--
+-- Granting `insert (id)` is a deliberate, harmless widening, not a security
+-- concession: RLS (owner-or-administratie, checked on `organization_id`)
+-- still fully gates who may insert a row at all; letting a caller supply
+-- their own valid UUID for a new row's primary key is a completely standard,
+-- safe pattern (e.g. optimistic-UI inserts that need the id before a round
+-- trip completes) and doesn't weaken any tenant-isolation boundary.
+--
+-- Scope note: the same gap likely exists on `asset_models`/`account_managers`
+-- (and possibly other tables whose own pgTAP test fixtures insert explicit
+-- ids) — out of scope to touch here (this migration only fixes the three
+-- tables this module just introduced); flagged for qa-reviewer/
+-- db-schema-architect to sweep separately.
+--
+-- New COLUMN-privilege on an existing, already-locked-down table (from this
+-- same feature, not yet in any other migration's history) — plain additive
+-- grant, same reasoning as every other "new column on an existing table"
+-- grant in this schema (ALTER-time default-privilege behavior only fires at
+-- table-creation time, not per grant statement).
+grant insert (id) on public.article_groups to authenticated;
+grant insert (id) on public.articles to authenticated;
+grant insert (id) on public.article_components to authenticated;

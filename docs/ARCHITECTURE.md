@@ -69,6 +69,7 @@ Implemented, RLS-backed tables:
 - `quotes` / `quote_line_items` — pre-sale proposals
 - `activities` — "meldingen" (call-back/fault/maintenance/appointment/follow-up) preceding a Work Order
 - `asset_models` (+ `asset_brand` reference list) — Brand/Type/Sub-type-scoped asset catalog
+- `article_groups` / `articles` / `article_components` (+ `article_unit` / `article_manufacturer` / `vat_rate` reference lists) — the product/part database: an unlimited-depth Article Group tree, the article record, and its bill-of-materials
 - `invites` — email invite → membership redemption (`supabase/migrations/20260822180000_invites.sql`, issue #3/#4): token-based, looked up pre-auth via `get_invite_by_token`, redeemed post-auth via `redeem_invite` (both `SECURITY DEFINER`), which enforces the redeeming account's email matches the invite's
 
 Not yet implemented (named here so a future migration has an obvious place to slot in — see `docs/ROADMAP.md` for phasing): `reports` (work_order_id, pdf_url, generated_at), `invoices` (organization_id, client_id, amount, status), `organization_features` (organization_id, feature_key, enabled), `subscriptions` (organization_id, stripe_customer_id, stripe_subscription_id, plan), `audit_log` (organization_id, actor_id, action, entity, at).
@@ -102,6 +103,7 @@ For exactly which tables/migrations exercise this pattern, and the full column-b
 | Checklists | CRUD | CRUD | Read/Update own | Read | Read | — |
 | Quotes | CRUD | CRUD | Read | Read | Read | — |
 | Activities | CRUD | CRUD | Create/Read/Update own | Read | Read | — |
+| Articles | CRUD | Read | Read | Read | CRUD | — |
 | Reporting | Read | Read | Create (own work orders) | Read | Read | Cross-tenant |
 | Dashboarding | Configure | View | View (own) | View | View | Cross-tenant |
 | Billing/Facturatie | Read | — | — | CRUD | CRUD | Platform billing only |
