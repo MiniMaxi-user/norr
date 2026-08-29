@@ -1,6 +1,6 @@
 ---
 name: api-backend-engineer
-description: Use for Next.js server actions, route handlers, and business logic for FSM modules (Clients, Assets, Contracts, Planning, Reporting). Use PROACTIVELY when a module needs backend logic beyond simple CRUD.
+description: Use for Next.js server actions, route handlers, and business logic for FSM modules (Clients, Assets, Contracts, Work Orders, Quotes, Activities, and future modules like Reporting/Invoicing). Use PROACTIVELY when a module needs backend logic beyond simple CRUD.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---

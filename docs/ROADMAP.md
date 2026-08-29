@@ -47,7 +47,7 @@ Phasing decided pragmatically: get multi-tenant auth, RBAC, and the premium app 
 - **IoT / remote monitoring** — long-range vision item, not yet scheduled; named here so it isn't forgotten, not because it's near-term
 
 ## GitHub setup
-- Two repos: main app + separate `design-system` repo
+- One repo: `@yourorg/ui` lives in-repo at `packages/ui` as an npm workspace package, not a separate repo — see `docs/ARCHITECTURE.md`'s "Design system consumption"
 - Project board columns: **Backlog → Ready → In Progress → In Review → Done**
 - Labels: `phase:0..5`, `module:clients|assets|contacts|contracts|planning|work-orders|checklists|time-tracking|quotes|invoicing|reporting|dashboard|customer-portal|notifications|preventive-maintenance|inventory|integrations|multi-location|knowledge-base`, `role:admin|owner|planner|engineer|finance|administratie`
 - One issue per feature slice, sized to fit a single subagent task — don't create issues bigger than "one agent, one PR". This matters more now that the module list is bigger, not less: the width of the vision lives in this roadmap and the project board's Backlog, never in one oversized PR.
