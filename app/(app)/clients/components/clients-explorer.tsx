@@ -5,8 +5,8 @@ import { Breadcrumbs, Button, Card, EmptyState, Heading, Input, Select, Stack, T
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
-import type { ClientRecord, SiteRecord } from "./actions";
-import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "./kanban";
+import type { ClientRecord, SiteRecord } from "../actions";
+import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "../kanban";
 import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";

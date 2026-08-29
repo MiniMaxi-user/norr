@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Avatar, Badge, Button, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { MapPin, Phone } from "@yourorg/ui/icons";
-import type { ClientRecord, SiteRecord } from "./actions";
+import type { ClientRecord, SiteRecord } from "../actions";
 
 /**
  * Plain data table for a list of clients — used both by the List view

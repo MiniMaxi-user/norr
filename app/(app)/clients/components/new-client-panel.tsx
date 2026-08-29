@@ -7,11 +7,11 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, FormGrid, FormSection, Heading, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import { BarChart3, Building2, CreditCard, FileText, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import { createClient, createSite } from "./actions";
+import { createClient, createSite } from "../actions";
 import { FormField } from "./form-field";
-import { CLIENT_STATUS_OPTIONS } from "./kanban";
-import { clientCreateSchema, siteBaseSchema } from "./schema";
-import { useEscapeToClose } from "./use-escape-to-close";
+import { CLIENT_STATUS_OPTIONS } from "../kanban";
+import { clientCreateSchema, siteBaseSchema } from "../schema";
+import { useEscapeToClose } from "../use-escape-to-close";
 
 /** Only the address-shaped subset of `siteBaseSchema` this panel actually
  * collects — no `clientId` (the new client doesn't exist yet at validation

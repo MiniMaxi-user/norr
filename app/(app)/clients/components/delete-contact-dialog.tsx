@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
-import { deleteContact, type ContactRecord } from "./contacts-actions";
+import { deleteContact, type ContactRecord } from "../contacts-actions";
 
 /**
  * Delete confirmation for a contact. Unlike `DeleteClientDialog`/

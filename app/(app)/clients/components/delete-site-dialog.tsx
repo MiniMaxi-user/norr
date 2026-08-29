@@ -4,9 +4,9 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
 import { listAssets } from "@/app/(app)/assets/actions";
-import { deleteSite, type SiteRecord } from "./actions";
-import { formatSiteAddress } from "./format-site-address";
-import { useEscapeToClose } from "./use-escape-to-close";
+import { deleteSite, type SiteRecord } from "../actions";
+import { formatSiteAddress } from "../format-site-address";
+import { useEscapeToClose } from "../use-escape-to-close";
 
 /**
  * Delete confirmation for a site. `./actions.ts` (`deleteSite`'s doc

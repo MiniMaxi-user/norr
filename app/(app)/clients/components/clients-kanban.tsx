@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { Avatar, Badge, Board, Button, Inline, Select, Stack, Text, type BadgeVariant } from "@yourorg/ui";
 import { MapPin } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import { updateClient, type ClientRecord, type SiteRecord } from "./actions";
-import { CLIENT_STATUS_OPTIONS, formatPotentialValue, groupClientsForKanban, type ClientStatus } from "./kanban";
+import { updateClient, type ClientRecord, type SiteRecord } from "../actions";
+import { CLIENT_STATUS_OPTIONS, formatPotentialValue, groupClientsForKanban, type ClientStatus } from "../kanban";
 
 /** Status badge color per column — mirrors the same accent grouping
  * `kanban.ts`'s `COLUMN_DEFINITIONS` already uses for each column's top

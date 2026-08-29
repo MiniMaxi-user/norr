@@ -6,9 +6,9 @@ import { Boxes } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
-import { DeleteSiteDialog } from "../delete-site-dialog";
+import { DeleteSiteDialog } from "../components/delete-site-dialog";
 import { formatSiteAddressShort } from "../format-site-address";
-import { SiteFormDialog } from "../site-form-dialog";
+import { SiteFormDialog } from "../components/site-form-dialog";
 
 export interface SitesPanelProps {
   clientId: string;

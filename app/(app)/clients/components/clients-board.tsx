@@ -2,7 +2,7 @@ import { Text } from "@yourorg/ui";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
-import { listClients, listSites, type ClientRecord, type SiteRecord } from "./actions";
+import { listClients, listSites, type ClientRecord, type SiteRecord } from "../actions";
 import { ClientsExplorer, type ClientsView } from "./clients-explorer";
 
 export const CLIENTS_PAGE_SIZE = 25;

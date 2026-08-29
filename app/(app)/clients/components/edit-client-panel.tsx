@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, FormGrid, FormSection, Heading, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import { BarChart3, CreditCard, FileText, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import { updateClient, type ClientRecord } from "./actions";
+import { updateClient, type ClientRecord } from "../actions";
 import { FormField } from "./form-field";
-import { CLIENT_STATUS_OPTIONS } from "./kanban";
-import { useEscapeToClose } from "./use-escape-to-close";
+import { CLIENT_STATUS_OPTIONS } from "../kanban";
+import { useEscapeToClose } from "../use-escape-to-close";
 
 interface EditClientFormState {
   error?: string;

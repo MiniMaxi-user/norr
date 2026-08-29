@@ -5,8 +5,8 @@ import { Avatar, Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@
 import { Users } from "@yourorg/ui/icons";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { ContactFormDialog } from "../contact-form-dialog";
-import { DeleteContactDialog } from "../delete-contact-dialog";
+import { ContactFormDialog } from "../components/contact-form-dialog";
+import { DeleteContactDialog } from "../components/delete-contact-dialog";
 
 export interface ContactsPanelProps {
   clientId: string;

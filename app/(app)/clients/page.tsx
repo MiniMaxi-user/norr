@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { requireSession } from "@/lib/auth/session";
 import type { PermissionActor } from "@/lib/rbac/permissions";
-import { ClientsBoard } from "./clients-board";
-import { ClientsSkeleton } from "./clients-skeleton";
+import { ClientsBoard } from "./components/clients-board";
+import { ClientsSkeleton } from "./components/clients-skeleton";
 
 /**
  * Clients module — list/kanban entry point (issue #8). This module's
