@@ -20,9 +20,14 @@ export interface WorkOrdersTableProps {
 /**
  * List view table for Work Orders — same shape as
  * `app/(app)/assets/components/assets-table.tsx`: client-side search over
- * the current page, row click navigates to the detail page, row-level Edit
- * navigates to a real page (`/work-orders/[id]/edit`, docs/ARCHITECTURE.md
- * "Popup vs. full page"), Delete stays a lightweight confirm `Dialog`.
+ * the current page, row click navigates to the detail page, Delete stays a
+ * lightweight confirm `Dialog`.
+ *
+ * Row-level "Edit" navigates to that same detail page (issue #89 deleted the
+ * separate `/work-orders/[id]/edit` route — editing is now inline there) —
+ * functionally identical to clicking the row itself, kept as an explicit
+ * affordance in the Actions column for discoverability/parity with Delete
+ * sitting right next to it, same as before.
  */
 export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdit, canDelete }: WorkOrdersTableProps) {
   const router = useRouter();
@@ -100,7 +105,7 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => router.push(`/work-orders/${workOrder.id}/edit`)}
+                          onClick={() => router.push(`/work-orders/${workOrder.id}`)}
                         >
                           Edit
                         </Button>

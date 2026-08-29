@@ -1,16 +1,12 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Breadcrumbs, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
+import { Badge, Breadcrumbs, DetailLayout, Heading, Stack, Toolbar } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getWorkOrder } from "../actions";
-import { getClient } from "@/app/(app)/clients/actions";
-import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
-import { memberDisplayName } from "@/lib/members/format";
 import { listTimeEntries } from "../time-entries-actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
@@ -18,23 +14,13 @@ import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { WorkOrderDetailActions } from "./work-order-detail-actions";
 import { TimeEntriesPanel } from "./time-entries-panel";
 import { ChecklistPanel } from "./checklist-panel";
-import { formatDateTime } from "@/lib/format/date";
+import { WorkOrderFields } from "../components/work-order-fields";
 
 export const metadata = { title: "Work order details" };
 
 interface WorkOrderDetailPageProps {
   params: Promise<{ id: string }>;
 }
-
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Stack gap="xs">
-      <Text tone="muted">{label}</Text>
-      <Text>{value}</Text>
-    </Stack>
-  );
-}
-
 
 /**
  * Work order detail page — same visual weight as the Client/Asset detail
@@ -44,15 +30,35 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
  * #14) needs its own tab — each is a single always-visible Card section
  * (`TimeEntriesPanel`, `ChecklistPanel`) that reads better than a two-tab
  * `Tabs`, same reasoning `ContractAssetsPanel` documents for Contracts'
- * Linked Assets. Its *parents* (Client/Site/Asset/Contract) are surfaced as
- * `DetailRow`s in their own "Site, asset & contract" `Card` (issue #87,
- * revisited for "op de werkorder worden duidelijk de site en asset en
- * contract details getoond") — Client/Asset/Contract each link out to their
- * own detail page; Site does not, since (unlike Client/Asset/Contract) it has
- * no standalone detail route to link to — its formatted address is already
- * the clearest available representation. Photo/e-signature capture on the
- * checklist remains out of scope per the checklists migration's own design
- * notes (a documented follow-up, not an oversight).
+ * Linked Assets.
+ *
+ * *** Issue #89 ("New/Edit work order screens aligned") *** folded the
+ * standalone `/work-orders/[id]/edit` page into this one — there is no
+ * separate edit route left at all. The work order's own fields (Job /
+ * Assignment & Schedule / Status & Priority, including its
+ * Client/Site/Asset/Contract parents, previously a read-only "Site, asset &
+ * contract" `DetailRow` `Card` here) are now `WorkOrderFields` itself,
+ * rendered inline via `@yourorg/ui`'s `DetailLayout` — its fixed 340px rail
+ * (this page's narrower column) holds those fields, its flexible main
+ * column (the wider remaining space) holds Time Entries + Checklist, which
+ * need the width for their own tables far more than the fields do. This is
+ * also why the split runs "fields | content" rather than
+ * `ClientDetail`'s "content | fields" — `DetailLayout`'s rail/main slots are
+ * generic, and a Table-heavy section belongs in the flexible one regardless
+ * of which side of the page it lands on.
+ *
+ * `WorkOrderFields`' own `readOnly` prop is exactly `!canEdit` below — a
+ * `finance`/`administratie` viewer (plain `read`) still lands on this same
+ * page, just with every field rendered as plain text instead of a form
+ * (never a 404, never a disabled-but-technically-interactive input RLS would
+ * just reject). Keyed by `workOrder.updated_at` so a successful inline save
+ * (which does not navigate anywhere — see that component's own doc comment)
+ * remounts it with the freshly saved values instead of leaving stale
+ * uncontrolled-field state behind.
+ *
+ * Photo/e-signature capture on the checklist remains out of scope per the
+ * checklists migration's own design notes (a documented follow-up, not an
+ * oversight).
  */
 export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPageProps) {
   const { id } = await params;
@@ -79,6 +85,14 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canAccessChecklists = checklistsEnabled && canAccessModule(actor, "checklists");
   const canAttachChecklist = canAccessChecklists && can(actor, "checklists", "create");
 
+  // Computed ahead of the fetches below (rather than alongside the other
+  // permission booleans further down) so `canEdit` can gate which of the
+  // interactive-form-only lists (clients/statuses/priorities) are actually
+  // worth fetching — a `finance`/`administratie` viewer (`readOnly` per
+  // `WorkOrderFields` below) never renders a single picker, so there is
+  // nothing for those lists to populate.
+  const canEdit = canAny(actor, "planning", ["update", "update_own"]);
+
   const [
     clientResult,
     assetResult,
@@ -87,6 +101,9 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     timeEntryTypesResult,
     checklistResult,
     checklistTemplatesResult,
+    clientsResult,
+    statusesResult,
+    prioritiesResult,
   ] = await Promise.all([
     getClient(workOrder.client_id),
     workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
@@ -98,6 +115,13 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     // only owner/planner ever see that affordance — skip the round trip
     // entirely for every other role.
     canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
+    // Client/Site/Asset/Contract pickers and the Status/Priority pickers
+    // (`WorkOrderFields`, editable branch only) — skipped for a read-only
+    // viewer, same "don't fetch what can't render" reasoning as
+    // `checklistTemplatesResult` above.
+    canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
+    canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
+    canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -110,8 +134,10 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const checklist = checklistResult?.data?.checklist ?? null;
   const checklistItems = checklistResult?.data?.items ?? [];
   const checklistTemplates = checklistTemplatesResult?.data?.templates ?? [];
+  const clients = clientsResult?.data?.clients ?? [];
+  const statuses = statusesResult?.data?.items ?? [];
+  const priorities = prioritiesResult?.data?.items ?? [];
 
-  const canEdit = canAny(actor, "planning", ["update", "update_own"]);
   const canDelete = can(actor, "planning", "delete");
   // Time Entries (issue #15) share the `planning` module's own actions —
   // see time-entries-panel.tsx's module comment for why `canDelete` above is
@@ -155,79 +181,60 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
           </Stack>
         </Toolbar.Section>
         <Toolbar.Section align="end">
-          <WorkOrderDetailActions workOrder={workOrder} canEdit={canEdit} canDelete={canDelete} />
+          <WorkOrderDetailActions workOrder={workOrder} canDelete={canDelete} />
         </Toolbar.Section>
       </Toolbar>
 
-      <Card>
-        <Stack gap="md">
-          <Heading level={4}>Site, asset & contract</Heading>
-          <DetailRow
-            label="Client"
-            value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
+      <DetailLayout
+        rail={
+          <WorkOrderFields
+            key={workOrder.updated_at}
+            mode="edit"
+            workOrder={workOrder}
+            readOnly={!canEdit}
+            client={client}
+            site={site}
+            asset={asset}
+            assignedMember={assignedMember}
+            clients={clients}
+            statuses={statuses}
+            priorities={priorities}
+            members={members}
+            dense
           />
-          {/* Site has no detail page of its own to link to (unlike
-              Client/Asset/Contract below) — a client's Sites live entirely
-              on the client detail page's own Sites tab, with no standalone
-              route. Shown as its formatted address, which is already the
-              clearest available representation. */}
-          <DetailRow label="Site" value={site ? formatSiteAddressShort(site) ?? "—" : "—"} />
-          <DetailRow
-            label="Asset"
-            value={asset ? <Link href={`/assets/${asset.id}`}>{asset.name}</Link> : "—"}
+        }
+      >
+        <Stack gap="lg">
+          <TimeEntriesPanel
+            workOrderId={workOrder.id}
+            timeEntries={timeEntries}
+            members={members}
+            entryTypes={timeEntryTypes}
+            assignedTo={workOrder.assigned_to}
+            currentUserId={session.userId}
+            canLogTime={canLogTime}
+            canLogTimeForOthers={canLogTimeForOthers}
+            canUpdateAny={canUpdateTimeEntriesAny}
+            canUpdateOwn={canUpdateTimeEntriesOwn}
+            canDelete={canDelete}
           />
-          <DetailRow
-            label="Contract"
-            value={
-              workOrder.contract ? (
-                <Link href={`/contracts/${workOrder.contract.id}`}>{workOrder.contract.name}</Link>
-              ) : (
-                "—"
-              )
-            }
-          />
+
+          {canAccessChecklists && (
+            <ChecklistPanel
+              workOrderId={workOrder.id}
+              checklist={checklist}
+              items={checklistItems}
+              templates={checklistTemplates}
+              members={members}
+              currentUserId={session.userId}
+              canAttach={canAttachChecklist}
+              canDetach={canDetachChecklist}
+              canUpdateAny={canUpdateChecklistAny}
+              canUpdateOwn={canUpdateChecklistOwn}
+            />
+          )}
         </Stack>
-      </Card>
-
-      <Card>
-        <Stack gap="md">
-          <Heading level={4}>Schedule & notes</Heading>
-          <DetailRow label="Assigned to" value={memberDisplayName(assignedMember)} />
-          <DetailRow label="Scheduled for" value={formatDateTime(workOrder.scheduled_at, { month: "long" })} />
-          <DetailRow label="Completed at" value={formatDateTime(workOrder.completed_at, { month: "long" })} />
-          <DetailRow label="Description" value={workOrder.description ?? "—"} />
-          <DetailRow label="Notes" value={workOrder.notes ?? "—"} />
-        </Stack>
-      </Card>
-
-      <TimeEntriesPanel
-        workOrderId={workOrder.id}
-        timeEntries={timeEntries}
-        members={members}
-        entryTypes={timeEntryTypes}
-        assignedTo={workOrder.assigned_to}
-        currentUserId={session.userId}
-        canLogTime={canLogTime}
-        canLogTimeForOthers={canLogTimeForOthers}
-        canUpdateAny={canUpdateTimeEntriesAny}
-        canUpdateOwn={canUpdateTimeEntriesOwn}
-        canDelete={canDelete}
-      />
-
-      {canAccessChecklists && (
-        <ChecklistPanel
-          workOrderId={workOrder.id}
-          checklist={checklist}
-          items={checklistItems}
-          templates={checklistTemplates}
-          members={members}
-          currentUserId={session.userId}
-          canAttach={canAttachChecklist}
-          canDetach={canDetachChecklist}
-          canUpdateAny={canUpdateChecklistAny}
-          canUpdateOwn={canUpdateChecklistOwn}
-        />
-      )}
+      </DetailLayout>
     </Stack>
   );
 }

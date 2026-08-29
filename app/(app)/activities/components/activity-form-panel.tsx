@@ -340,7 +340,7 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
     setSelectedClientId(nextClientId);
     // A new client invalidates any previously selected asset/contact — same
     // "discard the now-stale child selection" reasoning as
-    // `WorkOrderForm.handleClientChange`.
+    // `WorkOrderFields.handleClientChange`.
     setSelectedAssetId("");
     setSelectedContactPersonId("");
   }

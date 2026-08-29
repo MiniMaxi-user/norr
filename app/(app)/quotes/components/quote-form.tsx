@@ -23,7 +23,7 @@ export interface QuoteFormProps {
    * Pre-scopes the quote to a single client and hides the client selector
    * entirely — used when this form is opened in a client-scoped context
    * (`/quotes/new?clientId=...`), where the client is already implied and
-   * re-picking it makes no sense. Mirrors `ContractForm`/`WorkOrderForm`'s
+   * re-picking it makes no sense. Mirrors `ContractForm`/`WorkOrderFields`'s
    * `lockedClientId`.
    */
   lockedClientId?: string;

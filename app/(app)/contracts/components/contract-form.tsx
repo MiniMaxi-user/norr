@@ -42,7 +42,7 @@ export interface ContractFormProps {
    * entirely — used when this form is opened in a client-scoped context (a
    * future Client detail page "New contract" action, via
    * `/contracts/new?clientId=...`), where the client is already implied and
-   * re-picking it makes no sense. Mirrors `AssetForm`/`WorkOrderForm`'s
+   * re-picking it makes no sense. Mirrors `AssetForm`/`WorkOrderFields`'s
    * `lockedClientId`.
    */
   lockedClientId?: string;

@@ -7,7 +7,7 @@ import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getActivity } from "@/app/(app)/activities/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
-import { WorkOrderForm } from "../components/work-order-form";
+import { WorkOrderFields } from "../components/work-order-fields";
 
 export const metadata = { title: "New work order" };
 
@@ -27,15 +27,27 @@ interface NewWorkOrderPageProps {
  * `?activityId=...` (issue #87, the Activity quick-view's "Create work
  * order" action) is a hidden traceability field, not a picker — it's
  * validated to exist here (same shape as `clientId`'s `lockedClientResult`
- * check below) and threaded straight through as `WorkOrderForm`'s
+ * check below) and threaded straight through as `WorkOrderFields`'s
  * `sourceActivityId` prop, which renders it as a plain hidden input
  * (`workOrderCreateSchema.sourceActivityId`). CREATE-only by design (an
- * existing work order's originating activity isn't meant to be reassigned) —
- * `/work-orders/[id]/edit` has no equivalent query param.
+ * existing work order's originating activity isn't meant to be reassigned).
  *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
  * an engineer never sees this route resolve at all.
+ *
+ * Issue #89 ("New/Edit work order screens aligned") deleted the separate
+ * `/work-orders/[id]/edit` route entirely — an existing work order's fields
+ * are now inline-editable directly on its own detail page
+ * (`[id]/page.tsx`). This route stays (creation genuinely needs a "no id
+ * yet" step `updateWorkOrderFormAction` can't express), rendering the exact
+ * same `WorkOrderFields` component that page's rail uses, just without
+ * `dense` (this page has the full width to itself, so naturally-paired
+ * fields sit side by side via `FormGrid` — see that component's own doc
+ * comment) and without a Time Entries/Checklist section (both are
+ * sub-resources of an already-`work_order_id`-having record, which doesn't
+ * exist yet here — an inherent, acceptable difference, not a layout
+ * mismatch).
  */
 export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPageProps) {
   const { clientId, siteId, assetId, activityId } = await searchParams;
@@ -82,7 +94,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
     <Stack gap="lg">
       <Breadcrumbs items={breadcrumbItems} />
       <Heading level={1}>New work order</Heading>
-      <WorkOrderForm
+      <WorkOrderFields
         mode="create"
         clients={clients}
         lockedClientId={lockedClient?.id}
