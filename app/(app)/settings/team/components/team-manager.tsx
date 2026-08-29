@@ -46,6 +46,10 @@ export interface TeamManagerProps {
    * owner` RLS means `listTeamMembers` already comes back with an empty
    * `pendingInvites` for them). */
   canWrite: boolean;
+  /** `session.userId` (issue #91) — identifies the caller's own row so it can
+   * be rendered protected (role locked, no Remove) below, matching the
+   * server-side self-change guards in `lib/team/actions.ts`. */
+  currentUserId: string;
 }
 
 interface RevealedLink {
@@ -72,8 +76,24 @@ interface RevealedLink {
  * this establishes the pattern for this screen; reverting the `<select>`'s
  * displayed value on failure falls out for free since it's controlled by
  * `members` state, which is only updated on a *successful* change.
+ *
+ * Issue #91: the caller's own row (`currentUserId`) always renders its role
+ * as a plain `Badge` (never a `<Select>`) and never shows "Remove" — an
+ * owner shouldn't be able to lock themselves out of their own org from this
+ * panel. Same treatment for whichever row `isPlatformAdmin`, regardless of
+ * who's viewing: that account's role/membership is protected from every
+ * owner, not just itself. Both mirror real guards in
+ * `lib/team/actions.ts` (`updateTeamMemberRole`/`removeTeamMember`) — this is
+ * just keeping the UI from offering a control that would only fail
+ * server-side.
  */
-export function TeamManager({ members: initialMembers, pendingInvites: initialPendingInvites, loadError, canWrite }: TeamManagerProps) {
+export function TeamManager({
+  members: initialMembers,
+  pendingInvites: initialPendingInvites,
+  loadError,
+  canWrite,
+  currentUserId,
+}: TeamManagerProps) {
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -168,17 +188,26 @@ export function TeamManager({ members: initialMembers, pendingInvites: initialPe
             {members.map((member) => {
               const isPending = pendingId === member.userId;
               const rowError = rowErrors[member.userId];
+              // Issue #91: an owner can't change their own role or remove
+              // themselves from this panel (mirrors the server-side guards in
+              // `lib/team/actions.ts` — this just keeps the UI from offering
+              // a control that would only fail), and the cross-tenant
+              // Platform Admin's role/membership is protected from EVERY
+              // owner, not just themselves.
+              const isSelf = member.userId === currentUserId;
+              const roleLocked = isSelf || member.isPlatformAdmin;
               return (
                 <Table.Row key={member.userId}>
                   <Table.Cell>
                     <Inline gap="sm" align="center">
                       <Avatar name={member.fullName || member.email} size="sm" photoUrl={member.avatarUrl} />
                       {member.fullName ? <Text>{member.fullName}</Text> : <Text tone="muted">No name set</Text>}
+                      {isSelf && <Badge variant="muted">You</Badge>}
                     </Inline>
                   </Table.Cell>
                   <Table.Cell>{member.email}</Table.Cell>
                   <Table.Cell>
-                    {canWrite ? (
+                    {canWrite && !roleLocked ? (
                       <Select
                         aria-label={`Role for ${member.fullName || member.email}`}
                         value={member.role}
@@ -206,9 +235,11 @@ export function TeamManager({ members: initialMembers, pendingInvites: initialPe
                           <Button variant="outline" size="sm" onClick={() => handleResetPassword(member)} disabled={isPending}>
                             {isPending ? "Working…" : "Reset password"}
                           </Button>
-                          <Button variant="danger" size="sm" onClick={() => setRemoveTarget(member)} disabled={isPending}>
-                            Remove
-                          </Button>
+                          {!isSelf && !member.isPlatformAdmin && (
+                            <Button variant="danger" size="sm" onClick={() => setRemoveTarget(member)} disabled={isPending}>
+                              Remove
+                            </Button>
+                          )}
                         </Inline>
                         {rowError && <Text tone="danger">{rowError}</Text>}
                       </Stack>

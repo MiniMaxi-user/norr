@@ -49,7 +49,7 @@ export default async function TeamPage() {
       </Stack>
 
       <Suspense fallback={<TeamSkeleton />}>
-        <TeamBoard canWrite={canWrite} />
+        <TeamBoard canWrite={canWrite} currentUserId={session.userId} />
       </Suspense>
     </Stack>
   );

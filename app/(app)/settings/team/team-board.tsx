@@ -13,7 +13,7 @@ import { TeamManager } from "./components/team-manager";
  * `TeamManager` with whatever it got (empty arrays) plus the error message,
  * instead of crashing the whole route.
  */
-export async function TeamBoard({ canWrite }: { canWrite: boolean }) {
+export async function TeamBoard({ canWrite, currentUserId }: { canWrite: boolean; currentUserId: string }) {
   const result = await listTeamMembers();
 
   return (
@@ -22,6 +22,7 @@ export async function TeamBoard({ canWrite }: { canWrite: boolean }) {
       pendingInvites={result.data?.pendingInvites ?? []}
       loadError={result.error}
       canWrite={canWrite}
+      currentUserId={currentUserId}
     />
   );
 }

@@ -96,6 +96,11 @@ export interface TeamMemberRecord {
   role: TenantRole;
   avatarUrl: string | null;
   createdAt: string;
+  /** `users.is_platform_admin` (issue #91) — this member is the cross-tenant
+   * Platform Admin, not just a regular owner of this org. Protected in the
+   * Team UI/actions below regardless of who's viewing: never removable, role
+   * always stays `owner`. */
+  isPlatformAdmin: boolean;
 }
 
 export interface PendingTeamInviteRecord {
@@ -119,6 +124,7 @@ interface MembershipWithUserRow {
     full_name: string | null;
     avatar_path: string | null;
     avatar_updated_at: string | null;
+    is_platform_admin: boolean;
   } | null;
 }
 
@@ -152,7 +158,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
   const [membershipsResult, invitesResult] = await Promise.all([
     supabase
       .from("memberships")
-      .select("created_at, role, user:users(id, email, full_name, avatar_path, avatar_updated_at)")
+      .select("created_at, role, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)")
       .order("created_at", { ascending: true }),
     supabase
       .from("invites")
@@ -176,6 +182,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       role: row.role,
       avatarUrl: getAvatarUrl(row.user.avatar_path, row.user.avatar_updated_at),
       createdAt: row.created_at,
+      isPlatformAdmin: row.user.is_platform_admin,
     }));
 
   const pendingInvites = ((invitesResult.data ?? []) as InviteRow[]).map((row) => ({
@@ -293,6 +300,15 @@ export interface UpdateTeamMemberRoleResult {
  *
  * Rejects the change if the target is currently the org's SOLE `owner` and
  * the new role isn't `owner` — an org must always retain at least one owner.
+ *
+ * Also rejects (issue #91) an owner changing THEIR OWN role via this panel —
+ * `removeTeamMember` already had an equivalent self-check (see this file's
+ * header comment), but role-change had no such guard: with 2+ owners, the
+ * "sole owner" check above never fires, so an owner could otherwise
+ * self-demote out of the role they need to keep managing the team at all.
+ * And rejects changing the cross-tenant Platform Admin's role away from
+ * `owner` at all, regardless of who's asking — that account needs guaranteed
+ * `owner`-level access to every org, not just this one.
  */
 export async function updateTeamMemberRole(
   userId: string,
@@ -306,23 +322,31 @@ export async function updateTeamMemberRole(
 
   const ctx = await requireModuleContext("settings");
   if (!ctx.ok) return fail(ctx.error);
-  const { actor, organizationId } = ctx.context;
+  const { session, actor, organizationId } = ctx.context;
 
   if (!can(actor, "settings", "update")) {
     return fail("Only the organization owner can change a teammate's role.");
+  }
+
+  if (idResult.data === session.userId) {
+    return fail("You can't change your own role from this panel.");
   }
 
   const supabase = await createSupabaseServerClient();
 
   const { data: target, error: targetError } = await supabase
     .from("memberships")
-    .select("id, role")
+    .select("id, role, user:users(is_platform_admin)")
     .eq("organization_id", organizationId)
     .eq("user_id", idResult.data)
-    .maybeSingle();
+    .maybeSingle<{ id: string; role: TenantRole; user: { is_platform_admin: boolean } | null }>();
 
   if (targetError) return fail(mapDbError(targetError));
   if (!target) return fail("This person is not a member of your organization.");
+
+  if (target.user?.is_platform_admin && role !== "owner") {
+    return fail("The platform admin's role can't be changed.");
+  }
 
   if (target.role === "owner" && role !== "owner") {
     const { count, error: ownerCountError } = await supabase
@@ -489,9 +513,11 @@ export async function resetTeamMemberPassword(
  * own org (see this file's header comment) — but still re-verifies the
  * target is a member of the caller's own org first.
  *
- * Rejects two cases: removing yourself (self-removal from your own org via
+ * Rejects three cases: removing yourself (self-removal from your own org via
  * this admin panel is out of scope/dangerous — no such flow exists elsewhere
- * in the app either), and removing the org's sole remaining `owner`.
+ * in the app either), removing the org's sole remaining `owner`, and removing
+ * the cross-tenant Platform Admin (issue #91) — that account must never lose
+ * access to any org, regardless of who's asking.
  */
 export async function removeTeamMember(userId: string): Promise<ActionResult<{ removed: true }>> {
   const idResult = uuidSchema.safeParse(userId);
@@ -513,13 +539,17 @@ export async function removeTeamMember(userId: string): Promise<ActionResult<{ r
 
   const { data: target, error: targetError } = await supabase
     .from("memberships")
-    .select("id, role")
+    .select("id, role, user:users(is_platform_admin)")
     .eq("organization_id", organizationId)
     .eq("user_id", idResult.data)
-    .maybeSingle();
+    .maybeSingle<{ id: string; role: TenantRole; user: { is_platform_admin: boolean } | null }>();
 
   if (targetError) return fail(mapDbError(targetError));
   if (!target) return fail("This person is not a member of your organization.");
+
+  if (target.user?.is_platform_admin) {
+    return fail("The platform admin can't be removed.");
+  }
 
   if (target.role === "owner") {
     const { count, error: ownerCountError } = await supabase
