@@ -40,8 +40,10 @@ import { contactCreateSchema, contactUpdateSchema } from "./schema";
  *    as a `23505` (unique_violation) from that index — `mapContactDbError`
  *    below maps that to a clean, retry-suggesting message instead of the
  *    generic fallback `mapDbError` would give it (raw Postgres text), since
- *    `mapDbError` itself has no `23505` case (nothing else in this codebase
- *    hits that code yet).
+ *    `mapDbError` itself has no `23505` case. `sites` has the identical
+ *    shape for its own `is_primary` (see `mapSiteDbError` in `./actions.ts`)
+ *    — the two are kept as separate module-local mappers, not merged into
+ *    `mapDbError` itself, since the user-facing wording differs per entity.
  */
 
 export interface ContactRecord {

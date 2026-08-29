@@ -280,6 +280,21 @@ function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; 
   return row;
 }
 
+/** Maps a DB error from a `sites` write to a clean, user-safe message.
+ * Adds the `23505` (unique_violation) case on top of the shared `mapDbError`
+ * — same reasoning and shape as `contacts-actions.ts`'s `mapContactDbError`:
+ * at most one `is_primary = true` per client is enforced by the DB
+ * (`enforce_single_primary_site`, backstopped by the partial unique index
+ * `sites_one_primary_per_client_idx`), and a genuine race between two
+ * concurrent "set as primary" calls for the same client can surface as a
+ * `23505` here too, which `mapDbError` itself has no case for. */
+function mapSiteDbError(error: { code?: string; message: string }): string {
+  if (error.code === "23505") {
+    return "Another site was just set as the primary address for this client. Please try again.";
+  }
+  return mapDbError(error);
+}
+
 // ---------------------------------------------------------------------------
 // Clients
 // ---------------------------------------------------------------------------
@@ -707,7 +722,7 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
     .select("*")
     .single();
 
-  if (error) return fail(mapDbError(error));
+  if (error) return fail(mapSiteDbError(error));
   return ok({ site: data as SiteRecord });
 }
 
@@ -884,7 +899,7 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
     .select("*")
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  if (error) return fail(mapSiteDbError(error));
   if (!data) return fail("Site not found, or you do not have permission to update it.");
   return ok({ site: data as SiteRecord });
 }
