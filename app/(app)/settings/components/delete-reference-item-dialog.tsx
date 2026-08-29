@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteReferenceItem, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 export interface DeleteReferenceItemDialogProps {
@@ -21,46 +20,20 @@ export interface DeleteReferenceItemDialogProps {
  */
 export function DeleteReferenceItemDialog({ open, onOpenChange, item }: DeleteReferenceItemDialogProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, startDeleting] = useTransition();
-
-  function handleDelete() {
-    if (!item) return;
-    const id = item.id;
-    startDeleting(async () => {
-      const result = await deleteReferenceItem(id);
-      if (result.error || !result.data) {
-        setError(result.error ?? "Could not delete this value.");
-        return;
-      }
-      setError(null);
-      onOpenChange(false);
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete {item?.label ?? "value"}?</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          {error && <Text tone="danger">{error}</Text>}
-          <Text tone="muted">
-            This cannot be undone. If anything still uses this value, deleting it will be rejected — reassign
-            those records first.
-          </Text>
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${item?.label ?? "value"}?`}
+      fallbackMessage="This cannot be undone. If anything still uses this value, deleting it will be rejected — reassign those records first."
+      onConfirm={async () => {
+        if (!item) return { error: "No value selected." };
+        const result = await deleteReferenceItem(item.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete"
+    />
   );
 }

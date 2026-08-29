@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteActivity, type ActivityRecord } from "../actions";
 
 export interface DeleteActivityDialogProps {
@@ -34,48 +33,30 @@ export function DeleteActivityDialog({
   onDeleted,
 }: DeleteActivityDialogProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function confirmDelete() {
-    setError(null);
-    startTransition(async () => {
-      const result = await deleteActivity(activity.id);
-      if (!result.data) {
-        setError(result.error ?? "Could not delete this activity.");
-        return;
-      }
-      onOpenChange(false);
-      onDeleted?.();
-      if (redirectOnDelete) {
-        router.push("/activities");
-      }
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete activity</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          <Text>
-            Are you sure you want to delete this activity (<strong>{activity.description.slice(0, 80)}</strong>)?
-            This cannot be undone.
-          </Text>
-          {error && <Text tone="danger">{error}</Text>}
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={confirmDelete} disabled={isPending}>
-          {isPending ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Delete activity"
+      fallbackMessage={
+        <>
+          Are you sure you want to delete this activity (<strong>{activity.description.slice(0, 80)}</strong>)? This
+          cannot be undone.
+        </>
+      }
+      onConfirm={async () => {
+        const result = await deleteActivity(activity.id);
+        return { error: !result.data ? (result.error ?? "Could not delete this activity.") : undefined };
+      }}
+      onDeleted={() => {
+        onDeleted?.();
+        if (redirectOnDelete) {
+          router.push("/activities");
+        }
+        router.refresh();
+      }}
+      confirmLabel="Delete"
+    />
   );
 }

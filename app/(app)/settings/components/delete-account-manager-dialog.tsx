@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteAccountManager, type AccountManagerRecord } from "@/lib/account-managers/actions";
 
 export interface DeleteAccountManagerDialogProps {
@@ -20,48 +19,21 @@ export interface DeleteAccountManagerDialogProps {
  */
 export function DeleteAccountManagerDialog({ open, onOpenChange, accountManager }: DeleteAccountManagerDialogProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, startDeleting] = useTransition();
-
-  function handleDelete() {
-    if (!accountManager) return;
-    const id = accountManager.id;
-    startDeleting(async () => {
-      const result = await deleteAccountManager(id);
-      if (result.error || !result.data) {
-        setError(result.error ?? "Could not delete this account manager.");
-        return;
-      }
-      setError(null);
-      onOpenChange(false);
-      router.refresh();
-    });
-  }
-
   const name = accountManager ? `${accountManager.first_name} ${accountManager.last_name}` : "account manager";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete {name}?</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          {error && <Text tone="danger">{error}</Text>}
-          <Text tone="muted">
-            This cannot be undone. Any client currently assigned to this account manager will simply have no
-            account manager afterwards.
-          </Text>
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${name}?`}
+      fallbackMessage="This cannot be undone. Any client currently assigned to this account manager will simply have no account manager afterwards."
+      onConfirm={async () => {
+        if (!accountManager) return { error: "No account manager selected." };
+        const result = await deleteAccountManager(accountManager.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete"
+    />
   );
 }

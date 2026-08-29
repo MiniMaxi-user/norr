@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteAssetModel, type AssetModelRecord } from "@/lib/asset-models/actions";
 
 export interface DeleteAssetModelDialogProps {
@@ -20,43 +19,19 @@ export interface DeleteAssetModelDialogProps {
  */
 export function DeleteAssetModelDialog({ open, onOpenChange, model }: DeleteAssetModelDialogProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, startDeleting] = useTransition();
-
-  function handleDelete() {
-    if (!model) return;
-    const id = model.id;
-    startDeleting(async () => {
-      const result = await deleteAssetModel(id);
-      if (result.error || !result.data) {
-        setError(result.error ?? "Could not delete this model.");
-        return;
-      }
-      setError(null);
-      onOpenChange(false);
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete {model?.name ?? "model"}?</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          {error && <Text tone="danger">{error}</Text>}
-          <Text tone="muted">This cannot be undone.</Text>
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${model?.name ?? "model"}?`}
+      onConfirm={async () => {
+        if (!model) return { error: "No model selected." };
+        const result = await deleteAssetModel(model.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete"
+    />
   );
 }

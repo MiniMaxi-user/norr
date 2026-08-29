@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteQuote, type QuoteRecord } from "../actions";
 
 export interface DeleteQuoteDialogProps {
@@ -22,47 +21,29 @@ export interface DeleteQuoteDialogProps {
  */
 export function DeleteQuoteDialog({ quote, open, onOpenChange, redirectOnDelete }: DeleteQuoteDialogProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function confirmDelete() {
-    setError(null);
-    startTransition(async () => {
-      const result = await deleteQuote(quote.id);
-      if (!result.data) {
-        setError(result.error ?? "Could not delete this quote.");
-        return;
-      }
-      onOpenChange(false);
-      if (redirectOnDelete) {
-        router.push("/quotes");
-      }
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete quote</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          <Text>
-            Are you sure you want to delete <strong>{quote.name}</strong>? This also removes its line items.
-            This cannot be undone.
-          </Text>
-          {error && <Text tone="danger">{error}</Text>}
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={confirmDelete} disabled={isPending}>
-          {isPending ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Delete quote"
+      fallbackMessage={
+        <>
+          Are you sure you want to delete <strong>{quote.name}</strong>? This also removes its line items. This
+          cannot be undone.
+        </>
+      }
+      onConfirm={async () => {
+        const result = await deleteQuote(quote.id);
+        return { error: !result.data ? (result.error ?? "Could not delete this quote.") : undefined };
+      }}
+      onDeleted={() => {
+        if (redirectOnDelete) {
+          router.push("/quotes");
+        }
+        router.refresh();
+      }}
+      confirmLabel="Delete"
+    />
   );
 }

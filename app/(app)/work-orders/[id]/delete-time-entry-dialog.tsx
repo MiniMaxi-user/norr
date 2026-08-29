@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 
 /**
@@ -21,40 +20,18 @@ export function DeleteTimeEntryDialog({
   timeEntry: TimeEntryRecord;
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, startDeleting] = useTransition();
-
-  function handleDelete() {
-    startDeleting(async () => {
-      const result = await deleteTimeEntry(timeEntry.id);
-      if (result.error || !result.data) {
-        setError(result.error ?? "Could not delete this time entry.");
-        return;
-      }
-      onOpenChange(false);
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete time entry?</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          {error && <Text tone="danger">{error}</Text>}
-          <Text tone="muted">This cannot be undone.</Text>
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Delete time entry?"
+      onConfirm={async () => {
+        const result = await deleteTimeEntry(timeEntry.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete"
+    />
   );
 }
