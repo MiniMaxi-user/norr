@@ -2,9 +2,11 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "@yourorg/ui";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels } from "@/lib/asset-models/actions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
+import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { ReferenceListManager } from "../components/reference-list-manager";
 import { AssetModelManager } from "../components/asset-model-manager";
 import { AccountManagerManager } from "../components/account-manager-manager";
+import { ArticleGroupManager } from "../components/article-group-manager";
 
 // This file is a Server Component (`ReferenceListsBoard` is `async`, doing
 // its own data fetch), composing `Tabs` directly — so it MUST use the
@@ -82,6 +84,26 @@ const REFERENCE_LIST_SECTIONS = [
     title: "Quote Status",
     description: "Lifecycle stages a quote moves through — e.g. Draft, Sent, Accepted, Rejected, Expired.",
   },
+  // Articles (issue #92, "Artikel database"): three plain, non-dependent
+  // picklists — `article_unit`/`article_manufacturer`/`vat_rate` — need
+  // nothing beyond an entry here; `ReferenceListManager` already handles the
+  // rest generically. `article_groups` is NOT one of these (it's a dedicated
+  // table, unlimited-depth tree — see `ArticleGroupManager` below instead).
+  {
+    key: "article_unit",
+    title: "Article Unit",
+    description: "Units of measure for an article — e.g. Piece, Meter, Kilogram, Hour, Liter.",
+  },
+  {
+    key: "article_manufacturer",
+    title: "Article Manufacturer",
+    description: "Manufacturer brands used across your article catalog — e.g. Bosch, Grohe, Danfoss.",
+  },
+  {
+    key: "vat_rate",
+    title: "VAT Rate",
+    description: "VAT percentages available on an article — e.g. 0%, 9%, 21%.",
+  },
 ] as const;
 
 /**
@@ -89,8 +111,17 @@ const REFERENCE_LIST_SECTIONS = [
  * `Suspense` boundary by `page.tsx` (docs/ARCHITECTURE.md "route-level
  * streaming") so the page shell (heading, back link) paints immediately.
  */
-export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
-  const [results, assetModelsResult, accountManagersResult] = await Promise.all([
+export async function ReferenceListsBoard({
+  canWrite,
+  canWriteArticleGroups,
+}: {
+  canWrite: boolean;
+  /** Separately gated on the `articles` RBAC module (owner + administratie),
+   * not `settings` (owner-only) — see `page.tsx`'s own comment on why Article
+   * Groups is the one tab on this board that needs its own permission check. */
+  canWriteArticleGroups: boolean;
+}) {
+  const [results, assetModelsResult, accountManagersResult, articleGroupsResult] = await Promise.all([
     Promise.all(REFERENCE_LIST_SECTIONS.map((section) => listReferenceItems(section.key))),
     listAssetModels(),
     // Account Managers (issue #58) — not a `reference_list_items` row (its
@@ -99,6 +130,10 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
     // already documents for itself; fetched alongside the reference-list
     // items and asset models this board already fetches.
     listAccountManagers(),
+    // Article Groups (issue #92) — same "dedicated table, not a
+    // `reference_list_items` row" reasoning as `asset_models`/
+    // `account_managers` above.
+    listArticleGroups(),
   ]);
 
   // Every section's items, keyed by its own `list_key` — looked up below for
@@ -135,6 +170,7 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
         ))}
         <TabsTab value="asset_models">Asset Model</TabsTab>
         <TabsTab value="account_managers">Account Managers</TabsTab>
+        <TabsTab value="article_groups">Article Groups</TabsTab>
       </TabsList>
 
       {REFERENCE_LIST_SECTIONS.map((section, index) => {
@@ -172,6 +208,14 @@ export async function ReferenceListsBoard({ canWrite }: { canWrite: boolean }) {
           accountManagers={accountManagersResult.data?.accountManagers ?? []}
           loadError={accountManagersResult.error}
           canWrite={canWrite}
+        />
+      </TabsPanel>
+
+      <TabsPanel value="article_groups">
+        <ArticleGroupManager
+          groups={articleGroupsResult.data?.groups ?? []}
+          loadError={articleGroupsResult.error}
+          canWrite={canWriteArticleGroups}
         />
       </TabsPanel>
     </Tabs>

@@ -18,6 +18,14 @@ export default async function ReferenceListsPage() {
   if (!canAccessModule(actor, "settings")) notFound();
 
   const canWrite = can(actor, "settings", "create");
+  // Article Groups (issue #92) are gated on the `articles` RBAC module, not
+  // `settings` — `articles` is the FIRST module where `administratie` gets
+  // full CRUD alongside `owner` (see `lib/rbac/permissions.ts`'s comment on
+  // that module), unlike every other tab on this board (all owner-only via
+  // `settings`). Threaded down separately so an `administratie` user sees
+  // working Add/Edit/Delete affordances on the Article Groups tab even
+  // though they're read-only on every other tab here.
+  const canWriteArticleGroups = can(actor, "articles", "create");
 
   return (
     <Stack gap="lg">
@@ -34,7 +42,7 @@ export default async function ReferenceListsPage() {
       </Stack>
 
       <Suspense fallback={<ReferenceListsSkeleton />}>
-        <ReferenceListsBoard canWrite={canWrite} />
+        <ReferenceListsBoard canWrite={canWrite} canWriteArticleGroups={canWriteArticleGroups} />
       </Suspense>
     </Stack>
   );
