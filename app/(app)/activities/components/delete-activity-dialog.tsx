@@ -9,12 +9,12 @@ export interface DeleteActivityDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Navigate back to the overview after a successful delete instead of just
-   * refreshing in place — used from the quick-view dialog / edit page. */
+   * refreshing in place — used from the edit panel / edit page. */
   redirectOnDelete?: boolean;
   /** Called only on a SUCCESSFUL delete, separate from `onOpenChange` (which
    * also fires on plain Cancel) — lets a caller nested inside another dialog
-   * (`ActivityQuickViewDialog`) tell "the record is gone, close me too" apart
-   * from "the user backed out of the confirmation". */
+   * (`ActivityFormPanel`) tell "the record is gone, close me too" apart from
+   * "the user backed out of the confirmation". */
   onDeleted?: () => void;
 }
 

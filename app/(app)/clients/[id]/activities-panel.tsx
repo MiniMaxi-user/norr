@@ -5,7 +5,7 @@ import { Badge, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { Bell } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
-import { ActivityQuickViewDialog } from "@/app/(app)/activities/components/activity-quick-view-dialog";
+import { ActivityFormPanel } from "@/app/(app)/activities/components/activity-form-panel";
 import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
 import { memberDisplayName } from "@/lib/members/format";
 
@@ -15,8 +15,8 @@ export interface ActivitiesPanelProps {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  /** Threaded into `ActivityQuickViewDialog`'s "Create work order" action
-   * (issue #87) — see that component's own doc comment. */
+  /** Threaded into `ActivityFormPanel`'s "Create work order" action (issue
+   * #87) — see that component's own doc comment. */
   canCreateWorkOrder: boolean;
 }
 
@@ -45,11 +45,12 @@ function formatDateTime(value: string): string {
  * full page") to this client via `CreateActivityButton`'s `clientId` prop,
  * same shape as `CreateAssetButton`'s `clientId` prop on the Assets tab.
  *
- * Row click deliberately opens the read-only `ActivityQuickViewDialog`
- * slide-in instead of navigating away from the client page immediately — the
- * AC's explicit "slider popup" request for this exact entry point — with an
- * "Edit" button inside that dialog that opens `ActivityFormPanel` on top of
- * it.
+ * Row click opens `ActivityFormPanel` in `mode: "edit"` directly (issue #90 —
+ * one screen for viewing and editing, no separate read-only quick-view
+ * dialog); it renders read-only when `canEdit` is `false`. This tab has no
+ * row-level Delete button of its own — the panel's own `canDelete`-gated
+ * Delete action (see that component's doc comment) is the only way to
+ * delete an activity from here.
  */
 export function ActivitiesPanel({
   clientId,
@@ -59,7 +60,7 @@ export function ActivitiesPanel({
   canDelete,
   canCreateWorkOrder,
 }: ActivitiesPanelProps) {
-  const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
+  const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
 
   return (
     <Stack gap="md">
@@ -91,7 +92,7 @@ export function ActivitiesPanel({
             {activities.map((activity) => {
               const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
               return (
-                <Table.Row key={activity.id} onClick={() => setViewingActivity(activity)}>
+                <Table.Row key={activity.id} onClick={() => setEditingActivity(activity)}>
                   <Table.Cell>
                     <Inline gap="xs" align="center">
                       <TypeIcon aria-hidden="true" />
@@ -113,15 +114,16 @@ export function ActivitiesPanel({
         </Table>
       )}
 
-      {viewingActivity && (
-        <ActivityQuickViewDialog
-          activity={viewingActivity}
+      {editingActivity && (
+        <ActivityFormPanel
+          mode="edit"
+          activity={editingActivity}
           open
-          onOpenChange={(next) => !next && setViewingActivity(null)}
+          onOpenChange={(next) => !next && setEditingActivity(null)}
           canEdit={canEdit}
           canDelete={canDelete}
           canCreateWorkOrder={canCreateWorkOrder}
-          onDeleted={() => setViewingActivity(null)}
+          onDeleted={() => setEditingActivity(null)}
         />
       )}
     </Stack>

@@ -548,7 +548,7 @@ function SiteFormBody({
                   mirrors the same "Primary" badge `sites-panel.tsx`'s table
                   and the client hero already show once saved — seeing it
                   here as you check the box is the same fact, just earlier. */}
-              <Card className="ui-card-accent">
+              <Card tone="accent">
                 <Inline justify="between" align="center">
                   <Inline gap="sm" align="center">
                     <Checkbox

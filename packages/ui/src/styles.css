@@ -1144,9 +1144,12 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* Whole-card accent-tint modifier — for a card that itself needs to read as
-   "special" (e.g. the platform-admin-only "Platform" rail card), the same
-   `--ui-accent-tint`/`--ui-accent-tint-border` pair small chips elsewhere
-   already use (`.ui-form-section-icon`), applied to an entire `Card`. */
+   "special" (e.g. the platform-admin-only "Platform" rail card, or a single
+   deliberately prominent inline call-to-action like "Create work order" on
+   an Activity panel), the same `--ui-accent-tint`/`--ui-accent-tint-border`
+   pair small chips elsewhere already use (`.ui-form-section-icon`), applied
+   to an entire `Card`. Reached via `<Card tone="accent">` (see `CardProps.tone`
+   doc comment) — never via a raw `className="ui-card-accent"`. */
 .ui-card-accent {
   background: var(--ui-accent-tint);
   border-color: var(--ui-accent-tint-border);

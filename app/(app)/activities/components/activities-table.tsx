@@ -7,14 +7,13 @@ import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
 import { formatDateTime } from "@/lib/format/date";
 import { ActivityFormPanel } from "./activity-form-panel";
-import { ActivityQuickViewDialog } from "./activity-quick-view-dialog";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 
 export interface ActivitiesTableProps {
   activities: ActivityRecord[];
   canEdit: boolean;
   canDelete: boolean;
-  /** Threaded into `ActivityQuickViewDialog` — see that component's own doc
+  /** Threaded into `ActivityFormPanel` — see that component's own doc
    * comment (issue #87). */
   canCreateWorkOrder?: boolean;
 }
@@ -25,14 +24,14 @@ function descriptionSnippet(value: string): string {
 
 /**
  * List view table for Activities — same client-side-search-over-current-page
- * shape as `WorkOrdersTable`/`AssetsTable`. Unlike those, row click opens the
- * read-only `ActivityQuickViewDialog` slide-in (there is no `/activities/[id]`
- * detail page, only the edit panel) rather than navigating away immediately;
- * the row-level Edit action opens `ActivityFormPanel` directly instead.
+ * shape as `WorkOrdersTable`/`AssetsTable`. There is no `/activities/[id]`
+ * detail page — a row click and the row-level Edit action both open the same
+ * `ActivityFormPanel` (`mode: "edit"`), which renders read-only for a caller
+ * without `canEdit` (issue #90 — one screen for viewing and editing, no
+ * separate read-only quick-view dialog).
  */
 export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkOrder }: ActivitiesTableProps) {
   const [query, setQuery] = useState("");
-  const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
   const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<ActivityRecord | null>(null);
 
@@ -81,7 +80,7 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
             {filtered.map((activity) => {
               const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
               return (
-                <Table.Row key={activity.id} onClick={() => setViewingActivity(activity)}>
+                <Table.Row key={activity.id} onClick={() => setEditingActivity(activity)}>
                   <Table.Cell>
                     <Inline gap="xs" align="center">
                       <TypeIcon aria-hidden="true" />
@@ -132,18 +131,6 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
         {filtered.length === 0 && <Text tone="muted">No activities match &ldquo;{query}&rdquo;.</Text>}
       </Stack>
 
-      {viewingActivity && (
-        <ActivityQuickViewDialog
-          activity={viewingActivity}
-          open
-          onOpenChange={(next) => !next && setViewingActivity(null)}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          canCreateWorkOrder={canCreateWorkOrder}
-          onDeleted={() => setViewingActivity(null)}
-        />
-      )}
-
       {deletingActivity && (
         <DeleteActivityDialog
           activity={deletingActivity}
@@ -158,6 +145,10 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
           activity={editingActivity}
           open
           onOpenChange={(next) => !next && setEditingActivity(null)}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          canCreateWorkOrder={canCreateWorkOrder}
+          onDeleted={() => setEditingActivity(null)}
         />
       )}
     </>

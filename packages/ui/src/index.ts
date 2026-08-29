@@ -64,7 +64,7 @@ export {
 } from "./components/button";
 export { Tooltip, type TooltipProps } from "./components/tooltip";
 export { Kbd } from "./components/kbd";
-export { Card, type CardProps } from "./components/card";
+export { Card, type CardProps, type CardTone } from "./components/card";
 export { Heading, Text, type HeadingProps, type HeadingLevel, type TextProps, type TextTone } from "./components/typography";
 export { Stack, Inline, type StackProps, type StackGap, type InlineProps, type InlineAlign } from "./components/stack";
 export { Avatar, type AvatarProps, type AvatarSize } from "./components/avatar";

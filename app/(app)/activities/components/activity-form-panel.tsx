@@ -4,7 +4,9 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  Badge,
   Button,
+  Card,
   Combobox,
   DefinitionList,
   Dialog,
@@ -12,6 +14,7 @@ import {
   FormSection,
   Heading,
   IconTileSelect,
+  Inline,
   Input,
   Label,
   Select,
@@ -24,6 +27,7 @@ import { Bell, ClipboardList, FileText, Phone, UserRound } from "@yourorg/ui/ico
 import { getActivityFormContext, type ActivityRecord } from "../actions";
 import { createActivityFormAction, updateActivityFormAction, type ActivityFormState } from "../activity-form-actions";
 import { resolveActivityTypeIcon } from "../icon-map";
+import { DeleteActivityDialog } from "./delete-activity-dialog";
 import { getAsset, listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { getClient, listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { listContacts, type ContactRecord } from "@/app/(app)/clients/contacts-actions";
@@ -48,8 +52,7 @@ export interface ActivityFormPanelProps {
    * (client/asset/contact names, action holder, reporter), the same
    * `ACTIVITY_SELECT` shape `listActivities` and `getActivity` both return,
    * so a row a caller already has on screen (`ActivitiesTable`,
-   * `ActivityQuickViewDialog`) can be passed straight through with no extra
-   * fetch. */
+   * `ActivitiesPanel`) can be passed straight through with no extra fetch. */
   activity?: ActivityRecord;
   /** `mode: "create"` only — pre-scopes to a client (locks the client picker
    * to a read-only label), mirroring the old `/activities/new?clientId=...`
@@ -61,6 +64,46 @@ export interface ActivityFormPanelProps {
    * of truth, matching `resolveActivityClientId` in `../actions.ts`),
    * mirroring the old `/activities/new?assetId=...` query param. */
   lockedAssetId?: string;
+  /**
+   * `mode: "edit"` only — `false` renders every field as plain read-only
+   * text (`Badge`/`DefinitionList`, no inputs), with no Save button, just
+   * Close — the same "one screen, not a form-that-pretends-to-be-editable"
+   * shape `WorkOrderFields`'s own `readOnly` branch uses (issue #89). This is
+   * what a `finance`/`administratie` viewer (plain `read`, no `update`/
+   * `update_own` on `activities`) sees now that there's no separate
+   * read-only `ActivityQuickViewDialog` to view an activity without an
+   * editable form (issue #90). Defaults to `true` so `mode: "create"`
+   * (always reached only once `create`/`create_own` is already confirmed)
+   * and every caller not yet threading this through keep behaving exactly as
+   * before.
+   */
+  canEdit?: boolean;
+  /**
+   * `mode: "edit"` only — shows a Delete action (reusing
+   * `DeleteActivityDialog`), gated on `can(actor, "activities", "delete")`.
+   * This used to live only in the now-deleted `ActivityQuickViewDialog` —
+   * relocating it here (rather than dropping it) keeps it available
+   * everywhere this panel opens from a row click, including the Client
+   * detail page's Activiteiten tab, which has no other row-level Delete
+   * action of its own (issue #90).
+   */
+  canDelete?: boolean;
+  /** `mode: "edit"` only — `can(actor, "planning", "create")`, gated behind
+   * the `planning` feature being entitled/accessible for this actor at all
+   * (issue #87). Renders a visually prominent "Create work order" call to
+   * action (an accent-toned `Card`, not a plain footer button — issue #90's
+   * explicit "make this button more prominent" ask) near the top of the
+   * panel body, which navigates to `/work-orders/new` pre-scoped to this
+   * activity's own client/asset plus `?activityId=` for traceability
+   * (`work_orders.source_activity_id`). Never shown for `mode: "create"` —
+   * there is no activity yet to link a work order to. Defaults to `false` so
+   * every call site not yet threading this through keeps hiding the action
+   * rather than crashing. */
+  canCreateWorkOrder?: boolean;
+  /** Called after a successful delete, so a caller holding a list (a
+   * table/panel of activities) can drop this row without a full page
+   * reload. */
+  onDeleted?: () => void;
 }
 
 /**
@@ -74,21 +117,30 @@ export interface ActivityFormPanelProps {
  * shape (record-editing, not a hierarchy-defining primary page) is a
  * reasonable carve-out for any module, not just those two.
  *
+ * Also the ONLY screen for viewing/editing an activity (issue #90 — "1 scherm
+ * voor beide situaties" mirroring issue #89's Work Orders consolidation):
+ * the old read-only `ActivityQuickViewDialog`, previously opened on a row
+ * click, is deleted — a row click now opens this same panel in `mode: "edit"`
+ * directly, rendering read-only (see `canEdit` above) for a caller who can't
+ * actually edit rather than being a separate component.
+ *
  * Self-fetches every reference-data list it needs (clients, activity
  * types/statuses, org members, the locked client/asset, and the caller's own
  * actor context) on open, the same way `AssetFormDialog` does — every call
- * site (`CreateActivityButton`, `ActivitiesTable`'s row Edit,
- * `ActivityQuickViewDialog`'s Edit) stays a thin trigger with local `open`
+ * site (`CreateActivityButton`, `ActivitiesTable`'s row click/Edit,
+ * `ActivitiesPanel`'s row click) stays a thin trigger with local `open`
  * state, no page-level prop-threading of picklists required.
  *
  * Split into this outer component (owns `useActionState`, so a failed
- * submit's error/fieldErrors survive whatever else re-renders) and
- * `ActivityFormBody` below (owns every other piece of local state — selected
- * client/asset/contact/type, fetched options — which lives INSIDE
- * `<Dialog>`'s children and therefore gets a guaranteed-fresh remount every
- * time the panel opens, since `Dialog` returns `null` while `open` is
- * false). Same split `AssetFormDialog`/`AssetFormBody` use, for the same
- * reason (see that file's own doc comment).
+ * submit's error/fieldErrors survive whatever else re-renders, plus the
+ * Delete confirmation and "Create work order" navigation, neither of which
+ * depend on the self-fetched form state) and `ActivityFormBody` below (owns
+ * every other piece of local state — selected client/asset/contact/type,
+ * fetched options — which lives INSIDE `<Dialog>`'s children and therefore
+ * gets a guaranteed-fresh remount every time the panel opens, since `Dialog`
+ * returns `null` while `open` is false). Same split `AssetFormDialog`/
+ * `AssetFormBody` use, for the same reason (see that file's own doc
+ * comment).
  *
  * No post-success navigation, unlike the old full pages' `redirectHref` —
  * closes and calls `router.refresh()` so whichever Server Component list is
@@ -98,9 +150,23 @@ export interface ActivityFormPanelProps {
  * detail page to navigate to the way `NewClientPanel` navigates to
  * `/clients/[id]` — the caller is already wherever this activity belongs.
  */
-export function ActivityFormPanel({ open, onOpenChange, mode, activity, lockedClientId, lockedAssetId }: ActivityFormPanelProps) {
+export function ActivityFormPanel({
+  open,
+  onOpenChange,
+  mode,
+  activity,
+  lockedClientId,
+  lockedAssetId,
+  canEdit = true,
+  canDelete = false,
+  canCreateWorkOrder = false,
+  onDeleted,
+}: ActivityFormPanelProps) {
   const router = useRouter();
   useEscapeToClose(open, onOpenChange);
+  const [deleting, setDeleting] = useState(false);
+
+  const readOnly = mode === "edit" && !canEdit;
 
   const action =
     mode === "edit" && activity ? updateActivityFormAction.bind(null, activity.id) : createActivityFormAction;
@@ -118,21 +184,49 @@ export function ActivityFormPanel({ open, onOpenChange, mode, activity, lockedCl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  function handleCreateWorkOrder() {
+    if (!activity) return;
+    const params = new URLSearchParams();
+    params.set("clientId", activity.client_id);
+    if (activity.asset_id) params.set("assetId", activity.asset_id);
+    params.set("activityId", activity.id);
+    router.push(`/work-orders/new?${params.toString()}`);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="panel">
-      <Dialog.Header>
-        <Heading level={3}>{mode === "edit" ? "Edit activity" : "New activity"}</Heading>
-      </Dialog.Header>
-      <ActivityFormBody
-        mode={mode}
-        activity={activity}
-        lockedClientId={lockedClientId}
-        lockedAssetId={lockedAssetId}
-        formAction={formAction}
-        state={state}
-        onCancel={() => onOpenChange(false)}
-      />
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange} size="panel">
+        <Dialog.Header>
+          <Heading level={3}>{mode === "edit" ? "Edit activity" : "New activity"}</Heading>
+        </Dialog.Header>
+        <ActivityFormBody
+          mode={mode}
+          activity={activity}
+          lockedClientId={lockedClientId}
+          lockedAssetId={lockedAssetId}
+          formAction={formAction}
+          state={state}
+          onCancel={() => onOpenChange(false)}
+          readOnly={readOnly}
+          canDelete={mode === "edit" && canDelete}
+          canCreateWorkOrder={mode === "edit" && canCreateWorkOrder}
+          onDelete={() => setDeleting(true)}
+          onCreateWorkOrder={handleCreateWorkOrder}
+        />
+      </Dialog>
+
+      {activity && deleting && (
+        <DeleteActivityDialog
+          activity={activity}
+          open
+          onOpenChange={setDeleting}
+          onDeleted={() => {
+            onOpenChange(false);
+            onDeleted?.();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -153,6 +247,34 @@ interface ActivityFormBodyProps {
   formAction: (formData: FormData) => void;
   state: ActivityFormState;
   onCancel: () => void;
+  /** `mode: "edit"` only — see `ActivityFormPanelProps.canEdit`'s doc
+   * comment. Always `false` for `mode: "create"`. */
+  readOnly: boolean;
+  /** Already resolved to `mode === "edit" && <prop>` by `ActivityFormPanel`. */
+  canDelete: boolean;
+  canCreateWorkOrder: boolean;
+  onDelete: () => void;
+  onCreateWorkOrder: () => void;
+}
+
+/** The "Create work order" call-to-action (issue #90) — an accent-toned
+ * `Card`, not a plain footer button, so it visually outranks Cancel/Delete
+ * rather than sitting among them with equal weight. Rendered near the top of
+ * the panel body in both the editable and read-only render paths below. */
+function CreateWorkOrderCallout({ onCreateWorkOrder }: { onCreateWorkOrder: () => void }) {
+  return (
+    <Card tone="accent">
+      <Inline gap="md" align="center" justify="between">
+        <Stack gap="xs">
+          <Heading level={4}>Ready to schedule the work?</Heading>
+          <Text tone="muted">Create a work order pre-filled with this activity&rsquo;s client and asset.</Text>
+        </Stack>
+        <Button type="button" variant="primary" onClick={onCreateWorkOrder}>
+          Create work order
+        </Button>
+      </Inline>
+    </Card>
+  );
 }
 
 /**
@@ -175,7 +297,20 @@ interface ActivityFormBodyProps {
  * nicety, the server (and ultimately `validate_activity_relations`) is
  * always the real backstop.
  */
-function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formAction, state, onCancel }: ActivityFormBodyProps) {
+function ActivityFormBody({
+  mode,
+  activity,
+  lockedClientId,
+  lockedAssetId,
+  formAction,
+  state,
+  onCancel,
+  readOnly,
+  canDelete,
+  canCreateWorkOrder,
+  onDelete,
+  onCreateWorkOrder,
+}: ActivityFormBodyProps) {
   const isAssetLocked = mode === "create" && Boolean(lockedAssetId);
   const isClientLocked = mode === "create" && (Boolean(lockedClientId) || isAssetLocked);
 
@@ -190,7 +325,16 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
   const [lockedAssetAddress, setLockedAssetAddress] = useState<string | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
 
+  // A read-only viewer never edits anything, so none of this form's
+  // reference-data/picklists are needed at all — every field it renders
+  // comes straight off the already-embedded `activity` prop instead (same
+  // data `ActivityQuickViewDialog` used to show). Skips the network
+  // round-trip entirely rather than fetching picklists nothing will render.
   useEffect(() => {
+    if (readOnly) {
+      setLoadingContext(false);
+      return;
+    }
     let cancelled = false;
     setLoadingContext(true);
     Promise.all([
@@ -275,7 +419,7 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
   }, [canAssignOthers, currentUserId]);
 
   useEffect(() => {
-    if (isAssetLocked || !selectedClientId) {
+    if (readOnly || isAssetLocked || !selectedClientId) {
       setAssets([]);
       setSites([]);
       return;
@@ -294,10 +438,10 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
     return () => {
       cancelled = true;
     };
-  }, [selectedClientId, isAssetLocked]);
+  }, [readOnly, selectedClientId, isAssetLocked]);
 
   useEffect(() => {
-    if (!selectedClientId) {
+    if (readOnly || !selectedClientId) {
       setContacts([]);
       return;
     }
@@ -314,7 +458,7 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
     return () => {
       cancelled = true;
     };
-  }, [selectedClientId]);
+  }, [readOnly, selectedClientId]);
 
   const selectedType = activityTypes.find((item) => item.id === selectedTypeId);
   const typeValue = selectedType?.value;
@@ -366,11 +510,68 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
 
   const defaultStatus = activityStatuses.find((item) => item.is_default);
 
+  // Read-only render path (see `ActivityFormPanelProps.canEdit`'s doc
+  // comment) — plain `Badge`/`DefinitionList`/`Text`, no `<form>`, no Save,
+  // just Close (and Delete, if entitled). Same content `ActivityQuickViewDialog`
+  // used to show, now living here instead of a separate component. Placed
+  // after every hook above (same rule `WorkOrderFields.readOnly` follows) so
+  // hook order never depends on this branch.
+  if (readOnly && activity) {
+    return (
+      <>
+        <Dialog.Body>
+          <Stack gap="md">
+            {canCreateWorkOrder && <CreateWorkOrderCallout onCreateWorkOrder={onCreateWorkOrder} />}
+
+            <Inline gap="xs" align="center">
+              <Badge color={activity.activity_status?.color} variant="muted">
+                {activity.activity_status?.label ?? "—"}
+              </Badge>
+            </Inline>
+
+            <DefinitionList
+              items={[
+                { label: "Client", value: activity.client?.name ?? "—" },
+                { label: "Asset", value: activity.asset?.name ?? "—" },
+                {
+                  label: "Contact",
+                  value: activity.contact_person?.name ?? activity.contact_name ?? "—",
+                },
+                { label: "Phone", value: activity.contact_phone ?? "—" },
+                { label: "Email", value: activity.contact_email ?? "—" },
+                { label: "Action holder", value: memberDisplayName(activity.action_holder) },
+                { label: "Reported at", value: formatDateTime(activity.reported_at) },
+                { label: "Reported by", value: memberDisplayName(activity.reporter) },
+              ]}
+            />
+
+            <Stack gap="xs">
+              <Text tone="muted">Description</Text>
+              <Text>{activity.description}</Text>
+            </Stack>
+          </Stack>
+        </Dialog.Body>
+        <Dialog.Footer>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Close
+          </Button>
+          {canDelete && (
+            <Button type="button" variant="danger" onClick={onDelete}>
+              Delete
+            </Button>
+          )}
+        </Dialog.Footer>
+      </>
+    );
+  }
+
   return (
     <form action={formAction}>
       <Dialog.Body>
         <Stack gap="md">
           {state.error && <Text tone="danger">{state.error}</Text>}
+
+          {canCreateWorkOrder && <CreateWorkOrderCallout onCreateWorkOrder={onCreateWorkOrder} />}
 
           <FormSection title="Type" description="What kind of melding is this?" icon={<Bell />}>
             <Stack gap="xs">
@@ -641,6 +842,11 @@ function ActivityFormBody({ mode, activity, lockedClientId, lockedAssetId, formA
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
+        {canDelete && (
+          <Button type="button" variant="danger" onClick={onDelete}>
+            Delete
+          </Button>
+        )}
         <SubmitButton mode={mode} disabled={loadingContext} />
       </Dialog.Footer>
     </form>

@@ -20,7 +20,7 @@ export interface ActivitiesScreenProps {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  /** Threaded into `ActivitiesTable` -> `ActivityQuickViewDialog`'s "Create
+  /** Threaded into `ActivitiesTable` -> `ActivityFormPanel`'s "Create
    * work order" action (issue #87) — `hasFeature(org, "planning")` +
    * `canAccessModule`/`can(actor, "planning", "create")`, resolved once by
    * `app/(app)/activities/page.tsx`. */

@@ -79,7 +79,7 @@ export interface ClientDetailProps {
   canCreateActivities: boolean;
   canEditActivities: boolean;
   canDeleteActivities: boolean;
-  /** Threaded into `ActivitiesPanel` -> `ActivityQuickViewDialog`'s "Create
+  /** Threaded into `ActivitiesPanel` -> `ActivityFormPanel`'s "Create
    * work order" action (issue #87) — `hasFeature(org, "planning")` +
    * `canAccessModule`/`can(actor, "planning", "create")`, resolved once by
    * `page.tsx`, independent of `activitiesEnabled` (a "Create work order"
@@ -346,7 +346,7 @@ export function ClientDetail({
           modules are currently visible), no management controls; managing
           either one stays exclusively in those tabs. */}
       {tenantAccessVisible && (
-        <Card className="ui-card-accent">
+        <Card tone="accent">
           <Stack gap="sm">
             <Inline justify="between" align="center">
               <Heading level={6}>Platform</Heading>

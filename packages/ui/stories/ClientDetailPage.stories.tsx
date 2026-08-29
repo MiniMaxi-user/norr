@@ -118,7 +118,7 @@ function ClientDetailPage({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
               </Card>
 
               {isPlatformAdmin && (
-                <Card className="ui-card-accent">
+                <Card tone="accent">
                   <Stack gap="sm">
                     <Inline justify="between" align="center">
                       <Heading level={6}>Platform</Heading>
