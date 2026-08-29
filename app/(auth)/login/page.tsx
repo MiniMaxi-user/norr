@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   AuthSplitLayout,
   Button,
@@ -49,13 +48,6 @@ export default async function LoginPage({
                 <ShieldCheck aria-hidden /> Doorgaan met SSO
               </Button>
             </Stack>
-
-            <Text tone="muted">
-              Nieuw bij norr?{" "}
-              <Link href="/signup" className="ui-text-link">
-                Maak een account aan
-              </Link>
-            </Text>
           </Stack>
         </AuthSplitLayout.FormArea>
 

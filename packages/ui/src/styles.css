@@ -2262,6 +2262,21 @@ select.ui-client-card-status-select {
   height: 1.25rem;
   align-self: center;
 }
+/* A horizontal Separator flanking short text in an `Inline` row (e.g. the
+   login page's "of" divider) must SHARE the row's width with its siblings
+   instead of each independently claiming the base rule's `width: 100%` —
+   two of them plus the label text between them add up to roughly double the
+   row's actual width. Harmless everywhere else this overflow could hide
+   (desktop's wide two-column login layout, `Stack`-nested standalone
+   dividers elsewhere), which is why it went unnoticed until a narrow mobile
+   viewport had no spare width left to silently absorb it. `:not(...)`
+   excludes the vertical variant (topbar control dividers), which is
+   correctly sized by its own rule above and must not grow/shrink here. */
+.ui-inline > .ui-separator:not(.ui-separator-vertical) {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0%;
+}
 
 /* Inline text link inside body copy (e.g. a Next `<Link>` embedded in a
    `Text`) — referenced directly by its class name from app call sites, same
