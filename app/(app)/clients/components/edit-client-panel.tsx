@@ -3,11 +3,11 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, FormGrid, FormSection, Heading, Label, Select, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
+import { Button, Dialog, FormGrid, FormSection, Heading, Label, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
 import { BarChart3, CreditCard, FileText, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { updateClient, type ClientRecord } from "../actions";
-import { FormField } from "./form-field";
+import { FormField, FormSelectField } from "./form-field";
 import { CLIENT_STATUS_OPTIONS } from "../kanban";
 
 interface EditClientFormState {
@@ -108,41 +108,31 @@ export function EditClientPanel({
                 client). */}
             <FormSection title="Pipeline" icon={<BarChart3 />}>
               <FormGrid columns={2}>
-                <Stack gap="xs">
-                  <Label htmlFor="edit-client-status">Status</Label>
-                  <Select id="edit-client-status" name="status" defaultValue={client.status}>
-                    {CLIENT_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                  {state.fieldErrors?.status?.map((message) => (
-                    <Text key={message} tone="danger">
-                      {message}
-                    </Text>
+                <FormSelectField
+                  label="Status"
+                  name="status"
+                  defaultValue={client.status}
+                  errors={state.fieldErrors?.status}
+                >
+                  {CLIENT_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
-                </Stack>
-                <Stack gap="xs">
-                  <Label htmlFor="edit-client-account-manager">Account manager</Label>
-                  <Select
-                    id="edit-client-account-manager"
-                    name="accountManagerId"
-                    defaultValue={client.account_manager_id ?? ""}
-                  >
-                    <option value="">No account manager</option>
-                    {accountManagers.map((manager) => (
-                      <option key={manager.id} value={manager.id}>
-                        {manager.first_name} {manager.last_name}
-                      </option>
-                    ))}
-                  </Select>
-                  {state.fieldErrors?.accountManagerId?.map((message) => (
-                    <Text key={message} tone="danger">
-                      {message}
-                    </Text>
+                </FormSelectField>
+                <FormSelectField
+                  label="Account manager"
+                  name="accountManagerId"
+                  defaultValue={client.account_manager_id ?? ""}
+                  errors={state.fieldErrors?.accountManagerId}
+                >
+                  <option value="">No account manager</option>
+                  {accountManagers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.first_name} {manager.last_name}
+                    </option>
                   ))}
-                </Stack>
+                </FormSelectField>
                 <FormField
                   label="Potential"
                   name="potentialValue"
