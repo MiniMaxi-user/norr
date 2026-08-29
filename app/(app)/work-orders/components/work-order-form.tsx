@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import {
   Button,
   Card,
+  FormField,
   FormGrid,
   FormSection,
+  FormSelectField,
   Input,
   Label,
   Select,
@@ -242,11 +244,14 @@ export function WorkOrderForm({
 
           <FormSection title="Job" description="What needs to happen.">
             <Stack gap="md">
-              <Stack gap="sm">
-                <Label htmlFor="wo-title">Title</Label>
-                <Input id="wo-title" name="title" defaultValue={workOrder?.title} required maxLength={200} />
-                {state.fieldErrors?.title && <Text tone="danger">{state.fieldErrors.title[0]}</Text>}
-              </Stack>
+              <FormField
+                label="Title"
+                name="title"
+                defaultValue={workOrder?.title}
+                required
+                maxLength={200}
+                errors={state.fieldErrors?.title}
+              />
 
               <Stack gap="sm">
                 <Label htmlFor="wo-description">Description</Label>
@@ -365,18 +370,19 @@ export function WorkOrderForm({
               </Stack>
 
               <FormGrid columns={2}>
-                <Stack gap="sm">
-                  <Label htmlFor="wo-assigned">Assigned to</Label>
-                  <Select id="wo-assigned" name="assignedTo" defaultValue={workOrder?.assigned_to ?? ""}>
-                    <option value="">Unassigned</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {memberDisplayName(member)}
-                      </option>
-                    ))}
-                  </Select>
-                  {state.fieldErrors?.assignedTo && <Text tone="danger">{state.fieldErrors.assignedTo[0]}</Text>}
-                </Stack>
+                <FormSelectField
+                  label="Assigned to"
+                  name="assignedTo"
+                  defaultValue={workOrder?.assigned_to ?? ""}
+                  errors={state.fieldErrors?.assignedTo}
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {memberDisplayName(member)}
+                    </option>
+                  ))}
+                </FormSelectField>
 
                 <Stack gap="sm">
                   <Label htmlFor="wo-scheduled">Scheduled for</Label>
@@ -395,31 +401,33 @@ export function WorkOrderForm({
 
           <FormSection title="Status & Priority" description="Lifecycle state and urgency.">
             <FormGrid columns={2}>
-              <Stack gap="sm">
-                <Label htmlFor="wo-status">Status</Label>
-                <Select id="wo-status" name="statusId" defaultValue={workOrder?.status_id ?? ""}>
-                  <option value="">{defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}</option>
-                  {statuses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </Select>
-                {state.fieldErrors?.statusId && <Text tone="danger">{state.fieldErrors.statusId[0]}</Text>}
-              </Stack>
+              <FormSelectField
+                label="Status"
+                name="statusId"
+                defaultValue={workOrder?.status_id ?? ""}
+                errors={state.fieldErrors?.statusId}
+              >
+                <option value="">{defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}</option>
+                {statuses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </FormSelectField>
 
-              <Stack gap="sm">
-                <Label htmlFor="wo-priority">Priority</Label>
-                <Select id="wo-priority" name="priorityId" defaultValue={workOrder?.priority_id ?? ""}>
-                  <option value="">No priority</option>
-                  {priorities.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </Select>
-                {state.fieldErrors?.priorityId && <Text tone="danger">{state.fieldErrors.priorityId[0]}</Text>}
-              </Stack>
+              <FormSelectField
+                label="Priority"
+                name="priorityId"
+                defaultValue={workOrder?.priority_id ?? ""}
+                errors={state.fieldErrors?.priorityId}
+              >
+                <option value="">No priority</option>
+                {priorities.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </FormSelectField>
             </FormGrid>
           </FormSection>
 

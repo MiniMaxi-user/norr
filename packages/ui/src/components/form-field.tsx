@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
-import { Input, Label, Select, Stack, Text } from "@yourorg/ui";
+import { Input, Label, Select } from "./form";
+import { Stack } from "./stack";
+import { Text } from "./typography";
 
 /**
- * Shared "label + input + inline field errors" layout used by both the
- * client and site create/edit forms (`client-form-dialog.tsx`,
- * `site-form-dialog.tsx`) so the two forms don't duplicate this structure.
- * `errors` is a slice of a Server Action's `fieldErrors` (see
+ * Shared "label + input + inline field errors" layout (promoted to
+ * packages/ui in issue #81 — previously local to the Clients module, which
+ * left every other module's full-page forms hand-rolling this same
+ * structure). `errors` is a slice of a Server Action's `fieldErrors` (see
  * `lib/actions/result.ts`), keyed by this field's `name`.
  */
 export function FormField({
@@ -14,6 +16,7 @@ export function FormField({
   type = "text",
   step,
   min,
+  maxLength,
   defaultValue,
   required,
   errors,
@@ -23,6 +26,7 @@ export function FormField({
   type?: string;
   step?: string;
   min?: string | number;
+  maxLength?: number;
   defaultValue?: string | number | null;
   required?: boolean;
   errors?: string[];
@@ -39,6 +43,7 @@ export function FormField({
         type={type}
         step={step}
         min={min}
+        maxLength={maxLength}
         defaultValue={defaultValue ?? ""}
         required={required}
       />
@@ -54,11 +59,9 @@ export function FormField({
 /**
  * Select-backed sibling of `FormField` (issue #76) — same "label + control +
  * inline field errors" layout, for a `<Select>` instead of an `<Input>`.
- * `new-client-panel.tsx` and `edit-client-panel.tsx` each hand-rolled this
- * exact `Stack`/`Label`/`Select`/error-list structure for their Status and
- * Account manager fields before this existed; `children` stays the caller's
- * own `<option>` list since those genuinely differ per field/panel (e.g. a
- * blank "No account manager" option only some callers need).
+ * `children` stays the caller's own `<option>` list since those genuinely
+ * differ per field/caller (e.g. a blank "No account manager" option only
+ * some callers need).
  */
 export function FormSelectField({
   label,

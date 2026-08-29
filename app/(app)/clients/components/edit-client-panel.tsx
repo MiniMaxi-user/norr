@@ -3,11 +3,10 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, FormGrid, FormSection, Heading, Label, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
+import { Button, Dialog, FormField, FormGrid, FormSection, FormSelectField, Heading, Label, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
 import { BarChart3, CreditCard, FileText, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { updateClient, type ClientRecord } from "../actions";
-import { FormField, FormSelectField } from "./form-field";
 import { CLIENT_STATUS_OPTIONS } from "../kanban";
 
 interface EditClientFormState {

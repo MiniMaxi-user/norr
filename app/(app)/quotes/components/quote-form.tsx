@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Card, FormGrid, FormSection, Input, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { Button, Card, FormField, FormGrid, FormSection, FormSelectField, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import type { QuoteRecord } from "../actions";
 import { createQuoteFormAction, updateQuoteFormAction, type QuoteFormState } from "../quote-form-actions";
 import { listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
@@ -152,42 +152,43 @@ export function QuoteForm({ mode, quote, clients, lockedClientId, statuses, canc
                   {state.fieldErrors?.siteId && <Text tone="danger">{state.fieldErrors.siteId[0]}</Text>}
                 </Stack>
 
-                <Stack gap="sm">
-                  <Label htmlFor="quote-name">Name</Label>
-                  <Input id="quote-name" name="name" defaultValue={quote?.name} required maxLength={200} />
-                  {state.fieldErrors?.name && <Text tone="danger">{state.fieldErrors.name[0]}</Text>}
-                </Stack>
+                <FormField
+                  label="Name"
+                  name="name"
+                  defaultValue={quote?.name}
+                  required
+                  maxLength={200}
+                  errors={state.fieldErrors?.name}
+                />
               </FormGrid>
             </Stack>
           </FormSection>
 
           <FormSection title="Status & validity" description="Lifecycle stage and how long this pricing stands.">
             <FormGrid columns={2}>
-              <Stack gap="sm">
-                <Label htmlFor="quote-status">Status</Label>
-                <Select id="quote-status" name="statusId" defaultValue={quote?.status_id ?? ""}>
-                  <option value="">
-                    {defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}
+              <FormSelectField
+                label="Status"
+                name="statusId"
+                defaultValue={quote?.status_id ?? ""}
+                errors={state.fieldErrors?.statusId}
+              >
+                <option value="">
+                  {defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}
+                </option>
+                {statuses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
                   </option>
-                  {statuses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </Select>
-                {state.fieldErrors?.statusId && <Text tone="danger">{state.fieldErrors.statusId[0]}</Text>}
-              </Stack>
+                ))}
+              </FormSelectField>
 
-              <Stack gap="sm">
-                <Label htmlFor="quote-valid-until">Valid until</Label>
-                <Input
-                  id="quote-valid-until"
-                  name="validUntil"
-                  type="date"
-                  defaultValue={quote?.valid_until ?? ""}
-                />
-                {state.fieldErrors?.validUntil && <Text tone="danger">{state.fieldErrors.validUntil[0]}</Text>}
-              </Stack>
+              <FormField
+                label="Valid until"
+                name="validUntil"
+                type="date"
+                defaultValue={quote?.valid_until ?? ""}
+                errors={state.fieldErrors?.validUntil}
+              />
             </FormGrid>
           </FormSection>
 

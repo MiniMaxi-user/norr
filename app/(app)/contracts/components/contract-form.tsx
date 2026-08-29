@@ -8,10 +8,11 @@ import {
   Card,
   CascadingSelect,
   Checkbox,
+  FormField,
   FormGrid,
   FormSection,
+  FormSelectField,
   Inline,
-  Input,
   Label,
   Select,
   Stack,
@@ -141,11 +142,14 @@ export function ContractForm({
               )}
               {lockedClientId && <input type="hidden" name="clientId" value={lockedClientId} />}
 
-              <Stack gap="sm">
-                <Label htmlFor="contract-name">Name</Label>
-                <Input id="contract-name" name="name" defaultValue={contract?.name} required maxLength={200} />
-                {state.fieldErrors?.name && <Text tone="danger">{state.fieldErrors.name[0]}</Text>}
-              </Stack>
+              <FormField
+                label="Name"
+                name="name"
+                defaultValue={contract?.name}
+                required
+                maxLength={200}
+                errors={state.fieldErrors?.name}
+              />
 
               <Stack gap="sm">
                 <Label htmlFor="contract-type">Type</Label>
@@ -196,35 +200,31 @@ export function ContractForm({
                   {state.fieldErrors?.slaTierId && <Text tone="danger">{state.fieldErrors.slaTierId[0]}</Text>}
                 </Stack>
 
-                <Stack gap="sm">
-                  <Label htmlFor="contract-billing-terms">Billing terms</Label>
-                  <Select id="contract-billing-terms" name="billingTermsId" defaultValue={contract?.billing_terms_id ?? ""}>
-                    <option value="">No billing terms</option>
-                    {billingTerms.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </Select>
-                  {state.fieldErrors?.billingTermsId && (
-                    <Text tone="danger">{state.fieldErrors.billingTermsId[0]}</Text>
-                  )}
-                </Stack>
+                <FormSelectField
+                  label="Billing terms"
+                  name="billingTermsId"
+                  defaultValue={contract?.billing_terms_id ?? ""}
+                  errors={state.fieldErrors?.billingTermsId}
+                >
+                  <option value="">No billing terms</option>
+                  {billingTerms.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </FormSelectField>
               </FormGrid>
 
               <FormGrid columns={2}>
-                <Stack gap="sm">
-                  <Label htmlFor="contract-value">Value</Label>
-                  <Input
-                    id="contract-value"
-                    name="value"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={contract?.value ?? ""}
-                  />
-                  {state.fieldErrors?.value && <Text tone="danger">{state.fieldErrors.value[0]}</Text>}
-                </Stack>
+                <FormField
+                  label="Value"
+                  name="value"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={contract?.value ?? ""}
+                  errors={state.fieldErrors?.value}
+                />
 
                 <Stack gap="sm">
                   <Label>&nbsp;</Label>
@@ -239,22 +239,23 @@ export function ContractForm({
 
           <FormSection title="Dates" description="When this contract is (or was) in effect.">
             <FormGrid columns={2}>
-              <Stack gap="sm">
-                <Label htmlFor="contract-start-date">Start date</Label>
-                <Input
-                  id="contract-start-date"
-                  name="startDate"
-                  type="date"
-                  defaultValue={contract?.start_date ?? ""}
-                  required
-                />
-                {state.fieldErrors?.startDate && <Text tone="danger">{state.fieldErrors.startDate[0]}</Text>}
-              </Stack>
+              <FormField
+                label="Start date"
+                name="startDate"
+                type="date"
+                defaultValue={contract?.start_date ?? ""}
+                required
+                errors={state.fieldErrors?.startDate}
+              />
 
-              <Stack gap="sm">
-                <Label htmlFor="contract-end-date">End date</Label>
-                <Input id="contract-end-date" name="endDate" type="date" defaultValue={contract?.end_date ?? ""} />
-                {state.fieldErrors?.endDate && <Text tone="danger">{state.fieldErrors.endDate[0]}</Text>}
+              <Stack gap="xs">
+                <FormField
+                  label="End date"
+                  name="endDate"
+                  type="date"
+                  defaultValue={contract?.end_date ?? ""}
+                  errors={state.fieldErrors?.endDate}
+                />
                 <Text tone="muted">Leave blank for an open-ended contract.</Text>
               </Stack>
             </FormGrid>

@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   Dialog,
+  FormField,
   FormGrid,
   FormSection,
   Heading,
@@ -21,7 +22,6 @@ import {
 import { FileText, Users } from "@yourorg/ui/icons";
 import { createContact, updateContact, type ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { FormField } from "./form-field";
 
 interface ContactFormState {
   error?: string;

@@ -9,6 +9,7 @@ import {
   Card,
   Checkbox,
   Dialog,
+  FormField,
   FormGrid,
   FormSection,
   Heading,
@@ -25,7 +26,6 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { createSite, updateSite, type SiteRecord } from "../actions";
 import { ContactFormDialog } from "./contact-form-dialog";
 import type { ContactRecord } from "../contacts-actions";
-import { FormField } from "./form-field";
 
 /** Shared "submitted value wins, else fall back to the existing row, else
  * empty" default resolution — used both directly (plain text fields) and by
