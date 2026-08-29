@@ -2,7 +2,13 @@ import Link from "next/link";
 import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import { listAssets, type AssetRecord } from "../actions";
-import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import {
+  listClients,
+  listSites,
+  listSitesForClientIds,
+  type ClientRecord,
+  type SiteRecord,
+} from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { AssetsFilters } from "./assets-filters";
 import { AssetsTable } from "./assets-table";
@@ -143,12 +149,10 @@ export async function AssetsScreen({
 
   if (isMapView) {
     const distinctClientIds = Array.from(new Set(assets.map((asset) => asset.client_id)));
-    const siteListResults = await Promise.all(distinctClientIds.map((id) => listSites(id)));
+    const siteListResult = await listSitesForClientIds(distinctClientIds);
     const sitesById = new Map<string, SiteRecord>();
-    for (const result of siteListResults) {
-      for (const site of result.data?.sites ?? []) {
-        sitesById.set(site.id, site);
-      }
+    for (const site of siteListResult.data?.sites ?? []) {
+      sitesById.set(site.id, site);
     }
 
     const pins = buildMapPins(assets, sitesById, clientNameById);

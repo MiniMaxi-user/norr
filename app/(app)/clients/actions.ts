@@ -639,6 +639,33 @@ export async function listPrimarySitesForClients(
   return ok({ sitesByClientId });
 }
 
+/**
+ * Bulk counterpart to `listSites` for views that need EVERY site (not just
+ * each client's primary one) across a set of clients in one shot — e.g. the
+ * Assets map view (issue #82), which was doing one `listSites` round-trip
+ * per distinct client among the currently-loaded assets (the same anti-
+ * pattern `listPrimarySitesForClients` above fixed for the Clients kanban in
+ * issue #75). Unlike that function, this can return more than one site per
+ * client, so the result is a flat array — callers key it however they need
+ * (e.g. by `id` for a pin map). Same RLS/permission boundary as `listSites`.
+ */
+export async function listSitesForClientIds(clientIds: string[]): Promise<ActionResult<{ sites: SiteRecord[] }>> {
+  const ctx = await requireModuleContext("clients");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "clients", ["read", "read_own"])) {
+    return fail("You do not have permission to view sites.");
+  }
+
+  if (clientIds.length === 0) return ok({ sites: [] });
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.from("sites").select("*").in("client_id", clientIds);
+
+  if (error) return fail(mapDbError(error));
+  return ok({ sites: (data ?? []) as SiteRecord[] });
+}
+
 type SitePurposeKey = "is_visit_address" | "is_invoice_address" | "is_delivery_address";
 
 const SITE_PURPOSE_KEYS: readonly SitePurposeKey[] = ["is_visit_address", "is_invoice_address", "is_delivery_address"];
