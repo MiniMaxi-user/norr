@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteContact, type ContactRecord } from "../contacts-actions";
 
 /**
@@ -22,42 +21,19 @@ export function DeleteContactDialog({
   contact: ContactRecord | null;
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, startDeleting] = useTransition();
-
-  function handleDelete() {
-    if (!contact) return;
-    const id = contact.id;
-    startDeleting(async () => {
-      const result = await deleteContact(id);
-      if (result.error || !result.data) {
-        setError(result.error ?? "Could not delete this contact.");
-        return;
-      }
-      onOpenChange(false);
-      router.refresh();
-    });
-  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>Delete {contact?.name ?? "contact"}?</Heading>
-      </Dialog.Header>
-      <Dialog.Body>
-        <Stack gap="sm">
-          {error && <Text tone="danger">{error}</Text>}
-          <Text tone="muted">This cannot be undone.</Text>
-        </Stack>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
-          Cancel
-        </Button>
-        <Button type="button" variant="danger" onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? "Deleting…" : "Delete contact"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${contact?.name ?? "contact"}?`}
+      onConfirm={async () => {
+        if (!contact) return { error: "No contact selected." };
+        const result = await deleteContact(contact.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete contact"
+    />
   );
 }

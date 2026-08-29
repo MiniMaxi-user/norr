@@ -21,6 +21,10 @@ import { defineConfig } from "tsup";
 // under `components/` broke that resolution with "Could not resolve
 // './combobox.js'".
 //
+// `confirm-delete-dialog.tsx` (issue #77) joined this list for the same
+// reason again — it owns checking/error/deleting state — same top-level
+// `src/` placement, same `"./confirm-delete-dialog.js"` re-export shape.
+//
 // The app imports `ThemeProvider`/`Tabs` from the package's *main* entry
 // (`@yourorg/ui`), not a `./client`/`./tabs` subpath, so `index.ts`
 // re-exports them — which is the tricky part, confirmed empirically while
@@ -54,7 +58,7 @@ import { defineConfig } from "tsup";
 // Jest/ts-node) doesn't need any of this: each entry is fully
 // self-contained there, which is fine since CJS output isn't what Next's
 // RSC module graph walks.
-const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js", "./combobox.js"];
+const clientBoundaryModules = ["./client.js", "./tabs.js", "./toast.js", "./combobox.js", "./confirm-delete-dialog.js"];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
 export default defineConfig([
@@ -75,6 +79,7 @@ export default defineConfig([
       tabs: "src/tabs.tsx",
       toast: "src/toast.tsx",
       combobox: "src/combobox.tsx",
+      "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
     },
     format: ["esm"],
     dts: true,
@@ -94,6 +99,7 @@ export default defineConfig([
       tabs: "src/tabs.tsx",
       toast: "src/toast.tsx",
       combobox: "src/combobox.tsx",
+      "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
     },
     format: ["cjs"],
     dts: false,
