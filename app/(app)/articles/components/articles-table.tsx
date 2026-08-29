@@ -63,11 +63,11 @@ export function ArticlesTable({ articles, groups, units, manufacturers, vatRates
             <Table.Row key={article.id} onClick={canEdit ? () => setEditingArticle(article) : undefined}>
               <Table.Cell>
                 {article.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- a
-                  // small, arbitrary-origin tenant-supplied URL isn't a good
+                  // A small, arbitrary-origin tenant-supplied URL isn't a good
                   // fit for `next/image`'s remote-pattern allowlist; same
                   // plain-`<img>` treatment this module's own live preview
                   // (`article-form-panel.tsx`) uses.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={article.image_url}
                     alt=""

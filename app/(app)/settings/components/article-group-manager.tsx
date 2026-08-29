@@ -57,8 +57,8 @@ export function ArticleGroupManager({ groups, loadError, canWrite }: ArticleGrou
       <Stack gap="xs">
         <Heading level={3}>Article Groups</Heading>
         <Text tone="muted">
-          Organize your article catalog into groups and subgroups, to any depth — e.g. "Parts &gt; Filters &gt; Air
-          filters".
+          Organize your article catalog into groups and subgroups, to any depth — e.g. &ldquo;Parts &gt; Filters &gt;
+          Air filters&rdquo;.
         </Text>
       </Stack>
 

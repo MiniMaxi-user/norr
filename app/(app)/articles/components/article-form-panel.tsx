@@ -260,9 +260,9 @@ export function ArticleFormPanel({ open, onOpenChange, mode, article, groups, un
                   (imageLoadFailed ? (
                     <Text tone="muted">Couldn&rsquo;t load an image from this URL.</Text>
                   ) : (
-                    // eslint-disable-next-line @next/next/no-img-element -- a
-                    // live preview of an arbitrary, tenant-typed URL isn't a
+                    // A live preview of an arbitrary, tenant-typed URL isn't a
                     // good fit for `next/image`'s remote-pattern allowlist.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={imageUrl.trim()}
                       alt="Article preview"

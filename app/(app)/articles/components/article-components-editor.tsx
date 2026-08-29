@@ -61,8 +61,9 @@ export function ArticleComponentsEditor({ parentArticleId, initialComponents }: 
     };
     // Runs once on mount only — this component is only ever mounted fresh
     // (see the doc comment above), never reused across a different
-    // `parentArticleId` via a prop update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `parentArticleId` via a prop update. Nothing reactive is referenced
+    // inside this effect, so an empty deps array needs no exhaustive-deps
+    // override here.
   }, []);
 
   const addedComponentIds = useMemo(() => new Set(components.map((component) => component.component_article_id)), [components]);
