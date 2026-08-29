@@ -50,6 +50,12 @@ export const NAV_ITEMS: NavItem[] = [
   { moduleKey: "clients", label: "Clients", href: "/clients", icon: Users, group: "Operations" },
   { moduleKey: "assets", label: "Assets", href: "/assets", icon: Boxes, group: "Operations" },
   { moduleKey: "contracts", label: "Contracts", href: "/contracts", icon: FileText, group: "Operations" },
+  // Articles / "Artikel database" (issue #92) — product/parts catalog
+  // (articles, article_groups, article_components). `icon: Boxes` is reused
+  // from Assets above: this icon set (packages/ui/src/icons.tsx) has no
+  // dedicated package/tag icon, and `Boxes` is the only box-shaped icon
+  // offered — reusing it here rather than inventing a new icon name.
+  { moduleKey: "articles", label: "Articles", href: "/articles", icon: Boxes, group: "Operations" },
   // Route is `/work-orders` (the Work Order entity, issue #13) rather than
   // `/planning` — the fuller multi-view (list/kanban/calendar/map,
   // drag-and-drop) Planning/Dispatch board named in docs/ROADMAP.md is

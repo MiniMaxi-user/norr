@@ -59,6 +59,15 @@ export type FeatureKey =
   // Action for this module must call `hasFeature()` first per CLAUDE.md
   // rule 3.
   | "activities"
+  // Articles / "Artikel database" (issue #92) — a NEW standalone
+  // product/parts-catalog module (`articles`, `article_groups`,
+  // `article_components`; supabase/migrations/20260829100000_articles_core.sql
+  // + .../20260829110000_articles_id_insert_grants.sql) with its own
+  // dedicated `lib/rbac/permissions.ts` `articles` module. Every Server
+  // Action for this module (once `api-backend-engineer` lands them) must call
+  // `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
+  // `activities`/`quotes`/`checklists`/`contracts`/`planning` above.
+  | "articles"
   | "reporting"
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
@@ -137,6 +146,16 @@ export type FeatureKey =
  * reasoning as `quotes`/`checklists`/`contracts`/`planning` above. Adding the
  * key here now (rather than waiting for the actions file to exist) avoids
  * repeating the exact omission flagged twice already in this comment block.
+ *
+ * `articles` added alongside the Articles module (issue #92 — schema already
+ * live: `supabase/migrations/20260829100000_articles_core.sql` +
+ * `.../20260829110000_articles_id_insert_grants.sql`): once
+ * `api-backend-engineer` lands `app/(app)/articles/actions.ts`, every action
+ * in that file (and the `components/shell/nav-items.ts` entry) will call
+ * `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
+ * `activities`/`quotes`/`checklists`/`contracts`/`planning` above. Adding the
+ * key here now (rather than waiting for the actions file to exist) avoids
+ * repeating the exact omission flagged repeatedly in this comment block.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -148,6 +167,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "checklists",
   "quotes",
   "activities",
+  "articles",
 ]);
 
 /**

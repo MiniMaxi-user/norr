@@ -53,6 +53,7 @@ export type Module =
   | "checklists"
   | "quotes"
   | "activities"
+  | "articles"
   | "reporting"
   | "dashboard"
   | "billing"
@@ -104,6 +105,7 @@ const NONE: readonly Action[] = [] as const;
  * | Checklists | CRUD  | CRUD    | Read/Update own      | Read    | Read           |
  * | Quotes     | CRUD  | CRUD    | Read                 | Read    | Read           |
  * | Activities | CRUD  | CRUD    | Create/Read/Update own| Read   | Read           |
+ * | Articles   | CRUD  | Read    | Read                 | Read    | CRUD           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
@@ -208,6 +210,26 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Articles (issue #92, "Artikel database"): a NEW standalone
+  // product/parts-catalog module (`articles`, `article_groups`,
+  // `article_components` — supabase/migrations/20260829100000_articles_core.sql
+  // + .../20260829110000_articles_id_insert_grants.sql), and the FIRST module
+  // where `administratie` gets full CRUD alongside owner rather than
+  // read-only — a NEW write-role shape, mirroring `contracts`' owner-or-
+  // finance pairing above but with `administratie` in finance's seat instead
+  // (per the story: "Als Owner en Administratie wil ik de artikel database
+  // kunnen beheren"). planner/engineer/finance are plain `read` (all rows, no
+  // `_own` scoping — an article is shared master data, not assigned to one
+  // person). Matches that migration's RLS exactly: SELECT = any org member;
+  // INSERT/UPDATE/DELETE = `current_member_role(organization_id) in ('owner',
+  // 'administratie')`.
+  articles: {
+    owner: CRUD,
+    planner: READ_ONLY,
+    engineer: READ_ONLY,
+    finance: READ_ONLY,
+    administratie: CRUD,
+  },
   reporting: {
     owner: READ_ONLY,
     planner: READ_ONLY,
@@ -278,6 +300,11 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // No "Read (support only)"-style cross-tenant carve-out documented for
   // Activities either — same NONE shape as `planning`/`checklists`/`quotes`.
   activities: NONE,
+  // No "Read (support only)"-style cross-tenant carve-out documented for
+  // Articles either (docs/ARCHITECTURE.md's RBAC matrix table shows "—" for
+  // Articles' Platform Admin column) — same NONE shape as `planning`/
+  // `checklists`/`quotes`/`activities`.
+  articles: NONE,
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,
