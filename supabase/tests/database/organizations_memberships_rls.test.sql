@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(31);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: 4 auth users -> profile rows auto-created by handle_new_auth_user
@@ -265,6 +265,93 @@ select is(
   1,
   'owner_b cannot delete owner_a''s membership in org_a (DELETE silently excluded by RLS); row still present'
 ); -- 24
+
+-- ---------------------------------------------------------------------------
+-- Owner admin actions on another member's row (lib/team/actions.ts:
+-- updateTeamMemberRole / removeTeamMember, issue #88). Both run under the
+-- caller's own session (not service-role), relying on `memberships_update_owner`
+-- and `memberships_delete_self_or_owner`. Covers: owner_a can UPDATE/DELETE
+-- engineer_x's row within their shared org_a, but is blocked from touching a
+-- membership row belonging to a DIFFERENT org (org_b), even though owner_a
+-- holds the owner role somewhere. Currently acting as owner_a (set at line
+-- 259 above).
+-- ---------------------------------------------------------------------------
+
+-- Re-establish engineer_x as a member of org_a; their prior membership was
+-- removed by the self-leave test (test 23) above.
+select lives_ok(
+  $$ insert into public.memberships (user_id, organization_id, role)
+     values ('33333333-3333-3333-3333-333333333333', 'aaaaaaaa-0000-0000-0000-000000000001', 'engineer') $$,
+  'owner_a re-adds engineer_x to org_a (fixture for admin update/delete tests below)'
+); -- 25
+
+select lives_ok(
+  $$ update public.memberships
+       set role = 'planner'
+     where user_id = '33333333-3333-3333-3333-333333333333'
+       and organization_id = 'aaaaaaaa-0000-0000-0000-000000000001' $$,
+  'owner_a (owner of org_a) can UPDATE engineer_x''s role within their shared org_a'
+); -- 26
+
+select is(
+  (select role::text from public.memberships
+   where user_id = '33333333-3333-3333-3333-333333333333'
+     and organization_id = 'aaaaaaaa-0000-0000-0000-000000000001'),
+  'planner',
+  'engineer_x''s role in org_a is planner after owner_a''s UPDATE (proves the row was actually changed, not just that the statement didn''t error)'
+); -- 27
+
+select lives_ok(
+  $$ delete from public.memberships
+     where user_id = '33333333-3333-3333-3333-333333333333'
+       and organization_id = 'aaaaaaaa-0000-0000-0000-000000000001' $$,
+  'owner_a (owner of org_a) can DELETE engineer_x''s membership row in org_a'
+); -- 28
+
+select is(
+  (select count(*)::int from public.memberships
+   where user_id = '33333333-3333-3333-3333-333333333333'
+     and organization_id = 'aaaaaaaa-0000-0000-0000-000000000001'),
+  0,
+  'engineer_x''s membership row in org_a is gone after owner_a''s DELETE (proves the row was actually removed, not just that the statement didn''t error)'
+); -- 29
+
+-- Cross-tenant boundary: owner_a holds the owner role in org_a but no role
+-- at all in org_b, so the same UPDATE/DELETE policies must exclude org_b's
+-- rows. Target owner_b's own membership row in org_b (still acting as
+-- owner_a). Both operations hit `USING (is_org_owner(organization_id))` /
+-- `USING (user_id = auth.uid() OR is_org_owner(organization_id))` and are
+-- false for owner_a in org_b, so per the RLS semantics note at the top of
+-- this file, these silently affect 0 rows rather than raising.
+update public.memberships
+   set role = 'engineer'
+ where user_id = '22222222-2222-2222-2222-222222222222'
+   and organization_id = 'bbbbbbbb-0000-0000-0000-000000000002';
+
+delete from public.memberships
+ where user_id = '22222222-2222-2222-2222-222222222222'
+   and organization_id = 'bbbbbbbb-0000-0000-0000-000000000002';
+
+-- Verify from owner_b's own session (who can see org_b's memberships
+-- regardless of what owner_a attempted) that neither the UPDATE nor the
+-- DELETE attempted above by owner_a took effect.
+select pg_temp.act_as('22222222-2222-2222-2222-222222222222');
+
+select is(
+  (select role::text from public.memberships
+   where user_id = '22222222-2222-2222-2222-222222222222'
+     and organization_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  'owner',
+  'owner_a''s UPDATE on owner_b''s membership row in org_b (different org) is silently excluded by RLS; role unchanged'
+); -- 30
+
+select is(
+  (select count(*)::int from public.memberships
+   where user_id = '22222222-2222-2222-2222-222222222222'
+     and organization_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  1,
+  'owner_a''s DELETE on owner_b''s membership row in org_b (different org) is silently excluded by RLS; row still present'
+); -- 31
 
 select * from finish();
 rollback;

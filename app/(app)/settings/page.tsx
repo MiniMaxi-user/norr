@@ -57,6 +57,18 @@ export default async function SettingsPage() {
           </Stack>
         </Card>
       </Link>
+
+      <Link href="/settings/team">
+        <Card interactive>
+          <Stack gap="xs">
+            <Heading level={3}>Team</Heading>
+            <Text tone="muted">
+              Invite colleagues and manage their role and access. Everyone can view active team members; only the
+              organization owner can invite, change roles, or remove access.
+            </Text>
+          </Stack>
+        </Card>
+      </Link>
     </Stack>
   );
 }
