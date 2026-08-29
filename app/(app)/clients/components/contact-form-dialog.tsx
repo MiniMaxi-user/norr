@@ -16,12 +16,12 @@ import {
   Stack,
   Text,
   Textarea,
+  useEscapeToClose,
 } from "@yourorg/ui";
 import { FileText, Users } from "@yourorg/ui/icons";
 import { createContact, updateContact, type ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { FormField } from "./form-field";
-import { useEscapeToClose } from "../use-escape-to-close";
 
 interface ContactFormState {
   error?: string;

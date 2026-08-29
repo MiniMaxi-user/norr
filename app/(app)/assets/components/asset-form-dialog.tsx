@@ -17,13 +17,13 @@ import {
   Stack,
   Text,
   Textarea,
+  useEscapeToClose,
 } from "@yourorg/ui";
 import { Boxes, FileText, MapPin, ShieldCheck } from "@yourorg/ui/icons";
 import type { AssetRecord } from "../actions";
 import { createAssetFormAction, updateAssetFormAction, type AssetFormState } from "../asset-form-actions";
 import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
-import { useEscapeToClose } from "@/app/(app)/clients/use-escape-to-close";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels, type AssetModelRecord } from "@/lib/asset-models/actions";
 

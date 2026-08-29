@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, DefinitionList, Dialog, Heading, Inline, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, DefinitionList, Dialog, Heading, Inline, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
-import { useEscapeToClose } from "@/app/(app)/clients/use-escape-to-close";
 import { ActivityFormPanel } from "./activity-form-panel";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 

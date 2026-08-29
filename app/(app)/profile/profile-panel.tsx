@@ -15,12 +15,12 @@ import {
   Select,
   Stack,
   Text,
+  useEscapeToClose,
   useTheme,
 } from "@yourorg/ui";
 import { Globe, Lock, Moon, Sun, UserRound } from "@yourorg/ui/icons";
 import { AvatarUploader } from "./avatar-uploader";
 import { updatePassword, updateProfile } from "./actions";
-import { useEscapeToClose } from "./use-escape-to-close";
 import { LOCALES, type Locale } from "@/lib/profile/locale";
 
 /**

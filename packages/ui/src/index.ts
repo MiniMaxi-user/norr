@@ -130,6 +130,7 @@ export {
   type TableCellProps,
 } from "./components/table";
 export { Dialog, type DialogProps, type DialogSize, type DialogSectionProps } from "./components/dialog";
+export { useEscapeToClose } from "./use-escape-to-close";
 export { Board, type BoardProps, type BoardColumnProps, type BoardCardProps } from "./components/board";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state";
 export {

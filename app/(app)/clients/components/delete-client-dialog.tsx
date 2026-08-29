@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
+import { Button, Dialog, Heading, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import { deleteClient, getClientDependencyCounts, type ClientRecord } from "../actions";
-import { useEscapeToClose } from "../use-escape-to-close";
 
 /**
  * Delete confirmation for a client. Calls `getClientDependencyCounts` first

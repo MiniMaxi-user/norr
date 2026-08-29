@@ -18,6 +18,7 @@ import {
   Stack,
   Text,
   Textarea,
+  useEscapeToClose,
 } from "@yourorg/ui";
 import { Bell, ClipboardList, FileText, Phone, UserRound } from "@yourorg/ui/icons";
 import { getActivityFormContext, type ActivityRecord } from "../actions";
@@ -27,7 +28,6 @@ import { getAsset, listAssets, type AssetRecord } from "@/app/(app)/assets/actio
 import { getClient, listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { listContacts, type ContactRecord } from "@/app/(app)/clients/contacts-actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
-import { useEscapeToClose } from "@/app/(app)/clients/use-escape-to-close";
 import { listOrgMembers, type OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
