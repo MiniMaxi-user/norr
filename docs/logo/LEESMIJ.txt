@@ -32,3 +32,9 @@ Niet doen
   de N nooit los naast de volledige naam plaatsen
   messing niet voor de letters zelf en niet als achtergrondvlak
   nooit direct op een foto: altijd op Fjord, Natt of Snö
+
+Norr logo.html
+  géén los te gebruiken logo-asset — dit is een gepubliceerde Claude
+  Artifact-pagina (bevat eigen preview/bundler-scaffolding) en blijft
+  bewust in deze map bewaard. Voor het logo zelf: gebruik de SVG's
+  hierboven.
