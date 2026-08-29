@@ -1,25 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Badge, EmptyState, Table } from "@yourorg/ui";
+import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { CalendarDays } from "@yourorg/ui/icons";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { formatDateTime } from "./format-date";
 
 export interface WorkOrdersPanelProps {
   workOrders: WorkOrderRecord[];
-}
-
-function formatScheduledAt(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 /**
@@ -37,38 +25,27 @@ function formatScheduledAt(value: string | null): string {
 export function WorkOrdersPanel({ workOrders }: WorkOrdersPanelProps) {
   const router = useRouter();
 
-  if (workOrders.length === 0) {
-    return (
-      <EmptyState
-        icon={<CalendarDays />}
-        heading="No work orders yet"
-        text="Jobs dispatched for this client will show up here."
-      />
-    );
-  }
-
   return (
-    <Table>
-      <Table.Head>
-        <Table.Row>
-          <Table.HeaderCell>Title</Table.HeaderCell>
-          <Table.HeaderCell align="center">Status</Table.HeaderCell>
-          <Table.HeaderCell>Scheduled</Table.HeaderCell>
-        </Table.Row>
-      </Table.Head>
-      <Table.Body>
-        {workOrders.map((workOrder) => (
-          <Table.Row key={workOrder.id} onClick={() => router.push(`/work-orders/${workOrder.id}`)}>
-            <Table.Cell>{workOrder.title}</Table.Cell>
-            <Table.Cell align="center">
-              <Badge color={workOrder.work_order_status?.color} variant="muted">
-                {workOrder.work_order_status?.label ?? "—"}
-              </Badge>
-            </Table.Cell>
-            <Table.Cell>{formatScheduledAt(workOrder.scheduled_at)}</Table.Cell>
-          </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+    <LinkedRecordsTable
+      records={workOrders}
+      getKey={(workOrder) => workOrder.id}
+      onRowClick={(workOrder) => router.push(`/work-orders/${workOrder.id}`)}
+      emptyIcon={<CalendarDays />}
+      emptyHeading="No work orders yet"
+      emptyText="Jobs dispatched for this client will show up here."
+      columns={[
+        { header: "Title", render: (workOrder) => workOrder.title },
+        {
+          header: "Status",
+          align: "center",
+          render: (workOrder) => (
+            <Badge color={workOrder.work_order_status?.color} variant="muted">
+              {workOrder.work_order_status?.label ?? "—"}
+            </Badge>
+          ),
+        },
+        { header: "Scheduled", render: (workOrder) => formatDateTime(workOrder.scheduled_at) },
+      ]}
+    />
   );
 }

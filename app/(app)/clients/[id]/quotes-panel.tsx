@@ -1,19 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Badge, EmptyState, Table } from "@yourorg/ui";
+import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { ClipboardList } from "@yourorg/ui/icons";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
+import { formatDate } from "./format-date";
 
 export interface QuotesPanelProps {
   quotes: QuoteRecord[];
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function formatTotal(value: number): string {
@@ -34,40 +28,28 @@ function formatTotal(value: number): string {
 export function QuotesPanel({ quotes }: QuotesPanelProps) {
   const router = useRouter();
 
-  if (quotes.length === 0) {
-    return (
-      <EmptyState
-        icon={<ClipboardList />}
-        heading="No quotes yet"
-        text="Pre-sale proposals for this client will show up here."
-      />
-    );
-  }
-
   return (
-    <Table>
-      <Table.Head>
-        <Table.Row>
-          <Table.HeaderCell>Name</Table.HeaderCell>
-          <Table.HeaderCell align="center">Status</Table.HeaderCell>
-          <Table.HeaderCell>Valid until</Table.HeaderCell>
-          <Table.HeaderCell>Total</Table.HeaderCell>
-        </Table.Row>
-      </Table.Head>
-      <Table.Body>
-        {quotes.map((quote) => (
-          <Table.Row key={quote.id} onClick={() => router.push(`/quotes/${quote.id}`)}>
-            <Table.Cell>{quote.name}</Table.Cell>
-            <Table.Cell align="center">
-              <Badge color={quote.quote_status?.color} variant="muted">
-                {quote.quote_status?.label ?? "—"}
-              </Badge>
-            </Table.Cell>
-            <Table.Cell>{formatDate(quote.valid_until)}</Table.Cell>
-            <Table.Cell>{formatTotal(quote.total)}</Table.Cell>
-          </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+    <LinkedRecordsTable
+      records={quotes}
+      getKey={(quote) => quote.id}
+      onRowClick={(quote) => router.push(`/quotes/${quote.id}`)}
+      emptyIcon={<ClipboardList />}
+      emptyHeading="No quotes yet"
+      emptyText="Pre-sale proposals for this client will show up here."
+      columns={[
+        { header: "Name", render: (quote) => quote.name },
+        {
+          header: "Status",
+          align: "center",
+          render: (quote) => (
+            <Badge color={quote.quote_status?.color} variant="muted">
+              {quote.quote_status?.label ?? "—"}
+            </Badge>
+          ),
+        },
+        { header: "Valid until", render: (quote) => formatDate(quote.valid_until) },
+        { header: "Total", render: (quote) => formatTotal(quote.total) },
+      ]}
+    />
   );
 }

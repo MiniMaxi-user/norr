@@ -1,19 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Badge, EmptyState, Table } from "@yourorg/ui";
+import { Badge, LinkedRecordsTable } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import { formatDate } from "./format-date";
 
 export interface ContractsPanelProps {
   contracts: ContractRecord[];
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 /**
@@ -31,40 +25,28 @@ function formatDate(value: string | null): string {
 export function ContractsPanel({ contracts }: ContractsPanelProps) {
   const router = useRouter();
 
-  if (contracts.length === 0) {
-    return (
-      <EmptyState
-        icon={<FileText />}
-        heading="No contracts yet"
-        text="Service agreements for this client will show up here."
-      />
-    );
-  }
-
   return (
-    <Table>
-      <Table.Head>
-        <Table.Row>
-          <Table.HeaderCell>Name</Table.HeaderCell>
-          <Table.HeaderCell align="center">Type</Table.HeaderCell>
-          <Table.HeaderCell>Start date</Table.HeaderCell>
-          <Table.HeaderCell>End date</Table.HeaderCell>
-        </Table.Row>
-      </Table.Head>
-      <Table.Body>
-        {contracts.map((contract) => (
-          <Table.Row key={contract.id} onClick={() => router.push(`/contracts/${contract.id}`)}>
-            <Table.Cell>{contract.name}</Table.Cell>
-            <Table.Cell align="center">
-              <Badge color={contract.contract_type?.color} variant="muted">
-                {contract.contract_type?.label ?? "—"}
-              </Badge>
-            </Table.Cell>
-            <Table.Cell>{formatDate(contract.start_date)}</Table.Cell>
-            <Table.Cell>{formatDate(contract.end_date)}</Table.Cell>
-          </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+    <LinkedRecordsTable
+      records={contracts}
+      getKey={(contract) => contract.id}
+      onRowClick={(contract) => router.push(`/contracts/${contract.id}`)}
+      emptyIcon={<FileText />}
+      emptyHeading="No contracts yet"
+      emptyText="Service agreements for this client will show up here."
+      columns={[
+        { header: "Name", render: (contract) => contract.name },
+        {
+          header: "Type",
+          align: "center",
+          render: (contract) => (
+            <Badge color={contract.contract_type?.color} variant="muted">
+              {contract.contract_type?.label ?? "—"}
+            </Badge>
+          ),
+        },
+        { header: "Start date", render: (contract) => formatDate(contract.start_date) },
+        { header: "End date", render: (contract) => formatDate(contract.end_date) },
+      ]}
+    />
   );
 }

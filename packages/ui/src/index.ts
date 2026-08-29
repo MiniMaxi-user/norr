@@ -139,6 +139,11 @@ export { ConfirmDeleteDialog, type ConfirmDeleteDialogProps } from "./confirm-de
 export { Board, type BoardProps, type BoardColumnProps, type BoardCardProps } from "./components/board";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state";
 export {
+  LinkedRecordsTable,
+  type LinkedRecordsTableProps,
+  type LinkedRecordsColumn,
+} from "./components/linked-records-table";
+export {
   Disclosure,
   type DisclosureProps,
   type DisclosureSummaryProps,
