@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { Breadcrumbs, Heading, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -7,9 +6,9 @@ import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getActivity } from "@/app/(app)/activities/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
-import { WorkOrderFields } from "../components/work-order-fields";
+import { WorkOrderScreen } from "../components/work-order-screen";
 
-export const metadata = { title: "New work order" };
+export const metadata = { title: "New werkorder" };
 
 interface NewWorkOrderPageProps {
   searchParams: Promise<{ clientId?: string; siteId?: string; assetId?: string; activityId?: string }>;
@@ -38,16 +37,14 @@ interface NewWorkOrderPageProps {
  *
  * Issue #89 ("New/Edit work order screens aligned") deleted the separate
  * `/work-orders/[id]/edit` route entirely — an existing work order's fields
- * are now inline-editable directly on its own detail page
- * (`[id]/page.tsx`). This route stays (creation genuinely needs a "no id
- * yet" step `updateWorkOrderFormAction` can't express), rendering the exact
- * same `WorkOrderFields` component that page's rail uses, just without
- * `dense` (this page has the full width to itself, so naturally-paired
- * fields sit side by side via `FormGrid` — see that component's own doc
- * comment) and without a Time Entries/Checklist section (both are
- * sub-resources of an already-`work_order_id`-having record, which doesn't
- * exist yet here — an inherent, acceptable difference, not a layout
- * mismatch).
+ * are now inline-editable directly on its own detail page (`[id]/page.tsx`).
+ * This route stays (creation genuinely needs a "no id yet" step
+ * `updateWorkOrderFormAction` can't express), rendering the same shared
+ * `WorkOrderScreen` (`../components/work-order-screen.tsx`) that page
+ * renders with `mode="edit"` — both routes are now genuinely one screen, not
+ * two hand-maintained layouts. The only inherent difference in `create` mode
+ * is no Time Entries/Checklist section (both are sub-resources of an
+ * already-`work_order_id`-having record, which doesn't exist yet here).
  */
 export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPageProps) {
   const { clientId, siteId, assetId, activityId } = await searchParams;
@@ -91,21 +88,18 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   const cancelHref = lockedClient ? `/clients/${lockedClient.id}` : "/work-orders";
 
   return (
-    <Stack gap="lg">
-      <Breadcrumbs items={breadcrumbItems} />
-      <Heading level={1}>New work order</Heading>
-      <WorkOrderFields
-        mode="create"
-        clients={clients}
-        lockedClientId={lockedClient?.id}
-        initialSiteId={siteId}
-        initialAssetId={assetId}
-        sourceActivityId={sourceActivityId}
-        statuses={statuses}
-        priorities={priorities}
-        members={members}
-        cancelHref={cancelHref}
-      />
-    </Stack>
+    <WorkOrderScreen
+      mode="create"
+      breadcrumbItems={breadcrumbItems}
+      clients={clients}
+      lockedClientId={lockedClient?.id}
+      initialSiteId={siteId}
+      initialAssetId={assetId}
+      sourceActivityId={sourceActivityId}
+      statuses={statuses}
+      priorities={priorities}
+      members={members}
+      cancelHref={cancelHref}
+    />
   );
 }

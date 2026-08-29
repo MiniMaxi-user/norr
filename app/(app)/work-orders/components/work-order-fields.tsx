@@ -106,16 +106,6 @@ export interface WorkOrderFieldsProps {
    * folded the standalone `/work-orders/[id]/edit` route into this same
    * detail page, so there is no separate route left to navigate away from). */
   cancelHref?: string;
-  /**
-   * Single column throughout, for every section — used when this renders
-   * inside the work order detail page's 340px `DetailLayout` rail (issue
-   * #89), which is too narrow for paired fields. Omitted (the default) on
-   * the standalone `/work-orders/new` page, where this form has the whole
-   * page width to itself and pairs naturally-related fields (Site + Asset,
-   * Assigned to + Scheduled for, Status + Priority) via `FormGrid` instead,
-   * same as before issue #89.
-   */
-  dense?: boolean;
 }
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
@@ -154,14 +144,15 @@ function ReadOnlyField({ label, value }: { label: string; value: React.ReactNode
 
 /**
  * The work order's own fields (Job / Assignment & Schedule / Status &
- * Priority) — the single shared component behind both `/work-orders/new`
- * (`mode: "create"`) and the work order detail page's inline-editable rail
- * (`mode: "edit"`, folded in there by issue #89, which deleted the separate
- * `/work-orders/[id]/edit` route entirely). Per docs/ARCHITECTURE.md "Popup
- * vs. full page", Work Orders is a top-level module entity — `/work-orders/new`
- * stays a real page, never a `Dialog`; editing an existing one no longer
- * needs its OWN page at all now that it lives inline on the record's own
- * detail page instead.
+ * Priority) — the single shared component behind the single shared
+ * `WorkOrderScreen` (`../components/work-order-screen.tsx`) that both
+ * `/work-orders/new` (`mode: "create"`) and the work order detail page
+ * (`mode: "edit"`) render, full width, in a plain vertical `Stack` (no more
+ * 340px rail — both routes now share one genuinely identical screen shape).
+ * Per docs/ARCHITECTURE.md "Popup vs. full page", Work Orders is a top-level
+ * module entity — `/work-orders/new` stays a real page, never a `Dialog`;
+ * editing an existing one no longer needs its OWN page at all now that it
+ * lives inline on the record's own detail page instead.
  *
  * `mode: "edit"` + `readOnly` renders every field as plain text (see
  * `ReadOnlyField` above) instead of a form at all — no `<form>`, no Save/
@@ -200,7 +191,6 @@ export function WorkOrderFields({
   priorities,
   members,
   cancelHref,
-  dense = false,
 }: WorkOrderFieldsProps) {
   const router = useRouter();
   const action =
@@ -366,7 +356,7 @@ export function WorkOrderFields({
 
   if (readOnly) {
     return (
-      <Stack gap={dense ? "md" : "lg"}>
+      <Stack gap="lg">
         <Card>
           <Stack gap="sm">
             <Heading level={6}>Job</Heading>
@@ -426,7 +416,7 @@ export function WorkOrderFields({
 
   return (
     <form key={formKey} action={formAction}>
-      <Stack gap={dense ? "md" : "lg"}>
+      <Stack gap="lg">
         {state.error && <Text tone="danger">{state.error}</Text>}
 
         <Card>
@@ -495,99 +485,51 @@ export function WorkOrderFields({
                 <input type="hidden" name="sourceActivityId" value={sourceActivityId} />
               )}
 
-              {dense ? (
-                <>
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-site">Site</Label>
-                    <Select
-                      id="wo-site"
-                      name="siteId"
-                      value={selectedSiteId}
-                      onChange={(event) => handleSiteChange(event.target.value)}
-                      disabled={!selectedClientId || loadingSites}
-                    >
-                      <option value="">{loadingSites ? "Loading sites…" : "No specific site"}</option>
-                      {sites.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {formatSiteAddressShort(candidate) ?? "Unnamed site"}
-                        </option>
-                      ))}
-                    </Select>
-                    {state.fieldErrors?.siteId && <Text tone="danger">{state.fieldErrors.siteId[0]}</Text>}
-                  </Stack>
-
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-asset">Asset</Label>
-                    <Select
-                      id="wo-asset"
-                      name="assetId"
-                      value={selectedAssetId}
-                      onChange={(event) => setSelectedAssetId(event.target.value)}
-                      disabled={!selectedClientId || loadingAssets}
-                    >
-                      <option value="">
-                        {!selectedClientId
-                          ? "Select a client first…"
-                          : loadingAssets
-                            ? "Loading assets…"
-                            : "No specific asset"}
+              <FormGrid columns={2}>
+                <Stack gap="sm">
+                  <Label htmlFor="wo-site">Site</Label>
+                  <Select
+                    id="wo-site"
+                    name="siteId"
+                    value={selectedSiteId}
+                    onChange={(event) => handleSiteChange(event.target.value)}
+                    disabled={!selectedClientId || loadingSites}
+                  >
+                    <option value="">{loadingSites ? "Loading sites…" : "No specific site"}</option>
+                    {sites.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {formatSiteAddressShort(candidate) ?? "Unnamed site"}
                       </option>
-                      {filteredAssets.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.name}
-                        </option>
-                      ))}
-                    </Select>
-                    {state.fieldErrors?.assetId && <Text tone="danger">{state.fieldErrors.assetId[0]}</Text>}
-                  </Stack>
-                </>
-              ) : (
-                <FormGrid columns={2}>
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-site">Site</Label>
-                    <Select
-                      id="wo-site"
-                      name="siteId"
-                      value={selectedSiteId}
-                      onChange={(event) => handleSiteChange(event.target.value)}
-                      disabled={!selectedClientId || loadingSites}
-                    >
-                      <option value="">{loadingSites ? "Loading sites…" : "No specific site"}</option>
-                      {sites.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {formatSiteAddressShort(candidate) ?? "Unnamed site"}
-                        </option>
-                      ))}
-                    </Select>
-                    {state.fieldErrors?.siteId && <Text tone="danger">{state.fieldErrors.siteId[0]}</Text>}
-                  </Stack>
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.siteId && <Text tone="danger">{state.fieldErrors.siteId[0]}</Text>}
+                </Stack>
 
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-asset">Asset</Label>
-                    <Select
-                      id="wo-asset"
-                      name="assetId"
-                      value={selectedAssetId}
-                      onChange={(event) => setSelectedAssetId(event.target.value)}
-                      disabled={!selectedClientId || loadingAssets}
-                    >
-                      <option value="">
-                        {!selectedClientId
-                          ? "Select a client first…"
-                          : loadingAssets
-                            ? "Loading assets…"
-                            : "No specific asset"}
+                <Stack gap="sm">
+                  <Label htmlFor="wo-asset">Asset</Label>
+                  <Select
+                    id="wo-asset"
+                    name="assetId"
+                    value={selectedAssetId}
+                    onChange={(event) => setSelectedAssetId(event.target.value)}
+                    disabled={!selectedClientId || loadingAssets}
+                  >
+                    <option value="">
+                      {!selectedClientId
+                        ? "Select a client first…"
+                        : loadingAssets
+                          ? "Loading assets…"
+                          : "No specific asset"}
+                    </option>
+                    {filteredAssets.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
                       </option>
-                      {filteredAssets.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.name}
-                        </option>
-                      ))}
-                    </Select>
-                    {state.fieldErrors?.assetId && <Text tone="danger">{state.fieldErrors.assetId[0]}</Text>}
-                  </Stack>
-                </FormGrid>
-              )}
+                    ))}
+                  </Select>
+                  {state.fieldErrors?.assetId && <Text tone="danger">{state.fieldErrors.assetId[0]}</Text>}
+                </Stack>
+              </FormGrid>
 
               <Stack gap="sm">
                 <Label htmlFor="wo-contract">Contract</Label>
@@ -614,65 +556,35 @@ export function WorkOrderFields({
                 {state.fieldErrors?.contractId && <Text tone="danger">{state.fieldErrors.contractId[0]}</Text>}
               </Stack>
 
-              {dense ? (
-                <>
-                  <Stack gap="sm">
-                    <Label htmlFor="assignedTo">Assigned to (standard engineer)</Label>
-                    <Select id="assignedTo" name="assignedTo" defaultValue={workOrder?.assigned_to ?? ""}>
-                      <option value="">Unassigned</option>
-                      {engineers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {memberDisplayName(member)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Text tone="muted">Defaults every logged time entry to this engineer.</Text>
-                    {state.fieldErrors?.assignedTo && <Text tone="danger">{state.fieldErrors.assignedTo[0]}</Text>}
-                  </Stack>
+              <FormGrid columns={2}>
+                <Stack gap="sm">
+                  <Label htmlFor="assignedTo">Assigned to (standard engineer)</Label>
+                  <Select id="assignedTo" name="assignedTo" defaultValue={workOrder?.assigned_to ?? ""}>
+                    <option value="">Unassigned</option>
+                    {engineers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {memberDisplayName(member)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Text tone="muted">
+                    Defaults every logged travel/work time entry to this engineer — changeable per entry.
+                  </Text>
+                  {state.fieldErrors?.assignedTo && <Text tone="danger">{state.fieldErrors.assignedTo[0]}</Text>}
+                </Stack>
 
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-scheduled">Scheduled for</Label>
-                    <Input
-                      id="wo-scheduled"
-                      type="datetime-local"
-                      value={scheduledAtLocal}
-                      onChange={(event) => setScheduledAtLocal(event.target.value)}
-                    />
-                    <input type="hidden" name="scheduledAt" value={toIsoDateTime(scheduledAtLocal)} />
-                    {state.fieldErrors?.scheduledAt && <Text tone="danger">{state.fieldErrors.scheduledAt[0]}</Text>}
-                  </Stack>
-                </>
-              ) : (
-                <FormGrid columns={2}>
-                  <Stack gap="sm">
-                    <Label htmlFor="assignedTo">Assigned to (standard engineer)</Label>
-                    <Select id="assignedTo" name="assignedTo" defaultValue={workOrder?.assigned_to ?? ""}>
-                      <option value="">Unassigned</option>
-                      {engineers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {memberDisplayName(member)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Text tone="muted">
-                      Defaults every logged travel/work time entry to this engineer — changeable per entry.
-                    </Text>
-                    {state.fieldErrors?.assignedTo && <Text tone="danger">{state.fieldErrors.assignedTo[0]}</Text>}
-                  </Stack>
-
-                  <Stack gap="sm">
-                    <Label htmlFor="wo-scheduled">Scheduled for</Label>
-                    <Input
-                      id="wo-scheduled"
-                      type="datetime-local"
-                      value={scheduledAtLocal}
-                      onChange={(event) => setScheduledAtLocal(event.target.value)}
-                    />
-                    <input type="hidden" name="scheduledAt" value={toIsoDateTime(scheduledAtLocal)} />
-                    {state.fieldErrors?.scheduledAt && <Text tone="danger">{state.fieldErrors.scheduledAt[0]}</Text>}
-                  </Stack>
-                </FormGrid>
-              )}
+                <Stack gap="sm">
+                  <Label htmlFor="wo-scheduled">Scheduled for</Label>
+                  <Input
+                    id="wo-scheduled"
+                    type="datetime-local"
+                    value={scheduledAtLocal}
+                    onChange={(event) => setScheduledAtLocal(event.target.value)}
+                  />
+                  <input type="hidden" name="scheduledAt" value={toIsoDateTime(scheduledAtLocal)} />
+                  {state.fieldErrors?.scheduledAt && <Text tone="danger">{state.fieldErrors.scheduledAt[0]}</Text>}
+                </Stack>
+              </FormGrid>
             </Stack>
           </Stack>
         </Card>
@@ -681,75 +593,41 @@ export function WorkOrderFields({
           <Stack gap="sm">
             <Heading level={6}>Status &amp; Priority</Heading>
             <Text tone="muted">Lifecycle state and urgency.</Text>
-            {dense ? (
-              <Stack gap="md">
-                <FormSelectField
-                  label="Status"
-                  name="statusId"
-                  defaultValue={workOrder?.status_id ?? ""}
-                  errors={state.fieldErrors?.statusId}
-                >
-                  <option value="">
-                    {defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}
+            <FormGrid columns={2}>
+              <FormSelectField
+                label="Status"
+                name="statusId"
+                defaultValue={workOrder?.status_id ?? ""}
+                errors={state.fieldErrors?.statusId}
+              >
+                <option value="">
+                  {defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}
+                </option>
+                {statuses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
                   </option>
-                  {statuses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </FormSelectField>
+                ))}
+              </FormSelectField>
 
-                <FormSelectField
-                  label="Priority"
-                  name="priorityId"
-                  defaultValue={workOrder?.priority_id ?? ""}
-                  errors={state.fieldErrors?.priorityId}
-                >
-                  <option value="">No priority</option>
-                  {priorities.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </FormSelectField>
-              </Stack>
-            ) : (
-              <FormGrid columns={2}>
-                <FormSelectField
-                  label="Status"
-                  name="statusId"
-                  defaultValue={workOrder?.status_id ?? ""}
-                  errors={state.fieldErrors?.statusId}
-                >
-                  <option value="">
-                    {defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}
+              <FormSelectField
+                label="Priority"
+                name="priorityId"
+                defaultValue={workOrder?.priority_id ?? ""}
+                errors={state.fieldErrors?.priorityId}
+              >
+                <option value="">No priority</option>
+                {priorities.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
                   </option>
-                  {statuses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </FormSelectField>
-
-                <FormSelectField
-                  label="Priority"
-                  name="priorityId"
-                  defaultValue={workOrder?.priority_id ?? ""}
-                  errors={state.fieldErrors?.priorityId}
-                >
-                  <option value="">No priority</option>
-                  {priorities.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </FormSelectField>
-              </FormGrid>
-            )}
+                ))}
+              </FormSelectField>
+            </FormGrid>
             {/* Never an input — `completed_at` is a derived/system field (set
                 when a work order's status transitions to done), not
                 something a user sets directly, so it's always shown
-                read-only regardless of `dense`/mode. */}
+                read-only regardless of mode. */}
             {mode === "edit" && (
               <ReadOnlyField
                 label="Completed at"

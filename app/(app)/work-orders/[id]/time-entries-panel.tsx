@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Heading, Inline, Input, Select, Stack, Table, Text } from "@yourorg/ui";
 import { CalendarDays } from "@yourorg/ui/icons";
-import { clockIn, clockOut, createTimeEntry, updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
+import { createTimeEntry, updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -23,20 +23,16 @@ export interface TimeEntriesPanelProps {
    * inline Travel/Work row editor's engineer picker (issue #87/#89) —
    * nobody else is a valid time-entry engineer. */
   members: OrgMemberRecord[];
-  /** This org's `time_entry_type` picklist values (Labor/Travel/Break), for
-   * the clock-in type select, and to split `timeEntries` into the
-   * Travel/Work sections below by each entry's resolved `value`. */
+  /** This org's `time_entry_type` picklist values (Labor/Travel/Break), to
+   * split `timeEntries` into the Travel/Work sections below by each entry's
+   * resolved `value`, and to resolve the fixed "Labor" type a new Work row is
+   * created with. */
   entryTypes: ReferenceListItemRecord[];
   /** The work order's own `assigned_to` ("standard engineer", issue #87) —
    * pre-selects a new inline row's engineer picker, mirroring
    * `createTimeEntry`'s own server-side default for an omitted `userId`. */
   assignedTo?: string | null;
   currentUserId: string;
-  /** `canAny(actor, "planning", ["create", "create_own"])` — gates the whole
-   * clock in/out affordance. Every role from engineer up to owner/planner has
-   * one of these two actions; finance/administratie (plain `read`) never see
-   * this section at all. */
-  canLogTime: boolean;
   /** `can(actor, "planning", "create")` — plain create, not `create_own`.
    * Gates the manual Travel/Work "Add" affordances specifically: those let
    * picking WHICH engineer the entry belongs to, which only a caller who can
@@ -44,9 +40,7 @@ export interface TimeEntriesPanelProps {
    * on-behalf-of logic) may exercise — an engineer's selection there would
    * otherwise be silently discarded server-side. Also gates whether an
    * EXISTING row's inline editor exposes the engineer picker at all (issue
-   * #89 — see `TimeEntriesTable`'s own doc comment) — an engineer
-   * (`create_own`/`update_own` only) still gets `canLogTime` above for their
-   * own clock-in/out, just not this reassignment capability.
+   * #89 — see `TimeEntriesTable`'s own doc comment).
    */
   canLogTimeForOthers: boolean;
   /** `can(actor, "planning", "update")` — owner/planner can edit ANY row. */
@@ -78,7 +72,6 @@ interface RowDraft {
   userId: string;
   startedAtLocal: string;
   endedAtLocal: string;
-  notes: string;
 }
 
 /** Same local helpers every other work-order-adjacent form owns a copy of
@@ -234,14 +227,6 @@ function TimeEntriesTable({
           />
         </Table.Cell>
         <Table.Cell>—</Table.Cell>
-        <Table.Cell>
-          <Input
-            aria-label="Notes"
-            value={draft!.notes}
-            onChange={(event) => onDraftChange({ notes: event.target.value })}
-            disabled={saving}
-          />
-        </Table.Cell>
         {showActionsColumn && (
           <Table.Cell align="center">
             <Inline gap="sm" align="center">
@@ -267,12 +252,10 @@ function TimeEntriesTable({
           <Table.HeaderCell>Started</Table.HeaderCell>
           <Table.HeaderCell>Ended</Table.HeaderCell>
           <Table.HeaderCell>Duration</Table.HeaderCell>
-          <Table.HeaderCell>Notes</Table.HeaderCell>
           {showActionsColumn && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
         </Table.Row>
       </Table.Head>
       <Table.Body>
-        {newRowDraft && renderDraftRow("new-row-draft", null)}
         {entries.map((entry) => {
           if (draft && draft.entryId === entry.id) {
             return renderDraftRow(entry.id, entry);
@@ -295,7 +278,6 @@ function TimeEntriesTable({
               <Table.Cell>{formatDateTime(entry.started_at, { year: false })}</Table.Cell>
               <Table.Cell>{entry.ended_at ? formatDateTime(entry.ended_at, { year: false }) : "—"}</Table.Cell>
               <Table.Cell>{formatDuration(entry.started_at, entry.ended_at)}</Table.Cell>
-              <Table.Cell>{entry.notes ?? "—"}</Table.Cell>
               {showActionsColumn && (
                 <Table.Cell align="center">
                   <Inline gap="sm" align="center">
@@ -327,6 +309,7 @@ function TimeEntriesTable({
             </Table.Row>
           );
         })}
+        {newRowDraft && renderDraftRow("new-row-draft", null)}
       </Table.Body>
     </Table>
   );
@@ -335,10 +318,9 @@ function TimeEntriesTable({
 /**
  * "Time Entries" — the `time_entries` sub-resource of one Work Order,
  * surfaced in-context on its detail page per docs/ARCHITECTURE.md
- * "Relational detail pages" / "Popup vs. full page": small enough that a
- * compact list + a clock in/out affordance is the right weight, not a
- * separate route — same shape `ContractAssetsPanel` gives Contracts' Linked
- * Assets.
+ * "Relational detail pages" / "Popup vs. full page": a compact Travel/Work
+ * list is the right weight here, not a separate route — same shape
+ * `ContractAssetsPanel` gives Contracts' Linked Assets.
  *
  * **Issue #87 ("Workorder uitbreiding")** split this into two explicit
  * sections — Travel times (`time_entry_type.value === "travel"`) and Work
@@ -354,20 +336,15 @@ function TimeEntriesTable({
  * same `createTimeEntry`/`updateTimeEntry` Server Actions the old dialogs
  * called — nothing changed backend-side, only how the caller reaches them.
  * `DeleteTimeEntryDialog` is untouched (a destructive confirm dialog is
- * still the right weight there), as is the clock in/out flow below.
+ * still the right weight there).
  *
- * *** On-behalf-of logging for CLOCK IN specifically (deliberately not built
- * here) ***: an owner/planner has plain `create` (not just `create_own`) on
- * `planning`, so `clockIn(workOrderId, { userId })` already supports logging
- * time for someone else at the server-action layer (see that module's doc
- * comment). The clock-in/out block below only ever calls it for the current
- * user (no "log time for…" member picker) — that live "start a running timer
- * for someone else" path is rare enough it's left as a documented follow-up.
- * The Travel/Work inline rows above are NOT the same case: those log an
- * already-complete (or already-known-start) entry after the fact, which is
- * exactly the on-behalf-of shape the acceptance criteria asked for, so they
- * DO expose an engineer picker (see `TimeEntriesTable`'s own doc comment for
- * exactly when).
+ * The Travel/Work inline rows expose an engineer picker for on-behalf-of
+ * logging (an already-complete, or already-known-start, entry logged after
+ * the fact) when `canLogTimeForOthers` — see `TimeEntriesTable`'s own doc
+ * comment for exactly when. The former "clock in/out" running-timer
+ * affordance and its Notes column were removed from this panel; `clockIn`/
+ * `clockOut` still exist as Server Actions in `time-entries-actions.ts` for
+ * any future caller, just unused here now.
  */
 export function TimeEntriesPanel({
   workOrderId,
@@ -376,7 +353,6 @@ export function TimeEntriesPanel({
   entryTypes,
   assignedTo,
   currentUserId,
-  canLogTime,
   canLogTimeForOthers,
   canUpdateAny,
   canUpdateOwn,
@@ -384,9 +360,8 @@ export function TimeEntriesPanel({
 }: TimeEntriesPanelProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
-  const [clockInEntryTypeId, setClockInEntryTypeId] = useState("");
   const [draft, setDraft] = useState<RowDraft | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<TimeEntryRecord | null>(null);
 
@@ -402,11 +377,6 @@ export function TimeEntriesPanel({
   // UI entirely") — anything that isn't Travel lands here.
   const workEntries = timeEntries.filter((entry) => entry.time_entry_type?.value !== "travel");
 
-  // "Is the current user already clocked in on this work order?" — the
-  // clock in/clock out affordance is one or the other, never both, so this
-  // is a plain `find`, not a filter.
-  const runningOwnEntry = timeEntries.find((entry) => entry.user_id === currentUserId && entry.ended_at === null);
-
   const defaultEngineerId = engineers.some((engineer) => engineer.id === assignedTo) ? (assignedTo ?? "") : "";
 
   function startAdd(section: "travel" | "work") {
@@ -417,7 +387,6 @@ export function TimeEntriesPanel({
       userId: defaultEngineerId,
       startedAtLocal: toDatetimeLocalValue(new Date().toISOString()),
       endedAtLocal: "",
-      notes: "",
     });
   }
 
@@ -429,7 +398,6 @@ export function TimeEntriesPanel({
       userId: entry.user_id,
       startedAtLocal: toDatetimeLocalValue(entry.started_at),
       endedAtLocal: toDatetimeLocalValue(entry.ended_at),
-      notes: entry.notes ?? "",
     });
   }
 
@@ -456,14 +424,12 @@ export function TimeEntriesPanel({
             userId: draft.userId,
             startedAt: toIsoDateTime(draft.startedAtLocal),
             endedAt: toIsoDateTime(draft.endedAtLocal),
-            notes: draft.notes,
           })
         : await createTimeEntry(workOrderId, {
             userId: draft.userId,
             entryTypeId: draft.section === "travel" ? travelType?.id : laborType?.id,
             startedAt: toIsoDateTime(draft.startedAtLocal),
             endedAt: toIsoDateTime(draft.endedAtLocal),
-            notes: draft.notes,
           });
       setSaving(false);
       if (!result.data) {
@@ -471,31 +437,6 @@ export function TimeEntriesPanel({
         return;
       }
       setDraft(null);
-      router.refresh();
-    });
-  }
-
-  function handleClockIn() {
-    setError(null);
-    startTransition(async () => {
-      const result = await clockIn(workOrderId, clockInEntryTypeId ? { entryTypeId: clockInEntryTypeId } : {});
-      if (!result.data) {
-        setError(result.error ?? "Could not clock in.");
-        return;
-      }
-      setClockInEntryTypeId("");
-      router.refresh();
-    });
-  }
-
-  function handleClockOut(id: string) {
-    setError(null);
-    startTransition(async () => {
-      const result = await clockOut(id);
-      if (!result.data) {
-        setError(result.error ?? "Could not clock out.");
-        return;
-      }
       router.refresh();
     });
   }
@@ -565,7 +506,7 @@ export function TimeEntriesPanel({
             <EmptyState
               icon={<CalendarDays />}
               heading="No work time logged yet"
-              text="Clock in, or add a work time entry, to start tracking time against this work order."
+              text="Add a work time entry to start tracking time against this work order."
             />
           ) : (
             <TimeEntriesTable
@@ -590,48 +531,6 @@ export function TimeEntriesPanel({
             />
           )}
         </Stack>
-
-        {canLogTime && (
-          <Stack gap="sm">
-            <Text tone="muted">Your time</Text>
-            {runningOwnEntry ? (
-              <Inline gap="sm" align="center">
-                <Text tone="muted">You&rsquo;re clocked in on this work order.</Text>
-                <Button
-                  type="button"
-                  variant="primary"
-                  disabled={isPending}
-                  onClick={() => handleClockOut(runningOwnEntry.id)}
-                >
-                  {isPending ? "Clocking out…" : "Clock out"}
-                </Button>
-              </Inline>
-            ) : (
-              <Inline gap="sm" align="center">
-                <Select
-                  aria-label="Time entry type"
-                  value={clockInEntryTypeId}
-                  onChange={(event) => setClockInEntryTypeId(event.target.value)}
-                  disabled={isPending}
-                >
-                  <option value="">
-                    {entryTypes.find((item) => item.is_default)
-                      ? `Use default (${entryTypes.find((item) => item.is_default)!.label})`
-                      : "Select a type…"}
-                  </option>
-                  {entryTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </Select>
-                <Button type="button" variant="primary" disabled={isPending} onClick={handleClockIn}>
-                  {isPending ? "Clocking in…" : "Clock in"}
-                </Button>
-              </Inline>
-            )}
-          </Stack>
-        )}
       </Stack>
 
       {deletingEntry && (

@@ -1,0 +1,208 @@
+"use client";
+
+import { useMemo } from "react";
+import { Badge, Breadcrumbs, DetailHero, Stack, type BreadcrumbItem } from "@yourorg/ui";
+import type { WorkOrderRecord } from "../actions";
+import type { AssetRecord } from "@/app/(app)/assets/actions";
+import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import type { OrgMemberRecord } from "@/lib/members/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import type { ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
+import { usePageHeader } from "@/components/shell/page-header-context";
+import { WorkOrderFields } from "./work-order-fields";
+import { WorkOrderDetailActions } from "../[id]/work-order-detail-actions";
+import { TimeEntriesPanel } from "../[id]/time-entries-panel";
+import { ChecklistPanel } from "../[id]/checklist-panel";
+import type { TimeEntryRecord } from "../time-entries-actions";
+import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
+
+export interface WorkOrderScreenProps {
+  mode: "create" | "edit";
+  /** Built by the server `page.tsx` (locked-client variant for `create`,
+   * plain "Work Orders / {title}" for `edit`) and pushed into the Topbar via
+   * `usePageHeader` below — never rendered inline in the page body, matching
+   * `client-detail.tsx`'s pattern. */
+  breadcrumbItems: BreadcrumbItem[];
+
+  // ---- WorkOrderFields passthrough (see that component's own prop docs) ----
+  /** Required for `mode: "edit"`. */
+  workOrder?: WorkOrderRecord;
+  client?: ClientRecord | null;
+  site?: SiteRecord | null;
+  asset?: AssetRecord | null;
+  assignedMember?: OrgMemberRecord | null;
+  readOnly?: boolean;
+  clients: ClientRecord[];
+  lockedClientId?: string;
+  initialSiteId?: string;
+  initialAssetId?: string;
+  sourceActivityId?: string;
+  statuses: ReferenceListItemRecord[];
+  priorities: ReferenceListItemRecord[];
+  members: OrgMemberRecord[];
+  cancelHref?: string;
+
+  // ---- edit-mode-only: hero actions + Time Entries/Checklist panels ----
+  /** `can(actor, "planning", "delete")` — gates the hero's Delete action, and
+   * is reused as-is for `TimeEntriesPanel`'s own `canDelete` (see that
+   * component's doc comment for why). Unused in `mode: "create"`. */
+  canDelete?: boolean;
+  currentUserId?: string;
+  timeEntries?: TimeEntryRecord[];
+  timeEntryTypes?: ReferenceListItemRecord[];
+  canLogTimeForOthers?: boolean;
+  canUpdateTimeEntriesAny?: boolean;
+  canUpdateTimeEntriesOwn?: boolean;
+  /** `hasFeature(org, "checklists") && canAccessModule(actor, "checklists")`
+   * — gates whether `ChecklistPanel` renders at all (a separately-entitled
+   * module, not folded into `planning`). */
+  canAccessChecklists?: boolean;
+  checklist?: WorkOrderChecklistRecord | null;
+  checklistItems?: WorkOrderChecklistItemRecord[];
+  checklistTemplates?: ChecklistTemplateRecord[];
+  canAttachChecklist?: boolean;
+  canDetachChecklist?: boolean;
+  canUpdateChecklistAny?: boolean;
+  canUpdateChecklistOwn?: boolean;
+}
+
+/**
+ * The single shared screen behind both `/work-orders/new` (`mode: "create"`)
+ * and the work order detail page (`mode: "edit"`) — genuinely one screen, not
+ * two hand-maintained layouts. Both routes' `page.tsx` stay server components
+ * doing their own data-fetching/RBAC gating (unchanged), and just render this
+ * with `mode="create"|"edit"`.
+ *
+ * Header: the breadcrumb lives in the Topbar via `usePageHeader` (never an
+ * inline `<Breadcrumbs>` in the page body — see `client-detail.tsx`'s own
+ * doc comment on why the passed node must be memoized), and `DetailHero`
+ * replaces the old plain `Heading`/`Toolbar`. `title` is "New werkorder" in
+ * create mode, or the record's own (real) title in edit mode — never
+ * genericized, per the explicit decision not to replace a saved record's
+ * title with placeholder text. `badges` (the work order's status/priority)
+ * and `actions` (`WorkOrderDetailActions`) only render in edit mode — there
+ * is nothing saved yet to badge or act on in create mode.
+ *
+ * Below the hero: `WorkOrderFields` always full width (no more 340px rail,
+ * no more `dense` prop — both routes share the exact same layout now), then
+ * — edit mode only, since there's no `work_order_id` yet in create mode —
+ * `TimeEntriesPanel` and `ChecklistPanel` in a plain vertical `Stack` (Work
+ * Orders doesn't need `DetailLayout`'s rail/main split the way Clients does
+ * for secondary reference info).
+ */
+export function WorkOrderScreen({
+  mode,
+  breadcrumbItems,
+  workOrder,
+  client,
+  site,
+  asset,
+  assignedMember,
+  readOnly,
+  clients,
+  lockedClientId,
+  initialSiteId,
+  initialAssetId,
+  sourceActivityId,
+  statuses,
+  priorities,
+  members,
+  cancelHref,
+  canDelete,
+  currentUserId,
+  timeEntries,
+  timeEntryTypes,
+  canLogTimeForOthers,
+  canUpdateTimeEntriesAny,
+  canUpdateTimeEntriesOwn,
+  canAccessChecklists,
+  checklist,
+  checklistItems,
+  checklistTemplates,
+  canAttachChecklist,
+  canDetachChecklist,
+  canUpdateChecklistAny,
+  canUpdateChecklistOwn,
+}: WorkOrderScreenProps) {
+  // Referentially stable per `usePageHeader`'s own doc-comment warning — see
+  // `client-detail.tsx`'s identical `breadcrumbNode` pattern.
+  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
+  usePageHeader(breadcrumbNode);
+
+  const isEdit = mode === "edit" && Boolean(workOrder);
+
+  return (
+    <Stack gap="lg">
+      <DetailHero
+        avatarLabel={isEdit ? workOrder!.title : "New werkorder"}
+        title={isEdit ? workOrder!.title : "New werkorder"}
+        badges={
+          isEdit ? (
+            <>
+              <Badge color={workOrder!.work_order_status?.color} variant="muted">
+                {workOrder!.work_order_status?.label ?? "—"}
+              </Badge>
+              {workOrder!.work_order_priority && (
+                <Badge color={workOrder!.work_order_priority.color} variant="muted">
+                  {workOrder!.work_order_priority.label}
+                </Badge>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={isEdit ? <WorkOrderDetailActions workOrder={workOrder!} canDelete={Boolean(canDelete)} /> : undefined}
+      />
+
+      <WorkOrderFields
+        mode={mode}
+        workOrder={workOrder}
+        client={client}
+        site={site}
+        asset={asset}
+        assignedMember={assignedMember}
+        readOnly={readOnly}
+        clients={clients}
+        lockedClientId={lockedClientId}
+        initialSiteId={initialSiteId}
+        initialAssetId={initialAssetId}
+        sourceActivityId={sourceActivityId}
+        statuses={statuses}
+        priorities={priorities}
+        members={members}
+        cancelHref={cancelHref}
+      />
+
+      {isEdit && (
+        <>
+          <TimeEntriesPanel
+            workOrderId={workOrder!.id}
+            timeEntries={timeEntries ?? []}
+            members={members}
+            entryTypes={timeEntryTypes ?? []}
+            assignedTo={workOrder!.assigned_to}
+            currentUserId={currentUserId!}
+            canLogTimeForOthers={Boolean(canLogTimeForOthers)}
+            canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
+            canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
+            canDelete={Boolean(canDelete)}
+          />
+
+          {canAccessChecklists && (
+            <ChecklistPanel
+              workOrderId={workOrder!.id}
+              checklist={checklist ?? null}
+              items={checklistItems ?? []}
+              templates={checklistTemplates ?? []}
+              members={members}
+              currentUserId={currentUserId!}
+              canAttach={Boolean(canAttachChecklist)}
+              canDetach={Boolean(canDetachChecklist)}
+              canUpdateAny={Boolean(canUpdateChecklistAny)}
+              canUpdateOwn={Boolean(canUpdateChecklistOwn)}
+            />
+          )}
+        </>
+      )}
+    </Stack>
+  );
+}
