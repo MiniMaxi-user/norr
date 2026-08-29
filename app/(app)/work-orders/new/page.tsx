@@ -4,6 +4,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
+import { getActivity } from "@/app/(app)/activities/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { WorkOrderForm } from "../components/work-order-form";
@@ -11,7 +12,7 @@ import { WorkOrderForm } from "../components/work-order-form";
 export const metadata = { title: "New work order" };
 
 interface NewWorkOrderPageProps {
-  searchParams: Promise<{ clientId?: string; siteId?: string; assetId?: string }>;
+  searchParams: Promise<{ clientId?: string; siteId?: string; assetId?: string; activityId?: string }>;
 }
 
 /**
@@ -23,13 +24,21 @@ interface NewWorkOrderPageProps {
  * scoped "New work order" entry point) locks the client picker, mirroring
  * `app/(app)/assets/new/page.tsx`'s `lockedClientId` handling exactly;
  * `?siteId=...`/`?assetId=...` pre-select (without locking) the site/asset.
+ * `?activityId=...` (issue #87, the Activity quick-view's "Create work
+ * order" action) is a hidden traceability field, not a picker — it's
+ * validated to exist here (same shape as `clientId`'s `lockedClientResult`
+ * check below) and threaded straight through as `WorkOrderForm`'s
+ * `sourceActivityId` prop, which renders it as a plain hidden input
+ * (`workOrderCreateSchema.sourceActivityId`). CREATE-only by design (an
+ * existing work order's originating activity isn't meant to be reassigned) —
+ * `/work-orders/[id]/edit` has no equivalent query param.
  *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
  * an engineer never sees this route resolve at all.
  */
 export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPageProps) {
-  const { clientId, siteId, assetId } = await searchParams;
+  const { clientId, siteId, assetId, activityId } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -39,18 +48,22 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   if (!canAccessModule(actor, "planning")) notFound();
   if (!can(actor, "planning", "create")) notFound();
 
-  const [clientsResult, lockedClientResult, statusesResult, prioritiesResult, membersResult] = await Promise.all([
-    clientId ? Promise.resolve(null) : listClients({ limit: 200 }),
-    clientId ? getClient(clientId) : Promise.resolve(null),
-    listReferenceItems("work_order_status"),
-    listReferenceItems("work_order_priority"),
-    listOrgMembers(),
-  ]);
+  const [clientsResult, lockedClientResult, activityResult, statusesResult, prioritiesResult, membersResult] =
+    await Promise.all([
+      clientId ? Promise.resolve(null) : listClients({ limit: 200 }),
+      clientId ? getClient(clientId) : Promise.resolve(null),
+      activityId ? getActivity(activityId) : Promise.resolve(null),
+      listReferenceItems("work_order_status"),
+      listReferenceItems("work_order_priority"),
+      listOrgMembers(),
+    ]);
 
   if (clientId && !lockedClientResult?.data) notFound();
+  if (activityId && !activityResult?.data) notFound();
 
   const clients = clientsResult?.data?.clients ?? [];
   const lockedClient = lockedClientResult?.data?.client ?? null;
+  const sourceActivityId = activityResult?.data?.activity.id;
   const statuses = statusesResult.data?.items ?? [];
   const priorities = prioritiesResult.data?.items ?? [];
   const members = membersResult.data?.members ?? [];
@@ -75,6 +88,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
         lockedClientId={lockedClient?.id}
         initialSiteId={siteId}
         initialAssetId={assetId}
+        sourceActivityId={sourceActivityId}
         statuses={statuses}
         priorities={priorities}
         members={members}

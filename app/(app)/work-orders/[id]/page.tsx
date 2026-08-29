@@ -44,11 +44,15 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
  * #14) needs its own tab — each is a single always-visible Card section
  * (`TimeEntriesPanel`, `ChecklistPanel`) that reads better than a two-tab
  * `Tabs`, same reasoning `ContractAssetsPanel` documents for Contracts'
- * Linked Assets. Its *parents* (Client/Site/Asset) are surfaced as linked
- * `DetailRow`s instead, same treatment `app/(app)/assets/[id]/page.tsx` gives
- * its own Client/Site. Photo/e-signature capture on the checklist remains
- * out of scope per the checklists migration's own design notes (a documented
- * follow-up, not an oversight).
+ * Linked Assets. Its *parents* (Client/Site/Asset/Contract) are surfaced as
+ * `DetailRow`s in their own "Site, asset & contract" `Card` (issue #87,
+ * revisited for "op de werkorder worden duidelijk de site en asset en
+ * contract details getoond") — Client/Asset/Contract each link out to their
+ * own detail page; Site does not, since (unlike Client/Asset/Contract) it has
+ * no standalone detail route to link to — its formatted address is already
+ * the clearest available representation. Photo/e-signature capture on the
+ * checklist remains out of scope per the checklists migration's own design
+ * notes (a documented follow-up, not an oversight).
  */
 export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPageProps) {
   const { id } = await params;
@@ -114,6 +118,13 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // reused as-is (owner/planner CRUD on `planning` implies both Work Orders
   // and their Time Entries sub-resource).
   const canLogTime = canAny(actor, "planning", ["create", "create_own"]);
+  // Plain `create` (owner/planner) only — the manual Travel/Work "Add" entry
+  // dialogs let picking WHICH engineer the entry belongs to, which only a
+  // caller who can actually log on someone else's behalf may exercise (see
+  // `createTimeEntry`'s own on-behalf-of logic in `time-entries-actions.ts`).
+  // An engineer (`create_own` only) still gets `canLogTime` for the
+  // clock-in/out affordance below, just not these two buttons.
+  const canLogTimeForOthers = can(actor, "planning", "create");
   const canUpdateTimeEntriesAny = can(actor, "planning", "update");
   const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
 
@@ -150,10 +161,16 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
 
       <Card>
         <Stack gap="md">
+          <Heading level={4}>Site, asset & contract</Heading>
           <DetailRow
             label="Client"
             value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
           />
+          {/* Site has no detail page of its own to link to (unlike
+              Client/Asset/Contract below) — a client's Sites live entirely
+              on the client detail page's own Sites tab, with no standalone
+              route. Shown as its formatted address, which is already the
+              clearest available representation. */}
           <DetailRow label="Site" value={site ? formatSiteAddressShort(site) ?? "—" : "—"} />
           <DetailRow
             label="Asset"
@@ -161,8 +178,20 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
           />
           <DetailRow
             label="Contract"
-            value={workOrder.contract ? <Link href={`/contracts/${workOrder.contract.id}`}>{workOrder.contract.name}</Link> : "—"}
+            value={
+              workOrder.contract ? (
+                <Link href={`/contracts/${workOrder.contract.id}`}>{workOrder.contract.name}</Link>
+              ) : (
+                "—"
+              )
+            }
           />
+        </Stack>
+      </Card>
+
+      <Card>
+        <Stack gap="md">
+          <Heading level={4}>Schedule & notes</Heading>
           <DetailRow label="Assigned to" value={memberDisplayName(assignedMember)} />
           <DetailRow label="Scheduled for" value={formatDateTime(workOrder.scheduled_at, { month: "long" })} />
           <DetailRow label="Completed at" value={formatDateTime(workOrder.completed_at, { month: "long" })} />
@@ -176,8 +205,10 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
         timeEntries={timeEntries}
         members={members}
         entryTypes={timeEntryTypes}
+        assignedTo={workOrder.assigned_to}
         currentUserId={session.userId}
         canLogTime={canLogTime}
+        canLogTimeForOthers={canLogTimeForOthers}
         canUpdateAny={canUpdateTimeEntriesAny}
         canUpdateOwn={canUpdateTimeEntriesOwn}
         canDelete={canDelete}

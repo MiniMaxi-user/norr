@@ -79,6 +79,12 @@ export interface ClientDetailProps {
   canCreateActivities: boolean;
   canEditActivities: boolean;
   canDeleteActivities: boolean;
+  /** Threaded into `ActivitiesPanel` -> `ActivityQuickViewDialog`'s "Create
+   * work order" action (issue #87) — `hasFeature(org, "planning")` +
+   * `canAccessModule`/`can(actor, "planning", "create")`, resolved once by
+   * `page.tsx`, independent of `activitiesEnabled` (a "Create work order"
+   * action reads as a Planning affordance, not an Activities one). */
+  canCreateWorkOrder: boolean;
   /** `session.isPlatformAdmin` (issue #45), threaded down the same way
    * `canWrite` etc. already are — gates the "Activate as tenant" hero action
    * and the "Access"/"Modules" tabs below. */
@@ -164,6 +170,7 @@ export function ClientDetail({
   canCreateActivities,
   canEditActivities,
   canDeleteActivities,
+  canCreateWorkOrder,
   isPlatformAdmin,
   accessStatusByEmail,
   defaultTab,
@@ -547,6 +554,7 @@ export function ClientDetail({
                 canCreate={canCreateActivities}
                 canEdit={canEditActivities}
                 canDelete={canDeleteActivities}
+                canCreateWorkOrder={canCreateWorkOrder}
               />
             </Tabs.Panel>
           )}

@@ -43,6 +43,16 @@ export default async function ActivitiesPage({ searchParams }: ActivitiesPagePro
   const params = await searchParams;
   const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
 
+  // "Create work order" action on an activity's quick-view (issue #87) —
+  // gated on the (separately-entitled) `planning` module, same pattern
+  // `canCreateActivityFromAsset` uses in `app/(app)/assets/[id]/page.tsx` for
+  // the reverse direction.
+  const canCreateWorkOrder =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "planning")) &&
+    canAccessModule(actor, "planning") &&
+    can(actor, "planning", "create");
+
   return (
     <Stack gap="lg">
       <Stack gap="xs">
@@ -63,6 +73,7 @@ export default async function ActivitiesPage({ searchParams }: ActivitiesPagePro
           canCreate={canAny(actor, "activities", ["create", "create_own"])}
           canEdit={canAny(actor, "activities", ["update", "update_own"])}
           canDelete={can(actor, "activities", "delete")}
+          canCreateWorkOrder={canCreateWorkOrder}
         />
       </Suspense>
     </Stack>

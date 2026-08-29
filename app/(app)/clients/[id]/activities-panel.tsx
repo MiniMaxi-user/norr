@@ -15,6 +15,9 @@ export interface ActivitiesPanelProps {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** Threaded into `ActivityQuickViewDialog`'s "Create work order" action
+   * (issue #87) — see that component's own doc comment. */
+  canCreateWorkOrder: boolean;
 }
 
 function formatDateTime(value: string): string {
@@ -48,7 +51,14 @@ function formatDateTime(value: string): string {
  * "Edit" button inside that dialog that opens `ActivityFormPanel` on top of
  * it.
  */
-export function ActivitiesPanel({ clientId, activities, canCreate, canEdit, canDelete }: ActivitiesPanelProps) {
+export function ActivitiesPanel({
+  clientId,
+  activities,
+  canCreate,
+  canEdit,
+  canDelete,
+  canCreateWorkOrder,
+}: ActivitiesPanelProps) {
   const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
 
   return (
@@ -110,6 +120,7 @@ export function ActivitiesPanel({ clientId, activities, canCreate, canEdit, canD
           onOpenChange={(next) => !next && setViewingActivity(null)}
           canEdit={canEdit}
           canDelete={canDelete}
+          canCreateWorkOrder={canCreateWorkOrder}
           onDeleted={() => setViewingActivity(null)}
         />
       )}

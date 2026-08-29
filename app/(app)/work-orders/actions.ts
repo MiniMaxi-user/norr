@@ -76,6 +76,11 @@ export interface WorkOrderRecord {
   site_id: string | null;
   asset_id: string | null;
   contract_id: string | null;
+  /** Nullable FK into `activities` (issue #87) — set when a work order is
+   * created from/against a scheduled activity. Must belong to the same
+   * `client_id`, enforced by the `validate_work_order_relations` DB trigger
+   * — see `workOrderCreateSchema.sourceActivityId` in `./schema.ts`. */
+  source_activity_id: string | null;
   assigned_to: string | null;
   title: string;
   description: string | null;
@@ -119,6 +124,7 @@ function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.par
     site_id: input.siteId ?? null,
     asset_id: input.assetId ?? null,
     contract_id: input.contractId ?? null,
+    source_activity_id: input.sourceActivityId ?? null,
     assigned_to: input.assignedTo ?? null,
     title: input.title,
     description: input.description ?? null,

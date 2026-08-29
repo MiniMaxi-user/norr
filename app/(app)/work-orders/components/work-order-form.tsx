@@ -58,6 +58,18 @@ export interface WorkOrderFormProps {
   initialSiteId?: string;
   /** Pre-selects (but doesn't lock) the asset — e.g. `/work-orders/new?assetId=...`. */
   initialAssetId?: string;
+  /**
+   * The activity this work order is being created from/against (issue #87,
+   * `?activityId=` on `/work-orders/new` — see that page's own doc comment),
+   * submitted as a hidden `sourceActivityId` field
+   * (`workOrderCreateSchema.sourceActivityId`). CREATE-only, deliberately:
+   * unlike `lockedClientId`/`initialSiteId`/`initialAssetId` there is no
+   * `mode: "edit"` equivalent and no picker at all — a work order's
+   * originating activity is a one-time traceability link set at creation,
+   * not a field a user chooses or later reassigns. `undefined` in `mode:
+   * "edit"` (this prop is simply never passed there).
+   */
+  sourceActivityId?: string;
   /** This org's `work_order_status` picklist values. */
   statuses: ReferenceListItemRecord[];
   /** This org's `work_order_priority` picklist values. */
@@ -115,6 +127,7 @@ export function WorkOrderForm({
   lockedClientId,
   initialSiteId,
   initialAssetId,
+  sourceActivityId,
   statuses,
   priorities,
   members,
@@ -236,6 +249,20 @@ export function WorkOrderForm({
 
   const defaultStatus = statuses.find((item) => item.is_default);
 
+  // "Assigned to" is this work order's standard/default engineer (issue #87)
+  // — the technician a Time Entry's engineer picker defaults to (see
+  // `time-entries-panel.tsx`'s `createTimeEntry` default-to-`assigned_to`
+  // logic). Filtered to `role === "engineer"` members only: assigning a
+  // work order to an owner/planner/finance/administratie member has no
+  // meaning in that downstream flow. The currently-assigned member is always
+  // included even if they aren't (or are no longer) an engineer — otherwise
+  // editing a work order assigned before this filter existed (or to someone
+  // whose role since changed) would render with no matching `<option>`, and
+  // saving without touching this field would silently unassign it.
+  const engineers = members.filter(
+    (member) => member.role === "engineer" || member.id === workOrder?.assigned_to,
+  );
+
   return (
     <Card>
       <form action={formAction}>
@@ -297,6 +324,9 @@ export function WorkOrderForm({
                 </Stack>
               )}
               {lockedClientId && <input type="hidden" name="clientId" value={lockedClientId} />}
+              {mode === "create" && sourceActivityId && (
+                <input type="hidden" name="sourceActivityId" value={sourceActivityId} />
+              )}
 
               <FormGrid columns={2}>
                 <Stack gap="sm">
@@ -370,19 +400,21 @@ export function WorkOrderForm({
               </Stack>
 
               <FormGrid columns={2}>
-                <FormSelectField
-                  label="Assigned to"
-                  name="assignedTo"
-                  defaultValue={workOrder?.assigned_to ?? ""}
-                  errors={state.fieldErrors?.assignedTo}
-                >
-                  <option value="">Unassigned</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {memberDisplayName(member)}
-                    </option>
-                  ))}
-                </FormSelectField>
+                <Stack gap="sm">
+                  <Label htmlFor="assignedTo">Assigned to (standard engineer)</Label>
+                  <Select id="assignedTo" name="assignedTo" defaultValue={workOrder?.assigned_to ?? ""}>
+                    <option value="">Unassigned</option>
+                    {engineers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {memberDisplayName(member)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Text tone="muted">
+                    Defaults every logged travel/work time entry to this engineer — changeable per entry.
+                  </Text>
+                  {state.fieldErrors?.assignedTo && <Text tone="danger">{state.fieldErrors.assignedTo[0]}</Text>}
+                </Stack>
 
                 <Stack gap="sm">
                   <Label htmlFor="wo-scheduled">Scheduled for</Label>

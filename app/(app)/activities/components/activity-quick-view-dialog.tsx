@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Button, DefinitionList, Dialog, Heading, Inline, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
@@ -15,6 +16,14 @@ export interface ActivityQuickViewDialogProps {
   onOpenChange: (open: boolean) => void;
   canEdit: boolean;
   canDelete: boolean;
+  /** `can(actor, "planning", "create")`, gated behind the `planning` feature
+   * being entitled/accessible for this actor at all (issue #87) — shows the
+   * "Create work order" action, which navigates to `/work-orders/new`
+   * pre-scoped to this activity's own client/asset plus `?activityId=` for
+   * traceability (`work_orders.source_activity_id`). Defaults to `false` so
+   * every existing call site (before this prop was threaded through) keeps
+   * hiding the action rather than crashing. */
+  canCreateWorkOrder?: boolean;
   /** Called after a successful delete, so the caller (a table/panel holding
    * a list of activities) can drop this row without a full page reload. */
   onDeleted?: () => void;
@@ -37,13 +46,23 @@ export function ActivityQuickViewDialog({
   onOpenChange,
   canEdit,
   canDelete,
+  canCreateWorkOrder = false,
   onDeleted,
 }: ActivityQuickViewDialogProps) {
   useEscapeToClose(open, onOpenChange);
+  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
+
+  function handleCreateWorkOrder() {
+    const params = new URLSearchParams();
+    params.set("clientId", activity.client_id);
+    if (activity.asset_id) params.set("assetId", activity.asset_id);
+    params.set("activityId", activity.id);
+    router.push(`/work-orders/new?${params.toString()}`);
+  }
 
   return (
     <>
@@ -88,6 +107,11 @@ export function ActivityQuickViewDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
+          {canCreateWorkOrder && (
+            <Button type="button" variant="outline" onClick={handleCreateWorkOrder}>
+              Create work order
+            </Button>
+          )}
           {canDelete && (
             <Button type="button" variant="danger" onClick={() => setDeleting(true)}>
               Delete

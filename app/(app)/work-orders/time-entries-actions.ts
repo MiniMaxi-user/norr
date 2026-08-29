@@ -5,7 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
-import { timeEntryClockInSchema, timeEntryUpdateSchema } from "./schema";
+import { timeEntryClockInSchema, timeEntryCreateSchema, timeEntryUpdateSchema } from "./schema";
 import type { ResolvedReferenceItem } from "./actions";
 
 /**
@@ -165,6 +165,89 @@ export async function clockIn(
   if (parsed.data.entryTypeId !== undefined) row.entry_type_id = parsed.data.entryTypeId;
 
   const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("time_entries")
+    .insert(row)
+    .select(TIME_ENTRY_SELECT)
+    .single();
+
+  if (error) return fail(mapDbError(error));
+  return ok({ timeEntry: data as TimeEntryRecord });
+}
+
+/**
+ * Manual entry creation (issue #87) — for an owner/planner logging a
+ * technician's travel/work time after the fact, with the actual start (and
+ * optionally end) time already known, rather than `clockIn`'s "start a
+ * running entry right now". Gated on the same
+ * `canAny(actor, "planning", ["create", "create_own"])` as `clockIn`, and the
+ * same "engineer always pinned to own id, owner/planner may set `userId`"
+ * split — see the module comment above.
+ *
+ * Differs from `clockIn` in one deliberate way: when the caller has plain
+ * `create` (owner/planner) and omits `userId`, this defaults to the work
+ * order's own `assigned_to` ("standard engineer") rather than the caller's
+ * own id — a planner logging someone else's time after the fact should
+ * default to whoever the work order is actually assigned to, not to
+ * themselves. Falls back to the caller's own id if the work order has no
+ * `assigned_to` set, same fallback `clockIn` uses. (`clockIn` itself keeps
+ * defaulting to the caller's own id — it's a real self-clock-in, not a
+ * logged-after-the-fact entry, so that default stays correct there.)
+ */
+export async function createTimeEntry(
+  workOrderId: string,
+  input: unknown,
+): Promise<ActionResult<{ timeEntry: TimeEntryRecord }>> {
+  const idResult = uuidSchema.safeParse(workOrderId);
+  if (!idResult.success) return fail("Invalid work order id.");
+
+  const ctx = await requireModuleContext("planning");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "planning", ["create", "create_own"])) {
+    return fail("You do not have permission to log time.");
+  }
+
+  const parsed = timeEntryCreateSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const canLogForOthers = can(ctx.context.actor, "planning", "create");
+  let userId = ctx.context.session.userId;
+  if (canLogForOthers) {
+    if (parsed.data.userId) {
+      userId = parsed.data.userId;
+    } else {
+      const { data: workOrder, error: workOrderError } = await supabase
+        .from("work_orders")
+        .select("assigned_to")
+        .eq("id", idResult.data)
+        .maybeSingle();
+      if (workOrderError) return fail(mapDbError(workOrderError));
+      userId = workOrder?.assigned_to ?? ctx.context.session.userId;
+    }
+  }
+
+  const row: Record<string, unknown> = {
+    work_order_id: idResult.data,
+    user_id: userId,
+    started_at: parsed.data.startedAt,
+    ended_at: parsed.data.endedAt ?? null,
+  };
+  // entry_type_id is intentionally omitted (not even sent as null) when not
+  // provided — same `derive_time_entry_organization_id` DB-trigger default as
+  // clockIn above.
+  if (parsed.data.entryTypeId !== undefined) row.entry_type_id = parsed.data.entryTypeId;
+  // notes (issue #87 frontend half — see timeEntryCreateSchema.notes' own
+  // comment for why this schema needed it added): omitted (not even sent as
+  // null) when absent, same "don't overwrite with null just because the
+  // caller didn't mention it" convention every other optional field on this
+  // row follows.
+  if (parsed.data.notes !== undefined) row.notes = parsed.data.notes;
+
   const { data, error } = await supabase
     .from("time_entries")
     .insert(row)

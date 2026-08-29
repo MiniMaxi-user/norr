@@ -57,6 +57,16 @@ export const workOrderCreateSchema = z.object({
   /** Nullable; when set, must belong to `clientId` — same DB-trigger
    * validation as `siteId`/`assetId` above (see the module comment). */
   contractId: optionalUuid("Invalid contract."),
+  /** Nullable FK into `activities` (issue #87) — set when a work order is
+   * created from/against a scheduled activity. Shape-only validation here
+   * (uuid); the cross-field "must belong to the same client_id as the work
+   * order" check is left entirely to the `validate_work_order_relations` DB
+   * trigger, same trust boundary `siteId`/`assetId`/`contractId` above use.
+   * Not meaningfully re-editable after creation (a work order's originating
+   * activity shouldn't normally be reassigned), but still picked up by
+   * `workOrderUpdateSchema`'s `.partial()` derivation below like every other
+   * field — no need to actively strip it. */
+  sourceActivityId: optionalUuid("Invalid activity."),
   /** Nullable; when set, must be a member of the work order's own
    * organization — validated by `validate_work_order_relations`. */
   assignedTo: optionalUuid("Invalid assignee."),
@@ -125,6 +135,46 @@ export const timeEntryClockInSchema = z.object({
 });
 
 export type TimeEntryClockInInput = z.infer<typeof timeEntryClockInSchema>;
+
+/**
+ * Manual entry creation (issue #87) — for an owner/planner logging a
+ * technician's travel/work time after the fact (not a live "clock in now"),
+ * where the actual start (and optionally end) time is already known. Same
+ * `userId`/`entryTypeId` fields as `timeEntryClockInSchema` above (same
+ * shape-only-here, RBAC-elsewhere reasoning), plus a REQUIRED `startedAt`
+ * and an OPTIONAL `endedAt`.
+ *
+ * The `endedAt >= startedAt` refine below is a friendly mirror of the DB's
+ * `time_entries_ended_at_after_started_at` CHECK constraint (see
+ * `docs/SCHEMA-HISTORY.md`'s "Time Entries" section) — same "give a clean
+ * field error, but let the DB's own constraint be the final backstop"
+ * relationship every other cross-field check in this codebase has to its DB
+ * counterpart (e.g. `SITE_PURPOSE_REQUIRED_MESSAGE` in
+ * `app/(app)/clients/schema.ts`).
+ */
+export const timeEntryCreateSchema = z
+  .object({
+    userId: optionalUuid("Invalid user id."),
+    entryTypeId: optionalUuid("Invalid time entry type."),
+    startedAt: z.string().datetime({ offset: true, message: "Expected a valid start date/time." }),
+    endedAt: optionalIsoDateTime("Expected a valid end date/time."),
+    /** Added alongside the Travel/Work time manual-log dialogs (issue #87,
+     * frontend half) — `timeEntryClockInSchema` has no equivalent field since
+     * a live clock-in has nothing to say yet, but a manually-logged,
+     * already-complete entry routinely does. Same `optionalText` shape
+     * `workOrderCreateSchema.notes`/`timeEntryUpdateSchema.notes` already
+     * use. */
+    notes: optionalText(5000),
+  })
+  .refine(
+    (data) => data.endedAt === undefined || new Date(data.endedAt) >= new Date(data.startedAt),
+    {
+      message: "End date/time must be on or after the start date/time.",
+      path: ["endedAt"],
+    },
+  );
+
+export type TimeEntryCreateInput = z.infer<typeof timeEntryCreateSchema>;
 
 /** General edit (clock-out is `updateTimeEntry({ endedAt })` under the hood
  * in spirit, but `clockOut(id)` is its own action for the common case — see

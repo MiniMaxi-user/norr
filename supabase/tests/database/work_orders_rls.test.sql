@@ -1,5 +1,7 @@
 -- pgTAP RLS tests for work_orders (issue #13,
--- 20260823120000_work_orders_core.sql).
+-- 20260823120000_work_orders_core.sql), extended with
+-- work_orders.source_activity_id coverage (issue #87,
+-- 20260829090000_work_orders_source_activity_id.sql).
 --
 -- Run with the Supabase CLI's local test runner (requires Docker):
 --   supabase test db
@@ -26,7 +28,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(35);
+select plan(38);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -398,6 +400,53 @@ select throws_ok(
   null,
   'owner_b cannot INSERT a work order under org_a''s client (not a member of org_a at all, so current_member_role is null)'
 ); -- 35
+
+-- ---------------------------------------------------------------------------
+-- 6. work_orders.source_activity_id: must belong to the same client_id as
+--    the work order (validate_work_order_relations, extended by
+--    20260829090000_work_orders_source_activity_id.sql, issue #87). Mirrors
+--    supabase/tests/database/quotes_rls.test.sql's source_quote_id coverage
+--    (section 9 there) exactly, one column swapped for the other.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('c2111111-1111-1111-1111-111111111111');
+
+insert into public.activities (id, client_id, type_id, description, action_holder_id)
+select 'c7000000-0000-0000-0000-00000000000a', 'c3000000-0000-0000-0000-00000000000a',
+  rli.id, 'Klant meldt storing aan airco', 'c2111111-1111-1111-1111-111111111111'
+from public.reference_list_items rli
+join public.reference_lists rl on rl.id = rli.reference_list_id
+where rl.organization_id = 'c1000000-0000-0000-0000-00000000000a'
+  and rl.list_key = 'activity_type' and rli.value = 'afspraak';
+
+insert into public.activities (id, client_id, type_id, description, action_holder_id)
+select 'c7000000-0000-0000-0000-00000000000b', 'c3000000-0000-0000-0000-00000000000b',
+  rli.id, 'Klant A2 meldt storing', 'c2111111-1111-1111-1111-111111111111'
+from public.reference_list_items rli
+join public.reference_lists rl on rl.id = rli.reference_list_id
+where rl.organization_id = 'c1000000-0000-0000-0000-00000000000a'
+  and rl.list_key = 'activity_type' and rli.value = 'afspraak';
+
+select lives_ok(
+  $$ insert into public.work_orders (client_id, title, source_activity_id)
+     values ('c3000000-0000-0000-0000-00000000000a', 'Werkbon Vanuit Melding', 'c7000000-0000-0000-0000-00000000000a') $$,
+  'owner_a can insert a work order under client A with source_activity_id set to the Client A activity (same client)'
+); -- 36
+
+select throws_ok(
+  $$ insert into public.work_orders (client_id, title, source_activity_id)
+     values ('c3000000-0000-0000-0000-00000000000a', 'Wrong Activity Client', 'c7000000-0000-0000-0000-00000000000b') $$,
+  '23514',
+  null,
+  'work_orders.source_activity_id from a different client (the Client A2 activity) is rejected when client_id=Client A'
+); -- 37
+
+select throws_ok(
+  $$ insert into public.work_orders (client_id, title, source_activity_id)
+     values ('c3000000-0000-0000-0000-00000000000a', 'Nonexistent Activity', '00000000-0000-0000-0000-000000000000') $$,
+  '23503',
+  null,
+  'work_orders.source_activity_id pointing at a nonexistent activity is rejected (dangling reference)'
+); -- 38
 
 select * from finish();
 rollback;

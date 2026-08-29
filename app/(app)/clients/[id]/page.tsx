@@ -135,6 +135,13 @@ async function ClientDetailContent({ id }: { id: string }) {
     (await hasFeature(session.organization, "activities")) &&
     canAccessModule(actor, "activities");
 
+  // "Create work order" action on the Activiteiten tab's quick-view dialog
+  // (issue #87) — a Planning affordance, gated independently of
+  // `activitiesModuleVisible` above (an org could have Activities without
+  // Planning, or vice versa; both must hold for this action to make sense).
+  const canCreateWorkOrder =
+    workOrdersModuleVisible && can(actor, "planning", "create");
+
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
   // unlike Assets/Work Orders/Contracts/Quotes, this data is always fetched
@@ -236,6 +243,7 @@ async function ClientDetailContent({ id }: { id: string }) {
       canCreateActivities={activitiesModuleVisible && canAny(actor, "activities", ["create", "create_own"])}
       canEditActivities={activitiesModuleVisible && canAny(actor, "activities", ["update", "update_own"])}
       canDeleteActivities={activitiesModuleVisible && can(actor, "activities", "delete")}
+      canCreateWorkOrder={canCreateWorkOrder}
       isPlatformAdmin={session.isPlatformAdmin}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}

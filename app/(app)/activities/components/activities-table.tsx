@@ -14,6 +14,9 @@ export interface ActivitiesTableProps {
   activities: ActivityRecord[];
   canEdit: boolean;
   canDelete: boolean;
+  /** Threaded into `ActivityQuickViewDialog` — see that component's own doc
+   * comment (issue #87). */
+  canCreateWorkOrder?: boolean;
 }
 
 function descriptionSnippet(value: string): string {
@@ -27,7 +30,7 @@ function descriptionSnippet(value: string): string {
  * detail page, only the edit panel) rather than navigating away immediately;
  * the row-level Edit action opens `ActivityFormPanel` directly instead.
  */
-export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTableProps) {
+export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkOrder }: ActivitiesTableProps) {
   const [query, setQuery] = useState("");
   const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
   const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
@@ -136,6 +139,7 @@ export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTa
           onOpenChange={(next) => !next && setViewingActivity(null)}
           canEdit={canEdit}
           canDelete={canDelete}
+          canCreateWorkOrder={canCreateWorkOrder}
           onDeleted={() => setViewingActivity(null)}
         />
       )}
