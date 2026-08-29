@@ -601,6 +601,44 @@ export async function listSites(clientId: string): Promise<ActionResult<{ sites:
   return ok({ sites: (data ?? []) as SiteRecord[] });
 }
 
+/**
+ * Bulk counterpart to `listSites`, for standard overviews (List/Kanban) that
+ * need every visible client's primary site's address in one shot instead of
+ * one `listSites` call per client (issue #75 — the Kanban view was doing up
+ * to 200 separate round-trips for `listClients({ limit: 200 })`'s worth of
+ * clients). `is_primary` is at most one `true` per `client_id`
+ * (`sites_one_primary_per_client_idx`), so filtering on it directly returns
+ * at most one row per requested client — no further grouping/dedup needed
+ * beyond keying the result by `client_id`. Same RLS/permission boundary as
+ * `listSites` (select: any org member).
+ */
+export async function listPrimarySitesForClients(
+  clientIds: string[],
+): Promise<ActionResult<{ sitesByClientId: Record<string, SiteRecord> }>> {
+  const ctx = await requireModuleContext("clients");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "clients", ["read", "read_own"])) {
+    return fail("You do not have permission to view sites.");
+  }
+
+  const sitesByClientId: Record<string, SiteRecord> = {};
+  if (clientIds.length === 0) return ok({ sitesByClientId });
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("sites")
+    .select("*")
+    .in("client_id", clientIds)
+    .eq("is_primary", true);
+
+  if (error) return fail(mapDbError(error));
+  for (const site of (data ?? []) as SiteRecord[]) {
+    sitesByClientId[site.client_id] = site;
+  }
+  return ok({ sitesByClientId });
+}
+
 type SitePurposeKey = "is_visit_address" | "is_invoice_address" | "is_delivery_address";
 
 const SITE_PURPOSE_KEYS: readonly SitePurposeKey[] = ["is_visit_address", "is_invoice_address", "is_delivery_address"];
