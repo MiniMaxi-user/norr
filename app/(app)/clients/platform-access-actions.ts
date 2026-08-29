@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import type { CurrentSession } from "@/lib/auth/session";
+import { getSiteOrigin } from "@/lib/auth/site-origin";
 
 /**
  * Server Actions for a Platform Admin managing a tenant's login access
@@ -47,18 +48,6 @@ const uuidSchema = z.string().uuid("Invalid client id.");
  * but required rather than optional/preprocessed — every action in this
  * file needs a concrete email to invite or reset, never "not provided". */
 const tenantOwnerEmailSchema = z.string().trim().email("Invalid email address.").max(320);
-
-/** Mirrors `lib/auth/actions.ts`'s private (unexported) `getSiteOrigin` —
- * duplicated rather than imported because a `"use server"` file may only
- * export async functions, so that helper can't be shared as-is without
- * pulling it into a new non-"use server" module, which is out of scope
- * here. Keep in sync if the redirect-origin resolution logic there ever
- * changes. */
-function getSiteOrigin(): string {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
-}
 
 interface ActivatedTenantContext {
   session: CurrentSession;
@@ -149,7 +138,7 @@ async function insertTenantInvite(
     return fail(mapDbError(error));
   }
 
-  return ok({ inviteUrl: `${getSiteOrigin()}/invite/${invite.token}` });
+  return ok({ inviteUrl: `${await getSiteOrigin()}/invite/${invite.token}` });
 }
 
 function emailFieldError(error: z.ZodError): Record<string, string[]> {

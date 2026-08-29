@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isTenantRole, TENANT_ROLES } from "@/lib/rbac/permissions";
 import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
+import { getSiteOrigin } from "@/lib/auth/site-origin";
 
 /**
  * Server Actions backing the auth pages under `app/(auth)/*` (issue #3):
@@ -18,26 +19,6 @@ import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
 export interface AuthActionState {
   error?: string;
   info?: string;
-}
-
-function getSiteOrigin(): string {
-  // Used to build the `emailRedirectTo` link Supabase puts in
-  // confirmation/invite emails. Preference order:
-  //  1. NEXT_PUBLIC_SITE_URL — set explicitly in Vercel for Production only
-  //     (the stable custom/production domain), so confirmation emails sent
-  //     from a production signup always point at the production URL even
-  //     though VERCEL_URL would also technically resolve there.
-  //  2. VERCEL_URL — auto-injected by Vercel on every deployment (including
-  //     previews), so a signup on a PR preview redirects back to that same
-  //     preview instead of production or localhost. Not NEXT_PUBLIC_-
-  //     prefixed because it's only ever read here, server-side.
-  //  3. localhost — local dev.
-  // Whatever this resolves to MUST be present in Supabase Auth's redirect
-  // URL allow-list (dashboard, or the `additional_redirect_urls` project
-  // config) or `signUp`'s `emailRedirectTo` will be silently ignored.
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
 }
 
 function readRedirectTarget(raw: FormDataEntryValue | null): string {
@@ -92,7 +73,7 @@ export async function signUpAction(
     email,
     password,
     options: {
-      emailRedirectTo: `${getSiteOrigin()}${redirectPath}`,
+      emailRedirectTo: `${await getSiteOrigin()}${redirectPath}`,
       // Carried over to `user_metadata` so it survives the email-confirmation
       // round trip (see `ensureOwnOrganizationBootstrapped` above) — the
       // request that finally creates the organization/membership row is
@@ -334,5 +315,5 @@ export async function createInviteAction(
     return { error: error?.message ?? "Could not create invite." };
   }
 
-  return { inviteUrl: `${getSiteOrigin()}/invite/${invite.token}` };
+  return { inviteUrl: `${await getSiteOrigin()}/invite/${invite.token}` };
 }
