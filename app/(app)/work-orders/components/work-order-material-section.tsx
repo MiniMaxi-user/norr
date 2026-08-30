@@ -113,7 +113,7 @@ export function WorkOrderMaterialSection({
                   <Text className="ui-work-order-row-trailing ui-tabular-nums">
                     {formatCurrency(row.quantity * (row.article?.sale_price ?? 0))}
                   </Text>
-                  <span className="ui-row-actions">
+                  <span className="ui-row-actions ui-work-order-row-actions">
                     {canEditRow && (
                       <Button type="button" variant="outline" size="sm" aria-label="Edit" onClick={() => setEditingRow(row)}>
                         <Pencil />
@@ -129,7 +129,10 @@ export function WorkOrderMaterialSection({
               );
             })}
           </Stack>
-          <SummaryRow items={[{ label: "Total", value: formatCurrency(total), emphasis: "serif" }]} />
+          <SummaryRow
+            className="ui-work-order-summary-row"
+            items={[{ label: "Total", value: formatCurrency(total), emphasis: "serif" }]}
+          />
         </>
       )}
 

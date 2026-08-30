@@ -145,7 +145,7 @@ export function WorkOrderHoursSection({
             Stop
           </Button>
         )}
-        <span className="ui-row-actions">
+        <span className="ui-row-actions ui-work-order-row-actions">
           {canEditRow && (
             <IconEditButton onClick={() => setEditingEntry(entry)} />
           )}
@@ -193,6 +193,7 @@ export function WorkOrderHoursSection({
             {workEntries.map((entry) => renderRow(entry, "work"))}
           </Stack>
           <SummaryRow
+            className="ui-work-order-summary-row"
             items={[
               { label: "Travel", value: formatHoursMinutes(travelMinutes) },
               { label: "Work", value: formatHoursMinutes(workMinutes) },

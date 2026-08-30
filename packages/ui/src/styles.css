@@ -3903,3 +3903,21 @@ a.ui-relation-card-title:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.71875rem;
 }
+
+/* Reserves a fixed width for the row's trailing edit/delete buttons so it
+   stays constant across rows even though which buttons render is permission-
+   and state-dependent (a row you can't edit, or a running time entry with no
+   delete yet) — without this, `.ui-work-order-row-trailing`'s fixed width
+   still leaves the actual duration/price figures at different distances from
+   the card's right edge row to row. `justify-content: flex-end` keeps the
+   buttons themselves hugging that edge regardless of the reserved width.
+   `.ui-work-order-summary-row` mirrors this same width as extra right
+   padding so the Total figure lines up directly under the column above it
+   (issue #103: "tijden en prijzen... moeten recht boven de totale komen"). */
+.ui-work-order-row-actions {
+  min-width: 5.5rem;
+  justify-content: flex-end;
+}
+.ui-work-order-summary-row {
+  padding-right: 7.125rem; /* 0.875rem row inset + 5.5rem reserved actions column + 0.75rem row gap */
+}
