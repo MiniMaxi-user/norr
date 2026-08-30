@@ -5,6 +5,7 @@ import { Badge, Breadcrumbs, DetailHero, Stack, type BreadcrumbItem } from "@you
 import type { WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
@@ -33,6 +34,9 @@ export interface WorkOrderScreenProps {
   client?: ClientRecord | null;
   site?: SiteRecord | null;
   asset?: AssetRecord | null;
+  /** See `WorkOrderFields`' own `contract` prop doc comment (issue #100) —
+   * passed straight through, unmodified. */
+  contract?: ContractRecord | null;
   assignedMember?: OrgMemberRecord | null;
   readOnly?: boolean;
   clients: ClientRecord[];
@@ -102,13 +106,17 @@ export interface WorkOrderScreenProps {
  * and `actions` (`WorkOrderDetailActions`) only render in edit mode — there
  * is nothing saved yet to badge or act on in create mode.
  *
- * Below the hero: `WorkOrderFields` always full width (no more 340px rail,
- * no more `dense` prop — both routes share the exact same layout now), then
- * — edit mode only, since there's no `work_order_id` yet in create mode —
- * `TimeEntriesPanel`, `ConsumedArticlesPanel` (issue #94), and
- * `ChecklistPanel` in a plain vertical `Stack` (Work Orders doesn't need
- * `DetailLayout`'s rail/main split the way Clients does for secondary
- * reference info).
+ * Below the hero: `WorkOrderFields` (both routes share the exact same
+ * component/layout). *** Issue #100 *** gave `WorkOrderFields` its own
+ * internal `DetailLayout` two-column split — fields as the main column, a
+ * `WorkOrderRelationsRail` (Client/Site/Asset/Contract summary cards) as the
+ * sticky rail — so that split lives inside `WorkOrderFields` itself (it owns
+ * the client/site/asset/contract selection state the rail previews live),
+ * not here. Below that — edit mode only, since there's no `work_order_id`
+ * yet in create mode — `TimeEntriesPanel`, `ConsumedArticlesPanel`
+ * (issue #94), and `ChecklistPanel` follow in a plain full-width vertical
+ * `Stack`, outside `WorkOrderFields`' own rail split (they're sub-resource
+ * panels, not part of the record's own field/relation layout).
  */
 export function WorkOrderScreen({
   mode,
@@ -117,6 +125,7 @@ export function WorkOrderScreen({
   client,
   site,
   asset,
+  contract,
   assignedMember,
   readOnly,
   clients,
@@ -193,6 +202,7 @@ export function WorkOrderScreen({
         client={client}
         site={site}
         asset={asset}
+        contract={contract}
         assignedMember={assignedMember}
         readOnly={readOnly}
         clients={clients}

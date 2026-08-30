@@ -5,6 +5,7 @@ import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/p
 import { getWorkOrder } from "../actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
+import { getContract } from "@/app/(app)/contracts/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { listTimeEntries } from "../time-entries-actions";
 import { listWorkOrderArticles } from "../work-order-articles-actions";
@@ -40,12 +41,15 @@ interface WorkOrderDetailPageProps {
  * Client/Site/Asset/Contract parents, previously a read-only "Site, asset &
  * contract" `DetailRow` `Card` here) are now `WorkOrderFields` itself.
  *
- * *** A later pass (see `work-order-screen.tsx`'s own doc comment) *** moved
- * this off the old fields-in-a-340px-rail/`DetailLayout` split into a plain
- * full-width `Stack`: `DetailHero` for the title/badges/actions, then
- * `WorkOrderFields` (no more `dense`), then Time Entries/Checklist — Job and
- * Assignment & Schedule read better near the top with the record's fields at
- * full width, Time Entries/Checklist following below.
+ * *** Issue #100 ("Structuur werkorder") *** redid the layout again: `DetailHero`
+ * for the title/badges/actions, then `WorkOrderFields` — which now owns its
+ * OWN `DetailLayout` split internally (fields as the main column, a
+ * `WorkOrderRelationsRail` of Client/Site/Asset/Contract summary cards as the
+ * sticky rail, see that component's own doc comment) — then Time Entries/
+ * Consumed Articles/Checklist full width below. `contract` (fetched via
+ * `getContract` below, alongside `client`/`asset`) exists purely to give that
+ * rail's Contract card real facts (type/dates/value), not just the bare
+ * id/name `workOrder.contract` embed already carried.
  *
  * `WorkOrderFields`' own `readOnly` prop is exactly `!canEdit` below — a
  * `finance`/`administratie` viewer (plain `read`) still lands on this same
@@ -105,6 +109,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const [
     clientResult,
     assetResult,
+    contractResult,
     membersResult,
     timeEntriesResult,
     timeEntryTypesResult,
@@ -118,6 +123,12 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   ] = await Promise.all([
     getClient(workOrder.client_id),
     workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
+    // Full contract record (issue #100) — the work order's own `contract`
+    // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
+    // (id/name only), enough for a plain link but not for the rail's "a
+    // couple of key facts" card; fetched the same "one extra round trip for
+    // the full record" way `asset`/`client` already are.
+    workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
     listOrgMembers(),
     listTimeEntries(workOrder.id),
     listReferenceItems("time_entry_type"),
@@ -144,6 +155,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const client = clientResult.data?.client ?? null;
   const site = clientResult.data?.sites.find((candidate) => candidate.id === workOrder.site_id) ?? null;
   const asset = assetResult?.data?.asset ?? null;
+  const contract = contractResult?.data?.contract ?? null;
   const members = membersResult.data?.members ?? [];
   const assignedMember = members.find((member) => member.id === workOrder.assigned_to) ?? null;
   const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
@@ -194,6 +206,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       client={client}
       site={site}
       asset={asset}
+      contract={contract}
       assignedMember={assignedMember}
       clients={clients}
       statuses={statuses}

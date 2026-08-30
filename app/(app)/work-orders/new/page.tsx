@@ -21,7 +21,11 @@ interface NewWorkOrderPageProps {
  *
  * In-context pre-scoping: arriving with `?clientId=...` (a future client-
  * scoped "New work order" entry point) locks the client picker, mirroring
- * `app/(app)/assets/new/page.tsx`'s `lockedClientId` handling exactly;
+ * `app/(app)/assets/new/page.tsx`'s `lockedClientId` handling exactly — the
+ * resolved `lockedClient` record itself is also threaded through as the
+ * `client` prop (issue #100) so `WorkOrderFields`' relations rail can show a
+ * real Client summary card even though the (locked, hidden) picker's own
+ * `clients` list is never fetched in this branch.
  * `?siteId=...`/`?assetId=...` pre-select (without locking) the site/asset.
  * `?activityId=...` (issue #87, the Activity quick-view's "Create work
  * order" action) is a hidden traceability field, not a picker — it's
@@ -92,6 +96,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       mode="create"
       breadcrumbItems={breadcrumbItems}
       clients={clients}
+      client={lockedClient}
       lockedClientId={lockedClient?.id}
       initialSiteId={siteId}
       initialAssetId={assetId}
