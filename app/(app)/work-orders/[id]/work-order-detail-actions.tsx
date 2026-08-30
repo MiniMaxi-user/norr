@@ -76,7 +76,7 @@ export function WorkOrderDetailActions({
     <>
       {canCreateQuote && (
         <Button type="button" variant="primary" onClick={handleCreateQuote} disabled={isCreatingQuote}>
-          {isCreatingQuote ? "Creating quote…" : "Maak Quote"}
+          {isCreatingQuote ? "Creating quote…" : "Create Quote"}
         </Button>
       )}
 
