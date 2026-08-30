@@ -192,6 +192,7 @@ export function WorkOrderHero({
           site={site}
           asset={asset}
           contract={contract}
+          clients={clients}
           clientScoped={clientScoped}
           readOnly={readOnly}
           onEdit={() => setRelationsOpen(true)}

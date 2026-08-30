@@ -28,12 +28,17 @@ interface NewWorkOrderPageProps {
  * `clients` list is never fetched in this branch.
  * `?siteId=...`/`?assetId=...` pre-select (without locking) the site/asset.
  * `?activityId=...` (issue #87, the Activity quick-view's "Create work
- * order" action) is a hidden traceability field, not a picker — it's
- * validated to exist here (same shape as `clientId`'s `lockedClientResult`
- * check below) and threaded straight through as `WorkOrderScreen`'s
- * `sourceActivityId` prop (`draftToInput`'s pass-through field), submitted
- * as part of the draft on create. CREATE-only by design (an existing work
- * order's originating activity isn't meant to be reassigned).
+ * order" action) is validated to exist here (same shape as `clientId`'s
+ * `lockedClientResult` check below), threaded through as `WorkOrderScreen`'s
+ * `sourceActivityId` prop (`draftToInput`'s pass-through field, submitted as
+ * part of the draft on create — CREATE-only by design, an existing work
+ * order's originating activity isn't meant to be reassigned), AND — issue
+ * #102's "then everything known on the activity gets filled in" — used to
+ * pre-fill (never lock) the activity's own `client_id`/`asset_id`/
+ * `description` via `initialClientId`/`initialAssetId`/`initialDescription`.
+ * `assetId`/`siteId` query params still win over the activity's own asset
+ * when both are somehow present; the activity has no `site_id`/scheduled
+ * datetime of its own, so those two fields are never pre-filled this way.
  *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
@@ -78,7 +83,8 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
 
   const clients = clientsResult?.data?.clients ?? [];
   const lockedClient = lockedClientResult?.data?.client ?? null;
-  const sourceActivityId = activityResult?.data?.activity.id;
+  const activity = activityResult?.data?.activity;
+  const sourceActivityId = activity?.id;
   const statuses = statusesResult.data?.items ?? [];
   const priorities = prioritiesResult.data?.items ?? [];
   const members = membersResult.data?.members ?? [];
@@ -100,8 +106,10 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       clients={clients}
       client={lockedClient}
       lockedClientId={lockedClient?.id}
+      initialClientId={activity?.client_id}
       initialSiteId={siteId}
-      initialAssetId={assetId}
+      initialAssetId={assetId ?? activity?.asset_id ?? undefined}
+      initialDescription={activity?.description}
       sourceActivityId={sourceActivityId}
       statuses={statuses}
       priorities={priorities}

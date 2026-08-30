@@ -22,6 +22,14 @@ export interface WorkOrderRelationCardsProps {
   site: SiteRecord | null;
   asset: AssetRecord | null;
   contract: ContractRecord | null;
+  /** Fallback source for resolving the Client card's display name once a
+   * DIFFERENT client has been picked via the relations popup than the one
+   * `client` (the server-fetched prop, fixed at initial render) resolves —
+   * `mode: "create"` has no `router.refresh()` to re-fetch `client` after a
+   * local-only draft merge (see `WorkOrderScreen.commitPatch`), so without
+   * this the card would show "Loading…" forever. Same `clients.find(...) ??
+   * client` fallback the pre-redesign `work-order-fields.tsx` used. */
+  clients: ClientRecord[];
   clientScoped: {
     sites: SiteRecord[];
     assets: AssetRecord[];
@@ -50,11 +58,14 @@ export function WorkOrderRelationCards({
   site,
   asset,
   contract,
+  clients,
   clientScoped,
   readOnly,
   onEdit,
 }: WorkOrderRelationCardsProps) {
-  const resolvedClient = draft.clientId ? (client?.id === draft.clientId ? client : null) : null;
+  const resolvedClient = draft.clientId
+    ? (client?.id === draft.clientId ? client : (clients.find((candidate) => candidate.id === draft.clientId) ?? null))
+    : null;
   const resolvedSite =
     clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
     (draft.siteId && site?.id === draft.siteId ? site : null);
@@ -82,7 +93,12 @@ export function WorkOrderRelationCards({
       <RelationCard
         icon={Building2}
         label="Client"
-        loading={Boolean(draft.clientId) && !resolvedClient && !client}
+        // No async loading state of its own (unlike Site/Asset/Contract,
+        // which depend on `clientScoped`'s client-side fetch) — `client` and
+        // `clients` are both already-resolved server props/synchronous
+        // lookups, so a `draft.clientId` with no match is genuinely
+        // "not found", never "still loading".
+        loading={false}
         title={resolvedClient ? <Link href={`/clients/${resolvedClient.id}`}>{resolvedClient.name}</Link> : undefined}
         subtitle={clientFacts || undefined}
         emptyText="No client selected yet"

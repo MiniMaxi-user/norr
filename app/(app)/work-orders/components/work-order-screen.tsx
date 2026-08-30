@@ -53,8 +53,16 @@ export interface WorkOrderScreenProps {
   readOnly?: boolean;
   clients: ClientRecord[];
   lockedClientId?: string;
+  /** Pre-selects (but doesn't lock) the client — e.g. `new/page.tsx`'s
+   * activity-originated pre-fill (issue #102: "then everything known on the
+   * activity gets filled in"), the activity's own `client_id`. Ignored when
+   * `lockedClientId` is also set. */
+  initialClientId?: string;
   initialSiteId?: string;
   initialAssetId?: string;
+  /** Same activity pre-fill as `initialClientId` — the activity's own
+   * `description`, so `mode: "create"` doesn't start fully blank. */
+  initialDescription?: string;
   sourceActivityId?: string;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
@@ -140,8 +148,10 @@ export function WorkOrderScreen({
   readOnly,
   clients,
   lockedClientId,
+  initialClientId,
   initialSiteId,
   initialAssetId,
+  initialDescription,
   sourceActivityId,
   statuses,
   priorities,
@@ -177,7 +187,9 @@ export function WorkOrderScreen({
   usePageHeader(breadcrumbNode);
 
   const [draft, setDraft] = useState<WorkOrderDraft>(() =>
-    workOrder ? draftFromWorkOrder(workOrder) : emptyDraft({ lockedClientId, initialSiteId, initialAssetId }),
+    workOrder
+      ? draftFromWorkOrder(workOrder)
+      : emptyDraft({ lockedClientId, initialClientId, initialSiteId, initialAssetId, initialDescription }),
   );
 
   // The client currently being PREVIEWED for the relation cards + the
@@ -279,6 +291,20 @@ export function WorkOrderScreen({
       hint: mode === "create" ? "Save the work order first" : !checklist ? "Not attached" : undefined,
     });
   }
+  // "To invoice" (mockup's "Te factureren") — material cost only, not hours +
+  // material. Pricing an hour of logged time requires the same client ->
+  // engineer rate-override resolution `create-quote-actions.ts` runs when it
+  // actually creates a quote (rule precedence: client override, then
+  // engineer override, then "no rate resolvable, left off"); duplicating
+  // that here for a KPI tile risks silently disagreeing with the real quote
+  // total, so this stays deliberately material-only and says so via `hint`
+  // rather than showing a number that looks like the full invoice total but
+  // isn't.
+  stats.push({
+    label: "To invoice",
+    value: mode === "create" ? "—" : formatCurrency(materialTotal),
+    hint: mode === "create" ? "Save the work order first" : "Material only — see Create Quote for the full total",
+  });
 
   const heroActions =
     mode === "edit" && workOrder ? (

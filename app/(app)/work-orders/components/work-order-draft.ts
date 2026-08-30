@@ -43,14 +43,23 @@ export function draftFromWorkOrder(workOrder: WorkOrderRecord): WorkOrderDraft {
 
 export function emptyDraft(options: {
   lockedClientId?: string;
+  /** Pre-selects (but doesn't lock) the client — e.g. issue #102's "created
+   * from an activity" pre-fill, where the activity's own `client_id` is
+   * known but the picker should stay editable (unlike `lockedClientId`,
+   * which hides it entirely). Ignored when `lockedClientId` is set. */
+  initialClientId?: string;
   initialSiteId?: string;
   initialAssetId?: string;
+  /** Same "known on the source activity" pre-fill as `initialClientId` —
+   * the activity's own `description`, so the work order doesn't start
+   * completely blank when created from one. */
+  initialDescription?: string;
 }): WorkOrderDraft {
   return {
     title: "",
-    description: "",
+    description: options.initialDescription ?? "",
     notes: "",
-    clientId: options.lockedClientId ?? "",
+    clientId: options.lockedClientId ?? options.initialClientId ?? "",
     siteId: options.initialSiteId ?? "",
     assetId: options.initialAssetId ?? "",
     contractId: "",
