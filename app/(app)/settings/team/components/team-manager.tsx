@@ -204,7 +204,7 @@ export function TeamManager({
               const isSelf = member.userId === currentUserId;
               const roleLocked = isSelf || member.isPlatformAdmin;
               return (
-                <Table.Row key={member.userId}>
+                <Table.Row key={member.userId} onClick={canWrite ? () => setEditTarget(member) : undefined}>
                   <Table.Cell>
                     <Inline gap="sm" align="center">
                       <Avatar name={member.fullName || member.email} size="sm" photoUrl={member.avatarUrl} />
@@ -215,18 +215,20 @@ export function TeamManager({
                   <Table.Cell>{member.email}</Table.Cell>
                   <Table.Cell>
                     {canWrite && !roleLocked ? (
-                      <Select
-                        aria-label={`Role for ${member.fullName || member.email}`}
-                        value={member.role}
-                        disabled={isPending}
-                        onChange={(event) => handleRoleChange(member, event.target.value as TenantRole)}
-                      >
-                        {TENANT_ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {roleLabel(role)}
-                          </option>
-                        ))}
-                      </Select>
+                      <span onClick={(event) => event.stopPropagation()}>
+                        <Select
+                          aria-label={`Role for ${member.fullName || member.email}`}
+                          value={member.role}
+                          disabled={isPending}
+                          onChange={(event) => handleRoleChange(member, event.target.value as TenantRole)}
+                        >
+                          {TENANT_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {roleLabel(role)}
+                            </option>
+                          ))}
+                        </Select>
+                      </span>
                     ) : (
                       <Badge variant="muted">{roleLabel(member.role)}</Badge>
                     )}
@@ -235,19 +237,21 @@ export function TeamManager({
                   {canWrite && (
                     <Table.Cell align="center">
                       <Stack gap="xs">
-                        <Inline gap="xs">
-                          <Button variant="outline" size="sm" onClick={() => setEditTarget(member)} disabled={isPending}>
-                            Edit name
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleResetPassword(member)} disabled={isPending}>
-                            {isPending ? "Working…" : "Reset password"}
-                          </Button>
-                          {!isSelf && !member.isPlatformAdmin && (
-                            <Button variant="danger" size="sm" onClick={() => setRemoveTarget(member)} disabled={isPending}>
-                              Remove
+                        <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
+                          <Inline gap="xs">
+                            <Button variant="outline" size="sm" onClick={() => setEditTarget(member)} disabled={isPending}>
+                              Edit
                             </Button>
-                          )}
-                        </Inline>
+                            <Button variant="outline" size="sm" onClick={() => handleResetPassword(member)} disabled={isPending}>
+                              {isPending ? "Working…" : "Reset password"}
+                            </Button>
+                            {!isSelf && !member.isPlatformAdmin && (
+                              <Button variant="danger" size="sm" onClick={() => setRemoveTarget(member)} disabled={isPending}>
+                                Remove
+                              </Button>
+                            )}
+                          </Inline>
+                        </span>
                         {rowError && <Text tone="danger">{rowError}</Text>}
                       </Stack>
                     </Table.Cell>
