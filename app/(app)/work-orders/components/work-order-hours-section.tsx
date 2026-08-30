@@ -127,11 +127,11 @@ export function WorkOrderHoursSection({
         </Badge>
         <Text className="ui-work-order-row-main">{memberDisplayName(memberById.get(entry.user_id))}</Text>
         {isRunning ? (
-          <Text tone="muted" className="ui-tabular-nums">
+          <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
             {formatTimeOfDay(entry.started_at)} – now
           </Text>
         ) : (
-          <Text tone="muted" className="ui-tabular-nums">
+          <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
             {formatTimeOfDay(entry.started_at)} – {formatTimeOfDay(entry.ended_at)}
           </Text>
         )}

@@ -2,7 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, EmptyState, Input, Label, RowCard, SectionHeader, Select, Stack, SummaryRow, Text, Tooltip } from "@yourorg/ui";
+import {
+  Button,
+  Combobox,
+  Dialog,
+  EmptyState,
+  Input,
+  Label,
+  RowCard,
+  SectionHeader,
+  Stack,
+  SummaryRow,
+  Text,
+  Tooltip,
+  type ComboboxOption,
+} from "@yourorg/ui";
 import { Boxes, Pencil, Trash2 } from "@yourorg/ui/icons";
 import { createWorkOrderArticle, updateWorkOrderArticle, type WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -93,7 +107,7 @@ export function WorkOrderMaterialSection({
                       {row.article?.article_number}
                     </Text>
                   </div>
-                  <Text tone="muted" className="ui-tabular-nums">
+                  <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
                     {row.quantity} × {formatCurrency(row.article?.sale_price ?? null)}
                   </Text>
                   <Text className="ui-work-order-row-trailing ui-tabular-nums">
@@ -169,6 +183,17 @@ function WorkOrderArticleDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Type-to-filter by article number/description (issue #103: replaces the
+  // old plain `<Select>` listing every article as a giant native dropdown) —
+  // EAN/GTIN/MPN are searchable too but never shown in the visible label,
+  // same `keywords`-not-`label` split `ComboboxOption` already documents for
+  // the Quote line item article picker (issue #95).
+  const articleOptions: ComboboxOption[] = articles.map((article) => ({
+    value: article.id,
+    label: `${article.article_number} — ${article.description}`,
+    keywords: [article.ean, article.gtin, article.mpn].filter(Boolean).join(" "),
+  }));
+
   async function handleSave() {
     const parsedQuantity = Number(quantity);
     if (!articleId) {
@@ -203,16 +228,14 @@ function WorkOrderArticleDialog({
           {error && <Text tone="danger">{error}</Text>}
           <Stack gap="sm">
             <Label htmlFor="wo-article">Article</Label>
-            <Select id="wo-article" value={articleId} onChange={(event) => setArticleId(event.target.value)}>
-              <option value="" disabled>
-                Select an article…
-              </option>
-              {articles.map((article) => (
-                <option key={article.id} value={article.id}>
-                  {article.article_number} — {article.description}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              id="wo-article"
+              options={articleOptions}
+              value={articleId}
+              onChange={setArticleId}
+              placeholder="Search by article number or description…"
+              emptyMessage="No matching articles"
+            />
           </Stack>
           <Stack gap="sm">
             <Label htmlFor="wo-article-quantity">Quantity</Label>

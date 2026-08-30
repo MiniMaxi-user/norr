@@ -33,12 +33,17 @@ interface NewWorkOrderPageProps {
  * `sourceActivityId` prop (`draftToInput`'s pass-through field, submitted as
  * part of the draft on create — CREATE-only by design, an existing work
  * order's originating activity isn't meant to be reassigned), AND — issue
- * #102's "then everything known on the activity gets filled in" — used to
- * pre-fill (never lock) the activity's own `client_id`/`asset_id`/
- * `description` via `initialClientId`/`initialAssetId`/`initialDescription`.
- * `assetId`/`siteId` query params still win over the activity's own asset
- * when both are somehow present; the activity has no `site_id`/scheduled
- * datetime of its own, so those two fields are never pre-filled this way.
+ * #102's "then everything known on the activity gets filled in" (issue #103
+ * widened this) — used to pre-fill (never lock) the activity's own
+ * `client_id`/`asset_id`/`description`/`activity_type`/`action_holder_id`
+ * via `initialClientId`/`initialAssetId`/`initialDescription`/`initialTitle`/
+ * `initialAssignedTo`. `assetId`/`siteId` query params still win over the
+ * activity's own asset when both are somehow present. `ActivityRecord`
+ * (`app/(app)/activities/actions.ts`) has no `site_id`/`priority_id`/
+ * `scheduled_at` fields of its own at all — those genuinely have no source to
+ * pre-fill from, unlike `action_holder_id` ("Behandelaar"), which maps
+ * directly to `WorkOrderDraft.assignedTo` (both are `users.id`, same id-space
+ * `OrgMemberRecord.id` already uses).
  *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
@@ -110,6 +115,8 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       initialSiteId={siteId}
       initialAssetId={assetId ?? activity?.asset_id ?? undefined}
       initialDescription={activity?.description}
+      initialTitle={activity?.activity_type?.label}
+      initialAssignedTo={activity?.action_holder_id}
       sourceActivityId={sourceActivityId}
       statuses={statuses}
       priorities={priorities}

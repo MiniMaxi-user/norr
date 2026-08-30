@@ -313,7 +313,13 @@ a {
                     shrink below its content size, so it never scrolls —
                     it just grows past the shell and gets clipped instead. */
   overflow-y: auto;
-  padding: 2rem 2.5rem;
+  padding: var(--ui-page-inset-y) var(--ui-page-inset-x);
+  /* Exposed as custom properties (not just raw values) so a full-bleed child
+     — e.g. `.ui-record-hero-band` (issue #103) — can cancel exactly this
+     padding via `calc(-1 * var(--ui-page-inset-*))` and stay in sync if these
+     ever change, instead of hardcoding a duplicate `2rem`/`2.5rem`. */
+  --ui-page-inset-x: 2.5rem;
+  --ui-page-inset-y: 2rem;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -3369,13 +3375,14 @@ select.ui-client-card-status-select {
   border: 0;
 }
 
-/* Zero-padding, larger-radius modifier for a `Card` acting as a full-bleed
-   "sheet" that houses its own dark header band (`RecordHeroBand`) flush with
-   the card's own rounded top corners, plus a normally-padded body below it —
-   see `RecordHeroBand`'s own doc comment and
-   app/(app)/work-orders/components/work-order-hero.tsx for the reference
-   usage. Same "referenced directly by class name" utility-class precedent as
-   `.ui-card-flush`/`.ui-row-actions`. */
+/* Zero-padding, larger-radius modifier for a `Card` that owns its own
+   internal sections instead of the default padding — general-purpose (see
+   `.ui-card-flush`'s identical idea at the default radius). No longer used to
+   house `RecordHeroBand` (issue #103 made that band a full-bleed sibling
+   ABOVE any `Card`, not nested inside one — see that component's own doc
+   comment for why a rounded card and a flush-to-viewport band are mutually
+   exclusive), but kept as a general utility. Same "referenced directly by
+   class name" precedent as `.ui-card-flush`/`.ui-row-actions`. */
 .ui-card-flush-xl {
   padding: 0;
   border-radius: var(--ui-radius-xl);
@@ -3388,10 +3395,30 @@ select.ui-client-card-status-select {
  * `.ui-sidebar`/`.ui-topbar` already use, re-pointing the semantic tokens so
  * any plain `Badge`/`Text`/`Button` nested inside reads correctly without
  * per-child overrides.
+ *
+ * Full-bleed, straight-edged strip (issue #103) — cancels
+ * `.ui-app-layout-content`'s own padding via its `--ui-page-inset-*` tokens
+ * so this band sits flush to the sidebar/topbar/viewport edge with a
+ * straight bottom edge, rather than being nested inside a rounded `Card`
+ * "sheet" the way issue #102 originally had it (that made the band's own
+ * bottom corners rounded, which both contradicts "flush to the edges" and
+ * "ends in a straight line" — a full-bleed element and a rounded card sheet
+ * are mutually exclusive). Relies on being the FIRST child of a page's
+ * content (see `work-order-hero.tsx` for the reference usage) — any content
+ * that must keep the sheet look (e.g. the Client/Site/Asset/Contract relation
+ * cards) belongs in a normal `Card` sibling BELOW this band, back inside the
+ * page's normal padding.
  * ---------------------------------------------------------------------- */
 .ui-record-hero-band {
   background: var(--ui-brand-fjord);
+  /* No bottom padding: when `stats` is passed (every current caller), the
+     stat-strip's own flat bottom edge (`.ui-stat-strip`'s
+     `border-radius: ... 0 0`) IS this band's bottom edge — the one place the
+     dark surface must end in a straight horizontal line (issue #103), not
+     fade out under extra padding. */
   padding: 1.375rem 2rem 0;
+  margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x)) 0;
+  width: calc(100% + 2 * var(--ui-page-inset-x));
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -3402,6 +3429,24 @@ select.ui-client-card-status-select {
   --ui-muted: rgba(223, 228, 224, 0.68);
   --ui-muted-subtle: rgba(223, 228, 224, 0.5);
   --ui-border: rgba(223, 228, 224, 0.25);
+  /* Every badge-variant tint/strong token, re-pointed exactly like
+     `.ui-sidebar` already does below — without this, `Badge`'s fixed
+     variants (`accent`/`success`/`danger`/`warning`, and `.ui-badge-muted`'s
+     `--ui-surface-2` background) keep resolving the LIGHT-theme values here,
+     which read as low-contrast mud on this dark surface (issue #103's status/
+     priority badge legibility bug). Tenant-custom-color badges (`color`
+     prop, resolved via `colorStyle()`) use inline styles instead of these
+     tokens, so they're unaffected by (and don't need) this override. */
+  --ui-surface-2: rgba(223, 228, 224, 0.14);
+  --ui-accent-tint: rgba(199, 154, 62, 0.2);
+  --ui-accent-tint-border: rgba(199, 154, 62, 0.4);
+  --ui-accent-strong: var(--ui-accent-500);
+  --ui-success-tint: rgba(143, 191, 133, 0.18);
+  --ui-success-strong: #b0d6a8;
+  --ui-danger-tint: rgba(224, 132, 118, 0.18);
+  --ui-danger-strong: #eba99e;
+  --ui-warning-tint: rgba(224, 160, 90, 0.18);
+  --ui-warning-strong: #f0b876;
   color: var(--ui-fg);
 }
 .ui-record-hero-band-top {
@@ -3461,16 +3506,23 @@ select.ui-client-card-status-select {
   max-width: 26ch;
 }
 /* An `<input>` standing in for the static heading above (edit/create mode) —
-   same visual output, zero input chrome. */
+   same visual output, zero input chrome, PLUS a dashed underline that's
+   always visible at rest (not just on hover/focus) so it reads as an
+   editable field rather than static heading text (issue #103: users
+   reported being unable to find where to type a title at all — a plain
+   "New work order" PLACEHOLDER with no field affordance was easy to mistake
+   for an already-filled-in default title, so submitting a blank draft's
+   "Title is required." error had nowhere obvious to point to). */
 .ui-record-hero-band-title-input {
   display: block;
   width: 100%;
   max-width: 26ch;
   border: none;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
   border-radius: var(--ui-radius-sm);
   background: transparent;
-  padding: 0.125rem 0.25rem;
-  margin: -0.125rem -0.25rem;
+  padding: 0.125rem 0.25rem 0.25rem;
+  margin: -0.125rem -0.25rem 0;
   font-family: var(--ui-font-serif);
   font-size: 2rem;
   font-weight: 400;
@@ -3479,14 +3531,18 @@ select.ui-client-card-status-select {
   line-height: 1.15;
 }
 .ui-record-hero-band-title-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
+  font-style: italic;
 }
 .ui-record-hero-band-title-input:hover {
   background: rgba(223, 228, 224, 0.08);
+  border-bottom-color: rgba(255, 255, 255, 0.5);
 }
 .ui-record-hero-band-title-input:focus-visible {
   outline: none;
   background: rgba(223, 228, 224, 0.1);
+  border-bottom-style: solid;
+  border-bottom-color: rgba(255, 255, 255, 0.6);
   box-shadow: 0 0 0 2px var(--ui-focus-ring);
 }
 .ui-record-hero-band-meta {
@@ -3517,15 +3573,20 @@ select.ui-client-card-status-select {
   align-items: center;
   gap: 0.5rem;
 }
-/* Buttons inside the band default to a transparent-on-dark outline look,
-   matching the approved mockup — a plain `Button variant="outline"` (the
-   only variant most hero actions use) would otherwise render with light-mode
-   `--ui-border`/`--ui-bg`, which this block already re-points, so this is
-   just the transparent-background half of that treatment. */
-.ui-record-hero-band-actions .ui-button {
+/* `Button variant="outline"` inside the band gets a transparent-on-dark
+   look, matching the approved mockup — it would otherwise render with
+   light-mode `--ui-border`/`--ui-bg`, which this block already re-points, so
+   this is just the transparent-background half of that treatment.
+   Deliberately scoped to `.ui-button-outline` only (not every `.ui-button`,
+   issue #103's "Create Quote" bug): `variant="primary"`/`"success"` are
+   solid-filled buttons whose own `--ui-accent`/`--ui-success` background
+   already reads fine on this dark surface regardless of what's behind them —
+   flattening them to transparent here left `variant="primary"`'s dark
+   `--ui-accent-fg` label with no background to contrast against. */
+.ui-record-hero-band-actions .ui-button-outline {
   background: transparent;
 }
-.ui-record-hero-band-actions .ui-button:hover {
+.ui-record-hero-band-actions .ui-button-outline:hover {
   background: rgba(223, 228, 224, 0.1);
 }
 .ui-record-hero-band-assignee {
@@ -3822,6 +3883,16 @@ a.ui-relation-card-title:hover {
 .ui-work-order-row-main {
   flex: 1;
   min-width: 0;
+}
+/* The middle column (a time range "09:00 – 10:30" / a quantity×price
+   "2 × € 12.50") — a FIXED width, same idea as `.ui-work-order-row-trailing`
+   below, so it lines up like a table column across rows instead of each
+   row's own content width shifting it around (issue #103: "uitlijning van
+   tijden en prijzen moet netjes onder elkaar komen"). */
+.ui-work-order-row-mid {
+  flex-shrink: 0;
+  width: 9rem;
+  text-align: right;
 }
 .ui-work-order-row-trailing {
   width: 4.5rem;

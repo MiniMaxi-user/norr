@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Avatar, Badge, Card, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
+import { Avatar, Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
 import { CalendarDays, MapPin, Pencil } from "@yourorg/ui/icons";
 import type { WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
@@ -59,16 +59,34 @@ export interface WorkOrderHeroProps {
 }
 
 /**
- * The dark hero band + relation-cards "sheet" at the top of the redesigned
- * work order screen (issue #102) — `RecordHeroBand` (title/badges/meta/
- * actions/assignee/stats) and `WorkOrderRelationCards` (Client/Site/Asset/
- * Contract) sharing ONE `Card className="ui-card-flush-xl"`, per
- * `RecordHeroBand`'s own doc comment on why the two need to be the same
- * rounded "sheet" rather than stacked separate cards. Owns the two small
- * popups (`WorkOrderStatusPriorityDialog`/`WorkOrderRelationsDialog`) behind
- * the badges row's and the relation cards' own Edit buttons — everything
- * else (Hours/Material/Checklist/Assignment) is a sibling below this,
- * assembled by `WorkOrderScreen` itself.
+ * The full-bleed dark hero band + the Client/Site/Asset/Contract relation
+ * cards at the top of the redesigned work order screen (issue #102, revised
+ * by issue #103). `RecordHeroBand` (title/badges/meta/actions/assignee/
+ * stats) is now a full-bleed sibling BEFORE any `Card` — see that
+ * component's own doc comment for why it can no longer share a rounded
+ * `Card className="ui-card-flush-xl"` "sheet" with the relation cards the
+ * way issue #102 originally had it. `WorkOrderRelationCards` now renders
+ * directly on the page's own (normally padded) background instead — each of
+ * its four `RelationCard`s is ALREADY its own bordered `Card`
+ * (`packages/ui/src/components/relation-card.tsx`), so once they're out of
+ * that shared dark-band sheet (where their individual borders read as just
+ * more content floating inside an already-framed surface) they stand on
+ * their own as properly framed cards, same "several individually-bordered
+ * fact cards on the plain page background" pattern
+ * `app/(app)/clients/[id]/client-detail.tsx`'s rail already uses — issue
+ * #103's "no frame" complaint, not a missing border to add. Renders both as
+ * a fragment, not a single wrapping element, so `WorkOrderScreen`'s own
+ * `Stack` puts its usual gap between the two. Owns the two small popups
+ * (`WorkOrderStatusPriorityDialog`/`WorkOrderRelationsDialog`) behind the
+ * badges row's and the relation cards' own Edit buttons — everything else
+ * (Hours/Material/Checklist/Assignment) is a sibling below this, assembled
+ * by `WorkOrderScreen` itself.
+ *
+ * No `recordLabel`/breadcrumb line and no `topRight` "Created …" line inside
+ * the band (issue #103, items #1/#8): the page's own `Breadcrumbs` (Topbar)
+ * already says "Work Orders / …", so repeating it here was redundant, and
+ * "Created …" now lives in `WorkOrderAssignmentSection`'s key/value list
+ * instead.
  */
 export function WorkOrderHero({
   mode,
@@ -98,7 +116,6 @@ export function WorkOrderHero({
 
   const memberById = new Map(members.map((member) => [member.id, member]));
   const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
-  const createdByMember = workOrder?.created_by ? memberById.get(workOrder.created_by) : undefined;
 
   const resolvedSite =
     clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
@@ -121,17 +138,8 @@ export function WorkOrderHero({
   }
 
   return (
-    <Card className="ui-card-flush-xl">
+    <>
       <RecordHeroBand
-        recordLabel="Work Orders"
-        recordHref="/work-orders"
-        topRight={
-          mode === "edit" && workOrder ? (
-            <>Created {formatDateTime(workOrder.created_at, { month: "short" })}
-              {createdByMember ? ` · ${memberDisplayName(createdByMember)}` : ""}
-            </>
-          ) : undefined
-        }
         badges={
           <>
             {mode === "edit" && workOrder ? (
@@ -162,7 +170,7 @@ export function WorkOrderHero({
             <input
               className="ui-record-hero-band-title-input"
               value={draft.title}
-              placeholder="New work order"
+              placeholder="Untitled work order — click to name it"
               aria-label="Work order title"
               onChange={(event) => onTitleChange(event.target.value)}
               onBlur={(event) => onTitleBlur(event.target.value)}
@@ -185,19 +193,17 @@ export function WorkOrderHero({
         stats={<StatStrip items={stats} />}
       />
 
-      <div className="ui-card-flush-xl-body">
-        <WorkOrderRelationCards
-          draft={draft}
-          client={client}
-          site={site}
-          asset={asset}
-          contract={contract}
-          clients={clients}
-          clientScoped={clientScoped}
-          readOnly={readOnly}
-          onEdit={() => setRelationsOpen(true)}
-        />
-      </div>
+      <WorkOrderRelationCards
+        draft={draft}
+        client={client}
+        site={site}
+        asset={asset}
+        contract={contract}
+        clients={clients}
+        clientScoped={clientScoped}
+        readOnly={readOnly}
+        onEdit={() => setRelationsOpen(true)}
+      />
 
       {relationsOpen && (
         <WorkOrderRelationsDialog
@@ -222,6 +228,6 @@ export function WorkOrderHero({
           onSave={onStatusPrioritySave}
         />
       )}
-    </Card>
+    </>
   );
 }

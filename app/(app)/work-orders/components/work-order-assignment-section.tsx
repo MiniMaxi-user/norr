@@ -52,12 +52,14 @@ export interface WorkOrderAssignmentSectionProps {
  * plain paragraph, Notes as a highlighted callout (only rendered when set —
  * the mockup's sample "Sleutel kelder ophalen…" text is just sample data,
  * not a hardcoded fixture), then a key/value list (Assigned to / Scheduled
- * for / From activity / Last modified). All four editable fields
+ * for / From activity / Created / Last modified). All four editable fields
  * (description/notes/assignedTo/scheduledAt) share ONE small Edit popup —
  * same "one Edit button per section" convention `WorkOrderRelationCards`/
  * `WorkOrderChecklistSection` use, rather than a separate popup per field.
- * "From activity"/"Last modified" are read-only system/derived fields, never
- * part of the popup.
+ * "From activity"/"Created"/"Last modified" are read-only system/derived
+ * fields, never part of the popup. "Created" moved here from
+ * `WorkOrderHero`'s own top-right slot (issue #103) — it's a record fact like
+ * the others in this list, not something that belonged in the hero band.
  */
 export function WorkOrderAssignmentSection({
   mode,
@@ -70,6 +72,7 @@ export function WorkOrderAssignmentSection({
   const [dialogOpen, setDialogOpen] = useState(false);
   const memberById = new Map(members.map((member) => [member.id, member]));
   const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
+  const createdByMember = workOrder?.created_by ? memberById.get(workOrder.created_by) : undefined;
 
   return (
     <Stack gap="md">
@@ -116,6 +119,15 @@ export function WorkOrderAssignmentSection({
                 filtered list is the closest useful destination rather than a
                 dead link to a non-existent `/activities/[id]`. */}
             <Link href={`/activities?clientId=${workOrder.client_id}`}>View in Activities</Link>
+          </div>
+        )}
+        {mode === "edit" && workOrder && (
+          <div className="ui-work-order-kv-row">
+            <Text tone="muted">Created</Text>
+            <Text>
+              {formatDateTime(workOrder.created_at, { month: "long" })}
+              {createdByMember ? ` · ${memberDisplayName(createdByMember)}` : ""}
+            </Text>
           </div>
         )}
         {mode === "edit" && workOrder && (

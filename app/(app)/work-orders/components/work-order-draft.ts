@@ -54,16 +54,23 @@ export function emptyDraft(options: {
    * the activity's own `description`, so the work order doesn't start
    * completely blank when created from one. */
   initialDescription?: string;
+  /** Issue #103 — the source activity's own type label ("Storing"/
+   * "Onderhoud"/…), so a work order created from an activity doesn't start
+   * with a blank (easy-to-miss) title. Still fully editable. */
+  initialTitle?: string;
+  /** Issue #103 — the source activity's own `action_holder_id`, pre-filling
+   * (never locking) `assignedTo`. */
+  initialAssignedTo?: string;
 }): WorkOrderDraft {
   return {
-    title: "",
+    title: options.initialTitle ?? "",
     description: options.initialDescription ?? "",
     notes: "",
     clientId: options.lockedClientId ?? options.initialClientId ?? "",
     siteId: options.initialSiteId ?? "",
     assetId: options.initialAssetId ?? "",
     contractId: "",
-    assignedTo: "",
+    assignedTo: options.initialAssignedTo ?? "",
     scheduledAt: "",
     statusId: "",
     priorityId: "",

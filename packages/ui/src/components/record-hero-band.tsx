@@ -5,12 +5,20 @@ import { cx } from "../cx";
 export interface RecordHeroBandProps {
   /** Breadcrumb-style top-left line, e.g. "Work Orders / WO-2026-0148" —
    * `recordLabel` links to the list, `recordCode` (monospace, current-page
-   * styling) is omitted while the record doesn't exist yet (create mode). */
-  recordLabel: ReactNode;
+   * styling) is omitted while the record doesn't exist yet (create mode).
+   * Omit `recordLabel` entirely (along with `topRight`) when the page's own
+   * `Breadcrumbs` (rendered in the Topbar via `usePageHeader`) already say
+   * the same thing — issue #103 removed work orders' redundant second
+   * "Work Orders" label repeated inside this band; the whole top row then
+   * doesn't render at all rather than leaving an empty strip. */
+  recordLabel?: ReactNode;
   recordHref?: string;
   recordCode?: ReactNode;
   /** Top-right of that same line, e.g. "Created 24 Aug · Marijke Vos" —
-   * omitted in create mode (nothing saved yet to have been created). */
+   * omitted in create mode (nothing saved yet to have been created), and
+   * generally better suited to living in the page's own Assignment/metadata
+   * section instead of this band (issue #103: work orders moved their
+   * "Created …" line out of here for that reason). */
   topRight?: ReactNode;
   /** Status/priority/type pills, rendered above the title. */
   badges?: ReactNode;
@@ -34,18 +42,26 @@ export interface RecordHeroBandProps {
 
 /**
  * The dark "ink" header band for a top-level record's detail page (issue
- * #102's work order redesign is the first caller: breadcrumb + created-by
- * line, badges-above-title, a large serif title, an icon+text meta row,
- * right-aligned actions + assignee, and a stat-tile strip baked into the
- * bottom) — deliberately its own component rather than a dark variant of
- * `DetailHero`: the two have almost no shape in common (badges before the
- * title vs. after, no avatar-mark, an assignee block, a stats strip) beyond
- * both being "the header of a detail page". Render this as the first child
- * of a `Card` with `className="ui-card-flush-xl"` (zero padding, `16px`
- * radius, `overflow: hidden`) so this band's own dark background meets the
- * card's rounded top corners and the light body content below it shares the
- * same sheet — see `app/(app)/work-orders/components/work-order-hero.tsx`
- * for the reference usage.
+ * #102's work order redesign is the first caller: badges-above-title, a
+ * large serif title, an icon+text meta row, right-aligned actions + assignee,
+ * and a stat-tile strip baked into the bottom) — deliberately its own
+ * component rather than a dark variant of `DetailHero`: the two have almost
+ * no shape in common (badges before the title vs. after, no avatar-mark, an
+ * assignee block, a stats strip) beyond both being "the header of a detail
+ * page".
+ *
+ * *** Issue #103 *** made this a full-bleed strip: render it as the very
+ * FIRST element of a page's own content (a sibling BEFORE any `Card`, not
+ * nested inside one) — its own CSS cancels `.ui-app-layout-content`'s padding
+ * so it sits flush to the sidebar/topbar/viewport edge and ends in a straight
+ * horizontal line, rather than issue #102's original "first child of a
+ * `Card className=\"ui-card-flush-xl\"`" sheet (a rounded card can't also be
+ * flush to the viewport edge — the two asks are mutually exclusive). Content
+ * that still wants the light "sheet" look (e.g. work orders' Client/Site/
+ * Asset/Contract relation cards) belongs in a normal `Card` sibling rendered
+ * BELOW this band instead — see
+ * `app/(app)/work-orders/components/work-order-hero.tsx` for the reference
+ * usage.
  *
  * Fixed dark surface, not theme-toggle-aware (matches `.ui-sidebar`'s own
  * permanent "ink" treatment) — product feedback on the approved mockup was
@@ -67,18 +83,22 @@ export function RecordHeroBand({
 }: RecordHeroBandProps) {
   return (
     <div className={cx("ui-record-hero-band", className)}>
-      <div className="ui-record-hero-band-top">
-        <div className="ui-record-hero-band-breadcrumb">
-          {recordHref ? <Link href={recordHref}>{recordLabel}</Link> : <span>{recordLabel}</span>}
-          {recordCode && (
-            <>
-              <span className="ui-record-hero-band-breadcrumb-sep">/</span>
-              <span className="ui-record-hero-band-code">{recordCode}</span>
-            </>
+      {(recordLabel || topRight) && (
+        <div className="ui-record-hero-band-top">
+          {recordLabel && (
+            <div className="ui-record-hero-band-breadcrumb">
+              {recordHref ? <Link href={recordHref}>{recordLabel}</Link> : <span>{recordLabel}</span>}
+              {recordCode && (
+                <>
+                  <span className="ui-record-hero-band-breadcrumb-sep">/</span>
+                  <span className="ui-record-hero-band-code">{recordCode}</span>
+                </>
+              )}
+            </div>
           )}
+          {topRight && <span>{topRight}</span>}
         </div>
-        {topRight && <span>{topRight}</span>}
-      </div>
+      )}
 
       <div className="ui-record-hero-band-main">
         <div className="ui-record-hero-band-left">

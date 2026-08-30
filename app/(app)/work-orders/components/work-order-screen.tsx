@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Breadcrumbs,
   Button,
-  Card,
   FormGrid,
   Stack,
   Text,
@@ -63,6 +62,18 @@ export interface WorkOrderScreenProps {
   /** Same activity pre-fill as `initialClientId` — the activity's own
    * `description`, so `mode: "create"` doesn't start fully blank. */
   initialDescription?: string;
+  /** Issue #103 — defaults the (still fully editable, see #6's title-input
+   * fix) title to the source activity's own type label ("Storing"/
+   * "Onderhoud"/…) instead of starting blank, since a blank title with no
+   * visible affordance was exactly the bug users hit. */
+  initialTitle?: string;
+  /** Issue #103 — the source activity's own `action_holder_id` ("Behandelaar"),
+   * pre-filling (never locking) `assignedTo` the same way `initialClientId`/
+   * `initialAssetId` pre-fill without locking. The only other Activity field
+   * with a direct Work Order equivalent — `ActivityRecord` has no
+   * `site_id`/`priority_id`/`scheduled_at` of its own to carry over (see
+   * `new/page.tsx`'s own doc comment). */
+  initialAssignedTo?: string;
   sourceActivityId?: string;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
@@ -114,14 +125,17 @@ export interface WorkOrderScreenProps {
  * data-fetching/RBAC gating (unchanged), rendering this with
  * `mode="create"|"edit"`.
  *
- * *** Issue #102 redesign *** replaces the old `DetailHero` + `WorkOrderFields`
- * (a plain vertical form) with:
- *  - `WorkOrderHero` — the dark `RecordHeroBand` (title/badges/stat-strip) and
- *    the Client/Site/Asset/Contract relation cards, sharing one "sheet" `Card`.
+ * *** Issue #102 redesign *** (revised by issue #103) replaces the old
+ * `DetailHero` + `WorkOrderFields` (a plain vertical form) with:
+ *  - `WorkOrderHero` — the full-bleed dark `RecordHeroBand` (title/badges/
+ *    stat-strip) followed by the Client/Site/Asset/Contract relation cards in
+ *    their own framed `Card` (issue #103 split these out of #102's original
+ *    shared "sheet" — see `WorkOrderHero`'s own doc comment for why).
  *  - `WorkOrderHoursSection` / `WorkOrderMaterialSection` side by side
- *    ("Links uren rechts materiaal" per the issue).
+ *    ("Links uren rechts materiaal" per the issue), rendered directly on the
+ *    page background with no `Card` frame of their own (issue #103).
  *  - `WorkOrderChecklistSection` / `WorkOrderAssignmentSection` side by side
- *    below that ("Daaronder checklist en opdracht").
+ *    below that ("Daaronder checklist en opdracht"), same no-`Card` treatment.
  *
  * There is no single big `<form>` anymore. This component owns one flat
  * `WorkOrderDraft` (`./work-order-draft.ts`) as the source of truth for every
@@ -152,6 +166,8 @@ export function WorkOrderScreen({
   initialSiteId,
   initialAssetId,
   initialDescription,
+  initialTitle,
+  initialAssignedTo,
   sourceActivityId,
   statuses,
   priorities,
@@ -189,7 +205,15 @@ export function WorkOrderScreen({
   const [draft, setDraft] = useState<WorkOrderDraft>(() =>
     workOrder
       ? draftFromWorkOrder(workOrder)
-      : emptyDraft({ lockedClientId, initialClientId, initialSiteId, initialAssetId, initialDescription }),
+      : emptyDraft({
+          lockedClientId,
+          initialClientId,
+          initialSiteId,
+          initialAssetId,
+          initialDescription,
+          initialTitle,
+          initialAssignedTo,
+        }),
   );
 
   // The client currently being PREVIEWED for the relation cards + the
@@ -354,66 +378,47 @@ export function WorkOrderScreen({
       />
 
       <FormGrid columns={2}>
-        <Card>
-          <WorkOrderHoursSection
-            mode={mode}
-            workOrderId={workOrder?.id}
-            timeEntries={timeEntries}
-            members={members}
-            entryTypes={timeEntryTypes}
-            assignedTo={draft.assignedTo}
-            currentUserId={currentUserId}
-            canLogTimeForOthers={Boolean(canLogTimeForOthers)}
-            canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
-            canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
-            canDelete={Boolean(canDelete)}
-          />
-        </Card>
-        <Card>
-          <WorkOrderMaterialSection
-            mode={mode}
-            workOrderId={workOrder?.id}
-            workOrderArticles={workOrderArticles}
-            articles={articlesForSelect}
-            canCreate={Boolean(canCreateWorkOrderArticles)}
-            canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
-            canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
-            canDelete={Boolean(canDelete)}
-            currentUserId={currentUserId}
-          />
-        </Card>
+        <WorkOrderHoursSection
+          mode={mode}
+          workOrderId={workOrder?.id}
+          timeEntries={timeEntries}
+          members={members}
+          entryTypes={timeEntryTypes}
+          assignedTo={draft.assignedTo}
+          currentUserId={currentUserId}
+          canLogTimeForOthers={Boolean(canLogTimeForOthers)}
+          canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
+          canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
+          canDelete={Boolean(canDelete)}
+        />
+        <WorkOrderMaterialSection
+          mode={mode}
+          workOrderId={workOrder?.id}
+          workOrderArticles={workOrderArticles}
+          articles={articlesForSelect}
+          canCreate={Boolean(canCreateWorkOrderArticles)}
+          canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
+          canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
+          canDelete={Boolean(canDelete)}
+          currentUserId={currentUserId}
+        />
       </FormGrid>
 
       {canAccessChecklists ? (
         <FormGrid columns={2}>
-          <Card>
-            <WorkOrderChecklistSection
-              mode={mode}
-              workOrderId={workOrder?.id}
-              checklist={checklist}
-              items={checklistItems}
-              templates={checklistTemplates}
-              currentUserId={currentUserId}
-              canAccess={Boolean(canAccessChecklists)}
-              canAttach={Boolean(canAttachChecklist)}
-              canDetach={Boolean(canDetachChecklist)}
-              canUpdateAny={Boolean(canUpdateChecklistAny)}
-              canUpdateOwn={Boolean(canUpdateChecklistOwn)}
-            />
-          </Card>
-          <Card>
-            <WorkOrderAssignmentSection
-              mode={mode}
-              draft={draft}
-              workOrder={workOrder}
-              members={members}
-              readOnly={readOnly}
-              onSave={commitPatch}
-            />
-          </Card>
-        </FormGrid>
-      ) : (
-        <Card>
+          <WorkOrderChecklistSection
+            mode={mode}
+            workOrderId={workOrder?.id}
+            checklist={checklist}
+            items={checklistItems}
+            templates={checklistTemplates}
+            currentUserId={currentUserId}
+            canAccess={Boolean(canAccessChecklists)}
+            canAttach={Boolean(canAttachChecklist)}
+            canDetach={Boolean(canDetachChecklist)}
+            canUpdateAny={Boolean(canUpdateChecklistAny)}
+            canUpdateOwn={Boolean(canUpdateChecklistOwn)}
+          />
           <WorkOrderAssignmentSection
             mode={mode}
             draft={draft}
@@ -422,7 +427,16 @@ export function WorkOrderScreen({
             readOnly={readOnly}
             onSave={commitPatch}
           />
-        </Card>
+        </FormGrid>
+      ) : (
+        <WorkOrderAssignmentSection
+          mode={mode}
+          draft={draft}
+          workOrder={workOrder}
+          members={members}
+          readOnly={readOnly}
+          onSave={commitPatch}
+        />
       )}
     </Stack>
   );
