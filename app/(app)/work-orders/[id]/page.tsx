@@ -7,6 +7,8 @@ import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { listTimeEntries } from "../time-entries-actions";
+import { listWorkOrderArticles } from "../work-order-articles-actions";
+import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
@@ -23,11 +25,12 @@ interface WorkOrderDetailPageProps {
  * (`../components/work-order-screen.tsx`, `mode="edit"`) that
  * `/work-orders/new` renders with `mode="create"` — both routes are one
  * genuinely shared screen now, not two hand-maintained layouts. No `Tabs`
- * here: unlike Client (Sites/Assets/Contacts) or a future Contract, neither
- * of a work order's child sub-entities (Time Entries, issue #15; Checklist,
- * issue #14) needs its own tab — each is a single always-visible Card
- * section (`TimeEntriesPanel`, `ChecklistPanel`) rendered full width below
- * the fields, same reasoning `ContractAssetsPanel` documents for Contracts'
+ * here: unlike Client (Sites/Assets/Contacts) or a future Contract, none of a
+ * work order's child sub-entities (Time Entries, issue #15; Consumed
+ * Articles, issue #94; Checklist, issue #14) needs its own tab — each is a
+ * single always-visible Card section (`TimeEntriesPanel`,
+ * `ConsumedArticlesPanel`, `ChecklistPanel`) rendered full width below the
+ * fields, same reasoning `ContractAssetsPanel` documents for Contracts'
  * Linked Assets.
  *
  * *** Issue #89 ("New/Edit work order screens aligned") *** folded the
@@ -89,6 +92,15 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // `WorkOrderFields` below) never renders a single picker, so there is
   // nothing for those lists to populate.
   const canEdit = canAny(actor, "planning", ["update", "update_own"]);
+  // Consumed Articles (issue #94) — same gate `createWorkOrderArticle` itself
+  // enforces; used ahead of the fetch below to skip `listArticlesForSelect()`
+  // entirely for a caller who could never render its picker anyway.
+  const canCreateWorkOrderArticles = canAny(actor, "planning", ["create", "create_own"]);
+  // "Maak Quote" (issue #94) — mirrors `createQuoteFromWorkOrder`'s own gate
+  // in `../create-quote-actions.ts` exactly: a separately-entitled module
+  // (`quotes`) AND `can(actor, "quotes", "create")` (owner/planner only).
+  const quotesEnabled = await hasFeature(session.organization, "quotes");
+  const canCreateQuote = quotesEnabled && canAccessModule(actor, "quotes") && can(actor, "quotes", "create");
 
   const [
     clientResult,
@@ -96,6 +108,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     membersResult,
     timeEntriesResult,
     timeEntryTypesResult,
+    workOrderArticlesResult,
+    articlesForSelectResult,
     checklistResult,
     checklistTemplatesResult,
     clientsResult,
@@ -107,6 +121,12 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     listOrgMembers(),
     listTimeEntries(workOrder.id),
     listReferenceItems("time_entry_type"),
+    listWorkOrderArticles(workOrder.id),
+    // Only needed to populate the "which article was consumed" picker, and
+    // only a caller who can log one at all ever sees it — skip the round
+    // trip entirely for a plain read-only viewer, same "don't fetch what
+    // can't render" reasoning as `checklistTemplatesResult` below.
+    canCreateWorkOrderArticles ? listArticlesForSelect() : Promise.resolve(null),
     canAccessChecklists ? getWorkOrderChecklist(workOrder.id) : Promise.resolve(null),
     // Only needed to populate the "attach a checklist" template picker, and
     // only owner/planner ever see that affordance — skip the round trip
@@ -128,6 +148,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const assignedMember = members.find((member) => member.id === workOrder.assigned_to) ?? null;
   const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
   const timeEntryTypes = timeEntryTypesResult.data?.items ?? [];
+  const workOrderArticles = workOrderArticlesResult.data?.workOrderArticles ?? [];
+  const articlesForSelect = articlesForSelectResult?.data?.articles ?? [];
   const checklist = checklistResult?.data?.checklist ?? null;
   const checklistItems = checklistResult?.data?.items ?? [];
   const checklistTemplates = checklistTemplatesResult?.data?.templates ?? [];
@@ -148,6 +170,13 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canLogTimeForOthers = can(actor, "planning", "create");
   const canUpdateTimeEntriesAny = can(actor, "planning", "update");
   const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
+
+  // Consumed Articles (issue #94) — same `planning` module, see
+  // `consumed-articles-panel.tsx`'s own doc comment for why there is only one
+  // create gate here (`canCreateWorkOrderArticles`, computed above) rather
+  // than a further `canLogTimeForOthers`-style split.
+  const canUpdateWorkOrderArticlesAny = can(actor, "planning", "update");
+  const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own");
 
   // Checklists (issue #14) are their OWN module (see comment above), not a
   // reuse of `planning`'s actions/permissions.
@@ -177,6 +206,12 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       canLogTimeForOthers={canLogTimeForOthers}
       canUpdateTimeEntriesAny={canUpdateTimeEntriesAny}
       canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
+      workOrderArticles={workOrderArticles}
+      articlesForSelect={articlesForSelect}
+      canCreateWorkOrderArticles={canCreateWorkOrderArticles}
+      canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
+      canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
+      canCreateQuote={canCreateQuote}
       canAccessChecklists={canAccessChecklists}
       checklist={checklist}
       checklistItems={checklistItems}

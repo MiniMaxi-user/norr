@@ -189,3 +189,46 @@ export const timeEntryUpdateSchema = z.object({
 });
 
 export type TimeEntryUpdateInput = z.infer<typeof timeEntryUpdateSchema>;
+
+/**
+ * Work Order Articles (issue #94 schema prerequisite, second stage — see
+ * `app/(app)/work-orders/work-order-articles-actions.ts` and
+ * `supabase/migrations/20260830100000_work_order_articles_and_quote_traceability.sql`)
+ * — the materials/articles CONSUMED on a work order, a sibling sub-resource
+ * to Time Entries (folded into this same file for the same "sub-entity's
+ * schema lives alongside its parent's" reasoning `timeEntryCreateSchema`'s
+ * own comment gives). No `workOrderId` field here either — same reasoning:
+ * `createWorkOrderArticle(workOrderId, input)` takes it as its own function
+ * argument.
+ *
+ * `quantitySchema` mirrors `articleComponentAddSchema`'s own quantity check
+ * in `app/(app)/articles/schema.ts` EXACTLY (same `numeric(12,3)`, `> 0`,
+ * "at most 3 decimal places" shape — `work_order_articles.quantity` uses the
+ * identical precision for the identical reason: the org's `article_unit`
+ * reference list includes Liter/Kg alongside Stuk, so a fractional consumed
+ * quantity is a real case). Not imported from there — same "small enough to
+ * redeclare per module" precedent this file already follows for
+ * `ResolvedReferenceItem`-style duplication across modules.
+ */
+const workOrderArticleQuantitySchema = z.coerce
+  .number({ invalid_type_error: "Quantity must be a number." })
+  .finite("Quantity must be a finite number.")
+  .positive("Quantity must be greater than zero.")
+  .refine((value) => Math.abs(value - Math.round(value * 1000) / 1000) < 1e-9, {
+    message: "Quantity must have at most 3 decimal places.",
+  });
+
+export const workOrderArticleCreateSchema = z.object({
+  articleId: z.string().uuid("Invalid article."),
+  quantity: workOrderArticleQuantitySchema,
+});
+
+export type WorkOrderArticleCreateInput = z.infer<typeof workOrderArticleCreateSchema>;
+
+/** `workOrderId` stays out of this schema too (immutable after creation —
+ * the DB's UPDATE column grant excludes it, same "delete + re-insert to
+ * move it" shape as `quoteLineItemUpdateSchema`/`articleComponentUpdateSchema`).
+ * Both remaining fields optional for partial edit. */
+export const workOrderArticleUpdateSchema = workOrderArticleCreateSchema.partial();
+
+export type WorkOrderArticleUpdateInput = z.infer<typeof workOrderArticleUpdateSchema>;

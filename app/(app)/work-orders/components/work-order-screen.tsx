@@ -12,8 +12,11 @@ import { usePageHeader } from "@/components/shell/page-header-context";
 import { WorkOrderFields } from "./work-order-fields";
 import { WorkOrderDetailActions } from "../[id]/work-order-detail-actions";
 import { TimeEntriesPanel } from "../[id]/time-entries-panel";
+import { ConsumedArticlesPanel } from "../[id]/consumed-articles-panel";
 import { ChecklistPanel } from "../[id]/checklist-panel";
 import type { TimeEntryRecord } from "../time-entries-actions";
+import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 
 export interface WorkOrderScreenProps {
@@ -53,6 +56,22 @@ export interface WorkOrderScreenProps {
   canLogTimeForOthers?: boolean;
   canUpdateTimeEntriesAny?: boolean;
   canUpdateTimeEntriesOwn?: boolean;
+  /** `listWorkOrderArticles(workOrder.id)`'s result — the work order's own
+   * consumed articles, see `ConsumedArticlesPanel`'s own doc comment. */
+  workOrderArticles?: WorkOrderArticleRecord[];
+  /** `listArticlesForSelect()`'s result — every active article, for the
+   * consumed-article picker. */
+  articlesForSelect?: ArticleSelectOption[];
+  /** `canAny(actor, "planning", ["create", "create_own"])` — see
+   * `ConsumedArticlesPanel`'s own doc comment for why this is a single gate,
+   * unlike Time Entries' `canLogTimeForOthers`. */
+  canCreateWorkOrderArticles?: boolean;
+  canUpdateWorkOrderArticlesAny?: boolean;
+  canUpdateWorkOrderArticlesOwn?: boolean;
+  /** `hasFeature(org, "quotes") && canAccessModule(actor, "quotes") &&
+   * can(actor, "quotes", "create")` — gates the hero's "Maak Quote" action
+   * (issue #94). */
+  canCreateQuote?: boolean;
   /** `hasFeature(org, "checklists") && canAccessModule(actor, "checklists")`
    * — gates whether `ChecklistPanel` renders at all (a separately-entitled
    * module, not folded into `planning`). */
@@ -86,9 +105,10 @@ export interface WorkOrderScreenProps {
  * Below the hero: `WorkOrderFields` always full width (no more 340px rail,
  * no more `dense` prop — both routes share the exact same layout now), then
  * — edit mode only, since there's no `work_order_id` yet in create mode —
- * `TimeEntriesPanel` and `ChecklistPanel` in a plain vertical `Stack` (Work
- * Orders doesn't need `DetailLayout`'s rail/main split the way Clients does
- * for secondary reference info).
+ * `TimeEntriesPanel`, `ConsumedArticlesPanel` (issue #94), and
+ * `ChecklistPanel` in a plain vertical `Stack` (Work Orders doesn't need
+ * `DetailLayout`'s rail/main split the way Clients does for secondary
+ * reference info).
  */
 export function WorkOrderScreen({
   mode,
@@ -115,6 +135,12 @@ export function WorkOrderScreen({
   canLogTimeForOthers,
   canUpdateTimeEntriesAny,
   canUpdateTimeEntriesOwn,
+  workOrderArticles,
+  articlesForSelect,
+  canCreateWorkOrderArticles,
+  canUpdateWorkOrderArticlesAny,
+  canUpdateWorkOrderArticlesOwn,
+  canCreateQuote,
   canAccessChecklists,
   checklist,
   checklistItems,
@@ -150,7 +176,15 @@ export function WorkOrderScreen({
             </>
           ) : undefined
         }
-        actions={isEdit ? <WorkOrderDetailActions workOrder={workOrder!} canDelete={Boolean(canDelete)} /> : undefined}
+        actions={
+          isEdit ? (
+            <WorkOrderDetailActions
+              workOrder={workOrder!}
+              canDelete={Boolean(canDelete)}
+              canCreateQuote={Boolean(canCreateQuote)}
+            />
+          ) : undefined
+        }
       />
 
       <WorkOrderFields
@@ -184,6 +218,18 @@ export function WorkOrderScreen({
             canLogTimeForOthers={Boolean(canLogTimeForOthers)}
             canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
             canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
+            canDelete={Boolean(canDelete)}
+          />
+
+          <ConsumedArticlesPanel
+            workOrderId={workOrder!.id}
+            workOrderArticles={workOrderArticles ?? []}
+            articles={articlesForSelect ?? []}
+            members={members}
+            currentUserId={currentUserId!}
+            canCreate={Boolean(canCreateWorkOrderArticles)}
+            canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
+            canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
             canDelete={Boolean(canDelete)}
           />
 

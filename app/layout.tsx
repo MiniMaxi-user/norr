@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "@yourorg/ui";
+import { ThemeProvider, ToastProvider } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — the
 // app never defines its own tokens or a local globals.css.
@@ -33,7 +33,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+          {/* Mounted once at the app root (issue #94, "Maak Quote" — its
+           * first real caller, see `work-orders/[id]/work-order-detail-
+           * actions.tsx`) so `toast()` can be called from anywhere in the
+           * tree, including right before a `router.push()` navigates away —
+           * a toast survives that navigation, an inline banner never could. */}
+          <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>
       </body>
     </html>
