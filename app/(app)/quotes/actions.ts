@@ -51,17 +51,20 @@ import {
  *
  * **Total computation (no stored column, no N+1):** `quotes` deliberately has
  * no `total` column (see the migration's design note 2) — a quote's total is
- * `sum(quantity * unit_price)` over its `quote_line_items`, computed here at
- * the application layer. Rather than a follow-up aggregate query per row
- * (which would N+1 `listQuotes`), every query that returns a `QuoteRecord`
- * embeds `quote_line_items(quantity, unit_price)` as a nested PostgREST
- * resource in the SAME select — a single round trip returns each quote
- * alongside its own line items' quantity/unit_price pairs, which
- * `toQuoteRecord` then reduces into a `total` field before the raw
- * `quote_line_items` array is stripped from the returned shape. This is the
- * "single aggregate query" option the hand-off notes call out, expressed as
- * a nested select + in-process reduce rather than a DB-side `sum()` — no
- * second query, no per-row query.
+ * `sum(quantity * unit_price * (1 - discount_percent / 100))` over its
+ * `quote_line_items` (the discount factor folded in as of issue #95 — a
+ * per-line discount that didn't actually move the grand total would be a
+ * real pricing bug, not just a cosmetic display gap), computed here at the
+ * application layer. Rather than a follow-up aggregate query per row (which
+ * would N+1 `listQuotes`), every query that returns a `QuoteRecord` embeds
+ * `quote_line_items(quantity, unit_price, discount_percent)` as a nested
+ * PostgREST resource in the SAME select — a single round trip returns each
+ * quote alongside its own line items' pricing columns, which `toQuoteRecord`
+ * then reduces into a `total` field before the raw `quote_line_items` array
+ * is stripped from the returned shape. This is the "single aggregate query"
+ * option the hand-off notes call out, expressed as a nested select +
+ * in-process reduce rather than a DB-side `sum()` — no second query, no
+ * per-row query.
  *
  * *** Out of scope for this pass (flagged, not silently skipped): ***
  * converting an accepted quote into a Work Order/Contract
@@ -108,18 +111,57 @@ export interface QuoteRecord {
   total: number;
 }
 
+/** Lightweight embedded shape of a quote line item's linked article (issue
+ * #95) — just enough for the inline-editable row to show read-only purchase
+ * price and VAT without a second lookup. Embedded via
+ * `articles!quote_line_items_article_id_fkey(...)` in `QUOTE_LINE_ITEM_SELECT`
+ * below. Deliberately embedded via a join here rather than left for the
+ * frontend to resolve against `listArticlesForSelect()`'s result: that
+ * projection is active-articles-only, so it can't resolve a line item whose
+ * linked article has since been deactivated — reading purchase_price/vat_rate
+ * live off the actual linked article (regardless of its current `is_active`)
+ * is the only shape that's always correct. */
+export interface QuoteLineItemArticleEmbed {
+  id: string;
+  article_number: string;
+  description: string;
+  purchase_price: number | null;
+  vat_rate: ResolvedReferenceItem | null;
+}
+
 export interface QuoteLineItemRecord {
   id: string;
   quote_id: string;
   organization_id: string;
   asset_id: string | null;
+  /** Nullable FK into `articles` (issue #94 schema, issue #95 first real
+   * consumer) — the source article this line item was generated/picked from,
+   * for reporting traceability. `null` for a free-text/manual line item. */
+  article_id: string | null;
   description: string;
   quantity: number;
   unit_price: number;
+  /** Per-line discount percentage, `numeric(5,2)` in `[0, 100]` (issue #95).
+   * "Unit price incl. discount" = `unit_price * (1 - discount_percent / 100)`
+   * and this line's total = `quantity * (that)` — both computed at the
+   * application/display layer (frontend), same as `QuoteRecord.total`'s own
+   * "no stored computed column" precedent below. */
+  discount_percent: number;
+  /** Nullable FK into `users` (issue #95) — which engineer a travel/work-
+   * time-derived line item belongs to, for future reporting. `null` for
+   * material/free-text line items. Not embedded with a resolved
+   * name/email here — same "raw uuid, resolve via `listOrgMembers()`"
+   * precedent `work_orders.assigned_to` already establishes (no
+   * `WORK_ORDER_SELECT` user embed either); the frontend already has that
+   * shared directory action to resolve a display name from this id. */
+  engineer_user_id: string | null;
   sort_order: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Embedded via `articles!quote_line_items_article_id_fkey(...)` — see
+   * `QUOTE_LINE_ITEM_SELECT` below. `null` whenever `article_id` is `null`. */
+  article: QuoteLineItemArticleEmbed | null;
 }
 
 /** Raw shape of a `quote_line_items` row as embedded (nested select) under a
@@ -127,6 +169,7 @@ export interface QuoteLineItemRecord {
 interface EmbeddedQuoteLineItem {
   quantity: number | string;
   unit_price: number | string;
+  discount_percent: number | string;
 }
 
 /** Shared select shape for every query returning a `QuoteRecord`: resolves
@@ -135,26 +178,32 @@ interface EmbeddedQuoteLineItem {
  * `quote_line_items(quantity, unit_price)` so `total` can be computed without
  * a second query per row (see the module comment above). */
 const QUOTE_SELECT =
-  "*, quote_status:reference_list_items!quotes_status_id_fkey(value,label,color), quote_line_items(quantity,unit_price)";
+  "*, quote_status:reference_list_items!quotes_status_id_fkey(value,label,color), quote_line_items(quantity,unit_price,discount_percent)";
 
 /** Shared select shape for every query returning a `QuoteLineItemRecord` on
- * its own (the quote's line-items list/detail endpoints) — no reference-list
- * embed needed, `quote_line_items` has no reference-list FK of its own. */
-const QUOTE_LINE_ITEM_SELECT = "*";
+ * its own (create/update/list) — `*` covers every plain column (including
+ * the issue #95 additions `article_id`/`discount_percent`/`engineer_user_id`)
+ * plus the linked article's display fields (`QuoteLineItemArticleEmbed`,
+ * see its own comment above for why this is a join rather than a
+ * frontend-side `listArticlesForSelect()` lookup). `engineer_user_id` is
+ * deliberately NOT resolved to a name/email here — see
+ * `QuoteLineItemRecord.engineer_user_id`'s own comment. */
+const QUOTE_LINE_ITEM_SELECT =
+  "*, article:articles!quote_line_items_article_id_fkey(id,article_number,description,purchase_price,vat_rate:reference_list_items!articles_vat_rate_item_id_fkey(value,label,color))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
-/** Sums `quantity * unit_price` across a quote's embedded line items,
- * rounded to 2 decimal places (money precision) to avoid floating-point
- * summation artifacts (e.g. `0.1 + 0.2 !== 0.3`) — same rounding-to-cents
- * spirit as `contracts.value`'s 2-decimal-place Zod refine. `Number(...)`
- * coercion guards against PostgREST/postgres returning `numeric` columns as
- * strings. */
+/** Sums `quantity * unit_price * (1 - discount_percent / 100)` across a
+ * quote's embedded line items, rounded to 2 decimal places (money precision)
+ * to avoid floating-point summation artifacts (e.g. `0.1 + 0.2 !== 0.3`) —
+ * same rounding-to-cents spirit as `contracts.value`'s 2-decimal-place Zod
+ * refine. `Number(...)` coercion guards against PostgREST/postgres returning
+ * `numeric` columns as strings. */
 function computeTotal(lineItems: readonly EmbeddedQuoteLineItem[] | null | undefined): number {
-  const sum = (lineItems ?? []).reduce(
-    (acc, item) => acc + Number(item.quantity) * Number(item.unit_price),
-    0,
-  );
+  const sum = (lineItems ?? []).reduce((acc, item) => {
+    const discountFactor = 1 - Number(item.discount_percent) / 100;
+    return acc + Number(item.quantity) * Number(item.unit_price) * discountFactor;
+  }, 0);
   return Math.round(sum * 100) / 100;
 }
 
@@ -198,6 +247,14 @@ function toQuoteUpdateRow(input: ReturnType<typeof quoteUpdateSchema.parse>) {
   return row;
 }
 
+/** `articleId` (when set) is inserted as-is, with no server-side lookup of
+ * the article's own description/sale_price to pre-fill `description`/
+ * `unitPrice` — `description`/`unitPrice` stay required fields on this
+ * schema regardless, and the frontend already has the full article row
+ * (including `sale_price`) from the widened `listArticlesForSelect()`
+ * (issue #95) the moment a user picks one in the search/combobox, so it can
+ * populate both fields itself without a redundant round trip back to the
+ * server. */
 function toQuoteLineItemInsertRow(quoteId: string, input: ReturnType<typeof quoteLineItemCreateSchema.parse>) {
   const row: Record<string, unknown> = {
     quote_id: quoteId,
@@ -205,17 +262,33 @@ function toQuoteLineItemInsertRow(quoteId: string, input: ReturnType<typeof quot
     quantity: input.quantity,
     unit_price: input.unitPrice,
     asset_id: input.assetId ?? null,
+    article_id: input.articleId ?? null,
   };
   if (input.sortOrder !== undefined) row.sort_order = input.sortOrder;
+  // discount_percent is intentionally omitted (not even sent) when not
+  // provided — the DB column's own `not null default 0` applies, same "let
+  // the DB default apply" treatment `toQuoteInsertRow`'s `status_id`
+  // omission documents.
+  if (input.discountPercent !== undefined) row.discount_percent = input.discountPercent;
+  if (input.engineerUserId !== undefined) row.engineer_user_id = input.engineerUserId ?? null;
   return row;
 }
 
+/** Already supports a true partial single-field update (e.g. just
+ * `{ discountPercent: 15 }` for a per-cell inline-edit save-on-blur) — every
+ * field here is independently optional both in `quoteLineItemUpdateSchema`
+ * and in this row builder, so a caller only ever sends/writes the one field
+ * that actually changed. No signature change was needed for issue #95's
+ * inline-editing UI beyond adding the new fields themselves. */
 function toQuoteLineItemUpdateRow(input: ReturnType<typeof quoteLineItemUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
   if (input.description !== undefined) row.description = input.description;
   if (input.quantity !== undefined) row.quantity = input.quantity;
   if (input.unitPrice !== undefined) row.unit_price = input.unitPrice;
   if (input.assetId !== undefined) row.asset_id = input.assetId ?? null;
+  if (input.articleId !== undefined) row.article_id = input.articleId ?? null;
+  if (input.discountPercent !== undefined) row.discount_percent = input.discountPercent;
+  if (input.engineerUserId !== undefined) row.engineer_user_id = input.engineerUserId ?? null;
   if (input.sortOrder !== undefined) row.sort_order = input.sortOrder;
   return row;
 }

@@ -44,7 +44,8 @@ export interface QuoteFormProps {
  * first" placeholder until the client has a value) — the exact same shape
  * `work-order-form.tsx` uses for its own Site picker, minus the further
  * Asset cascade (a quote's header has no `asset_id`; only its line items do,
- * handled separately by `QuoteLineItemDialog`).
+ * handled separately by the inline-editable table in
+ * `../[id]/quote-line-items-panel.tsx`, issue #95).
  */
 export function QuoteForm({ mode, quote, clients, lockedClientId, statuses, cancelHref }: QuoteFormProps) {
   const router = useRouter();

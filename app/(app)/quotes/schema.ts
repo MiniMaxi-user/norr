@@ -87,6 +87,21 @@ const unitPriceSchema = z.coerce
     message: "Unit price must have at most 2 decimal places.",
   });
 
+/** Optional discount percentage, matching
+ * `quote_line_items.discount_percent numeric(5,2) check (>= 0 and <= 100)`
+ * (issue #95). Optional on create — when omitted, the DB column's own
+ * `not null default 0` applies (same "let the DB default apply" treatment
+ * `quoteCreateSchema.statusId` documents), same 2-decimal-place check as
+ * `unitPriceSchema` for the same floating-point-representation reasoning. */
+const discountPercentSchema = z.coerce
+  .number({ invalid_type_error: "Discount must be a number." })
+  .finite("Discount must be a finite number.")
+  .min(0, "Discount cannot be negative.")
+  .max(100, "Discount cannot exceed 100%.")
+  .refine((value) => Math.abs(value - Math.round(value * 100) / 100) < 1e-9, {
+    message: "Discount must have at most 2 decimal places.",
+  });
+
 export const quoteLineItemCreateSchema = z.object({
   description: z.string().trim().min(1, "Description is required.").max(2000, "Description is too long."),
   quantity: quantitySchema,
@@ -99,6 +114,20 @@ export const quoteLineItemCreateSchema = z.object({
    * mirroring `contracts`' `linkContractAsset`/`contract_assets` trust
    * boundary. */
   assetId: optionalUuid("Invalid asset."),
+  /** Nullable at the DB layer (`quote_line_items.article_id`, issue #94) —
+   * the source article this line item was generated/picked from, for
+   * reporting traceability. When set, must belong to the QUOTE's own
+   * `organization_id`; left entirely to the
+   * `validate_quote_line_item_relations` DB trigger, same trust boundary as
+   * `assetId` above. */
+  articleId: optionalUuid("Invalid article."),
+  discountPercent: z.preprocess(emptyToUndefined, discountPercentSchema.optional()),
+  /** Nullable at the DB layer (`quote_line_items.engineer_user_id`, issue
+   * #95) — which engineer a travel/work-time-derived line item belongs to.
+   * When set, must be a member of the quote's own organization; left
+   * entirely to the `validate_quote_line_item_relations` DB trigger, same
+   * trust boundary as `assetId`/`articleId` above. */
+  engineerUserId: optionalUuid("Invalid engineer."),
   sortOrder: z.preprocess(emptyToUndefined, z.coerce.number().int("Sort order must be a whole number.").optional()),
 });
 

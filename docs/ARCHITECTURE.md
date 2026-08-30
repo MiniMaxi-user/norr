@@ -57,16 +57,17 @@ create policy "org_isolation" on assets
 The full per-migration narrative — what each table looked like when it landed, why specific columns/triggers were chosen, and the bugs found along the way — lives in `docs/SCHEMA-HISTORY.md`. This section is the current shape only; extend `docs/SCHEMA-HISTORY.md` (not this one) when the next migration lands.
 
 Implemented, RLS-backed tables:
-- `organizations`, `memberships`, `users` — tenancy + auth profile (`supabase/migrations/20260822150910_organizations_memberships_baseline_rls.sql` onward; includes `users.avatar_path`/`locale` and `organizations.is_active`)
-- `clients`, `sites`, `assets` — the core CRM/site/equipment hierarchy (`20260822190000_clients_sites_assets.sql` onward)
+- `organizations`, `memberships`, `users` — tenancy + auth profile (`supabase/migrations/20260822150910_organizations_memberships_baseline_rls.sql` onward; includes `users.avatar_path`/`locale`, `organizations.is_active`, and `memberships`' Travel/Work rate-override columns from `20260830090000_engineer_client_rate_overrides.sql`)
+- `clients`, `sites`, `assets` — the core CRM/site/equipment hierarchy (`20260822190000_clients_sites_assets.sql` onward; `clients` also carries the same Travel/Work rate-override columns as `memberships`, see `20260830090000_engineer_client_rate_overrides.sql`)
 - `account_managers` — minimal named-person picklist backing `clients.account_manager_id`
 - `reference_lists` / `reference_list_items` — the generic tenant-configurable picklist pattern, see "Tenant-configurable reference data" below
 - `contacts` — a client's contact persons
 - `work_orders` — the job/ticket entity, first table with a real per-role RLS split via `current_member_role`
 - `contracts` / `contract_assets` — service agreements and their linked assets
 - `time_entries` — labor/travel/break time logged against a work order
+- `work_order_articles` — articles/materials consumed on a work order (`20260830100000_work_order_articles_and_quote_traceability.sql`, issue #94 schema prerequisite); no price column (price is always read live from `articles.sale_price` at Quote-creation time, never snapshotted). RLS matches `time_entries`' shape (reuses the `planning` module, no new matrix row), scoped on `created_by` instead of `user_id` since this table has no separate "whose work is this" column
 - `checklist_templates` / `checklist_template_items` / `work_order_checklists` / `work_order_checklist_items` — configurable inspection forms
-- `quotes` / `quote_line_items` — pre-sale proposals
+- `quotes` / `quote_line_items` — pre-sale proposals. `quotes.work_order_id` (nullable, `on delete set null`) and `quote_line_items.article_id` (nullable, `on delete set null`) were added by `20260830100000_work_order_articles_and_quote_traceability.sql` (issue #94 schema prerequisite) for traceability from a Quote created via a Work Order's "Create Quote" button back to its source work order/articles; `work_order_id`, when set, is validated to belong to the quote's own `client_id` (`validate_quote_relations`), and `article_id`, when set, to the quote's own `organization_id` (`validate_quote_line_item_relations`). `quote_line_items.discount_percent` (`numeric(5,2) not null default 0`, `check` 0-100) and `quote_line_items.engineer_user_id` (nullable FK into `users`, org-membership-validated) were added by `20260830120000_quote_line_items_discount_and_engineer.sql` (issue #95 schema prerequisite) for the redesigned Quote detail page's inline-editable order lines — see `docs/SCHEMA-HISTORY.md`
 - `activities` — "meldingen" (call-back/fault/maintenance/appointment/follow-up) preceding a Work Order
 - `asset_models` (+ `asset_brand` reference list) — Brand/Type/Sub-type-scoped asset catalog
 - `article_groups` / `articles` / `article_components` (+ `article_unit` / `article_manufacturer` / `vat_rate` reference lists) — the product/part database: an unlimited-depth Article Group tree, the article record, and its bill-of-materials

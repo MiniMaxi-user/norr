@@ -32,6 +32,14 @@ import { Check, ChevronDown, X } from "./icons";
 export interface ComboboxOption {
   value: string;
   label: string;
+  /** Extra text matched during filtering but never displayed — e.g. an
+   * article's EAN/GTIN/MPN alongside a `label` that only shows its article
+   * number + description (issue #95's Quote line item article picker, which
+   * needs "search by article number, EAN, GTIN, description" without
+   * cluttering the visible label with every one of those). Defaults to
+   * matching against `label` alone when omitted — every existing caller's
+   * filtering behavior is unchanged. */
+  keywords?: string;
 }
 
 export interface ComboboxProps {
@@ -125,7 +133,9 @@ export function Combobox({
   const filteredOptions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!open || !q) return options;
-    return options.filter((option) => option.label.toLowerCase().includes(q));
+    return options.filter((option) =>
+      (option.keywords ? `${option.label} ${option.keywords}` : option.label).toLowerCase().includes(q),
+    );
   }, [options, query, open]);
 
   useEffect(() => {
