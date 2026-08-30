@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cx } from "../cx";
 
 export type DialogSize = "sm" | "lg" | "panel" | "panel-lg";
@@ -52,6 +53,49 @@ export interface DialogProps {
  * default panel width (e.g. Articles, issue #98) without widening every
  * other panel in the app. Prefer `"panel"` unless a specific form's own
  * field count/layout genuinely needs the extra room.
+ *
+ * Portaled to `document.body` (issue #101) — every real call site renders
+ * its trigger `Button` and this `Dialog` as siblings in one fragment (e.g.
+ * `CreateArticleButton`, `CreateActivityButton`), and that fragment gets
+ * mounted wherever the caller's own JSX happens to place it, which is very
+ * often inside a `Toolbar` (Articles'/Activities' filter-bar toolbar,
+ * `Toolbar.Section align="end"`). `.ui-toolbar` has `backdrop-filter:
+ * blur(10px)` for its glass effect (styles.css), and `backdrop-filter` —
+ * like `filter`/`transform`/`perspective`/`contain`/`will-change` naming one
+ * of those — makes the element it's on the containing block for ANY
+ * `position: fixed` descendant, instead of the viewport. `.ui-dialog-overlay`
+ * and `.ui-dialog-panel`/`.ui-dialog-panel-lg` are all `position: fixed`, so
+ * nested inside a `Toolbar` they silently resolved against the toolbar's own
+ * (short, offset-from-the-true-top) box instead of the real viewport: `top:
+ * 0` landed at the toolbar's own on-page position (below the page heading,
+ * matching the reported "starts below the header" symptom exactly), while
+ * `height: 100dvh` still computed against the true viewport (`dvh`/`vh`
+ * units are always viewport-relative, never containing-block-relative) — so
+ * the panel's bottom edge, footer included, overflowed off the bottom of the
+ * visible viewport by however far the toolbar sat from the true top. Clients'
+ * `NewClientPanel`/`EditClientPanel` never exhibited this because they're
+ * mounted at the page's own `Stack` level, never inside a `Toolbar` — not
+ * because panels are special-cased there, just incidental DOM placement,
+ * which is exactly the kind of per-call-site fragility this class of bug
+ * produces (any future call site placed inside a `backdrop-filter`/
+ * `transform`/`contain` ancestor — `.ui-toolbar` or otherwise — would trip
+ * the same thing). `DropdownMenu.Content` hit the identical
+ * `.ui-toolbar`/`backdrop-filter` interaction for its own `position: fixed`
+ * click-catching backdrop and fixed it the same way — see that file's own
+ * doc comment for the full mechanism. Portaling the whole overlay (which
+ * contains the dialog/panel surface) to `document.body` — a real DOM sibling
+ * of every such ancestor — guarantees it always resolves against the true
+ * viewport regardless of where a call site mounts the trigger, which is the
+ * generic fix: no per-call-site CSS overrides, no rule about where a
+ * `Dialog` is/isn't allowed to be rendered. `typeof document` guards the
+ * (never actually hit, since `open` only ever becomes `true` from
+ * post-hydration client state owned by an already-`"use client"` call site)
+ * case of this rendering during SSR, where there is no `document` — same
+ * guard `DropdownMenu.Content` uses. `createPortal` is a plain function, not
+ * a hook, so this file stays hook-free and needs no dedicated client-
+ * boundary build entry (see the file's top doc comment, and
+ * `dropdown-menu.tsx`, which already does exactly this from the package's
+ * main non-"use client" entry).
  */
 export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
   if (!open) return null;
@@ -70,7 +114,9 @@ export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
   // conservative one (an outside click gets ignored, not a false close).
   let pointerDownOnOverlay = false;
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="ui-dialog-overlay"
       onMouseDown={(event) => {
@@ -88,7 +134,8 @@ export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

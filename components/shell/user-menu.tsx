@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { Avatar, DropdownMenu, Inline, Stack, Text } from "@yourorg/ui";
 import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon, UserRound } from "@yourorg/ui/icons";
 import { logOutAction } from "@/lib/auth/actions";
@@ -119,31 +118,21 @@ export function UserMenu({
         </form>
       </DropdownMenu.Content>
 
-      {/* Portalled to `document.body`, same reason `DropdownMenu.Content`'s
-          own backdrop is (see that component's doc comment): `ProfilePanel`
-          is a `Dialog size="panel"`, `position: fixed`, and this whole tree
-          sits inside `Topbar`'s `.ui-toolbar`, which has
-          `backdrop-filter: blur(10px)` for its glass effect — an ancestor
-          with `backdrop-filter` establishes a new containing block for
-          `position: fixed` descendants, which would otherwise size/anchor
-          the panel to the toolbar's own short box instead of the full
-          viewport. `typeof document` guards the SSR pass, where there is no
-          `document` (this is never actually hit with real content since
-          `profileOpen` starts `false` and `Dialog` itself returns `null`
-          while closed — the guard exists purely so `document.body` is never
-          evaluated during SSR). */}
-      {typeof document !== "undefined" &&
-        createPortal(
-          <ProfilePanel
-            open={profileOpen}
-            onOpenChange={setProfileOpen}
-            email={email}
-            fullName={fullName}
-            avatarUrl={avatarUrl}
-            locale={locale}
-          />,
-          document.body,
-        )}
+      {/* `ProfilePanel` is a `Dialog size="panel"` — `Dialog` itself now
+          portals its whole return value to `document.body` (issue #101), so
+          it no longer matters that this tree sits inside `Topbar`'s
+          `.ui-toolbar` (`backdrop-filter: blur(10px)`, which would otherwise
+          establish a containing block for a `position: fixed` descendant
+          and mis-anchor it to the toolbar's own short box). No manual portal
+          needed here anymore — rendering it directly is correct. */}
+      <ProfilePanel
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        email={email}
+        fullName={fullName}
+        avatarUrl={avatarUrl}
+        locale={locale}
+      />
     </DropdownMenu>
   );
 }
