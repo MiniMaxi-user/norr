@@ -2,22 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { ConfirmDeleteDialog } from "@yourorg/ui";
-import { deleteWorkOrderArticle, type WorkOrderArticleRecord } from "../work-order-articles-actions";
+import { deleteTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 
 /**
- * Delete confirmation for a consumed article row. Only ever rendered when
+ * Delete confirmation for a time entry. Only ever rendered when
  * `can(actor, "planning", "delete")` (owner/planner) — see
- * `consumed-articles-panel.tsx`. Plain confirm, no dependency-count check,
- * same shape as `../[id]/delete-time-entry-dialog.tsx`.
+ * `work-order-hours-section.tsx`. Plain confirm, no dependency-count check,
+ * same shape as `app/(app)/clients/delete-contact-dialog.tsx`.
  */
-export function DeleteWorkOrderArticleDialog({
+export function DeleteTimeEntryDialog({
   open,
   onOpenChange,
-  workOrderArticle,
+  timeEntry,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  workOrderArticle: WorkOrderArticleRecord;
+  timeEntry: TimeEntryRecord;
 }) {
   const router = useRouter();
 
@@ -25,9 +25,9 @@ export function DeleteWorkOrderArticleDialog({
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Delete consumed article?"
+      title="Delete time entry?"
       onConfirm={async () => {
-        const result = await deleteWorkOrderArticle(workOrderArticle.id);
+        const result = await deleteTimeEntry(timeEntry.id);
         return { error: result.error };
       }}
       onDeleted={() => router.refresh()}

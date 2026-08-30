@@ -8,7 +8,7 @@ import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { WorkOrderScreen } from "../components/work-order-screen";
 
-export const metadata = { title: "New werkorder" };
+export const metadata = { title: "New Work Order" };
 
 interface NewWorkOrderPageProps {
   searchParams: Promise<{ clientId?: string; siteId?: string; assetId?: string; activityId?: string }>;
@@ -23,17 +23,17 @@ interface NewWorkOrderPageProps {
  * scoped "New work order" entry point) locks the client picker, mirroring
  * `app/(app)/assets/new/page.tsx`'s `lockedClientId` handling exactly — the
  * resolved `lockedClient` record itself is also threaded through as the
- * `client` prop (issue #100) so `WorkOrderFields`' relations rail can show a
+ * `client` prop (issue #100) so `WorkOrderHero`'s relation cards can show a
  * real Client summary card even though the (locked, hidden) picker's own
  * `clients` list is never fetched in this branch.
  * `?siteId=...`/`?assetId=...` pre-select (without locking) the site/asset.
  * `?activityId=...` (issue #87, the Activity quick-view's "Create work
  * order" action) is a hidden traceability field, not a picker — it's
  * validated to exist here (same shape as `clientId`'s `lockedClientResult`
- * check below) and threaded straight through as `WorkOrderFields`'s
- * `sourceActivityId` prop, which renders it as a plain hidden input
- * (`workOrderCreateSchema.sourceActivityId`). CREATE-only by design (an
- * existing work order's originating activity isn't meant to be reassigned).
+ * check below) and threaded straight through as `WorkOrderScreen`'s
+ * `sourceActivityId` prop (`draftToInput`'s pass-through field), submitted
+ * as part of the draft on create. CREATE-only by design (an existing work
+ * order's originating activity isn't meant to be reassigned).
  *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
@@ -42,13 +42,15 @@ interface NewWorkOrderPageProps {
  * Issue #89 ("New/Edit work order screens aligned") deleted the separate
  * `/work-orders/[id]/edit` route entirely — an existing work order's fields
  * are now inline-editable directly on its own detail page (`[id]/page.tsx`).
- * This route stays (creation genuinely needs a "no id yet" step
- * `updateWorkOrderFormAction` can't express), rendering the same shared
- * `WorkOrderScreen` (`../components/work-order-screen.tsx`) that page
- * renders with `mode="edit"` — both routes are now genuinely one screen, not
- * two hand-maintained layouts. The only inherent difference in `create` mode
- * is no Time Entries/Checklist section (both are sub-resources of an
- * already-`work_order_id`-having record, which doesn't exist yet here).
+ * *** Issue #102 *** went further: this route now renders the EXACT SAME
+ * layout (`WorkOrderScreen`, `../components/work-order-screen.tsx`) as the
+ * detail page — hero, relation cards, Hours/Material/Checklist/Assignment
+ * all visible from the first paint (each simply starts in its own "save the
+ * work order first" empty/disabled state) — rather than a stripped-down
+ * fields-only form that only grows those sections in after a redirect to
+ * `/work-orders/[id]`. That redirect still happens (creation genuinely needs
+ * a "no id yet" step `createWorkOrder` expresses), but the screen itself no
+ * longer visibly changes shape when it does.
  */
 export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPageProps) {
   const { clientId, siteId, assetId, activityId } = await searchParams;

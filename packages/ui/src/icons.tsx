@@ -342,3 +342,13 @@ export const Globe = createIcon("Globe", (
 
 // Combobox's selected-option indicator (issue #54).
 export const Check = createIcon("Check", <path d="M5 12.5 9.5 17 19 6.5" />);
+
+// Work order detail hero's "Hours" stat tile / Hours section header (issue
+// #102) — a plain clock face, distinct from `CalendarDays` (a scheduled
+// date) since this represents elapsed/logged duration, not a point in time.
+export const Clock = createIcon("Clock", (
+  <>
+    <circle cx={12} cy={12} r={9} />
+    <path d="M12 7v5.3l3.4 2" />
+  </>
+));

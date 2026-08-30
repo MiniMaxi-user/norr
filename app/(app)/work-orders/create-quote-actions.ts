@@ -56,14 +56,14 @@ import { can, canAny } from "@/lib/rbac/permissions";
  * their `unit_price` is always read live from `articles.sale_price`.
  *
  * **Quantity for a time-entry-derived line item**: hours, computed the exact
- * same way `TimeEntriesPanel`'s own `formatDuration` in
- * `./[id]/time-entries-panel.tsx` computes a duration for display
- * (`Math.round((end - start) / 60000)` whole minutes), converted to a
- * 2-decimal-place hours figure (`quote_line_items.quantity` is
- * `numeric(10,2)`) — `Math.round(totalMinutes / 60 * 100) / 100`. Reusing
- * that exact minute-rounding step (rather than a raw millisecond division)
- * keeps this figure consistent with what the work order's own Time Entries
- * panel already shows the user for the same entry.
+ * same way `elapsedMinutes` in `./components/format-work-order-time.ts`
+ * computes a duration for display (`Math.round((end - start) / 60000)` whole
+ * minutes), converted to a 2-decimal-place hours figure
+ * (`quote_line_items.quantity` is `numeric(10,2)`) —
+ * `Math.round(totalMinutes / 60 * 100) / 100`. Reusing that exact
+ * minute-rounding step (rather than a raw millisecond division) keeps this
+ * figure consistent with what the work order's own Hours section already
+ * shows the user for the same entry.
  *
  * **Ordering** (`quote_line_items.sort_order`): every time-entry-derived line
  * item (Travel and Work, interleaved) sorted ascending by its source entry's
@@ -74,12 +74,12 @@ import { can, canAny } from "@/lib/rbac/permissions";
  *
  * **Which time entries are eligible at all**: Break-type entries are never
  * eligible (not a billable Labor/Travel type — same "fold into Work times but
- * don't invoice it" spirit `TimeEntriesPanel` gives Break for display, taken
+ * don't invoice it" spirit the Hours section gives Break for display, taken
  * one step further here since a quote line item needs a real price, and
  * Break has no rate-resolution rule at all in the confirmed business rules).
  * A still-running entry (`ended_at: null`) is also never eligible — same
- * "Running…" treatment `formatDuration` gives it (no computable duration to
- * quantity from yet). Neither of these is counted in `skippedTimeEntryIds`:
+ * "in progress" treatment the Hours section gives it (no computable duration
+ * to quantity from yet). Neither of these is counted in `skippedTimeEntryIds`:
  * that field is reserved for the ONE reason the brief actually asks the
  * frontend to warn about ("could not be priced") — a Break entry or a
  * still-running entry was never a pricing candidate in the first place, so
@@ -194,14 +194,14 @@ function resolveRateFromOverrideRow(row: RateOverrideRow | null, isTravel: boole
   };
 }
 
-/** Same whole-minute rounding step `formatDuration` uses for display in
- * `./[id]/time-entries-panel.tsx`, converted to a 2-decimal-place hours
- * figure (`quote_line_items.quantity` is `numeric(10,2)`) — see the module
- * comment above for why this reuses that exact step. Returns `null` when a
- * duration genuinely can't be computed (defensive; `ended_at` is already
- * guaranteed non-null and >= `started_at` by the time this is called, same
- * guard `formatDuration` keeps anyway) or rounds to `0` hours (a
- * sub-30-second entry — treated as unresolvable, see the module comment). */
+/** Same whole-minute rounding step `elapsedMinutes` uses for display in
+ * `./components/format-work-order-time.ts`, converted to a 2-decimal-place
+ * hours figure (`quote_line_items.quantity` is `numeric(10,2)`) — see the
+ * module comment above for why this reuses that exact step. Returns `null`
+ * when a duration genuinely can't be computed (defensive; `ended_at` is
+ * already guaranteed non-null and >= `started_at` by the time this is
+ * called, same guard `elapsedMinutes` keeps anyway) or rounds to `0` hours
+ * (a sub-30-second entry — treated as unresolvable, see the module comment). */
 function computeQuantityHours(startedAt: string, endedAt: string): number | null {
   const start = new Date(startedAt).getTime();
   const end = new Date(endedAt).getTime();

@@ -164,6 +164,12 @@ export {
 } from "./components/radio-group";
 export { Progress, type ProgressProps, type ProgressTone } from "./components/progress";
 export { StatCard, type StatCardProps, type StatCardTrend, type StatCardTone } from "./components/stat-card";
+export { StatStrip, type StatStripProps, type StatStripItem } from "./components/stat-strip";
+export { SectionHeader, type SectionHeaderProps } from "./components/section-header";
+export { RelationCard, type RelationCardProps } from "./components/relation-card";
+export { RowCard, type RowCardProps, type RowCardTone } from "./components/row-card";
+export { SummaryRow, type SummaryRowProps, type SummaryRowItem } from "./components/summary-row";
+export { RecordHeroBand, type RecordHeroBandProps } from "./components/record-hero-band";
 export { Timeline, type TimelineProps, type TimelineRowProps, type TimelineBlockProps } from "./components/timeline";
 export {
   MapSurface,

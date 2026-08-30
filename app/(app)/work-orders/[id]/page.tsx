@@ -15,7 +15,7 @@ import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { WorkOrderScreen } from "../components/work-order-screen";
 
-export const metadata = { title: "Edit workorder" };
+export const metadata = { title: "Edit Work Order" };
 
 interface WorkOrderDetailPageProps {
   params: Promise<{ id: string }>;
@@ -27,38 +27,38 @@ interface WorkOrderDetailPageProps {
  * `/work-orders/new` renders with `mode="create"` — both routes are one
  * genuinely shared screen now, not two hand-maintained layouts. No `Tabs`
  * here: unlike Client (Sites/Assets/Contacts) or a future Contract, none of a
- * work order's child sub-entities (Time Entries, issue #15; Consumed
- * Articles, issue #94; Checklist, issue #14) needs its own tab — each is a
- * single always-visible Card section (`TimeEntriesPanel`,
- * `ConsumedArticlesPanel`, `ChecklistPanel`) rendered full width below the
- * fields, same reasoning `ContractAssetsPanel` documents for Contracts'
+ * work order's child sub-entities (Hours/Time Entries, issue #15; Material/
+ * Consumed Articles, issue #94; Checklist, issue #14) needs its own tab —
+ * each is a single always-visible section (`WorkOrderHoursSection`,
+ * `WorkOrderMaterialSection`, `WorkOrderChecklistSection`) rendered below the
+ * hero, same reasoning `ContractAssetsPanel` documents for Contracts'
  * Linked Assets.
  *
  * *** Issue #89 ("New/Edit work order screens aligned") *** folded the
  * standalone `/work-orders/[id]/edit` page into this one — there is no
- * separate edit route left at all. The work order's own fields (Job /
- * Assignment & Schedule / Status & Priority, including its
- * Client/Site/Asset/Contract parents, previously a read-only "Site, asset &
- * contract" `DetailRow` `Card` here) are now `WorkOrderFields` itself.
+ * separate edit route left at all.
  *
- * *** Issue #100 ("Structuur werkorder") *** redid the layout again: `DetailHero`
- * for the title/badges/actions, then `WorkOrderFields` — which now owns its
- * OWN `DetailLayout` split internally (fields as the main column, a
- * `WorkOrderRelationsRail` of Client/Site/Asset/Contract summary cards as the
- * sticky rail, see that component's own doc comment) — then Time Entries/
- * Consumed Articles/Checklist full width below. `contract` (fetched via
- * `getContract` below, alongside `client`/`asset`) exists purely to give that
- * rail's Contract card real facts (type/dates/value), not just the bare
- * id/name `workOrder.contract` embed already carried.
+ * *** Issue #102 ("Verbeteren workorder") *** redid the whole layout again,
+ * replacing the old `DetailHero` + form-`Card`s shape with `WorkOrderScreen`'s
+ * own composition: `WorkOrderHero` (dark `RecordHeroBand` + a KPI stat strip
+ * + the Client/Site/Asset/Contract relation cards, each individually
+ * re-pickable via a small Edit popup) up top, then Hours/Material side by
+ * side, then Checklist/Assignment side by side. Every field is now edited
+ * through small section-scoped popups (title is the one exception — an
+ * inline-editable heading right in the hero) instead of one page-wide form —
+ * see `WorkOrderScreen`'s own module doc comment for the full shape.
+ * `contract` (fetched via `getContract` below, alongside `client`/`asset`)
+ * exists purely to give the Contract relation card real facts (type/dates/
+ * value), not just the bare id/name `workOrder.contract` embed already
+ * carried.
  *
- * `WorkOrderFields`' own `readOnly` prop is exactly `!canEdit` below — a
- * `finance`/`administratie` viewer (plain `read`) still lands on this same
- * page, just with every field rendered as plain text instead of a form
- * (never a 404, never a disabled-but-technically-interactive input RLS would
- * just reject). `WorkOrderScreen` is keyed by `workOrder.updated_at` so a
- * successful inline save (which does not navigate anywhere — see that
+ * `readOnly` (exactly `!canEdit` below) hides every Edit affordance across
+ * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
+ * never a 404, never a disabled-but-technically-interactive control RLS
+ * would just reject. `WorkOrderScreen` is keyed by `workOrder.updated_at` so
+ * a successful inline save (which never navigates away — see that
  * component's own doc comment) remounts it with the freshly saved values
- * instead of leaving stale uncontrolled-field state behind.
+ * instead of leaving stale local draft state behind.
  *
  * Photo/e-signature capture on the checklist remains out of scope per the
  * checklists migration's own design notes (a documented follow-up, not an

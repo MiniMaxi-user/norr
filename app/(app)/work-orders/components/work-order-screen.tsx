@@ -1,20 +1,35 @@
 "use client";
 
-import { useMemo } from "react";
-import { Badge, Breadcrumbs, DetailHero, Stack, type BreadcrumbItem } from "@yourorg/ui";
-import type { WorkOrderRecord } from "../actions";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Breadcrumbs,
+  Button,
+  Card,
+  FormGrid,
+  Stack,
+  Text,
+  type BreadcrumbItem,
+  type StatStripItem,
+} from "@yourorg/ui";
+import { createWorkOrder, updateWorkOrder, type WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
+import { formatCurrency } from "@/lib/format/currency";
 import { usePageHeader } from "@/components/shell/page-header-context";
-import { WorkOrderFields } from "./work-order-fields";
 import { WorkOrderDetailActions } from "../[id]/work-order-detail-actions";
-import { TimeEntriesPanel } from "../[id]/time-entries-panel";
-import { ConsumedArticlesPanel } from "../[id]/consumed-articles-panel";
-import { ChecklistPanel } from "../[id]/checklist-panel";
+import { WorkOrderHero } from "./work-order-hero";
+import { WorkOrderHoursSection } from "./work-order-hours-section";
+import { WorkOrderMaterialSection } from "./work-order-material-section";
+import { WorkOrderChecklistSection } from "./work-order-checklist-section";
+import { WorkOrderAssignmentSection } from "./work-order-assignment-section";
+import { useClientScopedLists } from "./use-client-scoped-lists";
+import { draftFromWorkOrder, draftToInput, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
+import { elapsedMinutes, formatHoursMinutes } from "./format-work-order-time";
 import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -28,14 +43,11 @@ export interface WorkOrderScreenProps {
    * `client-detail.tsx`'s pattern. */
   breadcrumbItems: BreadcrumbItem[];
 
-  // ---- WorkOrderFields passthrough (see that component's own prop docs) ----
   /** Required for `mode: "edit"`. */
   workOrder?: WorkOrderRecord;
   client?: ClientRecord | null;
   site?: SiteRecord | null;
   asset?: AssetRecord | null;
-  /** See `WorkOrderFields`' own `contract` prop doc comment (issue #100) —
-   * passed straight through, unmodified. */
   contract?: ContractRecord | null;
   assignedMember?: OrgMemberRecord | null;
   readOnly?: boolean;
@@ -49,10 +61,10 @@ export interface WorkOrderScreenProps {
   members: OrgMemberRecord[];
   cancelHref?: string;
 
-  // ---- edit-mode-only: hero actions + Time Entries/Checklist panels ----
+  // ---- edit-mode-only: hero actions + Hours/Material/Checklist/Assignment ----
   /** `can(actor, "planning", "delete")` — gates the hero's Delete action, and
-   * is reused as-is for `TimeEntriesPanel`'s own `canDelete` (see that
-   * component's doc comment for why). Unused in `mode: "create"`. */
+   * is reused as-is for the Hours/Material sections' own row-level delete
+   * (see those components' doc comments for why). Unused in `mode: "create"`. */
   canDelete?: boolean;
   currentUserId?: string;
   timeEntries?: TimeEntryRecord[];
@@ -61,24 +73,21 @@ export interface WorkOrderScreenProps {
   canUpdateTimeEntriesAny?: boolean;
   canUpdateTimeEntriesOwn?: boolean;
   /** `listWorkOrderArticles(workOrder.id)`'s result — the work order's own
-   * consumed articles, see `ConsumedArticlesPanel`'s own doc comment. */
+   * consumed articles, see `WorkOrderMaterialSection`'s own doc comment. */
   workOrderArticles?: WorkOrderArticleRecord[];
   /** `listArticlesForSelect()`'s result — every active article, for the
    * consumed-article picker. */
   articlesForSelect?: ArticleSelectOption[];
-  /** `canAny(actor, "planning", ["create", "create_own"])` — see
-   * `ConsumedArticlesPanel`'s own doc comment for why this is a single gate,
-   * unlike Time Entries' `canLogTimeForOthers`. */
   canCreateWorkOrderArticles?: boolean;
   canUpdateWorkOrderArticlesAny?: boolean;
   canUpdateWorkOrderArticlesOwn?: boolean;
   /** `hasFeature(org, "quotes") && canAccessModule(actor, "quotes") &&
-   * can(actor, "quotes", "create")` — gates the hero's "Maak Quote" action
+   * can(actor, "quotes", "create")` — gates the hero's "Create Quote" action
    * (issue #94). */
   canCreateQuote?: boolean;
   /** `hasFeature(org, "checklists") && canAccessModule(actor, "checklists")`
-   * — gates whether `ChecklistPanel` renders at all (a separately-entitled
-   * module, not folded into `planning`). */
+   * — gates whether `WorkOrderChecklistSection` renders at all (a separately-
+   * entitled module, not folded into `planning`). */
   canAccessChecklists?: boolean;
   checklist?: WorkOrderChecklistRecord | null;
   checklistItems?: WorkOrderChecklistItemRecord[];
@@ -91,42 +100,43 @@ export interface WorkOrderScreenProps {
 
 /**
  * The single shared screen behind both `/work-orders/new` (`mode: "create"`)
- * and the work order detail page (`mode: "edit"`) — genuinely one screen, not
- * two hand-maintained layouts. Both routes' `page.tsx` stay server components
- * doing their own data-fetching/RBAC gating (unchanged), and just render this
- * with `mode="create"|"edit"`.
+ * and the work order detail page (`mode: "edit"`) — one real screen, not two
+ * (issue #102: "New workorder resulteert in 1 scherm! Bewerken opent ook dit
+ * scherm."). Both routes' `page.tsx` stay server components doing their own
+ * data-fetching/RBAC gating (unchanged), rendering this with
+ * `mode="create"|"edit"`.
  *
- * Header: the breadcrumb lives in the Topbar via `usePageHeader` (never an
- * inline `<Breadcrumbs>` in the page body — see `client-detail.tsx`'s own
- * doc comment on why the passed node must be memoized), and `DetailHero`
- * replaces the old plain `Heading`/`Toolbar`. `title` is "New werkorder" in
- * create mode, or the record's own (real) title in edit mode — never
- * genericized, per the explicit decision not to replace a saved record's
- * title with placeholder text. `badges` (the work order's status/priority)
- * and `actions` (`WorkOrderDetailActions`) only render in edit mode — there
- * is nothing saved yet to badge or act on in create mode.
+ * *** Issue #102 redesign *** replaces the old `DetailHero` + `WorkOrderFields`
+ * (a plain vertical form) with:
+ *  - `WorkOrderHero` — the dark `RecordHeroBand` (title/badges/stat-strip) and
+ *    the Client/Site/Asset/Contract relation cards, sharing one "sheet" `Card`.
+ *  - `WorkOrderHoursSection` / `WorkOrderMaterialSection` side by side
+ *    ("Links uren rechts materiaal" per the issue).
+ *  - `WorkOrderChecklistSection` / `WorkOrderAssignmentSection` side by side
+ *    below that ("Daaronder checklist en opdracht").
  *
- * Below the hero: `WorkOrderFields` (both routes share the exact same
- * component/layout). *** Issue #100 *** gave `WorkOrderFields` its own
- * internal `DetailLayout` two-column split — fields as the main column, a
- * `WorkOrderRelationsRail` (Client/Site/Asset/Contract summary cards) as the
- * sticky rail — so that split lives inside `WorkOrderFields` itself (it owns
- * the client/site/asset/contract selection state the rail previews live),
- * not here. Below that — edit mode only, since there's no `work_order_id`
- * yet in create mode — `TimeEntriesPanel`, `ConsumedArticlesPanel`
- * (issue #94), and `ChecklistPanel` follow in a plain full-width vertical
- * `Stack`, outside `WorkOrderFields`' own rail split (they're sub-resource
- * panels, not part of the record's own field/relation layout).
+ * There is no single big `<form>` anymore. This component owns one flat
+ * `WorkOrderDraft` (`./work-order-draft.ts`) as the source of truth for every
+ * editable field; every section reads from it and writes back through
+ * `commitPatch` below — in `mode: "edit"` that's an immediate
+ * `updateWorkOrder` call (small, section-scoped popups, saved the instant
+ * their own dialog's Save is clicked — no page-wide Save/Cancel), in
+ * `mode: "create"` it's a local-only merge (nothing exists server-side yet)
+ * until the hero's own "Create work order" action fires `createWorkOrder`
+ * with the whole accumulated draft and navigates to the new record. This is
+ * how a single screen serves both modes without a fake "empty" work order
+ * being created just to get an id for Hours/Material/Checklist to attach to
+ * — those three sections simply render their own "save the work order first"
+ * empty/disabled state (see each one's own doc comment) until `mode: "edit"`.
  */
 export function WorkOrderScreen({
   mode,
   breadcrumbItems,
   workOrder,
-  client,
-  site,
-  asset,
-  contract,
-  assignedMember,
+  client = null,
+  site = null,
+  asset = null,
+  contract = null,
   readOnly,
   clients,
   lockedClientId,
@@ -139,125 +149,254 @@ export function WorkOrderScreen({
   cancelHref,
   canDelete,
   currentUserId,
-  timeEntries,
-  timeEntryTypes,
+  timeEntries = [],
+  timeEntryTypes = [],
   canLogTimeForOthers,
   canUpdateTimeEntriesAny,
   canUpdateTimeEntriesOwn,
-  workOrderArticles,
-  articlesForSelect,
+  workOrderArticles = [],
+  articlesForSelect = [],
   canCreateWorkOrderArticles,
   canUpdateWorkOrderArticlesAny,
   canUpdateWorkOrderArticlesOwn,
   canCreateQuote,
   canAccessChecklists,
-  checklist,
-  checklistItems,
-  checklistTemplates,
+  checklist = null,
+  checklistItems = [],
+  checklistTemplates = [],
   canAttachChecklist,
   canDetachChecklist,
   canUpdateChecklistAny,
   canUpdateChecklistOwn,
 }: WorkOrderScreenProps) {
+  const router = useRouter();
+
   // Referentially stable per `usePageHeader`'s own doc-comment warning — see
   // `client-detail.tsx`'s identical `breadcrumbNode` pattern.
   const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
   usePageHeader(breadcrumbNode);
 
-  const isEdit = mode === "edit" && Boolean(workOrder);
+  const [draft, setDraft] = useState<WorkOrderDraft>(() =>
+    workOrder ? draftFromWorkOrder(workOrder) : emptyDraft({ lockedClientId, initialSiteId, initialAssetId }),
+  );
+
+  // The client currently being PREVIEWED for the relation cards + the
+  // relations popup's own site/asset/contract pickers — kept separate from
+  // `draft.clientId` so opening the popup and trying a different client
+  // updates both live, without touching the actually-saved value until Save
+  // is clicked. Self-heals back to `draft.clientId` the moment that value
+  // legitimately changes (a real commit, or the dialog being cancelled).
+  const [scopingClientId, setScopingClientId] = useState(draft.clientId);
+  useEffect(() => {
+    setScopingClientId(draft.clientId);
+  }, [draft.clientId]);
+  const clientScoped = useClientScopedLists(scopingClientId, !readOnly);
+
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  /** Every section's own "Save" ultimately calls this. `mode: "edit"` persists
+   * immediately (`updateWorkOrder`) and refreshes the server-rendered data
+   * (`router.refresh()`, same as the pre-redesign form); `mode: "create"`
+   * only ever merges into local draft state (see this component's own module
+   * doc comment for why). */
+  async function commitPatch(patch: Partial<WorkOrderDraft>): Promise<{ ok: boolean; error?: string }> {
+    if (mode === "edit" && workOrder) {
+      const result = await updateWorkOrder(workOrder.id, draftToInput(patch));
+      if (!result.data) return { ok: false, error: result.error };
+      setDraft((prev) => ({ ...prev, ...patch }));
+      router.refresh();
+      return { ok: true };
+    }
+    setDraft((prev) => ({ ...prev, ...patch }));
+    return { ok: true };
+  }
+
+  function handleTitleChange(value: string) {
+    setDraft((prev) => ({ ...prev, title: value }));
+  }
+
+  function handleTitleBlur(value: string) {
+    const trimmed = value.trim();
+    if (mode === "edit" && workOrder && trimmed && trimmed !== workOrder.title) {
+      void commitPatch({ title: trimmed });
+    }
+  }
+
+  async function handleCreate() {
+    if (!draft.title.trim()) {
+      setCreateError("Title is required.");
+      return;
+    }
+    if (!draft.clientId) {
+      setCreateError("Select a client.");
+      return;
+    }
+    setCreateError(null);
+    setCreating(true);
+    // `sourceActivityId` (issue #87) is CREATE-only traceability, not part of
+    // the editable `WorkOrderDraft` surface (see `new/page.tsx`'s own doc
+    // comment) — merged straight into the create call instead.
+    const result = await createWorkOrder({ ...draftToInput(draft), sourceActivityId });
+    setCreating(false);
+    if (!result.data) {
+      setCreateError(result.error ?? "Could not create this work order.");
+      return;
+    }
+    router.push(`/work-orders/${result.data.workOrder.id}`);
+  }
+
+  const travelWorkMinutes = timeEntries.reduce(
+    (sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0),
+    0,
+  );
+  const materialTotal = workOrderArticles.reduce(
+    (sum, row) => sum + row.quantity * (row.article?.sale_price ?? 0),
+    0,
+  );
+  const checklistChecked = checklistItems.filter((item) => item.is_checked).length;
+
+  const stats: StatStripItem[] = [
+    {
+      label: "Hours",
+      value: mode === "create" ? "—" : formatHoursMinutes(travelWorkMinutes),
+      hint: mode === "create" ? "Save the work order first" : `${timeEntries.length} ${timeEntries.length === 1 ? "entry" : "entries"}`,
+    },
+    {
+      label: "Material",
+      value: mode === "create" ? "—" : formatCurrency(materialTotal),
+      hint: mode === "create" ? "Save the work order first" : `${workOrderArticles.length} ${workOrderArticles.length === 1 ? "article" : "articles"}`,
+    },
+  ];
+  if (canAccessChecklists) {
+    stats.push({
+      label: "Checklist",
+      value: mode === "create" ? "—" : checklist ? `${checklistChecked} / ${checklistItems.length}` : "—",
+      progress:
+        mode === "edit" && checklist && checklistItems.length > 0
+          ? (checklistChecked / checklistItems.length) * 100
+          : undefined,
+      hint: mode === "create" ? "Save the work order first" : !checklist ? "Not attached" : undefined,
+    });
+  }
+
+  const heroActions =
+    mode === "edit" && workOrder ? (
+      <WorkOrderDetailActions workOrder={workOrder} canDelete={Boolean(canDelete)} canCreateQuote={Boolean(canCreateQuote)} />
+    ) : (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.push(cancelHref ?? "/work-orders")}
+          disabled={creating}
+        >
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" onClick={handleCreate} disabled={creating}>
+          {creating ? "Creating…" : "Create work order"}
+        </Button>
+      </>
+    );
 
   return (
     <Stack gap="lg">
-      <DetailHero
-        avatarLabel={isEdit ? workOrder!.title : "New werkorder"}
-        title={isEdit ? workOrder!.title : "New werkorder"}
-        badges={
-          isEdit ? (
-            <>
-              <Badge color={workOrder!.work_order_status?.color} variant="muted">
-                {workOrder!.work_order_status?.label ?? "—"}
-              </Badge>
-              {workOrder!.work_order_priority && (
-                <Badge color={workOrder!.work_order_priority.color} variant="muted">
-                  {workOrder!.work_order_priority.label}
-                </Badge>
-              )}
-            </>
-          ) : undefined
-        }
-        actions={
-          isEdit ? (
-            <WorkOrderDetailActions
-              workOrder={workOrder!}
-              canDelete={Boolean(canDelete)}
-              canCreateQuote={Boolean(canCreateQuote)}
-            />
-          ) : undefined
-        }
-      />
+      {createError && <Text tone="danger">{createError}</Text>}
 
-      <WorkOrderFields
+      <WorkOrderHero
         mode={mode}
+        draft={draft}
         workOrder={workOrder}
         client={client}
         site={site}
         asset={asset}
         contract={contract}
-        assignedMember={assignedMember}
-        readOnly={readOnly}
+        clientScoped={clientScoped}
         clients={clients}
         lockedClientId={lockedClientId}
-        initialSiteId={initialSiteId}
-        initialAssetId={initialAssetId}
-        sourceActivityId={sourceActivityId}
+        members={members}
         statuses={statuses}
         priorities={priorities}
-        members={members}
-        cancelHref={cancelHref}
+        readOnly={readOnly}
+        stats={stats}
+        actions={heroActions}
+        onTitleChange={handleTitleChange}
+        onTitleBlur={handleTitleBlur}
+        onClientChange={setScopingClientId}
+        onRelationsSave={commitPatch}
+        onStatusPrioritySave={commitPatch}
       />
 
-      {isEdit && (
-        <>
-          <TimeEntriesPanel
-            workOrderId={workOrder!.id}
-            timeEntries={timeEntries ?? []}
+      <FormGrid columns={2}>
+        <Card>
+          <WorkOrderHoursSection
+            mode={mode}
+            workOrderId={workOrder?.id}
+            timeEntries={timeEntries}
             members={members}
-            entryTypes={timeEntryTypes ?? []}
-            assignedTo={workOrder!.assigned_to}
-            currentUserId={currentUserId!}
+            entryTypes={timeEntryTypes}
+            assignedTo={draft.assignedTo}
+            currentUserId={currentUserId}
             canLogTimeForOthers={Boolean(canLogTimeForOthers)}
             canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
             canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
             canDelete={Boolean(canDelete)}
           />
-
-          <ConsumedArticlesPanel
-            workOrderId={workOrder!.id}
-            workOrderArticles={workOrderArticles ?? []}
-            articles={articlesForSelect ?? []}
-            members={members}
-            currentUserId={currentUserId!}
+        </Card>
+        <Card>
+          <WorkOrderMaterialSection
+            mode={mode}
+            workOrderId={workOrder?.id}
+            workOrderArticles={workOrderArticles}
+            articles={articlesForSelect}
             canCreate={Boolean(canCreateWorkOrderArticles)}
             canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
             canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
             canDelete={Boolean(canDelete)}
+            currentUserId={currentUserId}
           />
+        </Card>
+      </FormGrid>
 
-          {canAccessChecklists && (
-            <ChecklistPanel
-              workOrderId={workOrder!.id}
-              checklist={checklist ?? null}
-              items={checklistItems ?? []}
-              templates={checklistTemplates ?? []}
-              members={members}
-              currentUserId={currentUserId!}
+      {canAccessChecklists ? (
+        <FormGrid columns={2}>
+          <Card>
+            <WorkOrderChecklistSection
+              mode={mode}
+              workOrderId={workOrder?.id}
+              checklist={checklist}
+              items={checklistItems}
+              templates={checklistTemplates}
+              currentUserId={currentUserId}
+              canAccess={Boolean(canAccessChecklists)}
               canAttach={Boolean(canAttachChecklist)}
               canDetach={Boolean(canDetachChecklist)}
               canUpdateAny={Boolean(canUpdateChecklistAny)}
               canUpdateOwn={Boolean(canUpdateChecklistOwn)}
             />
-          )}
-        </>
+          </Card>
+          <Card>
+            <WorkOrderAssignmentSection
+              mode={mode}
+              draft={draft}
+              workOrder={workOrder}
+              members={members}
+              readOnly={readOnly}
+              onSave={commitPatch}
+            />
+          </Card>
+        </FormGrid>
+      ) : (
+        <Card>
+          <WorkOrderAssignmentSection
+            mode={mode}
+            draft={draft}
+            workOrder={workOrder}
+            members={members}
+            readOnly={readOnly}
+            onSave={commitPatch}
+          />
+        </Card>
       )}
     </Stack>
   );

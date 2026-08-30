@@ -2082,6 +2082,7 @@ select.ui-client-card-status-select {
   transition: opacity var(--ui-duration-fast) var(--ui-ease), transform var(--ui-duration-fast) var(--ui-ease);
 }
 .ui-table-row:hover .ui-row-actions,
+.ui-row-card:hover .ui-row-actions,
 .ui-row-actions:focus-within {
   opacity: 1;
   transform: none;
@@ -3366,4 +3367,468 @@ select.ui-client-card-status-select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Zero-padding, larger-radius modifier for a `Card` acting as a full-bleed
+   "sheet" that houses its own dark header band (`RecordHeroBand`) flush with
+   the card's own rounded top corners, plus a normally-padded body below it —
+   see `RecordHeroBand`'s own doc comment and
+   app/(app)/work-orders/components/work-order-hero.tsx for the reference
+   usage. Same "referenced directly by class name" utility-class precedent as
+   `.ui-card-flush`/`.ui-row-actions`. */
+.ui-card-flush-xl {
+  padding: 0;
+  border-radius: var(--ui-radius-xl);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Record hero band — see components/record-hero-band.tsx. Fixed dark "ink"
+ * surface (Fjord), same "always dark regardless of theme toggle" treatment
+ * `.ui-sidebar`/`.ui-topbar` already use, re-pointing the semantic tokens so
+ * any plain `Badge`/`Text`/`Button` nested inside reads correctly without
+ * per-child overrides.
+ * ---------------------------------------------------------------------- */
+.ui-record-hero-band {
+  background: var(--ui-brand-fjord);
+  padding: 1.375rem 2rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  --ui-bg: var(--ui-brand-fjord);
+  --ui-fg: var(--ui-brand-snow);
+  --ui-fg-secondary: rgba(223, 228, 224, 0.85);
+  --ui-muted: rgba(223, 228, 224, 0.68);
+  --ui-muted-subtle: rgba(223, 228, 224, 0.5);
+  --ui-border: rgba(223, 228, 224, 0.25);
+  color: var(--ui-fg);
+}
+.ui-record-hero-band-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: var(--ui-text-sm);
+  color: var(--ui-muted);
+}
+.ui-record-hero-band-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ui-record-hero-band-breadcrumb a {
+  color: var(--ui-muted);
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-record-hero-band-breadcrumb a:hover {
+  color: var(--ui-fg);
+}
+.ui-record-hero-band-breadcrumb-sep {
+  color: var(--ui-muted-subtle);
+}
+.ui-record-hero-band-code {
+  color: var(--ui-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ui-record-hero-band-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.ui-record-hero-band-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6875rem;
+  min-width: 0;
+}
+.ui-record-hero-band-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ui-record-hero-band-title {
+  margin: 0;
+  font-family: var(--ui-font-serif);
+  font-size: 2rem;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  max-width: 26ch;
+}
+/* An `<input>` standing in for the static heading above (edit/create mode) —
+   same visual output, zero input chrome. */
+.ui-record-hero-band-title-input {
+  display: block;
+  width: 100%;
+  max-width: 26ch;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  padding: 0.125rem 0.25rem;
+  margin: -0.125rem -0.25rem;
+  font-family: var(--ui-font-serif);
+  font-size: 2rem;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.ui-record-hero-band-title-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+.ui-record-hero-band-title-input:hover {
+  background: rgba(223, 228, 224, 0.08);
+}
+.ui-record-hero-band-title-input:focus-visible {
+  outline: none;
+  background: rgba(223, 228, 224, 0.1);
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+}
+.ui-record-hero-band-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+  font-size: 0.84375rem;
+  color: var(--ui-fg-secondary);
+}
+.ui-record-hero-band-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ui-record-hero-band-meta-item svg {
+  flex-shrink: 0;
+}
+.ui-record-hero-band-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.875rem;
+  flex-shrink: 0;
+}
+.ui-record-hero-band-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* Buttons inside the band default to a transparent-on-dark outline look,
+   matching the approved mockup — a plain `Button variant="outline"` (the
+   only variant most hero actions use) would otherwise render with light-mode
+   `--ui-border`/`--ui-bg`, which this block already re-points, so this is
+   just the transparent-background half of that treatment. */
+.ui-record-hero-band-actions .ui-button {
+  background: transparent;
+}
+.ui-record-hero-band-actions .ui-button:hover {
+  background: rgba(223, 228, 224, 0.1);
+}
+.ui-record-hero-band-assignee {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.ui-record-hero-band-assignee-name {
+  display: flex;
+  flex-direction: column;
+}
+.ui-record-hero-band-stats {
+  margin-top: -0.25rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Stat strip — see components/stat-strip.tsx. Lives inside a
+ * `RecordHeroBand`'s dark surface, tiled edge-to-edge with hairline
+ * dividers (the `1px` gap showing the band's own darker background through
+ * it) rather than independent bordered cards.
+ * ---------------------------------------------------------------------- */
+.ui-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(223, 228, 224, 0.14);
+  border-radius: var(--ui-radius-lg) var(--ui-radius-lg) 0 0;
+  overflow: hidden;
+}
+.ui-stat-strip-tile {
+  background: var(--ui-gray-950);
+  padding: 0.9375rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.ui-stat-strip-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(223, 228, 224, 0.55);
+}
+.ui-stat-strip-value {
+  font-family: var(--ui-font-serif);
+  font-size: 1.5rem;
+  color: #fff;
+}
+.ui-stat-strip-hint {
+  font-size: var(--ui-text-xs);
+  color: rgba(223, 228, 224, 0.6);
+}
+.ui-stat-strip-hint-accent {
+  color: var(--ui-accent-100);
+}
+.ui-stat-strip-progress {
+  height: 5px;
+  border-radius: var(--ui-radius-full);
+  background: rgba(223, 228, 224, 0.15);
+  overflow: hidden;
+}
+.ui-stat-strip-progress-indicator {
+  height: 100%;
+  background: var(--ui-success);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Relation card — see components/relation-card.tsx. A light `Card` (unlike
+ * the dark hero band above), used for the Client/Site/Asset/Contract row
+ * beneath it.
+ * ---------------------------------------------------------------------- */
+.ui-relation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4375rem;
+  padding: 0.875rem 1rem;
+}
+.ui-relation-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ui-relation-card-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-muted-subtle);
+}
+.ui-relation-card-head .ui-icon-button {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+}
+.ui-relation-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ui-relation-card-title {
+  font-size: var(--ui-text-md);
+  font-weight: 600;
+  color: var(--ui-fg);
+}
+a.ui-relation-card-title:hover {
+  color: var(--ui-accent-strong);
+  text-decoration: underline;
+}
+.ui-relation-card-subtitle {
+  font-size: 0.78125rem;
+  color: var(--ui-muted);
+}
+.ui-relation-card-empty {
+  font-size: 0.8125rem;
+  color: var(--ui-muted-subtle);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Section header — see components/section-header.tsx.
+ * ---------------------------------------------------------------------- */
+.ui-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.ui-section-header-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ui-accent-strong);
+  font-size: 1.0625rem;
+}
+.ui-section-header-title {
+  margin: 0;
+  font-family: var(--ui-font-serif);
+  font-size: var(--ui-text-lg);
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--ui-fg);
+}
+.ui-section-header-divider {
+  flex: 1;
+  height: 1px;
+  background: var(--ui-border);
+}
+.ui-section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Row card — see components/row-card.tsx. Replaces a `<Table>` for a short,
+ * glanceable sub-list (a work order's Hours/Material/Checklist entries).
+ * ---------------------------------------------------------------------- */
+.ui-row-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6875rem 0.875rem;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  font-size: var(--ui-text-base);
+}
+.ui-row-card-highlight {
+  background: var(--ui-accent-25, var(--ui-accent-tint));
+  border-color: var(--ui-accent-100);
+}
+.ui-row-card-dashed {
+  background: var(--ui-bg-inset);
+  border-style: dashed;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Summary row — see components/summary-row.tsx.
+ * ---------------------------------------------------------------------- */
+.ui-summary-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 1.25rem;
+  padding: 0.5rem 0.875rem 0;
+  font-size: var(--ui-text-base);
+}
+.ui-summary-row-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+.ui-summary-row-label {
+  color: var(--ui-muted);
+}
+.ui-summary-row-value {
+  color: var(--ui-fg);
+}
+.ui-summary-row-value-bold {
+  font-weight: 650;
+}
+.ui-summary-row-value-serif {
+  font-family: var(--ui-font-serif);
+  font-size: var(--ui-text-lg);
+}
+
+/* Aligns a column of numeric figures (time ranges, durations, quantities,
+   prices) on their digit widths instead of proportional glyph widths — a
+   small but real "premium app" polish detail, used throughout `RowCard`/
+   `SummaryRow` content. Utility class, referenced directly (same
+   `.ui-row-actions`-style precedent as elsewhere in this file). */
+.ui-tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Work order "sheet" body — the padded content area below a `RecordHeroBand`
+ * inside a `.ui-card-flush-xl` (issue #102). Utility class, referenced
+ * directly by class name — same precedent as `.ui-sites-map-*`.
+ * ---------------------------------------------------------------------- */
+.ui-card-flush-xl-body {
+  padding: 1.375rem 2rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Key/value row list (a record's "Assigned to / Scheduled for / …" facts) —
+   full-width label-left/value-right rows with a hairline divider between
+   them, distinct from `DefinitionList`'s two-column grid (which reads better
+   for a short label + long value pair, not a list of short label/value
+   pairs that each want the full row width). Utility classes. */
+.ui-work-order-kv-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--ui-surface-2);
+  font-size: 0.84375rem;
+}
+.ui-work-order-kv-row:last-child {
+  border-bottom: none;
+}
+
+/* Highlighted callout box (a work order's Notes, issue #102) — warning-tinted
+   per product direction, an icon + copy row. */
+.ui-work-order-callout {
+  display: flex;
+  gap: 0.5625rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-warning-tint);
+  border: 1px solid var(--ui-warning-tint);
+  color: var(--ui-fg-secondary);
+}
+.ui-work-order-callout svg {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+  color: var(--ui-warning-strong);
+}
+
+/* Checklist row (issue #102) — a lighter-weight `RowCard` (smaller padding,
+   subtler border) since a checklist can run to many rows; the `dashed` tone
+   already provided by `RowCard` marks an open (unchecked) item. */
+.ui-work-order-checklist-row {
+  padding: 0.5625rem 0.75rem;
+  border-radius: var(--ui-radius-sm);
+  cursor: pointer;
+}
+.ui-work-order-checklist-label {
+  flex: 1;
+}
+.ui-work-order-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: var(--ui-radius-sm);
+  border: 1.5px solid var(--ui-border-strong);
+  font-size: 0.6875rem;
+}
+.ui-work-order-check-done {
+  border-color: transparent;
+  background: var(--ui-success);
+  color: #fff;
+}
+
+/* Hours/Material row content slots — see components/work-order-hours-section.tsx
+   / components/work-order-material-section.tsx. */
+.ui-work-order-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.ui-work-order-row-trailing {
+  width: 4.5rem;
+  text-align: right;
+  font-weight: 650;
+}
+.ui-work-order-article-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.71875rem;
 }
