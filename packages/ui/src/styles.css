@@ -66,6 +66,13 @@
 
   /* Semantic mapping — light mode */
   --ui-bg: #ffffff;
+  /* The page canvas behind cards — a hair off pure white so `.ui-card`'s own
+     `--ui-bg` white actually reads as a distinct surface instead of
+     disappearing into the page (per the Werkbon design mockup, which samples
+     this exact value for its canvas body and again as its cards' near-
+     invisible border tone — issue #103 follow-up: "witte achtergrond is in
+     het design net iets andere kleur wit"). */
+  --ui-page-bg: #eff2ed;
   --ui-bg-inset: var(--ui-gray-25);
   --ui-surface: var(--ui-gray-50);
   --ui-surface-hover: var(--ui-gray-100);
@@ -181,6 +188,7 @@
 html.dark,
 .ui-topbar {
   --ui-bg: #14252c;
+  --ui-page-bg: #14252c;
   --ui-bg-inset: #0f1d23;
   --ui-surface: #1a2e36;
   --ui-surface-hover: #223a43;
@@ -305,7 +313,7 @@ a {
   flex-direction: column;
   min-width: 0;
   height: 100%;
-  background: var(--ui-bg);
+  background: var(--ui-page-bg);
 }
 .ui-app-layout-content {
   flex: 1;
