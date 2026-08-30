@@ -5,9 +5,11 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, FormField, FormGrid, FormSection, FormSelectField, Heading, Label, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
-import { BarChart3, Building2, CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import { BarChart3, Building2, CreditCard, FileText, Receipt, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import { createClient, createSite } from "../actions";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import { RateSettingsSection } from "@/lib/rate-overrides/rate-settings-section";
+import { createClient, createSite, updateClientRateSettings } from "../actions";
 import { CLIENT_STATUS_OPTIONS } from "../kanban";
 import { clientCreateSchema, siteBaseSchema } from "../schema";
 
@@ -109,11 +111,31 @@ const initialState: NewClientFormState = {};
  * `state.values` (only populated after a failed submit) takes priority over
  * any prop-derived default, so nothing the user typed is ever silently
  * dropped by a re-render.
+ *
+ * Issue #93, "Reistijd en werktijd artikelen beheren": this panel also
+ * collects the client's "Custom rate" override (`RateSettingsSection`,
+ * shared with `EditClientPanel`/the Engineer edit dialog) in the SAME panel,
+ * matching the acceptance criteria's "Client pagina (new en edit)" — same
+ * reasoning as showing the address fields here instead of a separate step.
+ * Unlike the client/address fields, though, there's no `createClient`-time
+ * column for this (see `../actions.ts`'s `toClientInsertRow` — the rate
+ * override columns are deliberately NOT part of that insert; they only ever
+ * get written via the dedicated `updateClientRateSettings` action), so
+ * `action()` below adds a THIRD sequential call, mirroring
+ * `ArticleFormPanel`'s "the checkbox is available immediately on create, the
+ * dependent content just needs the record to exist first" shape
+ * (`article-form-panel.tsx`'s "Composite article" checkbox): once
+ * `createClient`/`createSite` both succeed, if (and only if) "Custom rate"
+ * was checked, `updateClientRateSettings(newClientId, ...)` runs against the
+ * client id that just came back. Skipped entirely when unchecked — a
+ * brand-new client row already defaults to `has_custom_rate = false` at the
+ * DB level, so there's nothing to write.
  */
 export function NewClientPanel({
   open,
   onOpenChange,
   accountManagers,
+  articles,
   todayIso,
 }: {
   open: boolean;
@@ -121,6 +143,13 @@ export function NewClientPanel({
   /** Fetched once in `clients-board.tsx`, passed down — populates the
    * "Account manager" `<Select>` below (issue #58). */
   accountManagers: AccountManagerRecord[];
+  /** `listArticlesForSelect()`'s result (issue #93) — populates the "Rate"
+   * section's Travel-time/Work-time article pickers, same "fetch once, pass
+   * down" convention as `accountManagers`. See this component's own doc
+   * comment for why the override is only actually saved (via a third,
+   * sequential `updateClientRateSettings` call) when the checkbox is
+   * checked. */
+  articles: ArticleSelectOption[];
   /** Server-computed `YYYY-MM-DD` "today" — the default "Client since" value
    * on this (CREATE-only) panel. See `clients-board.tsx` for why this is
    * computed server-side rather than via the visitor's local browser date. */
@@ -204,6 +233,27 @@ export function NewClientPanel({
         values,
         clientId: newClientId,
       };
+    }
+
+    // Third sequential call (issue #93) — only when the checkbox is
+    // checked, see this component's own doc comment for why the rate
+    // override can't just be part of `createClient`'s own insert.
+    if (formData.get("hasCustomRate") === "on") {
+      const rateResult = await updateClientRateSettings(newClientId, {
+        ...input,
+        hasCustomRate: true,
+      });
+      if (rateResult.error || !rateResult.data) {
+        // Same "already-created, no clean rollback" tolerance as the site
+        // failure branch above — the client and its address both saved
+        // successfully at this point.
+        return {
+          error: rateResult.error ?? "The client was created, but its rate settings could not be saved.",
+          fieldErrors: rateResult.fieldErrors,
+          values,
+          clientId: newClientId,
+        };
+      }
     }
 
     return { success: true, clientId: newClientId };
@@ -329,6 +379,31 @@ export function NewClientPanel({
                   errors={state.fieldErrors?.iban}
                 />
               </FormGrid>
+            </FormSection>
+
+            {/* Issue #93, "Reistijd en werktijd artikelen beheren" — see this
+                panel's own doc comment for why the override is only actually
+                persisted (a third, sequential `updateClientRateSettings`
+                call) once "Custom rate" is checked. */}
+            <FormSection title="Rate" icon={<Receipt />}>
+              <RateSettingsSection
+                idPrefix="new-client-rate"
+                initial={{
+                  hasCustomRate: false,
+                  travelArticleId: null,
+                  workArticleId: null,
+                  travelSalePrice: null,
+                  workSalePrice: null,
+                }}
+                articles={articles}
+                subjectLabel="client"
+                errors={{
+                  travelArticleId: state.fieldErrors?.travelArticleId,
+                  workArticleId: state.fieldErrors?.workArticleId,
+                  travelSalePrice: state.fieldErrors?.travelSalePrice,
+                  workSalePrice: state.fieldErrors?.workSalePrice,
+                }}
+              />
             </FormSection>
 
             {/* This client's first (default/primary) address — deliberately

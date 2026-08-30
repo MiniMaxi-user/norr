@@ -27,7 +27,8 @@ import {
   type TeamMemberRecord,
 } from "@/lib/team/actions";
 import { TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
-import { EditTeamMemberNameDialog } from "./edit-team-member-name-dialog";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import { EditTeamMemberDialog } from "./edit-team-member-dialog";
 import { InviteTeamMemberDialog } from "./invite-team-member-dialog";
 import { RemoveTeamMemberDialog } from "./remove-team-member-dialog";
 import { roleLabel } from "./role-label";
@@ -50,6 +51,11 @@ export interface TeamManagerProps {
    * be rendered protected (role locked, no Remove) below, matching the
    * server-side self-change guards in `lib/team/actions.ts`. */
   currentUserId: string;
+  /** `listArticlesForSelect()`'s result (issue #93), fetched once by
+   * `team-board.tsx` and threaded down to `EditTeamMemberDialog`'s "Custom
+   * rate" section — same "fetch once, pass down" convention `accountManagers`
+   * follows for the Clients module. */
+  articles: ArticleSelectOption[];
 }
 
 interface RevealedLink {
@@ -93,6 +99,7 @@ export function TeamManager({
   loadError,
   canWrite,
   currentUserId,
+  articles,
 }: TeamManagerProps) {
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
@@ -303,14 +310,17 @@ export function TeamManager({
       {canWrite && (
         <>
           <InviteTeamMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={handleInvited} />
-          <EditTeamMemberNameDialog
+          <EditTeamMemberDialog
             open={editTarget !== null}
             onOpenChange={(open) => {
               if (!open) setEditTarget(null);
             }}
             member={editTarget}
-            onSaved={(userId, fullName) => {
-              setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, fullName } : m)));
+            articles={articles}
+            onSaved={(userId, fullName, rateSettings) => {
+              setMembers((prev) =>
+                prev.map((m) => (m.userId === userId ? { ...m, fullName, rateSettings } : m)),
+              );
               setEditTarget(null);
             }}
           />

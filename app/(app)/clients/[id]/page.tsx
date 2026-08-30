@@ -6,6 +6,7 @@ import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/p
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
+import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { getTenantAccessStatus } from "../platform-access-actions";
@@ -157,6 +158,7 @@ async function ClientDetailContent({ id }: { id: string }) {
     activitiesResult,
     lastUsedTab,
     accountManagersResult,
+    articlesResult,
   ] = await Promise.all([
     assetsModuleVisible ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT }) : Promise.resolve(null),
     listContacts(id),
@@ -175,6 +177,9 @@ async function ClientDetailContent({ id }: { id: string }) {
     // Issue #58: `EditClientPanel`'s "Account manager" picker, same
     // "fetch once, pass down" convention `contactRoles` above already uses.
     listAccountManagers(),
+    // Issue #93: `EditClientPanel`'s "Rate" section article pickers, same
+    // "fetch once, pass down" convention as `listAccountManagers` above.
+    listArticlesForSelect(),
   ]);
 
   // Access-status lookup (issue #45): only run once the "Access" tab could
@@ -248,6 +253,7 @@ async function ClientDetailContent({ id }: { id: string }) {
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}
       accountManagers={accountManagersResult.data?.accountManagers ?? []}
+      articles={articlesResult.data?.articles ?? []}
     />
   );
 }

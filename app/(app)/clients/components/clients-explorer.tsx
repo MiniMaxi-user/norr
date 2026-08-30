@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Breadcrumbs, Button, Card, EmptyState, Heading, Input, Select, Stack, Text } from "@yourorg/ui";
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import type { ClientRecord, SiteRecord } from "../actions";
 import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "../kanban";
@@ -72,6 +73,7 @@ export function ClientsExplorer({
   defaultView,
   primarySiteByClientId,
   accountManagers,
+  articles,
   todayIso,
 }: {
   clients: ClientRecord[];
@@ -91,6 +93,10 @@ export function ClientsExplorer({
    * Account Manager row), the kanban header's Account manager filter
    * `<Select>`, and both client forms' own Account manager picker. */
   accountManagers: AccountManagerRecord[];
+  /** `listArticlesForSelect()`'s result (issue #93) — fetched once in
+   * `clients-board.tsx`, threaded down into both client forms' "Rate"
+   * section article pickers. */
+  articles: ArticleSelectOption[];
   /** Server-computed `YYYY-MM-DD` "today", for `NewClientPanel`'s "Client
    * since" default — see `clients-board.tsx`. */
   todayIso: string;
@@ -181,6 +187,7 @@ export function ClientsExplorer({
             open={newClientOpen}
             onOpenChange={setNewClientOpen}
             accountManagers={accountManagers}
+            articles={articles}
             todayIso={todayIso}
           />
         )}
@@ -316,6 +323,7 @@ export function ClientsExplorer({
         <EditClientPanel
           client={editTarget}
           accountManagers={accountManagers}
+          articles={articles}
           open={Boolean(editTarget)}
           onOpenChange={(open) => {
             if (!open) setEditTarget(null);
@@ -338,6 +346,7 @@ export function ClientsExplorer({
           open={newClientOpen}
           onOpenChange={setNewClientOpen}
           accountManagers={accountManagers}
+          articles={articles}
           todayIso={todayIso}
         />
       )}

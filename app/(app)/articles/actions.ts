@@ -221,6 +221,109 @@ export async function listArticles(
   return ok({ articles: (data ?? []) as ArticleRecord[], count: count ?? 0 });
 }
 
+/** A single option for a "pick an article" `<select>` — e.g. the Travel-time/
+ * Work-time article pickers on the Engineer (`lib/team/actions.ts`'s
+ * `updateTeamMemberRateSettings`) and Client (`app/(app)/clients/actions.ts`'s
+ * `updateClientRateSettings`) rate-settings forms, issue #93. Carries
+ * `sale_price`/`purchase_price` so the caller can default-populate an
+ * editable sale-price field and show a read-only purchase price the moment
+ * an article is picked, without a second round trip. */
+export interface ArticleSelectOption {
+  id: string;
+  article_number: string;
+  description: string;
+  /** Added for issue #95 (Quote line item inline editing) — the picker needs
+   * to search by EAN/GTIN/MPN too, not just article number/description. */
+  ean: string | null;
+  gtin: string | null;
+  mpn: string | null;
+  sale_price: number | null;
+  purchase_price: number | null;
+  /** Added for issue #95 — resolved from `vat_rate_item_id` -> this org's
+   * `vat_rate` reference list item's `value` (literal numeric percentage as
+   * text, e.g. `'21'`) at read time, parsed to a number here so every caller
+   * doesn't have to. `null` only defensively (the joined row or its `value`
+   * failing to resolve/parse) — `articles.vat_rate_item_id` itself is
+   * `not null`. */
+  vat_rate_percent: number | null;
+}
+
+/** Raw row shape `listArticlesForSelect` selects off `articles`, before
+ * `vat_rate` is flattened into `vat_rate_percent`. */
+interface ArticleSelectRow {
+  id: string;
+  article_number: string;
+  description: string;
+  ean: string | null;
+  gtin: string | null;
+  mpn: string | null;
+  sale_price: number | null;
+  purchase_price: number | null;
+  vat_rate: { value: string } | null;
+}
+
+/**
+ * Lightweight, unpaginated projection of every ACTIVE article in the
+ * caller's org, for populating a plain `<select>`/combobox — deliberately
+ * NOT `listArticles` above: that function is list-view-shaped (heavy FK
+ * embeds via `ARTICLE_SELECT`, capped/paginated via `clampLimit`/`range`,
+ * only 50 rows by default), which is the wrong shape for a dropdown that
+ * needs every active article in one shot. Any active article is eligible —
+ * no travel/work category or reference-list filter exists (or was asked
+ * for) to narrow this further. Same RBAC gate as `listArticles` (`can(actor,
+ * "articles", "read")` — every tenant role has at least read on Articles).
+ *
+ * Issue #95 (Quote line item inline editing) widened this projection to also
+ * carry `ean`/`gtin`/`mpn` (so the article search/picker can match on those,
+ * not just article number/description) and a resolved `vat_rate_percent`
+ * (so a quote line item can display VAT the moment an article is picked,
+ * without a second lookup). Still unpaginated/client-filtered on purpose —
+ * this org's article catalog is small (issue #97's 50 mock rows), so a
+ * single fetched list with client-side search filtering is the right shape
+ * here, not a dedicated server-side search endpoint.
+ */
+export async function listArticlesForSelect(): Promise<ActionResult<{ articles: ArticleSelectOption[] }>> {
+  const ctx = await requireModuleContext("articles");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "articles", "read")) {
+    return fail("You do not have permission to view articles.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("articles")
+    .select(
+      "id, article_number, description, ean, gtin, mpn, sale_price, purchase_price, vat_rate:reference_list_items!articles_vat_rate_item_id_fkey(value)",
+    )
+    .eq("is_active", true)
+    .order("article_number", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+
+  const articles = ((data ?? []) as unknown as ArticleSelectRow[]).map((row) => ({
+    id: row.id,
+    article_number: row.article_number,
+    description: row.description,
+    ean: row.ean,
+    gtin: row.gtin,
+    mpn: row.mpn,
+    sale_price: row.sale_price,
+    purchase_price: row.purchase_price,
+    vat_rate_percent: row.vat_rate ? parseVatRatePercent(row.vat_rate.value) : null,
+  }));
+
+  return ok({ articles });
+}
+
+/** Parses a `vat_rate` reference item's literal text `value` (e.g. `'21'`)
+ * into a number, `null` on anything unparseable — defensive only, this
+ * should never actually be non-numeric given the seeded `vat_rate` list. */
+function parseVatRatePercent(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function getArticle(
   id: string,
 ): Promise<ActionResult<{ article: ArticleRecord; components: ArticleComponentLineRecord[] }>> {

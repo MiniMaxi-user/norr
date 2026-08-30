@@ -8,6 +8,12 @@ import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, isTenantRole, TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
 import { getAvatarUrl } from "@/lib/profile/avatar-url";
 import { getSiteOrigin } from "@/lib/auth/site-origin";
+import {
+  rateOverrideSchema,
+  toRateOverrideRow,
+  fromRateOverrideRow,
+  type RateOverrideRecord,
+} from "@/lib/rate-overrides/schema";
 
 /**
  * Server Actions for an OWNER managing their OWN tenant's team (issue #88):
@@ -101,6 +107,13 @@ export interface TeamMemberRecord {
    * Team UI/actions below regardless of who's viewing: never removable, role
    * always stays `owner`. */
   isPlatformAdmin: boolean;
+  /** Issue #93 rate override fields — see
+   * `updateTeamMemberRateSettings` below. Present (with their default/`null`
+   * values) on every member row regardless of role, since the underlying
+   * columns exist on all of `memberships`, but only ever meaningfully edited
+   * for `role === "engineer"` rows — `updateTeamMemberRateSettings` rejects
+   * writes to any other role. */
+  rateSettings: RateOverrideRecord;
 }
 
 export interface PendingTeamInviteRecord {
@@ -118,6 +131,11 @@ export interface TeamMembersResult {
 interface MembershipWithUserRow {
   created_at: string;
   role: TenantRole;
+  has_custom_rate: boolean;
+  travel_article_id: string | null;
+  work_article_id: string | null;
+  travel_sale_price: number | null;
+  work_sale_price: number | null;
   user: {
     id: string;
     email: string;
@@ -158,7 +176,9 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
   const [membershipsResult, invitesResult] = await Promise.all([
     supabase
       .from("memberships")
-      .select("created_at, role, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)")
+      .select(
+        "created_at, role, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)",
+      )
       .order("created_at", { ascending: true }),
     supabase
       .from("invites")
@@ -183,6 +203,13 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       avatarUrl: getAvatarUrl(row.user.avatar_path, row.user.avatar_updated_at),
       createdAt: row.created_at,
       isPlatformAdmin: row.user.is_platform_admin,
+      rateSettings: fromRateOverrideRow({
+        has_custom_rate: row.has_custom_rate,
+        travel_article_id: row.travel_article_id,
+        work_article_id: row.work_article_id,
+        travel_sale_price: row.travel_sale_price,
+        work_sale_price: row.work_sale_price,
+      }),
     }));
 
   const pendingInvites = ((invitesResult.data ?? []) as InviteRow[]).map((row) => ({
@@ -575,4 +602,113 @@ export async function removeTeamMember(userId: string): Promise<ActionResult<{ r
   if (!data) return fail("Could not remove this teammate.");
 
   return ok({ removed: true as const });
+}
+
+// ---------------------------------------------------------------------------
+// Rate settings (issue #93, "Reistijd en werktijd artikelen beheren") — an
+// engineer's default Travel-time/Work-time billing article override. See
+// `lib/rate-overrides/schema.ts`'s header comment for the shared shape this
+// mirrors 1:1 with `updateClientRateSettings` in
+// `app/(app)/clients/actions.ts`. Storage: 5 columns added directly onto
+// `public.memberships` by `supabase/migrations/20260830090000_engineer_
+// client_rate_overrides.sql` — "an engineer" IS a membership row with
+// `role = 'engineer'`, there is no separate `engineers` table.
+// ---------------------------------------------------------------------------
+
+export interface TeamMemberRateSettingsRecord extends RateOverrideRecord {
+  userId: string;
+}
+
+/** Defense-in-depth existence check for `travelArticleId`/`workArticleId`,
+ * same pattern as `validateAssetModel` in `app/(app)/assets/actions.ts`: RLS
+ * on `articles` (any org member may SELECT) already scopes this lookup to
+ * the caller's own organization, so a hit here also proves org membership —
+ * no separate `.eq("organization_id", ...)` filter needed. Backstopped
+ * either way by the DB's own `validate_rate_override_articles` trigger. */
+async function validateRateOverrideArticle(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  articleId: string,
+  label: "travel" | "work",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await supabase.from("articles").select("id").eq("id", articleId).maybeSingle();
+  if (error) return { ok: false, error: mapDbError(error) };
+  if (!data) {
+    return {
+      ok: false,
+      error: `Invalid ${label} article — it does not exist, or it does not belong to your organization.`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Owner-only. Sets/clears an engineer's (a membership row with
+ * `role = 'engineer'`) custom Travel-time/Work-time billing rate override.
+ * Runs under the caller's OWN session client — `memberships_update_owner`
+ * RLS already allows an owner to update any membership row in their own org
+ * (see this file's header comment) — but still independently re-verifies the
+ * target is a member of the caller's own org, and specifically an
+ * `engineer`, before writing anything.
+ *
+ * `hasCustomRate: false` clears `travelArticleId`/`workArticleId`/
+ * `travelSalePrice`/`workSalePrice` back to `null` — see
+ * `toRateOverrideRow`'s comment on why, rather than leaving stale values in
+ * place.
+ */
+export async function updateTeamMemberRateSettings(
+  userId: string,
+  input: unknown,
+): Promise<ActionResult<TeamMemberRateSettingsRecord>> {
+  const idResult = uuidSchema.safeParse(userId);
+  if (!idResult.success) return fail("Invalid user id.");
+
+  const ctx = await requireModuleContext("settings");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId } = ctx.context;
+
+  if (!can(actor, "settings", "update")) {
+    return fail("Only the organization owner can change a teammate's rate settings.");
+  }
+
+  const parsed = rateOverrideSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("memberships")
+    .select("id, role")
+    .eq("organization_id", organizationId)
+    .eq("user_id", idResult.data)
+    .maybeSingle<{ id: string; role: TenantRole }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("This person is not a member of your organization.");
+  if (target.role !== "engineer") {
+    return fail("Custom rate settings only apply to teammates with the Engineer role.");
+  }
+
+  if (parsed.data.hasCustomRate) {
+    const [travelCheck, workCheck] = await Promise.all([
+      validateRateOverrideArticle(supabase, parsed.data.travelArticleId as string, "travel"),
+      validateRateOverrideArticle(supabase, parsed.data.workArticleId as string, "work"),
+    ]);
+    if (!travelCheck.ok) return fail("Please fix the highlighted fields.", { travelArticleId: [travelCheck.error] });
+    if (!workCheck.ok) return fail("Please fix the highlighted fields.", { workArticleId: [workCheck.error] });
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("memberships")
+    .update(toRateOverrideRow(parsed.data))
+    .eq("id", target.id)
+    .eq("organization_id", organizationId)
+    .select("has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price")
+    .maybeSingle();
+
+  if (updateError) return fail(mapDbError(updateError));
+  if (!updated) return fail("Could not update this teammate's rate settings.");
+
+  return ok({ userId: idResult.data, ...fromRateOverrideRow(updated) });
 }

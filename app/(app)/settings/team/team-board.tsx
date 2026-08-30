@@ -1,4 +1,5 @@
 import { listTeamMembers } from "@/lib/team/actions";
+import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { TeamManager } from "./components/team-manager";
 
 /**
@@ -12,9 +13,15 @@ import { TeamManager } from "./components/team-manager";
  * other manager on this settings surface uses): the board still renders
  * `TeamManager` with whatever it got (empty arrays) plus the error message,
  * instead of crashing the whole route.
+ *
+ * `listArticlesForSelect` (issue #93) is fetched unconditionally alongside
+ * it — cheap (unpaginated, active-only) and needed the moment any `engineer`
+ * row's `EditTeamMemberDialog` opens; a failure here is likewise non-fatal,
+ * `EditTeamMemberDialog`'s "Custom rate" section just renders with an empty
+ * article list rather than blocking the whole Team screen.
  */
 export async function TeamBoard({ canWrite, currentUserId }: { canWrite: boolean; currentUserId: string }) {
-  const result = await listTeamMembers();
+  const [result, articlesResult] = await Promise.all([listTeamMembers(), listArticlesForSelect()]);
 
   return (
     <TeamManager
@@ -23,6 +30,7 @@ export async function TeamBoard({ canWrite, currentUserId }: { canWrite: boolean
       loadError={result.error}
       canWrite={canWrite}
       currentUserId={currentUserId}
+      articles={articlesResult.data?.articles ?? []}
     />
   );
 }

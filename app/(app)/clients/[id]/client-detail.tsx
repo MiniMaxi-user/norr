@@ -20,6 +20,7 @@ import {
 } from "@yourorg/ui";
 import { Bell, Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
@@ -100,6 +101,10 @@ export interface ClientDetailProps {
    * "Account manager" `<Select>` (issue #58), same as `clients-board.tsx` ->
    * `ClientsExplorer` -> `EditClientPanel` on the list/kanban screen. */
   accountManagers: AccountManagerRecord[];
+  /** `listArticlesForSelect()`'s result (issue #93), fetched once in
+   * `page.tsx` — populates `EditClientPanel`'s "Rate" section article
+   * pickers, same "fetch once, pass down" convention as `accountManagers`. */
+  articles: ArticleSelectOption[];
 }
 
 /**
@@ -175,6 +180,7 @@ export function ClientDetail({
   accessStatusByEmail,
   defaultTab,
   accountManagers,
+  articles,
 }: ClientDetailProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -578,6 +584,7 @@ export function ClientDetail({
           <EditClientPanel
             client={client}
             accountManagers={accountManagers}
+            articles={articles}
             open={editOpen}
             onOpenChange={setEditOpen}
           />

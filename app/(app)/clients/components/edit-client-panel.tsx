@@ -4,9 +4,11 @@ import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, FormField, FormGrid, FormSection, FormSelectField, Heading, Label, Stack, Text, Textarea, useEscapeToClose } from "@yourorg/ui";
-import { BarChart3, CreditCard, FileText, Users } from "@yourorg/ui/icons";
+import { BarChart3, CreditCard, FileText, Receipt, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import { updateClient, type ClientRecord } from "../actions";
+import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import { RateSettingsSection } from "@/lib/rate-overrides/rate-settings-section";
+import { updateClient, updateClientRateSettings, type ClientRecord } from "../actions";
 import { CLIENT_STATUS_OPTIONS } from "../kanban";
 
 interface EditClientFormState {
@@ -45,6 +47,7 @@ const initialState: EditClientFormState = {};
 export function EditClientPanel({
   client,
   accountManagers,
+  articles,
   open,
   onOpenChange,
 }: {
@@ -53,6 +56,10 @@ export function EditClientPanel({
    * "Account manager" `<Select>` below (issue #58), same as
    * `NewClientPanel`. */
   accountManagers: AccountManagerRecord[];
+  /** `listArticlesForSelect()`'s result (issue #93) — populates the "Custom
+   * rate" section's Travel-time/Work-time article pickers, same "fetch once,
+   * pass down" convention as `accountManagers`. */
+  articles: ArticleSelectOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -65,6 +72,24 @@ export function EditClientPanel({
     if (result.error || !result.data) {
       return { error: result.error ?? "Something went wrong.", fieldErrors: result.fieldErrors };
     }
+
+    // Sequential second call, same "one form, multiple Server Action calls"
+    // shape `NewClientPanel` uses for `createClient` then `createSite` — see
+    // this panel's own "Rate" section below and `RateSettingsSection`'s doc
+    // comment for why `hasCustomRate` needs this manual boolean fix.
+    const rateInput = {
+      ...input,
+      hasCustomRate: formData.get("hasCustomRate") === "on",
+    };
+    const rateResult = await updateClientRateSettings(client.id, rateInput);
+    if (rateResult.error || !rateResult.data) {
+      // The client's own fields already saved successfully above — same
+      // partial-failure tolerance `NewClientPanel` documents for its own
+      // two-call submit: keep the panel open with the rate error surfaced,
+      // rather than silently discarding it or double-reporting success.
+      return { error: rateResult.error ?? "The client was saved, but its rate settings could not be saved.", fieldErrors: rateResult.fieldErrors };
+    }
+
     return { success: true };
   }
 
@@ -167,6 +192,31 @@ export function EditClientPanel({
                 />
                 <FormField label="IBAN" name="iban" defaultValue={client.iban} errors={state.fieldErrors?.iban} />
               </FormGrid>
+            </FormSection>
+
+            {/* Issue #93, "Reistijd en werktijd artikelen beheren": a
+                client-level Travel-time/Work-time billing override. See
+                `RateSettingsSection`'s own doc comment — shared verbatim with
+                the Engineer edit dialog (`EditTeamMemberDialog`). */}
+            <FormSection title="Rate" icon={<Receipt />}>
+              <RateSettingsSection
+                idPrefix="client-rate"
+                initial={{
+                  hasCustomRate: client.has_custom_rate,
+                  travelArticleId: client.travel_article_id,
+                  workArticleId: client.work_article_id,
+                  travelSalePrice: client.travel_sale_price,
+                  workSalePrice: client.work_sale_price,
+                }}
+                articles={articles}
+                subjectLabel="client"
+                errors={{
+                  travelArticleId: state.fieldErrors?.travelArticleId,
+                  workArticleId: state.fieldErrors?.workArticleId,
+                  travelSalePrice: state.fieldErrors?.travelSalePrice,
+                  workSalePrice: state.fieldErrors?.workSalePrice,
+                }}
+              />
             </FormSection>
 
             <FormSection title="Notes" icon={<FileText />}>

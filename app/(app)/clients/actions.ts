@@ -16,6 +16,7 @@ import {
   type SiteCreateInput,
   type SiteUpdateInput,
 } from "./schema";
+import { rateOverrideSchema, toRateOverrideRow, type RateOverrideRow } from "@/lib/rate-overrides/schema";
 
 /**
  * Server Actions for the Clients module (clients + their sites), issue #8
@@ -95,6 +96,18 @@ export interface ClientRecord {
    * no longer currently won — see the trigger's "became Won" semantics in
    * the migration's doc comment). */
   won_at: string | null;
+  /** Issue #93 rate override fields ("Afwijkend tarief" on the client page)
+   * — identical shape to `public.memberships`' own 5 columns, see
+   * `lib/rate-overrides/schema.ts`'s header comment and
+   * `updateClientRateSettings` below. `select("*")` already returns these on
+   * every query in this file (`listClients`/`getClient`/`createClient`/
+   * `updateClient`); they're declared here so callers get typed access
+   * rather than needing a cast. */
+  has_custom_rate: boolean;
+  travel_article_id: string | null;
+  work_article_id: string | null;
+  travel_sale_price: number | null;
+  work_sale_price: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -432,6 +445,92 @@ export async function updateClient(
   }
 
   const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .update(row)
+    .eq("id", idResult.data)
+    .select("*")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Client not found, or you do not have permission to update it.");
+  return ok({ client: data as ClientRecord });
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/** Defense-in-depth existence check for `travelArticleId`/`workArticleId`,
+ * same pattern as `validateAssetModel` in `app/(app)/assets/actions.ts` and
+ * `validateRateOverrideArticle` in `lib/team/actions.ts` (this file's own
+ * copy, not imported from there — that file is a different module and this
+ * check is small enough to duplicate rather than add a cross-module
+ * dependency for): RLS on `articles` (any org member may SELECT) already
+ * scopes this lookup to the caller's own organization, so a hit here also
+ * proves org membership — no separate `.eq("organization_id", ...)` filter
+ * needed. Backstopped either way by the DB's own
+ * `validate_rate_override_articles` trigger. */
+async function validateClientRateOverrideArticle(
+  supabase: SupabaseServerClient,
+  articleId: string,
+  label: "travel" | "work",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await supabase.from("articles").select("id").eq("id", articleId).maybeSingle();
+  if (error) return { ok: false, error: mapDbError(error) };
+  if (!data) {
+    return {
+      ok: false,
+      error: `Invalid ${label} article — it does not exist, or it does not belong to your organization.`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Owner-only. Sets/clears a client's custom Travel-time/Work-time billing
+ * rate override (issue #93, "Afwijkend tarief" on the client page) — same
+ * shape and validation as `updateTeamMemberRateSettings` in
+ * `lib/team/actions.ts` (see `lib/rate-overrides/schema.ts`'s header
+ * comment), applied to `public.clients` instead of `public.memberships`.
+ * Per the story's later resolution order (engineer default -> CLIENT
+ * override -> contract override, out of scope here), this is a plain,
+ * unscoped per-client setting — no engineer/contract relationship to check
+ * here.
+ *
+ * `hasCustomRate: false` clears `travelArticleId`/`workArticleId`/
+ * `travelSalePrice`/`workSalePrice` back to `null` — see
+ * `toRateOverrideRow`'s comment for why.
+ */
+export async function updateClientRateSettings(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<{ client: ClientRecord }>> {
+  const idResult = uuidSchema.safeParse(id);
+  if (!idResult.success) return fail("Invalid client id.");
+
+  const ctx = await requireModuleContext("clients");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "clients", "update")) {
+    return fail("Only the organization owner can update a client's rate settings.");
+  }
+
+  const parsed = rateOverrideSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  if (parsed.data.hasCustomRate) {
+    const [travelCheck, workCheck] = await Promise.all([
+      validateClientRateOverrideArticle(supabase, parsed.data.travelArticleId as string, "travel"),
+      validateClientRateOverrideArticle(supabase, parsed.data.workArticleId as string, "work"),
+    ]);
+    if (!travelCheck.ok) return fail("Please fix the highlighted fields.", { travelArticleId: [travelCheck.error] });
+    if (!workCheck.ok) return fail("Please fix the highlighted fields.", { workArticleId: [workCheck.error] });
+  }
+
+  const row: RateOverrideRow = toRateOverrideRow(parsed.data);
   const { data, error } = await supabase
     .from("clients")
     .update(row)
