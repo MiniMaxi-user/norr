@@ -72,7 +72,7 @@
      this exact value for its canvas body and again as its cards' near-
      invisible border tone — issue #103 follow-up: "witte achtergrond is in
      het design net iets andere kleur wit"). */
-  --ui-page-bg: #eff2ed;
+  --ui-page-bg: #eef3ed;
   --ui-bg-inset: var(--ui-gray-25);
   --ui-surface: var(--ui-gray-50);
   --ui-surface-hover: var(--ui-gray-100);
