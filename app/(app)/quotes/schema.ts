@@ -23,6 +23,22 @@ function optionalUuid(message: string) {
   return z.preprocess(emptyToUndefined, z.string().uuid(message).optional());
 }
 
+/** Like `optionalUuid`, but an empty string becomes `null` (a real,
+ * distinguishable "clear this field" value) instead of `undefined` ("field
+ * not provided, don't touch it"). Used for `quote_line_items.asset_id`/
+ * `article_id`/`engineer_user_id`, which need exactly that distinction on
+ * UPDATE — inline-editing a line item always resubmits its full current
+ * state (see `quote-line-items-panel.tsx`'s `saveDraft`), so `""` there
+ * unambiguously means the user cleared a previously-set picker, not that the
+ * field was omitted. Safe on CREATE too: both row builders below already
+ * write `?? null` for these three fields regardless of null vs undefined. */
+function clearableUuid(message: string) {
+  return z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().uuid(message).nullable().optional(),
+  );
+}
+
 /** `YYYY-MM-DD` date-only string — `quotes.valid_until` is a plain `date`
  * column, not `timestamptz`, same shape as `contracts.startDate`/`endDate`
  * in `app/(app)/contracts/schema.ts`. */
@@ -113,21 +129,21 @@ export const quoteLineItemCreateSchema = z.object({
    * `validate_quote_line_item_relations` DB trigger (not re-validated here),
    * mirroring `contracts`' `linkContractAsset`/`contract_assets` trust
    * boundary. */
-  assetId: optionalUuid("Invalid asset."),
+  assetId: clearableUuid("Invalid asset."),
   /** Nullable at the DB layer (`quote_line_items.article_id`, issue #94) —
    * the source article this line item was generated/picked from, for
    * reporting traceability. When set, must belong to the QUOTE's own
    * `organization_id`; left entirely to the
    * `validate_quote_line_item_relations` DB trigger, same trust boundary as
    * `assetId` above. */
-  articleId: optionalUuid("Invalid article."),
+  articleId: clearableUuid("Invalid article."),
   discountPercent: z.preprocess(emptyToUndefined, discountPercentSchema.optional()),
   /** Nullable at the DB layer (`quote_line_items.engineer_user_id`, issue
    * #95) — which engineer a travel/work-time-derived line item belongs to.
    * When set, must be a member of the quote's own organization; left
    * entirely to the `validate_quote_line_item_relations` DB trigger, same
    * trust boundary as `assetId`/`articleId` above. */
-  engineerUserId: optionalUuid("Invalid engineer."),
+  engineerUserId: clearableUuid("Invalid engineer."),
   sortOrder: z.preprocess(emptyToUndefined, z.coerce.number().int("Sort order must be a whole number.").optional()),
 });
 

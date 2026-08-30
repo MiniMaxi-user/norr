@@ -303,9 +303,13 @@ export function QuoteLineItemsPanel({
         quantity,
         unitPrice,
         discountPercent,
-        assetId: draft.assetId || undefined,
-        articleId: draft.articleId || undefined,
-        engineerUserId: draft.engineerId || undefined,
+        // `null` (not `undefined`) when empty: the draft always reflects the
+        // row's full current state, so an empty picker here means the user
+        // explicitly cleared a previously-set value, not that the field was
+        // never touched — see `clearableUuid` in `../schema.ts`.
+        assetId: draft.assetId || null,
+        articleId: draft.articleId || null,
+        engineerUserId: draft.engineerId || null,
       };
       const result = draft.rowId
         ? await updateQuoteLineItem(draft.rowId, input)
