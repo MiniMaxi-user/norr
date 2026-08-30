@@ -20,6 +20,7 @@ export function FormField({
   defaultValue,
   required,
   errors,
+  prefix,
 }: {
   label: string;
   name: string;
@@ -30,6 +31,8 @@ export function FormField({
   defaultValue?: string | number | null;
   required?: boolean;
   errors?: string[];
+  /** See `Input`'s own `prefix` prop — e.g. `"€"` for a money field. */
+  prefix?: string;
 }) {
   return (
     <Stack gap="xs">
@@ -46,6 +49,7 @@ export function FormField({
         maxLength={maxLength}
         defaultValue={defaultValue ?? ""}
         required={required}
+        prefix={prefix}
       />
       {errors?.map((message) => (
         <Text key={message} tone="danger">

@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
 
-export type DialogSize = "sm" | "lg" | "panel";
+export type DialogSize = "sm" | "lg" | "panel" | "panel-lg";
 
 export interface DialogProps {
   open: boolean;
@@ -46,6 +46,12 @@ export interface DialogProps {
  * enough to overflow a short viewport still scrolls its `Dialog.Body`
  * correctly, that architecture didn't change. See `.ui-dialog-panel` in
  * styles.css.
+ *
+ * `size="panel-lg"` is the same right-edge sheet, just wider (see
+ * `.ui-dialog-panel-lg` in styles.css) — for a single form that outgrows the
+ * default panel width (e.g. Articles, issue #98) without widening every
+ * other panel in the app. Prefer `"panel"` unless a specific form's own
+ * field count/layout genuinely needs the extra room.
  */
 export function Dialog({ open, onOpenChange, size, children }: DialogProps) {
   if (!open) return null;

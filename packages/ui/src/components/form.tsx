@@ -20,10 +20,27 @@ export function Label({ className, children, ...rest }: LabelProps) {
   );
 }
 
-export type InputProps = InputHTMLAttributes<HTMLInputElement>;
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  /** Short fixed text pinned inside the field's left edge — e.g. `"€"` for a
+   * money field (issue #98's Article purchase/sale price inputs). Purely
+   * decorative (`aria-hidden`); the field's own `Label` still carries the
+   * accessible name. Wraps the `<input>` in a positioning `<div>` only when
+   * set, so every existing caller without a `prefix` renders exactly the
+   * same bare `<input>` as before. */
+  prefix?: string;
+}
 
-export function Input({ className, ...rest }: InputProps) {
-  return <input className={cx("ui-input", className)} {...rest} />;
+export function Input({ className, prefix, ...rest }: InputProps) {
+  const input = <input className={cx("ui-input", prefix && "ui-input-has-prefix", className)} {...rest} />;
+  if (!prefix) return input;
+  return (
+    <div className="ui-input-prefix-wrap">
+      <span className="ui-input-prefix" aria-hidden="true">
+        {prefix}
+      </span>
+      {input}
+    </div>
+  );
 }
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -108,22 +125,30 @@ export function FormSection({ title, description, icon, className, children, ...
 }
 
 export interface FormGridProps extends HTMLAttributes<HTMLDivElement> {
-  /** Number of equal-width columns at normal dialog widths — collapses to
-   * a single column below `styles.css`'s narrow-dialog breakpoint. */
-  columns?: 2 | 3;
+  /** Number of equal-width columns at normal dialog widths — collapses at
+   * `styles.css`'s narrower breakpoints (`4` steps down to `2` and then `1`;
+   * `2`/`3` step straight to `1`). `4` is only a sensible fit inside a wide
+   * panel (`Dialog size="panel-lg"`, issue #98) — the default centered/
+   * `"panel"` dialog widths are too narrow for 4 equal columns to read as
+   * anything but cramped. */
+  columns?: 2 | 3 | 4;
   children?: ReactNode;
 }
 
 /**
- * Two/three-column field layout for naturally-paired fields (postal code +
- * city, latitude + longitude, ...) instead of every field stacking full
- * width regardless of how short its content is. Children are direct grid
- * items — wrap one in `FormGridFull` to span every column (e.g. a field
- * that follows a paired row but doesn't have a natural partner).
+ * Two/three/four-column field layout for naturally-paired (or wide-panel
+ * grouped) fields (postal code + city, latitude + longitude, ...) instead of
+ * every field stacking full width regardless of how short its content is.
+ * Children are direct grid items — wrap one in `FormGridFull` to span every
+ * column (e.g. a field that follows a paired row but doesn't have a natural
+ * partner).
  */
 export function FormGrid({ columns = 2, className, children, ...rest }: FormGridProps) {
   return (
-    <div className={cx("ui-form-grid", columns === 3 && "ui-form-grid-3", className)} {...rest}>
+    <div
+      className={cx("ui-form-grid", columns === 3 && "ui-form-grid-3", columns === 4 && "ui-form-grid-4", className)}
+      {...rest}
+    >
       {children}
     </div>
   );

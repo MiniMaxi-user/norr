@@ -1428,6 +1428,26 @@ select.ui-client-card-status-select {
   pointer-events: none;
 }
 
+/* `Input`'s `prefix` prop (e.g. "€" on a money field) — same positioning
+   approach as `.ui-select-wrap`/`.ui-select-caret` above. */
+.ui-input-prefix-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.ui-input-prefix {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  transform: translateY(-50%);
+  color: var(--ui-muted);
+  pointer-events: none;
+  font-size: var(--ui-text-base);
+}
+.ui-input-has-prefix {
+  padding-left: 1.9rem;
+}
+
 /* ---------------------------------------------------------------------- *
  * Combobox — see components/combobox.tsx. Text-field chrome mirrors
  * .ui-input/.ui-select; the popover mirrors .ui-dropdown-menu-content.
@@ -1702,9 +1722,18 @@ select.ui-client-card-status-select {
 .ui-form-grid-full {
   grid-column: 1 / -1;
 }
+.ui-form-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 760px) {
+  .ui-form-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
 @media (max-width: 560px) {
   .ui-form-grid,
-  .ui-form-grid-3 {
+  .ui-form-grid-3,
+  .ui-form-grid-4 {
     grid-template-columns: 1fr;
   }
 }
@@ -1905,6 +1934,25 @@ select.ui-client-card-status-select {
   to {
     transform: translateX(0);
   }
+}
+/* Wider sibling of `.ui-dialog-panel` (issue #98) — same fixed right-edge
+   sheet, just more width for a form whose field count/layout genuinely
+   needs it (see `Dialog`'s own doc comment on `size="panel-lg"`). Not a
+   modifier layered on top of `.ui-dialog-panel` (`size` only ever renders
+   ONE `ui-dialog-${size}` class — see `Dialog`) — duplicates the same
+   position/height/border rules rather than composing, same relationship
+   `.ui-dialog-sm`/`.ui-dialog-lg` have to `.ui-dialog`. */
+.ui-dialog-panel-lg {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(920px, 100%);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  border: none;
+  border-left: 1px solid var(--ui-border);
+  border-radius: 0;
+  animation: ui-panel-in var(--ui-duration-base) var(--ui-ease);
 }
 /* Every real call site wraps Dialog.Header/Body/Footer in a plain <form>
    (see app/(app)/clients/client-form-dialog.tsx and

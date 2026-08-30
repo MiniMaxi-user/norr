@@ -39,6 +39,15 @@ export interface FlattenedArticleGroup {
   depth: number;
   /** e.g. "Parts > Filters > Air filters" — every ancestor's name, joined. */
   path: string;
+  /** This group's own `parent_group_id`, carried through unchanged — `null`
+   * for a depth-0 (top-level) group. Added for issue #98's Group/Subgroup
+   * cascading picker (`article-form-panel.tsx`), which needs to walk a
+   * group's ancestor chain (e.g. to find a depth-2+ group's depth-0
+   * ancestor) without re-fetching `ArticleGroupRecord[]` itself — every
+   * existing caller (`articles-filters.tsx`, `articles-table.tsx`,
+   * `article-group-form-dialog.tsx`) only ever reads the pre-existing
+   * fields, so this addition is purely additive. */
+  parentId: string | null;
 }
 
 export function flattenArticleGroups(groups: ArticleGroupRecord[]): FlattenedArticleGroup[] {
@@ -48,7 +57,7 @@ export function flattenArticleGroups(groups: ArticleGroupRecord[]): FlattenedArt
   function visit(parentId: string | null, depth: number, parentPath: string) {
     for (const group of byParent.get(parentId) ?? []) {
       const path = parentPath ? `${parentPath} > ${group.name}` : group.name;
-      result.push({ id: group.id, name: group.name, depth, path });
+      result.push({ id: group.id, name: group.name, depth, path, parentId });
       visit(group.id, depth + 1, path);
     }
   }
