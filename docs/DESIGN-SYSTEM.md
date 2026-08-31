@@ -18,9 +18,11 @@ A lighter, editorial header (an initials mark, serif name, a dot-separated line 
 
 **Use this when the page's job is mainly to navigate the record's own children** — a client's sites, assets, contacts, contracts, quotes, work orders, activities, all reachable as tabs from one screen.
 
-**Examples**: Clients, Quotes.
+**Examples**: Quotes.
 
-If you're designing a new module and it's genuinely unclear which one fits, ask: *does this page's value come from its own content, or from browsing to its relations?* Content → Pattern A. Relations → Pattern B.
+**Clients is a named exception — a hybrid of both**, not a third pattern to reuse elsewhere: its header is Pattern A's dark hero band (with a strip of Sites/Assets/Work Orders/Quotes/Activities counts baked in, since a client's relationships genuinely are header-worthy facts), but its body keeps Pattern B's sidebar + tabs, because a client is also the app's single most relationship-heavy record — it has too many distinct related lists (sites, assets, contacts, work orders, contracts, quotes, activities) for flat sections to serve well. This combination exists because Clients' content needs both halves, confirmed by explicit product-owner direction — don't treat it as a green light to freely mix header/body components on a new page; default to a pure Pattern A or B first.
+
+If you're designing a new module and it's genuinely unclear which one fits, ask: *does this page's value come from its own content, or from browsing to its relations?* Content → Pattern A. Relations → Pattern B. Only reach for the Clients-style hybrid when a record is genuinely both at once, and confirm that with the product owner rather than deciding it alone.
 
 ## Card vs. flat section
 
@@ -36,7 +38,7 @@ If you're designing a new module and it's genuinely unclear which one fits, ask:
 
 - Pattern A stacks its sections in one or two columns, on the plain page background.
 - Pattern B uses a fixed sidebar (roughly a third of the width) plus a tab-driven main column.
-- Don't mix the two inside one page — a page is either "flat stacked sections" or "sidebar + tabs," not both.
+- Don't mix the two inside one page — a page's *body* is either "flat stacked sections" or "sidebar + tabs," not both. (Clients pairs a Pattern A *header* with a Pattern B *body* — see the named exception above; that's a header-level hybrid, not a body-level mix of flat sections and a sidebar.)
 
 This doesn't apply to a screen that's primarily a wide data grid (a list view with many columns/filters) — those don't take either detail-page treatment; a grid earns its own full width.
 

@@ -8,15 +8,16 @@ import {
   Button,
   Card,
   DefinitionList,
-  DetailHero,
   DetailLayout,
   Dialog,
   Heading,
   Inline,
-  Separator,
+  RecordHeroBand,
   Stack,
+  StatStrip,
   Tabs,
   Text,
+  type StatStripItem,
 } from "@yourorg/ui";
 import { Bell, Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
@@ -118,22 +119,24 @@ export interface ClientDetailProps {
  * of being flattened into one generic list.
  *
  * The breadcrumb still lives in the Topbar (`usePageHeader`, see
- * `components/shell/page-header-context.tsx`). The client's own fields are
- * the "Option C" editorial `DetailHero` (`@yourorg/ui`) — an initials hero
- * mark, the client's name as the page's serif `Heading level={1}`, a
- * dot-separated primary-address meta line, and "Primary"/"Client since"
- * badges — the now-canonical header pattern for a top-level entity's detail
- * page (see `stories/EditorialDetailPage.stories.tsx` and
- * docs/ARCHITECTURE.md's "Relational detail pages" section).
+ * `components/shell/page-header-context.tsx`). The client's own fields sit in
+ * the full-bleed dark `RecordHeroBand` (`@yourorg/ui`) — the same header
+ * pattern Work Orders/Assets/Contracts already use: a plain `<h1>` title, an
+ * icon+text primary-address meta line, "Primary"/"Client since"/tenant
+ * badges, and a `StatStrip` of Sites/Assets/Orders/Quotes/Meldingen counts
+ * baked into the bottom of the band (`relationshipStats` below, each entry
+ * gated behind its own `*Enabled` flag — Sites has none, always shown). This
+ * is a deliberate hybrid, not a full conversion to the `RecordHeroBand`
+ * pattern's usual accompanying flat-card layout: the tab-driven rail below
+ * stays exactly as it is (see docs/ARCHITECTURE.md's "Two detail-page header
+ * patterns" section).
  *
  * Below the hero, `<Tabs>` is wrapped in `@yourorg/ui`'s `DetailLayout`,
  * which adds a fixed 340px sticky rail OUTSIDE the tabs (`.ui-detail-rail`
  * in styles.css) — it stays visible across every tab instead of only
- * whichever one happens to be selected. The rail, top to bottom:
- *  - Relationship: "Client since" plus Sites/Assets/Orders/Quotes counters,
- *    each counter gated behind its own `*Enabled` flag (Sites has none —
- *    always shown) — leads the rail since it's the read-at-a-glance
- *    summary, ahead of Company's edit-oriented business details;
+ * whichever one happens to be selected. The rail, top to bottom (no more
+ * "Relationship" card — its counters now live in the hero's `StatStrip`
+ * instead):
  *  - Company: `client.kvk_number`/`vat_number`/`iban` plus the primary
  *    site's own `phone` (moved off `clients` onto `sites`, migration
  *    `20260826130000_sites_phone.sql` — a client no longer has its own
@@ -259,10 +262,15 @@ export function ClientDetail({
   // Phone no longer appears here (design decision, rail redesign): it now
   // only lives in the rail's Company card (`primarySite.phone` below), so it
   // doesn't double up between the hero meta line and the rail. Only the
-  // primary address stays in the hero.
-  const heroMeta = [primarySite ? formatSiteAddress(primarySite) : null].filter(
-    (item): item is string => Boolean(item),
-  );
+  // primary address stays in the hero, as an icon+text fact per
+  // `RecordHeroBand`'s `meta` convention (see `work-order-hero.tsx`).
+  const heroMeta = primarySite
+    ? [
+        <>
+          <MapPin /> {formatSiteAddress(primarySite)}
+        </>,
+      ]
+    : [];
 
   // Issue #45: this client already represents a real platform tenant once
   // `represents_organization_id` is set — the "Activate as tenant" hero
@@ -289,9 +297,9 @@ export function ClientDetail({
   // via the hero action below) is the way back in.
   const tenantAccessVisible = isPlatformAdmin && isActiveTenant;
 
-  // Rail "Relationship" card counters — Sites has no `*Enabled` flag (a
-  // client's sites always render), the rest mirror the same flags already
-  // gating their own tab above.
+  // Hero `StatStrip` counters (mapped to `StatStripItem[]` below) — Sites has
+  // no `*Enabled` flag (a client's sites always render), the rest mirror the
+  // same flags already gating their own tab above.
   const relationshipStats = [
     { key: "sites", label: "Sites", value: sites.length, show: true },
     { key: "assets", label: "Assets", value: assets.length, show: assetsEnabled },
@@ -315,24 +323,6 @@ export function ClientDetail({
 
   const rail = (
     <>
-      <Card>
-        <Stack gap="sm">
-          <Heading level={6}>Relationship</Heading>
-          <DefinitionList items={[{ label: "Client since", value: formatClientSinceDate(client.created_at) }]} />
-          <Separator />
-          <div className="ui-detail-rail-stats">
-            {relationshipStats.map((stat) => (
-              <div className="ui-detail-rail-stat" key={stat.key}>
-                <div className="ui-detail-rail-stat-value">{stat.value}</div>
-                <Text tone="muted" className="ui-detail-rail-stat-label">
-                  {stat.label}
-                </Text>
-              </div>
-            ))}
-          </div>
-        </Stack>
-      </Card>
-
       <Card>
         <Stack gap="sm">
           <Heading level={6}>Company</Heading>
@@ -418,9 +408,8 @@ export function ClientDetail({
 
   return (
     <Stack gap="lg">
-      <DetailHero
-        avatarLabel={client.name}
-        title={client.name}
+      <RecordHeroBand
+        title={<h1 className="ui-record-hero-band-title">{client.name}</h1>}
         meta={heroMeta}
         badges={
           <>
@@ -454,6 +443,7 @@ export function ClientDetail({
             </>
           ) : undefined
         }
+        stats={<StatStrip items={relationshipStats.map((stat): StatStripItem => ({ label: stat.label, value: stat.value }))} />}
       />
 
       <DetailLayout rail={rail}>
