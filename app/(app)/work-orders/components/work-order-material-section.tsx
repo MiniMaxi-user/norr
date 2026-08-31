@@ -101,19 +101,19 @@ export function WorkOrderMaterialSection({
               const canEditRow = canUpdateAny || (canUpdateOwn && row.created_by === currentUserId);
               return (
                 <RowCard key={row.id}>
-                  <div className="ui-work-order-row-main">
+                  <div className="ui-row-main">
                     <Text>{row.article?.description ?? "—"}</Text>
-                    <Text tone="muted" className="ui-work-order-article-number">
+                    <Text tone="muted" className="ui-row-code">
                       {row.article?.article_number}
                     </Text>
                   </div>
-                  <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
+                  <Text tone="muted" className="ui-row-mid ui-tabular-nums">
                     {row.quantity} × {formatCurrency(row.article?.sale_price ?? null)}
                   </Text>
-                  <Text className="ui-work-order-row-trailing ui-tabular-nums">
+                  <Text className="ui-row-trailing ui-tabular-nums">
                     {formatCurrency(row.quantity * (row.article?.sale_price ?? 0))}
                   </Text>
-                  <span className="ui-row-actions ui-work-order-row-actions">
+                  <span className="ui-row-actions ui-row-actions-reserved">
                     {canEditRow && (
                       <Button type="button" variant="outline" size="sm" aria-label="Edit" onClick={() => setEditingRow(row)}>
                         <Pencil />
@@ -130,7 +130,7 @@ export function WorkOrderMaterialSection({
             })}
           </Stack>
           <SummaryRow
-            className="ui-work-order-summary-row"
+            className="ui-summary-row-reserved"
             items={[{ label: "Total", value: formatCurrency(total), emphasis: "serif" }]}
           />
         </>

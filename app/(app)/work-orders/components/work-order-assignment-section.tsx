@@ -4,9 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Button,
+  Callout,
   Dialog,
   IconButton,
   Input,
+  KeyValueList,
+  type KeyValueListItem,
   Label,
   SectionHeader,
   Select,
@@ -74,6 +77,60 @@ export function WorkOrderAssignmentSection({
   const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
   const createdByMember = workOrder?.created_by ? memberById.get(workOrder.created_by) : undefined;
 
+  const assignmentItems: KeyValueListItem[] = [
+    {
+      key: "assigned-to",
+      label: "Assigned to",
+      value: <Text>{assignedMember ? memberDisplayName(assignedMember) : "Unassigned"}</Text>,
+    },
+    {
+      key: "scheduled-for",
+      label: "Scheduled for",
+      value: <Text>{draft.scheduledAt ? formatDateTime(draft.scheduledAt, { month: "long" }) : "—"}</Text>,
+    },
+    {
+      // Issue #106: the label always renders now — only the link itself is
+      // conditional. A work order with no source activity previously
+      // dropped this row entirely, which read as a missing fact rather than
+      // "not applicable"; a muted em dash (matching this list's other empty
+      // values, e.g. "Scheduled for" above) makes that explicit instead.
+      key: "from-activity",
+      label: "From activity",
+      value: workOrder?.source_activity_id ? (
+        // Activities has no single-record deep-link route yet (its own
+        // detail view is a client-side quick-view dialog opened from the
+        // list, not a URL) — `?activityId=...` gets threaded through to
+        // `ActivitiesTable`, which auto-opens that specific activity's
+        // panel on arrival (see that component's own doc comment), rather
+        // than just landing on the filtered list.
+        <Link href={`/activities?clientId=${workOrder.client_id}&activityId=${workOrder.source_activity_id}`}>
+          View activity
+        </Link>
+      ) : (
+        <Text tone="muted">—</Text>
+      ),
+    },
+  ];
+  if (mode === "edit" && workOrder) {
+    assignmentItems.push(
+      {
+        key: "created",
+        label: "Created",
+        value: (
+          <Text>
+            {formatDateTime(workOrder.created_at, { month: "long" })}
+            {createdByMember ? ` · ${memberDisplayName(createdByMember)}` : ""}
+          </Text>
+        ),
+      },
+      {
+        key: "last-modified",
+        label: "Last modified",
+        value: <Text>{formatDateTime(workOrder.updated_at, { month: "long" })}</Text>,
+      },
+    );
+  }
+
   return (
     <Stack gap="md">
       <SectionHeader
@@ -94,60 +151,9 @@ export function WorkOrderAssignmentSection({
         <Text tone="muted">No description yet.</Text>
       )}
 
-      {draft.notes && (
-        <div className="ui-work-order-callout">
-          <AlertTriangle />
-          <Text>{draft.notes}</Text>
-        </div>
-      )}
+      {draft.notes && <Callout icon={AlertTriangle}>{draft.notes}</Callout>}
 
-      <Stack className="ui-work-order-kv-list">
-        <div className="ui-work-order-kv-row">
-          <Text tone="muted">Assigned to</Text>
-          <Text>{assignedMember ? memberDisplayName(assignedMember) : "Unassigned"}</Text>
-        </div>
-        <div className="ui-work-order-kv-row">
-          <Text tone="muted">Scheduled for</Text>
-          <Text>{draft.scheduledAt ? formatDateTime(draft.scheduledAt, { month: "long" }) : "—"}</Text>
-        </div>
-        {/* Issue #106: the label always renders now — only the link itself is
-            conditional. A work order with no source activity previously
-            dropped this row entirely, which read as a missing fact rather
-            than "not applicable"; a muted em dash (matching this list's
-            other empty values, e.g. "Scheduled for" above) makes that
-            explicit instead. */}
-        <div className="ui-work-order-kv-row">
-          <Text tone="muted">From activity</Text>
-          {workOrder?.source_activity_id ? (
-            // Activities has no single-record deep-link route yet (its own
-            // detail view is a client-side quick-view dialog opened from the
-            // list, not a URL) — `?activityId=...` gets threaded through to
-            // `ActivitiesTable`, which auto-opens that specific activity's
-            // panel on arrival (see that component's own doc comment),
-            // rather than just landing on the filtered list.
-            <Link href={`/activities?clientId=${workOrder.client_id}&activityId=${workOrder.source_activity_id}`}>
-              View activity
-            </Link>
-          ) : (
-            <Text tone="muted">—</Text>
-          )}
-        </div>
-        {mode === "edit" && workOrder && (
-          <div className="ui-work-order-kv-row">
-            <Text tone="muted">Created</Text>
-            <Text>
-              {formatDateTime(workOrder.created_at, { month: "long" })}
-              {createdByMember ? ` · ${memberDisplayName(createdByMember)}` : ""}
-            </Text>
-          </div>
-        )}
-        {mode === "edit" && workOrder && (
-          <div className="ui-work-order-kv-row">
-            <Text tone="muted">Last modified</Text>
-            <Text>{formatDateTime(workOrder.updated_at, { month: "long" })}</Text>
-          </div>
-        )}
-      </Stack>
+      <KeyValueList items={assignmentItems} />
 
       {dialogOpen && (
         <WorkOrderAssignmentDialog

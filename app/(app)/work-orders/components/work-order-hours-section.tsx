@@ -131,18 +131,18 @@ export function WorkOrderHoursSection({
         <Badge variant={kind === "travel" ? "accent" : "success"}>
           {kind === "travel" ? "Travel" : (entry.time_entry_type?.label ?? "Work")}
         </Badge>
-        <Text className="ui-work-order-row-main">{memberDisplayName(memberById.get(entry.user_id))}</Text>
+        <Text className="ui-row-main">{memberDisplayName(memberById.get(entry.user_id))}</Text>
         {isRunning ? (
-          <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
+          <Text tone="muted" className="ui-row-mid ui-tabular-nums">
             {formatTimeOfDay(entry.started_at)} – now
           </Text>
         ) : (
-          <Text tone="muted" className="ui-work-order-row-mid ui-tabular-nums">
+          <Text tone="muted" className="ui-row-mid ui-tabular-nums">
             {formatTimeOfDay(entry.started_at)} – {formatTimeOfDay(entry.ended_at)}
           </Text>
         )}
         {!isRunning && (
-          <Text className="ui-work-order-row-trailing ui-tabular-nums">
+          <Text className="ui-row-trailing ui-tabular-nums">
             {formatHoursMinutes(elapsedMinutes(entry.started_at, entry.ended_at))}
           </Text>
         )}
@@ -151,7 +151,7 @@ export function WorkOrderHoursSection({
             Stop
           </Button>
         )}
-        <span className="ui-row-actions ui-work-order-row-actions">
+        <span className="ui-row-actions ui-row-actions-reserved">
           {canEditRow && (
             <IconEditButton onClick={() => setEditingEntry(entry)} />
           )}
@@ -199,7 +199,7 @@ export function WorkOrderHoursSection({
             {workEntries.map((entry) => renderRow(entry, "work"))}
           </Stack>
           <SummaryRow
-            className="ui-work-order-summary-row"
+            className="ui-summary-row-reserved"
             items={[
               { label: "Travel", value: formatHoursMinutes(travelMinutes) },
               { label: "Work", value: formatHoursMinutes(workMinutes) },

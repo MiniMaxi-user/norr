@@ -133,19 +133,17 @@ export function WorkOrderChecklistSection({
             <RowCard
               key={item.id}
               tone={item.is_checked ? "default" : "dashed"}
-              className="ui-work-order-checklist-row"
+              className="ui-checklist-row"
               onClick={canEditItems ? () => handleToggle(item) : undefined}
               role={canEditItems ? "button" : undefined}
             >
               <span
-                className={
-                  item.is_checked ? "ui-work-order-check ui-work-order-check-done" : "ui-work-order-check"
-                }
+                className={item.is_checked ? "ui-check ui-check-done" : "ui-check"}
                 aria-hidden="true"
               >
                 {item.is_checked ? "✓" : ""}
               </span>
-              <Text className="ui-work-order-checklist-label">{item.label}</Text>
+              <Text className="ui-checklist-row-label">{item.label}</Text>
               {item.is_required && <Badge variant="warning">Required</Badge>}
               <Text tone="muted">{item.is_checked ? formatTimeOfDay(item.checked_at) : "Open"}</Text>
             </RowCard>

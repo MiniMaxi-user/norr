@@ -1,30 +1,15 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Breadcrumbs, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
 import { getAsset } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
-import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
-import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
-import { formatDate } from "@/lib/format/date";
-import { AssetDetailActions } from "./asset-detail-actions";
+import { AssetDetail } from "./asset-detail";
 
 export const metadata = { title: "Asset details" };
 
 interface AssetDetailPageProps {
   params: Promise<{ id: string }>;
-}
-
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Stack gap="xs">
-      <Text tone="muted">{label}</Text>
-      <Text>{value}</Text>
-    </Stack>
-  );
 }
 
 export default async function AssetDetailPage({ params }: AssetDetailPageProps) {
@@ -59,42 +44,13 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
     canAny(actor, "activities", ["create", "create_own"]);
 
   return (
-    <Stack gap="lg">
-      <Breadcrumbs items={[{ label: "Assets", href: "/assets" }, { label: asset.name }]} />
-
-      <Toolbar>
-        <Toolbar.Section>
-          <Stack gap="xs">
-            <Heading level={1}>{asset.name}</Heading>
-            <Badge color={asset.asset_status?.color} variant="muted">
-              {asset.asset_status?.label ?? "—"}
-            </Badge>
-          </Stack>
-        </Toolbar.Section>
-        <Toolbar.Section align="end">
-          {canCreateActivityFromAsset && <CreateActivityButton assetId={asset.id} label="New activity" />}
-          <AssetDetailActions asset={asset} canEdit={canEdit} canDelete={canDelete} />
-        </Toolbar.Section>
-      </Toolbar>
-
-      <Card>
-        <Stack gap="md">
-          <DetailRow label="Type" value={asset.asset_type?.label ?? "—"} />
-          <DetailRow label="Sub-type" value={asset.asset_subtype?.label ?? "—"} />
-          <DetailRow label="Brand" value={asset.asset_brand?.label ?? "—"} />
-          <DetailRow label="Model" value={asset.asset_model?.name ?? "—"} />
-          <DetailRow label="External reference" value={asset.external_reference ?? "—"} />
-          <DetailRow label="Serial number" value={asset.serial_number ?? "—"} />
-          <DetailRow label="Installed on" value={formatDate(asset.installed_at, { month: "long" })} />
-          <DetailRow label="Warranty until" value={formatDate(asset.warranty_until, { month: "long" })} />
-          <DetailRow
-            label="Client"
-            value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
-          />
-          <DetailRow label="Site" value={site ? formatSiteAddressShort(site) ?? "Unknown site" : "Unknown site"} />
-          <DetailRow label="Notes" value={asset.notes ?? "—"} />
-        </Stack>
-      </Card>
-    </Stack>
+    <AssetDetail
+      asset={asset}
+      client={client}
+      site={site}
+      canEdit={canEdit}
+      canDelete={canDelete}
+      canCreateActivityFromAsset={canCreateActivityFromAsset}
+    />
   );
 }

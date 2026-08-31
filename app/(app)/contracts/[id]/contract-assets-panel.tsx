@@ -156,7 +156,13 @@ export function ContractAssetsPanel({
                   </option>
                 ))}
               </Select>
-              <Button type="button" variant="outline" onClick={handleLink} disabled={!selectedAssetId || isPending}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleLink}
+                disabled={!selectedAssetId || isPending}
+              >
                 {isPending ? "Linking…" : "Link asset"}
               </Button>
             </Inline>

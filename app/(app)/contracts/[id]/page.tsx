@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Breadcrumbs, Card, Heading, Stack, Text, Toolbar } from "@yourorg/ui";
+import { Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -9,10 +7,8 @@ import { getContract, listContractAssets } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listAssets } from "@/app/(app)/assets/actions";
-import { ContractDetailActions } from "./contract-detail-actions";
+import { ContractDetail } from "./contract-detail";
 import { ContractAssetsPanel } from "./contract-assets-panel";
-import { formatDate } from "@/lib/format/date";
-import { formatCurrency } from "@/lib/format/currency";
 
 export const metadata = { title: "Contract details" };
 
@@ -26,23 +22,15 @@ interface ContractDetailPageProps {
  * `app/(app)/work-orders/components/work-order-form.tsx`. */
 const ALL_CLIENT_ASSETS_LIMIT = 500;
 
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Stack gap="xs">
-      <Text tone="muted">{label}</Text>
-      <Text>{value}</Text>
-    </Stack>
-  );
-}
-
-
 /**
- * Contract detail page — same visual weight as the Client/Asset/Work Order
- * detail pages (docs/ARCHITECTURE.md "Relational detail pages"). Its
+ * Contract detail page — same visual pattern as the Client/Asset/Work Order
+ * detail pages (docs/ARCHITECTURE.md "Relational detail pages"): a full-bleed
+ * `RecordHeroBand`, a Client `RelationCard`, and a `KeyValueList` of the
+ * contract's own fields, all rendered by `ContractDetail` below. Its
  * `contract_assets` many-to-many link is surfaced in-context via
- * `ContractAssetsPanel` below the main fields Card — a compact list +
- * inline add/remove, not a separate full page (see that component's own
- * comment for why it's not wrapped in `Tabs`).
+ * `ContractAssetsPanel` below that — a compact list + inline add/remove, not
+ * a separate full page (see that component's own comment for why it's not
+ * wrapped in `Tabs`).
  */
 export default async function ContractDetailPage({ params }: ContractDetailPageProps) {
   const { id } = await params;
@@ -77,43 +65,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
 
   return (
     <Stack gap="lg">
-      <Breadcrumbs items={[{ label: "Contracts", href: "/contracts" }, { label: contract.name }]} />
-
-      <Toolbar>
-        <Toolbar.Section>
-          <Stack gap="xs">
-            <Heading level={1}>{contract.name}</Heading>
-            <Stack gap="xs">
-              <Badge color={contract.contract_type?.color} variant="muted">
-                {contract.contract_type?.label ?? "—"}
-              </Badge>
-              {contract.sla_tier && (
-                <Badge color={contract.sla_tier.color} variant="muted">
-                  {contract.sla_tier.label}
-                </Badge>
-              )}
-            </Stack>
-          </Stack>
-        </Toolbar.Section>
-        <Toolbar.Section align="end">
-          <ContractDetailActions contract={contract} canEdit={canEdit} canDelete={canDelete} />
-        </Toolbar.Section>
-      </Toolbar>
-
-      <Card>
-        <Stack gap="md">
-          <DetailRow
-            label="Client"
-            value={client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "Unknown client"}
-          />
-          <DetailRow label="Billing terms" value={contract.billing_terms?.label ?? "—"} />
-          <DetailRow label="Value" value={formatCurrency(contract.value)} />
-          <DetailRow label="Auto-renews" value={contract.auto_renew ? "Yes" : "No"} />
-          <DetailRow label="Start date" value={formatDate(contract.start_date, { month: "long" })} />
-          <DetailRow label="End date" value={formatDate(contract.end_date, { month: "long" })} />
-          <DetailRow label="Notes" value={contract.notes ?? "—"} />
-        </Stack>
-      </Card>
+      <ContractDetail contract={contract} client={client} canEdit={canEdit} canDelete={canDelete} />
 
       <ContractAssetsPanel
         contractId={contract.id}

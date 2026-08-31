@@ -460,7 +460,7 @@ export function QuoteLineItemsPanel({
             icon={<ClipboardList />}
             heading="No line items yet"
             text="Add the priced items that make up this quote."
-            action={canCreate ? <Button onClick={startAdd}>Add line item</Button> : undefined}
+            action={canCreate ? <Button size="sm" onClick={startAdd}>Add line item</Button> : undefined}
           />
         ) : (
           <>
@@ -559,7 +559,7 @@ export function QuoteLineItemsPanel({
 
             {canCreate && (
               <div>
-                <Button type="button" variant="outline" onClick={startAdd} disabled={draft !== null}>
+                <Button type="button" variant="outline" size="sm" onClick={startAdd} disabled={draft !== null}>
                   Add line item
                 </Button>
               </div>

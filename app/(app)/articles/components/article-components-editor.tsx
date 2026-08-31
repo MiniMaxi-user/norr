@@ -172,7 +172,7 @@ export function ArticleComponentsEditor({ parentArticleId, initialComponents }: 
         </Stack>
         <Stack gap="xs">
           <Label>&nbsp;</Label>
-          <Button type="button" variant="outline" onClick={handleAdd} disabled={adding || loadingCandidates}>
+          <Button type="button" variant="outline" size="sm" onClick={handleAdd} disabled={adding || loadingCandidates}>
             {adding ? "Adding…" : "Add component"}
           </Button>
         </Stack>
