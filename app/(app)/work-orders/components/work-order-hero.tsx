@@ -2,14 +2,12 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Avatar, Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
+import { Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
 import { CalendarDays, MapPin, Pencil } from "@yourorg/ui/icons";
 import type { WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
-import type { OrgMemberRecord } from "@/lib/members/actions";
-import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { formatDateTime } from "@/lib/format/date";
@@ -36,7 +34,6 @@ export interface WorkOrderHeroProps {
   };
   clients: ClientRecord[];
   lockedClientId?: string;
-  members: OrgMemberRecord[];
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
   readOnly?: boolean;
@@ -61,9 +58,9 @@ export interface WorkOrderHeroProps {
 /**
  * The full-bleed dark hero band + the Client/Site/Asset/Contract relation
  * cards at the top of the redesigned work order screen (issue #102, revised
- * by issue #103). `RecordHeroBand` (title/badges/meta/actions/assignee/
- * stats) is now a full-bleed sibling BEFORE any `Card` — see that
- * component's own doc comment for why it can no longer share a rounded
+ * by issue #103, further shortened by issue #106). `RecordHeroBand` (title/
+ * meta/actions/stats) is now a full-bleed sibling BEFORE any `Card` — see
+ * that component's own doc comment for why it can no longer share a rounded
  * `Card className="ui-card-flush-xl"` "sheet" with the relation cards the
  * way issue #102 originally had it. `WorkOrderRelationCards` now renders
  * directly on the page's own (normally padded) background instead — each of
@@ -78,9 +75,19 @@ export interface WorkOrderHeroProps {
  * a fragment, not a single wrapping element, so `WorkOrderScreen`'s own
  * `Stack` puts its usual gap between the two. Owns the two small popups
  * (`WorkOrderStatusPriorityDialog`/`WorkOrderRelationsDialog`) behind the
- * badges row's and the relation cards' own Edit buttons — everything else
- * (Hours/Material/Checklist/Assignment) is a sibling below this, assembled
- * by `WorkOrderScreen` itself.
+ * status/priority pencil and the relation cards' own Edit buttons —
+ * everything else (Hours/Material/Checklist/Assignment) is a sibling below
+ * this, assembled by `WorkOrderScreen` itself.
+ *
+ * *** Issue #106 *** shortened the band by folding the status/priority
+ * badges (+ their edit-pencil) that used to sit on their OWN row above the
+ * title into the same meta row as the site/scheduled-date facts (as the
+ * FIRST meta item) — one fewer row of vertical space, same click-to-edit
+ * popup behavior. It also removed the `assignee` block entirely: the
+ * assigned engineer now surfaces in `WorkOrderHoursSection` instead (closer
+ * to the hours actually being logged against them), and `actions`
+ * (Create Quote/Delete in edit mode) now occupies the hero's right column on
+ * its own rather than sharing it with the assignee underneath.
  *
  * No `recordLabel`/breadcrumb line and no `topRight` "Created …" line inside
  * the band (issue #103, items #1/#8): the page's own `Breadcrumbs` (Topbar)
@@ -99,7 +106,6 @@ export function WorkOrderHero({
   clientScoped,
   clients,
   lockedClientId,
-  members,
   statuses,
   priorities,
   readOnly,
@@ -114,14 +120,37 @@ export function WorkOrderHero({
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
 
-  const memberById = new Map(members.map((member) => [member.id, member]));
-  const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
-
   const resolvedSite =
     clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
     (draft.siteId && site?.id === draft.siteId ? site : null);
 
-  const meta: ReactNode[] = [];
+  // Issue #106 — status/priority (+ their edit-pencil) used to be their own
+  // `badges` row above the title; folded into the meta row as its own first
+  // item instead so the band ends up one row shorter, same edit-popup
+  // behavior underneath.
+  const meta: ReactNode[] = [
+    <span className="ui-record-hero-band-meta-badges" key="status-priority">
+      {mode === "edit" && workOrder ? (
+        <>
+          <Badge color={workOrder.work_order_status?.color} variant="muted">
+            {workOrder.work_order_status?.label ?? "—"}
+          </Badge>
+          {workOrder.work_order_priority && (
+            <Badge color={workOrder.work_order_priority.color} variant="muted">
+              {workOrder.work_order_priority.label}
+            </Badge>
+          )}
+        </>
+      ) : (
+        <Badge variant="accent">New</Badge>
+      )}
+      {!readOnly && (
+        <IconButton variant="ghost" aria-label="Edit status &amp; priority" onClick={() => setStatusOpen(true)}>
+          <Pencil />
+        </IconButton>
+      )}
+    </span>,
+  ];
   if (resolvedSite) {
     meta.push(
       <>
@@ -140,29 +169,6 @@ export function WorkOrderHero({
   return (
     <>
       <RecordHeroBand
-        badges={
-          <>
-            {mode === "edit" && workOrder ? (
-              <>
-                <Badge color={workOrder.work_order_status?.color} variant="muted">
-                  {workOrder.work_order_status?.label ?? "—"}
-                </Badge>
-                {workOrder.work_order_priority && (
-                  <Badge color={workOrder.work_order_priority.color} variant="muted">
-                    {workOrder.work_order_priority.label}
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <Badge variant="accent">New</Badge>
-            )}
-            {!readOnly && (
-              <IconButton variant="ghost" aria-label="Edit status &amp; priority" onClick={() => setStatusOpen(true)}>
-                <Pencil />
-              </IconButton>
-            )}
-          </>
-        }
         title={
           readOnly ? (
             <h1 className="ui-record-hero-band-title">{draft.title || "Untitled work order"}</h1>
@@ -179,17 +185,6 @@ export function WorkOrderHero({
         }
         meta={meta}
         actions={actions}
-        assignee={
-          assignedMember ? (
-            <>
-              <Avatar name={memberDisplayName(assignedMember)} />
-              <span className="ui-record-hero-band-assignee-name">
-                <strong>{memberDisplayName(assignedMember)}</strong>
-                <span>Assigned engineer</span>
-              </span>
-            </>
-          ) : undefined
-        }
         stats={<StatStrip items={stats} />}
       />
 

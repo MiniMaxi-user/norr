@@ -57,7 +57,7 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
           {workOrdersResult.data ? `${workOrdersResult.data.count} work order${workOrdersResult.data.count === 1 ? "" : "s"}` : ""}
         </Text>
       </Toolbar.Section>
-      <Toolbar.Section align="end">{canCreate && <CreateWorkOrderButton />}</Toolbar.Section>
+      <Toolbar.Section align="end">{canCreate && <CreateWorkOrderButton clients={clients} />}</Toolbar.Section>
     </Toolbar>
   );
 

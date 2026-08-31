@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { FormGrid, RelationCard } from "@yourorg/ui";
+import { FormGrid, RelationCard, Stack, Text } from "@yourorg/ui";
 import { Boxes, Building2, FileText, MapPin } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
@@ -10,6 +11,17 @@ import { formatSiteAddress } from "@/app/(app)/clients/format-site-address";
 import { formatCurrency } from "@/lib/format/currency";
 import { formatDate } from "@/lib/format/date";
 import type { WorkOrderDraft } from "./work-order-draft";
+
+/** One "Label value" line inside a `RelationCard`'s hover-expanded detail —
+ * shared by all four cards below so the expanded panels read consistently. */
+function ExpandRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="ui-relation-card-expand-row">
+      <Text tone="muted">{label}</Text>
+      <Text>{value}</Text>
+    </div>
+  );
+}
 
 export interface WorkOrderRelationCardsProps {
   draft: WorkOrderDraft;
@@ -88,6 +100,66 @@ export function WorkOrderRelationCards({
     ? [resolvedContract.contract_type?.label, formatCurrency(resolvedContract.value)].filter(Boolean).join(" · ")
     : "";
 
+  // Issue #106 — the Site relation card has no detail page of its own (sites
+  // are a dialog-editable sub-panel of a Client, see `sites-panel.tsx`), so
+  // its "detail page" is the Client's own Sites tab — same deep-link-to-a-
+  // filtered/tabbed-parent-view pattern `WorkOrderAssignmentSection`'s "From
+  // activity" row already uses for Activities' own missing detail route.
+  const siteClientId = resolvedClient?.id ?? draft.clientId;
+
+  // Issue #106 — per-card hover-expand detail, built ONLY from fields already
+  // fetched for this page (`resolvedClient`/`resolvedSite`/`resolvedAsset`/
+  // `resolvedContract` above) — no new queries. A client's own email/phone
+  // were dropped from `ClientRecord` entirely (issue #43: email now only
+  // lives on `Contact` rows; phone moved to `sites`), so the Client panel
+  // below surfaces the business identifiers that DO still live on the record
+  // (KvK/VAT/IBAN) plus its notes, rather than fields that don't exist here.
+  const clientExpanded = resolvedClient ? (
+    <Stack gap="xs">
+      <ExpandRow label="KvK" value={resolvedClient.kvk_number || "—"} />
+      <ExpandRow label="VAT" value={resolvedClient.vat_number || "—"} />
+      <ExpandRow label="IBAN" value={resolvedClient.iban || "—"} />
+      {resolvedClient.notes && <ExpandRow label="Notes" value={resolvedClient.notes} />}
+    </Stack>
+  ) : undefined;
+
+  const siteExpanded = resolvedSite ? (
+    <Stack gap="xs">
+      <ExpandRow label="Address" value={formatSiteAddress(resolvedSite) ?? "Unnamed site"} />
+      <ExpandRow label="Phone" value={resolvedSite.phone || "—"} />
+      <ExpandRow
+        label="Used for"
+        value={
+          [
+            resolvedSite.is_visit_address && "Visit",
+            resolvedSite.is_invoice_address && "Invoice",
+            resolvedSite.is_delivery_address && "Delivery",
+          ]
+            .filter(Boolean)
+            .join(", ") || "—"
+        }
+      />
+    </Stack>
+  ) : undefined;
+
+  const assetExpanded = resolvedAsset ? (
+    <Stack gap="xs">
+      <ExpandRow label="Serial number" value={resolvedAsset.serial_number || "—"} />
+      <ExpandRow label="Type" value={resolvedAsset.asset_type?.label || "—"} />
+      <ExpandRow label="Sub-type" value={resolvedAsset.asset_subtype?.label || "—"} />
+      <ExpandRow label="Status" value={resolvedAsset.asset_status?.label || "—"} />
+    </Stack>
+  ) : undefined;
+
+  const contractExpanded = resolvedContract ? (
+    <Stack gap="xs">
+      <ExpandRow label="Type" value={resolvedContract.contract_type?.label || "—"} />
+      <ExpandRow label="Start date" value={formatDate(resolvedContract.start_date)} />
+      <ExpandRow label="End date" value={formatDate(resolvedContract.end_date)} />
+      <ExpandRow label="Value" value={resolvedContract.value != null ? formatCurrency(resolvedContract.value) : "—"} />
+    </Stack>
+  ) : undefined;
+
   return (
     <FormGrid columns={4}>
       <RelationCard
@@ -103,15 +175,25 @@ export function WorkOrderRelationCards({
         subtitle={clientFacts || undefined}
         emptyText="No client selected yet"
         onEdit={readOnly ? undefined : onEdit}
+        expandedContent={clientExpanded}
       />
       <RelationCard
         icon={MapPin}
         label="Site"
         loading={clientScoped.loadingSites && Boolean(draft.siteId) && !resolvedSite}
-        title={resolvedSite ? formatSiteAddress(resolvedSite) ?? "Unnamed site" : undefined}
+        title={
+          resolvedSite ? (
+            siteClientId ? (
+              <Link href={`/clients/${siteClientId}?tab=sites`}>{formatSiteAddress(resolvedSite) ?? "Unnamed site"}</Link>
+            ) : (
+              (formatSiteAddress(resolvedSite) ?? "Unnamed site")
+            )
+          ) : undefined
+        }
         subtitle={resolvedSite?.is_primary ? "Primary" : undefined}
         emptyText="No specific site"
         onEdit={readOnly ? undefined : onEdit}
+        expandedContent={siteExpanded}
       />
       <RelationCard
         icon={Boxes}
@@ -121,6 +203,7 @@ export function WorkOrderRelationCards({
         subtitle={assetFacts || undefined}
         emptyText="No specific asset"
         onEdit={readOnly ? undefined : onEdit}
+        expandedContent={assetExpanded}
       />
       <RelationCard
         icon={FileText}
@@ -136,6 +219,7 @@ export function WorkOrderRelationCards({
         }
         emptyText="No contract"
         onEdit={readOnly ? undefined : onEdit}
+        expandedContent={contractExpanded}
       />
     </FormGrid>
   );

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Dialog, Label, Select, Stack, Text } from "@yourorg/ui";
+import { Button, Dialog, Stack, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
-import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { WorkOrderDraft } from "./work-order-draft";
+import { useRelationCascade } from "./use-relation-cascade";
+import { WorkOrderRelationFields } from "./work-order-relation-fields";
 
 export interface WorkOrderRelationsDialogProps {
   open: boolean;
@@ -40,7 +41,11 @@ export interface WorkOrderRelationsDialogProps {
  * Client -> Site -> Asset + Contract, same cascade `WorkOrderFields` used to
  * own inline (client change resets site/asset/contract; site/asset stay
  * filtered to the selected client; asset re-filters to the selected site
- * when one is chosen) — ported here, not reimplemented.
+ * when one is chosen). The cascade state/reset rules live in
+ * `useRelationCascade` and the field markup in `WorkOrderRelationFields`
+ * (both `./`, issue #106) — shared with `NewWorkOrderPickerDialog` rather
+ * than reimplemented per popup; this component just supplies the Dialog
+ * chrome and the "commit to an existing draft/work order" save behavior.
  */
 export function WorkOrderRelationsDialog({
   open,
@@ -52,28 +57,10 @@ export function WorkOrderRelationsDialog({
   onClientChange,
   onSave,
 }: WorkOrderRelationsDialogProps) {
-  const [clientId, setClientId] = useState(draft.clientId);
-  const [siteId, setSiteId] = useState(draft.siteId);
-  const [assetId, setAssetId] = useState(draft.assetId);
-  const [contractId, setContractId] = useState(draft.contractId);
+  const { clientId, siteId, assetId, contractId, setAssetId, setContractId, handleClientChange, handleSiteChange } =
+    useRelationCascade(draft, clientScoped.assets, onClientChange);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function handleClientChange(nextClientId: string) {
-    setClientId(nextClientId);
-    setSiteId("");
-    setAssetId("");
-    setContractId("");
-    onClientChange(nextClientId);
-  }
-
-  function handleSiteChange(nextSiteId: string) {
-    setSiteId(nextSiteId);
-    const selectedAsset = clientScoped.assets.find((candidate) => candidate.id === assetId);
-    if (nextSiteId && selectedAsset && selectedAsset.site_id !== nextSiteId) {
-      setAssetId("");
-    }
-  }
 
   async function handleSave() {
     if (!clientId) {
@@ -91,10 +78,6 @@ export function WorkOrderRelationsDialog({
     onOpenChange(false);
   }
 
-  const filteredAssets = siteId
-    ? clientScoped.assets.filter((candidate) => candidate.site_id === siteId)
-    : clientScoped.assets;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="sm">
       <Dialog.Header>
@@ -103,90 +86,19 @@ export function WorkOrderRelationsDialog({
       <Dialog.Body>
         <Stack gap="md">
           {error && <Text tone="danger">{error}</Text>}
-
-          {!lockedClientId && (
-            <Stack gap="sm">
-              <Label htmlFor="wo-rel-client">Client</Label>
-              <Select
-                id="wo-rel-client"
-                value={clientId}
-                onChange={(event) => handleClientChange(event.target.value)}
-                required
-              >
-                <option value="" disabled>
-                  Select a client…
-                </option>
-                {clients.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </Select>
-            </Stack>
-          )}
-
-          <Stack gap="sm">
-            <Label htmlFor="wo-rel-site">Site</Label>
-            <Select
-              id="wo-rel-site"
-              value={siteId}
-              onChange={(event) => handleSiteChange(event.target.value)}
-              disabled={!clientId || clientScoped.loadingSites}
-            >
-              <option value="">{clientScoped.loadingSites ? "Loading sites…" : "No specific site"}</option>
-              {clientScoped.sites.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {formatSiteAddressShort(candidate) ?? "Unnamed site"}
-                </option>
-              ))}
-            </Select>
-          </Stack>
-
-          <Stack gap="sm">
-            <Label htmlFor="wo-rel-asset">Asset</Label>
-            <Select
-              id="wo-rel-asset"
-              value={assetId}
-              onChange={(event) => setAssetId(event.target.value)}
-              disabled={!clientId || clientScoped.loadingAssets}
-            >
-              <option value="">
-                {!clientId
-                  ? "Select a client first…"
-                  : clientScoped.loadingAssets
-                    ? "Loading assets…"
-                    : "No specific asset"}
-              </option>
-              {filteredAssets.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </Select>
-          </Stack>
-
-          <Stack gap="sm">
-            <Label htmlFor="wo-rel-contract">Contract</Label>
-            <Select
-              id="wo-rel-contract"
-              value={contractId}
-              onChange={(event) => setContractId(event.target.value)}
-              disabled={!clientId || clientScoped.loadingContracts}
-            >
-              <option value="">
-                {!clientId
-                  ? "Select a client first…"
-                  : clientScoped.loadingContracts
-                    ? "Loading contracts…"
-                    : "No contract"}
-              </option>
-              {clientScoped.contracts.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </Select>
-          </Stack>
+          <WorkOrderRelationFields
+            clientId={clientId}
+            siteId={siteId}
+            assetId={assetId}
+            contractId={contractId}
+            clients={clients}
+            lockedClientId={lockedClientId}
+            clientScoped={clientScoped}
+            onClientChange={handleClientChange}
+            onSiteChange={handleSiteChange}
+            onAssetChange={setAssetId}
+            onContractChange={setContractId}
+          />
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>

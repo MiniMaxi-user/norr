@@ -3511,7 +3511,7 @@ select.ui-client-card-status-select {
   color: #fff;
   letter-spacing: -0.01em;
   line-height: 1.15;
-  max-width: 26ch;
+  max-width: 52ch;
 }
 /* An `<input>` standing in for the static heading above (edit/create mode) —
    same visual output, zero input chrome, PLUS a dashed underline that's
@@ -3524,7 +3524,7 @@ select.ui-client-card-status-select {
 .ui-record-hero-band-title-input {
   display: block;
   width: 100%;
-  max-width: 26ch;
+  max-width: 52ch;
   border: none;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
   border-radius: var(--ui-radius-sm);
@@ -3568,6 +3568,17 @@ select.ui-client-card-status-select {
 }
 .ui-record-hero-band-meta-item svg {
   flex-shrink: 0;
+}
+/* Groups a status/priority `Badge` pair (plus their edit-pencil `IconButton`)
+   as one meta-row item (issue #106 — "shorten the blue bar": status/priority
+   used to sit on their own row above the meta line; folding them into the
+   same flex-wrapping meta row instead removes that whole extra row). Plain
+   layout glue, not a badge restyle — `Badge`/`IconButton` keep their own
+   look. */
+.ui-record-hero-band-meta-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .ui-record-hero-band-right {
   display: flex;
@@ -3714,6 +3725,66 @@ a.ui-relation-card-title:hover {
 .ui-relation-card-empty {
   font-size: 0.8125rem;
   color: var(--ui-muted-subtle);
+}
+
+/* Hover-to-expand affordance (issue #106) — a small chevron in the card's
+   bottom-right corner; hovering (or focusing) anything inside the card
+   smoothly reveals `expandedContent` via a `grid-template-rows: 0fr -> 1fr`
+   transition. This avoids animating to/from `height: auto` (which can't be
+   transitioned directly) without needing to measure content height in JS —
+   same "plain CSS, no dependency" approach as `Tooltip`. */
+.ui-relation-card-expandable {
+  position: relative;
+  padding-bottom: 1.625rem;
+}
+.ui-relation-card-expand-icon {
+  position: absolute;
+  right: 0.625rem;
+  bottom: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ui-muted-subtle);
+  transition: transform var(--ui-duration-base) var(--ui-ease), color var(--ui-duration-base) var(--ui-ease);
+  pointer-events: none;
+}
+.ui-relation-card-expand-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+.ui-relation-card-expandable:hover .ui-relation-card-expand-icon,
+.ui-relation-card-expandable:focus-within .ui-relation-card-expand-icon {
+  color: var(--ui-accent-strong);
+  transform: rotate(180deg);
+}
+.ui-relation-card-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--ui-duration-slow) var(--ui-ease);
+}
+.ui-relation-card-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.ui-relation-card-expandable:hover .ui-relation-card-expand,
+.ui-relation-card-expandable:focus-within .ui-relation-card-expand {
+  grid-template-rows: 1fr;
+}
+.ui-relation-card-expand-inner > * {
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--ui-border);
+}
+/* A single "Label value" line inside a `RelationCard`'s expanded panel — see
+   `work-order-relation-cards.tsx`'s `ExpandRow` helper, the first caller. */
+.ui-relation-card-expand-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78125rem;
 }
 
 /* ---------------------------------------------------------------------- *

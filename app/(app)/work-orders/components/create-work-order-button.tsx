@@ -1,31 +1,51 @@
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
 import { Button } from "@yourorg/ui";
+import type { ClientRecord } from "@/app/(app)/clients/actions";
+import { NewWorkOrderPickerDialog } from "./new-work-order-picker-dialog";
 
 export interface CreateWorkOrderButtonProps {
-  /** Pre-scopes the create page to a single client (`/work-orders/new?clientId=...`)
-   * — same `lockedClientId` shape as `CreateAssetButton`, for a future
+  /** Pre-scopes the picker (and the create page it hands off to) to a single
+   * client — same `lockedClientId` shape as `CreateAssetButton`, for a future
    * client-scoped "New work order" entry point. */
   clientId?: string;
   label?: string;
+  /** Every client in scope for the picker's own Client `<Select>` —
+   * `work-orders-screen.tsx`'s already-fetched `clients` list. Omitted
+   * (defaults to empty) when `clientId` is set, since the picker hides that
+   * field entirely once locked to a single client. */
+  clients?: ClientRecord[];
 }
 
 /**
- * Owner/planner "New work order" trigger — navigates to the full-page create
- * form (`/work-orders/new`, docs/ARCHITECTURE.md "Popup vs. full page — pick
- * by weight, not habit") rather than opening a `Dialog`. Rendered only when
- * `can(actor, "planning", "create")` — an engineer never sees this, matching
- * `createWorkOrder`'s own RBAC gate.
+ * Owner/planner "New work order" trigger — rendered only when
+ * `can(actor, "planning", "create")` (an engineer never sees this, matching
+ * `createWorkOrder`'s own RBAC gate), same as before.
+ *
+ * *** Issue #106 *** changed this from a plain `<Link>` straight to
+ * `/work-orders/new` into a button that first opens `NewWorkOrderPickerDialog`
+ * — a small popup collecting Client/Site/Asset (required) + Contract
+ * (optional) via the exact same cascade `WorkOrderRelationsDialog` uses. That
+ * popup doesn't persist anything itself; on "Continue" it navigates to
+ * `/work-orders/new?clientId=&siteId=&assetId=&contractId=`, which is still
+ * the real full-page create form (docs/ARCHITECTURE.md "Popup vs. full
+ * page" — Work Orders stays a top-level module's own record, never a
+ * `Dialog` create/edit surface) — this popup's whole job is only to gather
+ * the mandatory relations before dropping the user into that unchanged
+ * screen for the actual Save.
  */
-export function CreateWorkOrderButton({ clientId, label }: CreateWorkOrderButtonProps) {
-  const params = new URLSearchParams();
-  if (clientId) params.set("clientId", clientId);
-  const query = params.toString();
+export function CreateWorkOrderButton({ clientId, label, clients = [] }: CreateWorkOrderButtonProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
-    <Link href={query ? `/work-orders/new?${query}` : "/work-orders/new"}>
-      <Button type="button" variant="primary">
+    <>
+      <Button type="button" variant="primary" onClick={() => setPickerOpen(true)}>
         {label ?? "New work order"}
       </Button>
-    </Link>
+      {pickerOpen && (
+        <NewWorkOrderPickerDialog open onOpenChange={setPickerOpen} clients={clients} lockedClientId={clientId} />
+      )}
+    </>
   );
 }

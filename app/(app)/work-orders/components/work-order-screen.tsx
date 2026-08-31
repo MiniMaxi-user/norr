@@ -59,6 +59,10 @@ export interface WorkOrderScreenProps {
   initialClientId?: string;
   initialSiteId?: string;
   initialAssetId?: string;
+  /** Issue #106 — pre-fill from the new Overview "New work order" picker
+   * dialog, which lets the contract be chosen up front alongside client/
+   * site/asset. */
+  initialContractId?: string;
   /** Same activity pre-fill as `initialClientId` — the activity's own
    * `description`, so `mode: "create"` doesn't start fully blank. */
   initialDescription?: string;
@@ -165,6 +169,7 @@ export function WorkOrderScreen({
   initialClientId,
   initialSiteId,
   initialAssetId,
+  initialContractId,
   initialDescription,
   initialTitle,
   initialAssignedTo,
@@ -210,6 +215,7 @@ export function WorkOrderScreen({
           initialClientId,
           initialSiteId,
           initialAssetId,
+          initialContractId,
           initialDescription,
           initialTitle,
           initialAssignedTo,
@@ -364,7 +370,6 @@ export function WorkOrderScreen({
         clientScoped={clientScoped}
         clients={clients}
         lockedClientId={lockedClientId}
-        members={members}
         statuses={statuses}
         priorities={priorities}
         readOnly={readOnly}

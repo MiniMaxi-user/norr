@@ -50,6 +50,10 @@ export function emptyDraft(options: {
   initialClientId?: string;
   initialSiteId?: string;
   initialAssetId?: string;
+  /** Issue #106 — pre-fill from the new Overview "New work order" picker
+   * dialog, which lets the contract be chosen up front alongside client/
+   * site/asset. */
+  initialContractId?: string;
   /** Same "known on the source activity" pre-fill as `initialClientId` —
    * the activity's own `description`, so the work order doesn't start
    * completely blank when created from one. */
@@ -69,7 +73,7 @@ export function emptyDraft(options: {
     clientId: options.lockedClientId ?? options.initialClientId ?? "",
     siteId: options.initialSiteId ?? "",
     assetId: options.initialAssetId ?? "",
-    contractId: "",
+    contractId: options.initialContractId ?? "",
     assignedTo: options.initialAssignedTo ?? "",
     scheduledAt: "",
     statusId: "",

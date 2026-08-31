@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cx } from "../cx";
 import type { Icon } from "../icons";
-import { Pencil } from "../icons";
+import { ChevronDown, Pencil } from "../icons";
 import { Card } from "./card";
 import { IconButton } from "./button";
 
@@ -27,6 +27,14 @@ export interface RelationCardProps {
    * "never render an affordance RLS would just reject" convention. */
   onEdit?: () => void;
   editLabel?: string;
+  /** Extra detail revealed on hover (issue #106) — a small chevron affordance
+   * renders in the card's bottom-right corner; hovering (or keyboard-
+   * focusing anything inside, e.g. the Edit button) the card smoothly
+   * expands to reveal this section via a pure-CSS grid-rows transition — no
+   * JS state, no layout jank, matching this design system's `Tooltip`
+   * "CSS-only hover" convention. Omit for a card with nothing further to
+   * show. */
+  expandedContent?: ReactNode;
   className?: string;
 }
 
@@ -37,6 +45,9 @@ export interface RelationCardProps {
  * Contract cards, each individually re-pickable via its own Edit button).
  * Generic enough for any top-level entity's own "related record" summary
  * card, not work-order-specific.
+ *
+ * Issue #106 added `expandedContent` — an optional hover-expand panel, see
+ * that prop's own doc comment.
  */
 export function RelationCard({
   icon: IconComp,
@@ -47,10 +58,11 @@ export function RelationCard({
   emptyText = "Not set",
   onEdit,
   editLabel = "Edit",
+  expandedContent,
   className,
 }: RelationCardProps) {
   return (
-    <Card className={cx("ui-relation-card", className)}>
+    <Card className={cx("ui-relation-card", expandedContent ? "ui-relation-card-expandable" : undefined, className)}>
       <div className="ui-relation-card-head">
         <span className="ui-relation-card-eyebrow">
           <IconComp />
@@ -71,6 +83,16 @@ export function RelationCard({
         </div>
       ) : (
         <span className="ui-relation-card-empty">{emptyText}</span>
+      )}
+      {expandedContent && (
+        <>
+          <div className="ui-relation-card-expand">
+            <div className="ui-relation-card-expand-inner">{expandedContent}</div>
+          </div>
+          <span className="ui-relation-card-expand-icon" aria-hidden="true">
+            <ChevronDown />
+          </span>
+        </>
       )}
     </Card>
   );

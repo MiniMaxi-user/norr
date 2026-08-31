@@ -43,19 +43,28 @@ const ALL_CLIENT_ACTIVITIES_LIMIT = 500;
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `?tab=sites` etc. (issue #106) — deep-links straight to a tab, e.g. from
+   * a Work Order's Site relation card (which has no detail page of its own,
+   * see `work-order-relation-cards.tsx`'s own doc comment). Takes priority
+   * over the last-used-view cookie below when present and valid, since an
+   * explicit link is a stronger signal of intent than "whatever tab this
+   * user happened to leave open last time". */
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { id } = await params;
+  const { tab } = await searchParams;
 
   return (
     <Suspense fallback={<ClientDetailSkeleton />}>
-      <ClientDetailContent id={id} />
+      <ClientDetailContent id={id} requestedTabParam={tab} />
     </Suspense>
   );
 }
 
-async function ClientDetailContent({ id }: { id: string }) {
+async function ClientDetailContent({ id, requestedTabParam }: { id: string; requestedTabParam?: string }) {
   const session = await requireSession();
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
 
@@ -203,25 +212,35 @@ async function ClientDetailContent({ id }: { id: string }) {
       )
     : null;
 
-  const requestedTab = lastUsedTab as ClientDetailTab | null;
-  const defaultTab: ClientDetailTab =
-    requestedTab === "assets" && assetsModuleVisible
-      ? "assets"
-      : requestedTab === "contacts"
-        ? "contacts"
-        : requestedTab === "workOrders" && workOrdersModuleVisible
-          ? "workOrders"
-          : requestedTab === "contracts" && contractsModuleVisible
-            ? "contracts"
-            : requestedTab === "quotes" && quotesModuleVisible
-              ? "quotes"
-              : requestedTab === "activities" && activitiesModuleVisible
-                ? "activities"
-                : requestedTab === "access" && tenantAccessVisible
-                  ? "access"
-                  : requestedTab === "modules" && tenantAccessVisible
-                    ? "modules"
-                    : "sites";
+  // Issue #106 — `?tab=...` (e.g. a Work Order's Site relation card deep-
+  // linking here) wins over the last-used-view cookie when it names a real,
+  // currently-visible tab; an unrecognized/not-entitled value falls through
+  // to the cookie exactly like an unrecognized cookie value already did.
+  function resolveTab(candidate: string | null | undefined): ClientDetailTab | null {
+    switch (candidate) {
+      case "assets":
+        return assetsModuleVisible ? "assets" : null;
+      case "contacts":
+        return "contacts";
+      case "workOrders":
+        return workOrdersModuleVisible ? "workOrders" : null;
+      case "contracts":
+        return contractsModuleVisible ? "contracts" : null;
+      case "quotes":
+        return quotesModuleVisible ? "quotes" : null;
+      case "activities":
+        return activitiesModuleVisible ? "activities" : null;
+      case "access":
+        return tenantAccessVisible ? "access" : null;
+      case "modules":
+        return tenantAccessVisible ? "modules" : null;
+      case "sites":
+        return "sites";
+      default:
+        return null;
+    }
+  }
+  const defaultTab: ClientDetailTab = resolveTab(requestedTabParam) ?? resolveTab(lastUsedTab) ?? "sites";
 
   return (
     <ClientDetail

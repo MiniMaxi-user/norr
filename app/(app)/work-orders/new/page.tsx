@@ -1,17 +1,25 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
+import { getAsset } from "@/app/(app)/assets/actions";
 import { getActivity } from "@/app/(app)/activities/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
+import { createWorkOrder } from "../actions";
 import { WorkOrderScreen } from "../components/work-order-screen";
 
 export const metadata = { title: "New Work Order" };
 
 interface NewWorkOrderPageProps {
-  searchParams: Promise<{ clientId?: string; siteId?: string; assetId?: string; activityId?: string }>;
+  searchParams: Promise<{
+    clientId?: string;
+    siteId?: string;
+    assetId?: string;
+    contractId?: string;
+    activityId?: string;
+  }>;
 }
 
 /**
@@ -45,6 +53,26 @@ interface NewWorkOrderPageProps {
  * directly to `WorkOrderDraft.assignedTo` (both are `users.id`, same id-space
  * `OrgMemberRecord.id` already uses).
  *
+ * *** Issue #106 (site carry-over + auto-save from an Activity) ***
+ * `ActivityRecord` has no `site_id` of its own (see above) — when the
+ * activity has an `asset_id`, the resolved `AssetRecord.site_id` (always
+ * non-null) is used as the transitive source instead, fetched via the same
+ * `getAsset` action `[id]/page.tsx` already uses to resolve a work order's
+ * own asset. An explicit `?siteId=...` query param still wins over this
+ * inferred value, same precedence `assetId` already had over the activity's
+ * own asset.
+ *
+ * When arriving via `?activityId=...` and client/site/asset/title all
+ * resolve (see `resolvedClientId`/`resolvedAssetId`/`resolvedSiteId` below),
+ * the work order is created immediately server-side (the exact same
+ * `createWorkOrder` action + RBAC gate `WorkOrderScreen`'s manual "Create
+ * work order" button uses) and this route redirects straight to
+ * `/work-orders/{id}` — skipping the manual review/save step, since every
+ * required field the manual screen would otherwise need a click to persist
+ * is already known. Anything short of that (no asset on the activity, so no
+ * site to infer; or the create call itself fails) falls through to today's
+ * manual create screen unchanged.
+ *
  * Gated on `can(actor, "planning", "create")` — owner/planner only, matching
  * `createWorkOrder`'s own RBAC check (and the RLS INSERT policy) exactly, so
  * an engineer never sees this route resolve at all.
@@ -63,7 +91,7 @@ interface NewWorkOrderPageProps {
  * longer visibly changes shape when it does.
  */
 export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPageProps) {
-  const { clientId, siteId, assetId, activityId } = await searchParams;
+  const { clientId, siteId, assetId, contractId, activityId } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -94,6 +122,46 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   const priorities = prioritiesResult.data?.items ?? [];
   const members = membersResult.data?.members ?? [];
 
+  // Issue #106, Task 1 — an activity has no `site_id` of its own; when it has
+  // an `asset_id`, fetch the full asset (same `getAsset` action
+  // `[id]/page.tsx` already uses) to carry its `site_id` over transitively.
+  // An explicit `?assetId=...`/`?siteId=...` query param still wins over the
+  // activity's own asset/inferred site, same precedence `initialAssetId`
+  // already had.
+  const resolvedAssetId = assetId ?? activity?.asset_id ?? undefined;
+  const assetResult = resolvedAssetId ? await getAsset(resolvedAssetId) : null;
+  const resolvedAsset = assetResult?.data?.asset ?? null;
+  const resolvedSiteId = siteId ?? resolvedAsset?.site_id ?? undefined;
+
+  // Issue #106, Task 2 — arriving via `?activityId=...` with client/site/
+  // asset/title all resolved skips the manual review/save step entirely: the
+  // work order is created immediately (through the same `createWorkOrder`
+  // action + RBAC gate the manual "Create work order" button uses) and this
+  // route redirects straight to the real detail page. Anything short of a
+  // full resolve (most commonly: the activity has no `asset_id`, so no site
+  // can be inferred) falls through to today's manual create screen below.
+  if (activity) {
+    const resolvedClientId = lockedClient?.id ?? activity.client_id;
+    const resolvedTitle = activity.activity_type?.label;
+    if (resolvedClientId && resolvedAssetId && resolvedSiteId && resolvedTitle) {
+      const createResult = await createWorkOrder({
+        clientId: resolvedClientId,
+        siteId: resolvedSiteId,
+        assetId: resolvedAssetId,
+        sourceActivityId: activity.id,
+        title: resolvedTitle,
+        description: activity.description || undefined,
+        assignedTo: activity.action_holder_id || undefined,
+      });
+      if (createResult.data) {
+        redirect(`/work-orders/${createResult.data.workOrder.id}`);
+      }
+      // Falls through to the manual create screen below on failure (e.g. a
+      // DB-trigger relation check this route doesn't itself re-validate) —
+      // no forced save with data the user hasn't seen yet.
+    }
+  }
+
   const breadcrumbItems = lockedClient
     ? [
         { label: "Clients", href: "/clients" },
@@ -112,8 +180,9 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       client={lockedClient}
       lockedClientId={lockedClient?.id}
       initialClientId={activity?.client_id}
-      initialSiteId={siteId}
-      initialAssetId={assetId ?? activity?.asset_id ?? undefined}
+      initialSiteId={resolvedSiteId}
+      initialAssetId={resolvedAssetId}
+      initialContractId={contractId}
       initialDescription={activity?.description}
       initialTitle={activity?.activity_type?.label}
       initialAssignedTo={activity?.action_holder_id}

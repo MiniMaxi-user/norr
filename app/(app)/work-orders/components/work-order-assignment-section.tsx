@@ -110,17 +110,25 @@ export function WorkOrderAssignmentSection({
           <Text tone="muted">Scheduled for</Text>
           <Text>{draft.scheduledAt ? formatDateTime(draft.scheduledAt, { month: "long" }) : "—"}</Text>
         </div>
-        {workOrder?.source_activity_id && (
-          <div className="ui-work-order-kv-row">
-            <Text tone="muted">From activity</Text>
-            {/* Activities has no single-record deep-link route yet (its own
-                detail view is a client-side quick-view dialog opened from
-                the filtered list, not a URL) — linking to the client-
-                filtered list is the closest useful destination rather than a
-                dead link to a non-existent `/activities/[id]`. */}
+        {/* Issue #106: the label always renders now — only the link itself is
+            conditional. A work order with no source activity previously
+            dropped this row entirely, which read as a missing fact rather
+            than "not applicable"; a muted em dash (matching this list's
+            other empty values, e.g. "Scheduled for" above) makes that
+            explicit instead. */}
+        <div className="ui-work-order-kv-row">
+          <Text tone="muted">From activity</Text>
+          {workOrder?.source_activity_id ? (
+            // Activities has no single-record deep-link route yet (its own
+            // detail view is a client-side quick-view dialog opened from
+            // the filtered list, not a URL) — linking to the client-
+            // filtered list is the closest useful destination rather than a
+            // dead link to a non-existent `/activities/[id]`.
             <Link href={`/activities?clientId=${workOrder.client_id}`}>View in Activities</Link>
-          </div>
-        )}
+          ) : (
+            <Text tone="muted">—</Text>
+          )}
+        </div>
         {mode === "edit" && workOrder && (
           <div className="ui-work-order-kv-row">
             <Text tone="muted">Created</Text>
