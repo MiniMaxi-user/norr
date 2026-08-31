@@ -53,13 +53,13 @@ function DetailPage() {
         </Inline>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
-          <StatCard label="Open balance" value="$4,280" icon={Receipt} hint="3 invoices outstanding" />
+          <StatCard label="Open balance" value="€4,280" icon={Receipt} hint="3 invoices outstanding" />
           <StatCard label="Completed jobs" value="18" icon={ClipboardList} trend={{ value: "+3", direction: "up" }} hint="last 90 days" />
           <StatCard label="Avg response" value="2.4h" icon={CalendarDays} trend={{ value: "-12%", direction: "down" }} hint="vs. target" />
           <StatCard
             tone="highlight"
             label="Overdue"
-            value="$1,120"
+            value="€1,120"
             hint="1 invoice past due"
             action={
               <Button size="sm" variant="primary">

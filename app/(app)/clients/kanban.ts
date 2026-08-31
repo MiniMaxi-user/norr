@@ -99,15 +99,15 @@ export function groupClientsForKanban(clients: ClientRecord[]): ClientKanbanColu
 
 /**
  * Currency formatting for the kanban's "Potential" figures (card row, column
- * total, page-header "Pipeline potential" stat) — no existing
- * `formatMoney`/`formatCurrency`/`Intl.NumberFormat` helper was found
- * elsewhere in this app to reuse (`quote-line-items-panel.tsx`'s own
- * `formatMoney` formats as USD via `toLocaleString`, a different currency
- * and a different "always show cents" shape than this design's whole-
- * thousand rounding, so it wasn't a fit to import/rename either). Returns
+ * total, page-header "Pipeline potential" stat) — deliberately not
+ * `lib/format/currency.ts`'s `formatCurrency`: that one always shows cents
+ * (`Intl`'s standard currency style), a different shape than this design's
+ * whole-thousand rounding, so it wasn't a fit to import/rename. Returns
  * `"—"` for `null` (no potential value set); otherwise whole-euro for values
  * under 1000, rounded-to-the-nearest-thousand "k" shorthand at/above it —
- * matches the mockup's own "€ 42k" style rounding.
+ * matches the mockup's own "€ 42k" style rounding. Both this and
+ * `formatCurrency` are EUR-only (issue #108) — no multi-currency support
+ * exists yet.
  */
 export function formatPotentialValue(value: number | null): string {
   if (value === null) return "—";
