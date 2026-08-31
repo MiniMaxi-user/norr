@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Badge, Button, Input, Inline, Stack, Table, Text } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
@@ -29,11 +30,24 @@ function descriptionSnippet(value: string): string {
  * `ActivityFormPanel` (`mode: "edit"`), which renders read-only for a caller
  * without `canEdit` (issue #90 — one screen for viewing and editing, no
  * separate read-only quick-view dialog).
+ *
+ * Issue #106 — `?activityId=...` (as linked from a Work Order's Assignment
+ * section "From activity" row) auto-opens that specific activity's panel on
+ * arrival, since there's still no real `/activities/[id]` route to link to
+ * directly.
  */
 export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkOrder }: ActivitiesTableProps) {
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<ActivityRecord | null>(null);
+
+  useEffect(() => {
+    const activityId = searchParams.get("activityId");
+    if (!activityId) return;
+    const match = activities.find((activity) => activity.id === activityId);
+    if (match) setEditingActivity(match);
+  }, [searchParams, activities]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

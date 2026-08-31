@@ -27,13 +27,17 @@ export interface RelationCardProps {
    * "never render an affordance RLS would just reject" convention. */
   onEdit?: () => void;
   editLabel?: string;
-  /** Extra detail revealed on hover (issue #106) — a small chevron affordance
-   * renders in the card's bottom-right corner; hovering (or keyboard-
-   * focusing anything inside, e.g. the Edit button) the card smoothly
-   * expands to reveal this section via a pure-CSS grid-rows transition — no
-   * JS state, no layout jank, matching this design system's `Tooltip`
-   * "CSS-only hover" convention. Omit for a card with nothing further to
-   * show. */
+  /** Extra detail revealed on hover (issue #106) — a small chevron trigger in
+   * the card's bottom-right corner. ONLY hovering/focusing that trigger
+   * reveals this content (hovering the rest of the card — title, subtitle,
+   * Edit button — does nothing); the revealed panel is a floating overlay
+   * (`position: absolute`), not a participant in document flow, so it
+   * expands OVER whatever sits below the card instead of pushing it down.
+   * Pure CSS (no JS state), matching this design system's `Tooltip`
+   * "CSS-only hover" convention — see the trigger/panel rules in
+   * `styles.css` for how the nested-hover DOM structure keeps it open while
+   * the pointer moves from the icon into the panel. Omit for a card with
+   * nothing further to show. */
   expandedContent?: ReactNode;
   className?: string;
 }
@@ -46,8 +50,8 @@ export interface RelationCardProps {
  * Generic enough for any top-level entity's own "related record" summary
  * card, not work-order-specific.
  *
- * Issue #106 added `expandedContent` — an optional hover-expand panel, see
- * that prop's own doc comment.
+ * Issue #106 added `expandedContent` — an optional icon-triggered hover-expand
+ * overlay, see that prop's own doc comment.
  */
 export function RelationCard({
   icon: IconComp,
@@ -85,14 +89,17 @@ export function RelationCard({
         <span className="ui-relation-card-empty">{emptyText}</span>
       )}
       {expandedContent && (
-        <>
-          <div className="ui-relation-card-expand">
+        <span
+          className="ui-relation-card-expand-trigger"
+          tabIndex={0}
+          role="button"
+          aria-label={`Show more ${label.toLowerCase()} details`}
+        >
+          <ChevronDown className="ui-relation-card-expand-icon" aria-hidden="true" />
+          <div className="ui-relation-card-expand-panel">
             <div className="ui-relation-card-expand-inner">{expandedContent}</div>
           </div>
-          <span className="ui-relation-card-expand-icon" aria-hidden="true">
-            <ChevronDown />
-          </span>
-        </>
+        </span>
       )}
     </Card>
   );

@@ -288,14 +288,34 @@ export async function addAdhocChecklistItem(
     return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
   }
 
+  const supabase = await createSupabaseServerClient();
+
+  // Issue #106 — an ad-hoc item with no explicit `sortOrder` used to fall
+  // back to the `sort_order` column's own DB default (0), tying it with (or
+  // landing it ahead of) the template's own first item instead of appending
+  // after everything already on the checklist — the actual cause of
+  // "checklist doesn't stay in template order" once a user added a bespoke
+  // item. Append after the current highest `sort_order` instead.
+  let sortOrder = parsed.data.sortOrder;
+  if (sortOrder === undefined) {
+    const { data: lastItem, error: lastItemError } = await supabase
+      .from("work_order_checklist_items")
+      .select("sort_order")
+      .eq("work_order_checklist_id", idResult.data)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastItemError) return fail(mapDbError(lastItemError));
+    sortOrder = ((lastItem as { sort_order: number } | null)?.sort_order ?? -1) + 1;
+  }
+
   const row: Record<string, unknown> = {
     work_order_checklist_id: idResult.data,
     label: parsed.data.label,
     is_required: parsed.data.isRequired ?? false,
+    sort_order: sortOrder,
   };
-  if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
 
-  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("work_order_checklist_items")
     .insert(row)

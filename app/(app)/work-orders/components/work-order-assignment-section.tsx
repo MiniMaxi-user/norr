@@ -120,11 +120,14 @@ export function WorkOrderAssignmentSection({
           <Text tone="muted">From activity</Text>
           {workOrder?.source_activity_id ? (
             // Activities has no single-record deep-link route yet (its own
-            // detail view is a client-side quick-view dialog opened from
-            // the filtered list, not a URL) — linking to the client-
-            // filtered list is the closest useful destination rather than a
-            // dead link to a non-existent `/activities/[id]`.
-            <Link href={`/activities?clientId=${workOrder.client_id}`}>View in Activities</Link>
+            // detail view is a client-side quick-view dialog opened from the
+            // list, not a URL) — `?activityId=...` gets threaded through to
+            // `ActivitiesTable`, which auto-opens that specific activity's
+            // panel on arrival (see that component's own doc comment),
+            // rather than just landing on the filtered list.
+            <Link href={`/activities?clientId=${workOrder.client_id}&activityId=${workOrder.source_activity_id}`}>
+              View activity
+            </Link>
           ) : (
             <Text tone="muted">—</Text>
           )}

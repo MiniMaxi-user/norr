@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Avatar,
   Badge,
   Button,
   Dialog,
@@ -72,13 +71,11 @@ export interface WorkOrderHoursSectionProps {
  * regression) with its `+ Travel`/`+ Work` buttons disabled and a tooltip
  * explaining why — there is no `work_order_id` yet to log time against.
  *
- * *** Issue #106 *** moved the assigned-engineer identity (avatar + name)
- * here, right under the "Hours" header, from `WorkOrderHero`'s own
- * `assignee` block — closer to the hours actually being logged against that
- * engineer, and it frees up the hero's right column for Create Quote/Delete
- * instead. `assignedTo`/`members` were already threaded into this section
- * (they drive the time-entry dialog's default engineer), so this is purely a
- * new read-out, no new data.
+ * *** Issue #106 *** briefly moved the assigned-engineer identity here, then
+ * relocated it again into the hero's own `StatStrip` (the "Engineer" tile,
+ * see `WorkOrderScreen`'s `stats` array) instead, so `assignedTo`/`members`
+ * remain here purely to drive the time-entry dialog's default engineer, no
+ * separate read-out of their own.
  */
 export function WorkOrderHoursSection({
   mode,
@@ -102,7 +99,6 @@ export function WorkOrderHoursSection({
 
   const memberById = new Map(members.map((member) => [member.id, member]));
   const engineers = members.filter((member) => member.role === "engineer");
-  const assignedMember = assignedTo ? memberById.get(assignedTo) : undefined;
 
   const travelType = entryTypes.find((item) => item.value === "travel");
   const laborType = entryTypes.find((item) => item.value === "labor");
@@ -187,15 +183,6 @@ export function WorkOrderHoursSection({
           </>
         }
       />
-
-      {assignedMember && (
-        <Inline gap="xs" align="center">
-          <Avatar name={memberDisplayName(assignedMember)} size="sm" />
-          <Text tone="muted">
-            Assigned to <strong>{memberDisplayName(assignedMember)}</strong>
-          </Text>
-        </Inline>
-      )}
 
       {stopError && <Text tone="danger">{stopError}</Text>}
 

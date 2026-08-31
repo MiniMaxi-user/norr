@@ -148,6 +148,7 @@ export function WorkOrderRelationCards({
       <ExpandRow label="Type" value={resolvedAsset.asset_type?.label || "—"} />
       <ExpandRow label="Sub-type" value={resolvedAsset.asset_subtype?.label || "—"} />
       <ExpandRow label="Status" value={resolvedAsset.asset_status?.label || "—"} />
+      <ExpandRow label="Installed" value={resolvedAsset.installed_at ? formatDate(resolvedAsset.installed_at) : "—"} />
     </Stack>
   ) : undefined;
 

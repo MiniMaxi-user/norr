@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, EmptyState, IconButton, Input, RowCard, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { Badge, Button, Dialog, EmptyState, IconButton, Input, RowCard, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import { ClipboardList, Pencil, Trash2 } from "@yourorg/ui/icons";
 import {
   addAdhocChecklistItem,
@@ -146,6 +146,7 @@ export function WorkOrderChecklistSection({
                 {item.is_checked ? "✓" : ""}
               </span>
               <Text className="ui-work-order-checklist-label">{item.label}</Text>
+              {item.is_required && <Badge variant="warning">Required</Badge>}
               <Text tone="muted">{item.is_checked ? formatTimeOfDay(item.checked_at) : "Open"}</Text>
             </RowCard>
           ))}

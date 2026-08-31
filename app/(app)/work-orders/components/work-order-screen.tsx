@@ -16,9 +16,11 @@ import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
+import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
 import { formatCurrency } from "@/lib/format/currency";
+import { formatDateTime } from "@/lib/format/date";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { WorkOrderDetailActions } from "../[id]/work-order-detail-actions";
 import { WorkOrderHero } from "./work-order-hero";
@@ -28,7 +30,6 @@ import { WorkOrderChecklistSection } from "./work-order-checklist-section";
 import { WorkOrderAssignmentSection } from "./work-order-assignment-section";
 import { useClientScopedLists } from "./use-client-scoped-lists";
 import { draftFromWorkOrder, draftToInput, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
-import { elapsedMinutes, formatHoursMinutes } from "./format-work-order-time";
 import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -288,21 +289,35 @@ export function WorkOrderScreen({
     router.push(`/work-orders/${result.data.workOrder.id}`);
   }
 
-  const travelWorkMinutes = timeEntries.reduce(
-    (sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0),
-    0,
-  );
   const materialTotal = workOrderArticles.reduce(
     (sum, row) => sum + row.quantity * (row.article?.sale_price ?? 0),
     0,
   );
   const checklistChecked = checklistItems.filter((item) => item.is_checked).length;
 
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
+
+  // Issue #106 reordered/replaced the strip: "Hours" (still visible as its
+  // own section's own totals row, see `WorkOrderHoursSection`) no longer
+  // gets a KPI tile of its own here — "To invoice" now takes its old FIRST
+  // position — and the assigned engineer (previously a separate hero
+  // `assignee` block, then briefly a read-out under the Hours header) now
+  // takes "To invoice"'s old LAST position instead.
   const stats: StatStripItem[] = [
+    // "To invoice" (mockup's "Te factureren") — material cost only, not hours
+    // + material. Pricing an hour of logged time requires the same client ->
+    // engineer rate-override resolution `create-quote-actions.ts` runs when
+    // it actually creates a quote (rule precedence: client override, then
+    // engineer override, then "no rate resolvable, left off"); duplicating
+    // that here for a KPI tile risks silently disagreeing with the real
+    // quote total, so this stays deliberately material-only and says so via
+    // `hint` rather than showing a number that looks like the full invoice
+    // total but isn't.
     {
-      label: "Hours",
-      value: mode === "create" ? "—" : formatHoursMinutes(travelWorkMinutes),
-      hint: mode === "create" ? "Save the work order first" : `${timeEntries.length} ${timeEntries.length === 1 ? "entry" : "entries"}`,
+      label: "To invoice",
+      value: mode === "create" ? "—" : formatCurrency(materialTotal),
+      hint: mode === "create" ? "Save the work order first" : "Material only — see Create Quote for the full total",
     },
     {
       label: "Material",
@@ -321,19 +336,14 @@ export function WorkOrderScreen({
       hint: mode === "create" ? "Save the work order first" : !checklist ? "Not attached" : undefined,
     });
   }
-  // "To invoice" (mockup's "Te factureren") — material cost only, not hours +
-  // material. Pricing an hour of logged time requires the same client ->
-  // engineer rate-override resolution `create-quote-actions.ts` runs when it
-  // actually creates a quote (rule precedence: client override, then
-  // engineer override, then "no rate resolvable, left off"); duplicating
-  // that here for a KPI tile risks silently disagreeing with the real quote
-  // total, so this stays deliberately material-only and says so via `hint`
-  // rather than showing a number that looks like the full invoice total but
-  // isn't.
   stats.push({
-    label: "To invoice",
-    value: mode === "create" ? "—" : formatCurrency(materialTotal),
-    hint: mode === "create" ? "Save the work order first" : "Material only — see Create Quote for the full total",
+    label: "Engineer",
+    value: assignedMember ? memberDisplayName(assignedMember) : "Unassigned",
+    hint: assignedMember
+      ? draft.scheduledAt
+        ? formatDateTime(draft.scheduledAt, { month: "long" })
+        : "Not scheduled"
+      : "No engineer assigned",
   });
 
   const heroActions =
