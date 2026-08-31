@@ -185,7 +185,7 @@ export async function createChecklistTemplate(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("checklist_templates")
-    .insert({ name: parsed.data.name })
+    .insert({ name: parsed.data.name, organization_id: ctx.context.organizationId })
     .select("*")
     .single();
 

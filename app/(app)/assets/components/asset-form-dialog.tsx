@@ -4,13 +4,16 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  Badge,
   Button,
   CascadingSelect,
   Combobox,
+  DefinitionList,
   Dialog,
   FormGrid,
   FormSection,
   Heading,
+  Inline,
   Input,
   Label,
   Select,
@@ -22,10 +25,11 @@ import {
 import { Boxes, FileText, MapPin, ShieldCheck } from "@yourorg/ui/icons";
 import type { AssetRecord } from "../actions";
 import { createAssetFormAction, updateAssetFormAction, type AssetFormState } from "../asset-form-actions";
-import { listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
+import { getClient, listClients, listSites, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels, type AssetModelRecord } from "@/lib/asset-models/actions";
+import { formatDate } from "@/lib/format/date";
 
 const initialState: AssetFormState = { ok: false };
 
@@ -42,6 +46,20 @@ export interface AssetFormDialogProps {
   /** Pre-selects (but doesn't lock) the site — the user can still change it
    * to any other site of the same (locked or picked) client. */
   initialSiteId?: string;
+  /**
+   * `mode: "edit"` only — `false` renders every field as plain read-only
+   * text (`Badge`/`DefinitionList`, no inputs), with no Save button, just
+   * Close — same "one screen, not a form-that-pretends-to-be-editable" shape
+   * `WorkOrderFields`'s and `ActivityFormPanel`'s own `readOnly` branches use
+   * (issue #89/#90). This is what a `finance`/`administratie` viewer (plain
+   * `read`, no `update`/`update_own` on `assets`) or an `engineer` without
+   * `update_own` on this particular asset sees now that a row click opens
+   * this same dialog for every caller, not just ones who can edit (issue
+   * #105). Defaults to `true` so `mode: "create"` (always reached only once
+   * `create` is already confirmed) and every caller not yet threading this
+   * through keep behaving exactly as before.
+   */
+  canEdit?: boolean;
 }
 
 /**
@@ -72,10 +90,20 @@ export interface AssetFormDialogProps {
  * returns `null` while `open` is false). Same split `site-form-dialog.tsx`
  * uses for its own `SiteFormBody`, for the same reason.
  */
-export function AssetFormDialog({ open, onOpenChange, mode, asset, lockedClientId, initialSiteId }: AssetFormDialogProps) {
+export function AssetFormDialog({
+  open,
+  onOpenChange,
+  mode,
+  asset,
+  lockedClientId,
+  initialSiteId,
+  canEdit = true,
+}: AssetFormDialogProps) {
   const isEdit = mode === "edit" && Boolean(asset);
   const router = useRouter();
   useEscapeToClose(open, onOpenChange);
+
+  const readOnly = mode === "edit" && !canEdit;
 
   const action = isEdit && asset ? updateAssetFormAction.bind(null, asset.id) : createAssetFormAction;
   const [state, formAction] = useActionState(action, initialState);
@@ -107,6 +135,7 @@ export function AssetFormDialog({ open, onOpenChange, mode, asset, lockedClientI
         formAction={formAction}
         state={state}
         onCancel={() => onOpenChange(false)}
+        readOnly={readOnly}
       />
     </Dialog>
   );
@@ -129,6 +158,9 @@ interface AssetFormBodyProps {
   formAction: (formData: FormData) => void;
   state: AssetFormState;
   onCancel: () => void;
+  /** `mode: "edit"` only — see `AssetFormDialogProps.canEdit`'s doc comment.
+   * Always `false` for `mode: "create"`. */
+  readOnly: boolean;
 }
 
 /**
@@ -144,8 +176,13 @@ interface AssetFormBodyProps {
  * in whatever order reads well across the remaining `FormSection`s (mirrors
  * `site-form-dialog.tsx`'s own "group related fields, 2-column where the
  * panel is wide enough" convention).
+ *
+ * `readOnly` (issue #105) short-circuits to a plain `DefinitionList`/`Badge`
+ * render near the bottom of this function, after every hook — same
+ * hook-order-safety rule `ActivityFormBody`'s own `readOnly` branch follows —
+ * for a caller who can view but not edit this specific asset.
  */
-function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction, state, onCancel }: AssetFormBodyProps) {
+function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction, state, onCancel, readOnly }: AssetFormBodyProps) {
   const isEdit = mode === "edit" && Boolean(asset);
 
   const [selectedClientId, setSelectedClientId] = useState(lockedClientId ?? asset?.client_id ?? "");
@@ -170,8 +207,38 @@ function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction,
   const [assetModels, setAssetModels] = useState<AssetModelRecord[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
 
+  // Read-only viewer never edits anything, so none of this form's
+  // reference-data/picklists are needed at all (same skip `ActivityFormBody`
+  // applies for its own `readOnly` branch) — just resolve this asset's
+  // client name and site address for display, since (unlike `ActivityRecord`)
+  // `AssetRecord` doesn't embed either.
+  const [readOnlyClient, setReadOnlyClient] = useState<ClientRecord | null>(null);
+  const [readOnlySiteAddress, setReadOnlySiteAddress] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+
+    if (readOnly) {
+      if (!asset) {
+        setLoadingOptions(false);
+        return;
+      }
+      setLoadingOptions(true);
+      getClient(asset.client_id)
+        .then((result) => {
+          if (cancelled) return;
+          setReadOnlyClient(result.data?.client ?? null);
+          const site = result.data?.sites.find((candidate) => candidate.id === asset.site_id) ?? null;
+          setReadOnlySiteAddress(formatSiteAddressShort(site));
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingOptions(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setLoadingOptions(true);
     Promise.all([
       lockedClientId ? Promise.resolve(null) : listClients({ limit: 200 }),
@@ -203,7 +270,10 @@ function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction,
   }, []);
 
   useEffect(() => {
-    if (!selectedClientId) {
+    // Read-only mode resolves its own site address straight off `asset` in
+    // the effect above — this fetch (which feeds the editable `Select`) is
+    // never needed there.
+    if (readOnly || !selectedClientId) {
       setSites([]);
       return;
     }
@@ -220,7 +290,7 @@ function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction,
     return () => {
       cancelled = true;
     };
-  }, [selectedClientId]);
+  }, [readOnly, selectedClientId]);
 
   const defaultStatus = assetStatuses.find((item) => item.is_default);
 
@@ -308,6 +378,54 @@ function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction,
     setSelectedSubtypeId(model.subtype_item_id ?? "");
   }
 
+  // Read-only render path (see `AssetFormDialogProps.canEdit`'s doc comment)
+  // — plain `Badge`/`DefinitionList`/`Text`, no `<form>`, no Save, just
+  // Close. Same shape `ActivityFormBody`'s own `readOnly` branch uses.
+  // Placed after every hook above (same rule that branch follows) so hook
+  // order never depends on this branch; before `siteField`/the rest of this
+  // function's remaining non-hook setup, since none of it is needed here.
+  if (readOnly && asset) {
+    return (
+      <>
+        <Dialog.Body>
+          <Stack gap="md">
+            <Inline gap="xs" align="center">
+              <Badge color={asset.asset_status?.color} variant="muted">
+                {asset.asset_status?.label ?? "—"}
+              </Badge>
+            </Inline>
+
+            <DefinitionList
+              items={[
+                { label: "Asset ID", value: asset.name },
+                { label: "Serial number", value: asset.serial_number ?? "—" },
+                { label: "Type", value: asset.asset_type?.label ?? "—" },
+                { label: "Sub-type", value: asset.asset_subtype?.label ?? "—" },
+                { label: "Manufacturer", value: asset.asset_brand?.label ?? "—" },
+                { label: "Model", value: asset.asset_model?.name ?? "—" },
+                { label: "External reference", value: asset.external_reference ?? "—" },
+                { label: "Client", value: readOnlyClient?.name ?? "—" },
+                { label: "Site", value: readOnlySiteAddress ?? "—" },
+                { label: "Installed on", value: formatDate(asset.installed_at, { month: "long" }) },
+                { label: "Warranty until", value: formatDate(asset.warranty_until, { month: "long" }) },
+              ]}
+            />
+
+            <Stack gap="xs">
+              <Text tone="muted">Notes</Text>
+              <Text>{asset.notes ?? "—"}</Text>
+            </Stack>
+          </Stack>
+        </Dialog.Body>
+        <Dialog.Footer>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Close
+          </Button>
+        </Dialog.Footer>
+      </>
+    );
+  }
+
   const siteField = (
     <Stack gap="xs">
       <Label htmlFor="asset-site">Site</Label>
@@ -362,9 +480,8 @@ function AssetFormBody({ mode, asset, lockedClientId, initialSiteId, formAction,
                   id="asset-name"
                   name="name"
                   defaultValue={asset?.name}
-                  required
                   maxLength={200}
-                  placeholder="e.g. AST-00042"
+                  placeholder="Leave blank to auto-generate, e.g. AST-00042"
                 />
                 {state.fieldErrors?.name?.map((message) => (
                   <Text key={message} tone="danger">

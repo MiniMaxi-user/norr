@@ -24,7 +24,13 @@ const isoDateSchema = z.preprocess(
 
 export const assetCreateSchema = z.object({
   siteId: z.string().uuid("Invalid site id."),
-  name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
+  /** Displayed as "Asset ID" in the UI. Optional (issue #105) — when omitted
+   * or left blank, the `assets_set_default_name` DB trigger
+   * (`supabase/migrations/20260831090000_assets_auto_generate_asset_id.sql`)
+   * assigns the next sequential `AST-00042`-style id for the org. `undefined`
+   * here (via `emptyToUndefined`) is what makes that trigger fire — an
+   * explicit empty string sent to the DB would violate `not null` instead. */
+  name: z.preprocess(emptyToUndefined, z.string().trim().max(200, "Name is too long.").optional()),
   /** FK into this org's `asset_type` reference list
    * (`reference_list_items.id`) — see
    * supabase/migrations/20260822200000_reference_lists.sql. Required, no

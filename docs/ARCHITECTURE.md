@@ -58,7 +58,7 @@ The full per-migration narrative — what each table looked like when it landed,
 
 Implemented, RLS-backed tables:
 - `organizations`, `memberships`, `users` — tenancy + auth profile (`supabase/migrations/20260822150910_organizations_memberships_baseline_rls.sql` onward; includes `users.avatar_path`/`locale`, `organizations.is_active`, and `memberships`' Travel/Work rate-override columns from `20260830090000_engineer_client_rate_overrides.sql`)
-- `clients`, `sites`, `assets` — the core CRM/site/equipment hierarchy (`20260822190000_clients_sites_assets.sql` onward; `clients` also carries the same Travel/Work rate-override columns as `memberships`, see `20260830090000_engineer_client_rate_overrides.sql`)
+- `clients`, `sites`, `assets` — the core CRM/site/equipment hierarchy (`20260822190000_clients_sites_assets.sql` onward; `clients` also carries the same Travel/Work rate-override columns as `memberships`, see `20260830090000_engineer_client_rate_overrides.sql`). `assets.name` ("Asset ID" in the UI) stays `not null` but is caller-optional: a BEFORE INSERT trigger auto-fills it with a sequential `AST-NNNNN` id (per-organization counter table `asset_id_sequences`, advanced atomically, unreachable directly by any role) when omitted/blank — see `docs/SCHEMA-HISTORY.md`'s "Assets: auto-generated Asset ID" section (issue #105).
 - `account_managers` — minimal named-person picklist backing `clients.account_manager_id`
 - `reference_lists` / `reference_list_items` — the generic tenant-configurable picklist pattern, see "Tenant-configurable reference data" below
 - `contacts` — a client's contact persons

@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(82);
+select plan(93);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner)
@@ -796,6 +796,120 @@ select is(
   (select val from pg_temp.clients_kanban_captured where key = 'won_at_second_time'),
   'won_at is unchanged when a column other than status is updated (the trigger only fires ON UPDATE OF status)'
 ); -- 82
+
+-- ---------------------------------------------------------------------------
+-- assets.name auto-generation (issue #105,
+-- supabase/migrations/20260831090000_assets_auto_generate_asset_id.sql):
+-- omitting/blank name auto-fills AST-NNNNN via a per-organization counter
+-- (asset_id_sequences), never overrides an explicit name, counters are
+-- independent per organization, and the counter table itself is unreachable
+-- by any authenticated role.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, type_id)
+     values (
+       '10000000-0000-0000-0000-000000000001',
+       'f0000000-0000-0000-0000-00000000000d',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac')
+     ) $$,
+  'owner_a can insert an asset in org_a with no name at all (name omitted entirely)'
+); -- 83
+
+select is(
+  (select name from public.assets where id = '10000000-0000-0000-0000-000000000001'),
+  'AST-00001',
+  'the omitted name was auto-generated as AST-00001 (org_a''s first auto-named asset)'
+); -- 84
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, type_id, name)
+     values (
+       '10000000-0000-0000-0000-000000000002',
+       'f0000000-0000-0000-0000-00000000000d',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac'),
+       ''
+     ) $$,
+  'owner_a can insert a second org_a asset with an explicit blank-string name'
+); -- 85
+
+select is(
+  (select name from public.assets where id = '10000000-0000-0000-0000-000000000002'),
+  'AST-00002',
+  'a blank-string name is treated the same as omitted -- auto-generated as AST-00002, continuing org_a''s counter'
+); -- 86
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, type_id, name)
+     values (
+       '10000000-0000-0000-0000-000000000003',
+       'f0000000-0000-0000-0000-00000000000d',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac'),
+       'Custom Asset Label'
+     ) $$,
+  'owner_a can insert an org_a asset with an explicit non-blank name'
+); -- 87
+
+select is(
+  (select name from public.assets where id = '10000000-0000-0000-0000-000000000003'),
+  'Custom Asset Label',
+  'an explicit non-blank name is never overridden by the auto-generation trigger'
+); -- 88
+
+-- Cross-org independence: org_b's counter starts at 1 regardless of org_a's.
+select pg_temp.act_as('b3333333-3333-3333-3333-333333333333');
+
+select lives_ok(
+  $$ insert into public.sites (id, client_id, is_visit_address)
+     values ('20000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-00000000000b', true) $$,
+  'owner_b can insert a site under Client B (org_b), fixture for the cross-org counter-independence test'
+); -- 89
+
+select lives_ok(
+  $$ insert into public.assets (id, site_id, type_id)
+     values (
+       '10000000-0000-0000-0000-000000000004',
+       '20000000-0000-0000-0000-000000000001',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'd0000000-0000-0000-0000-00000000000b'
+            and rl.list_key = 'asset_type' and rli.value = 'hvac')
+     ) $$,
+  'owner_b can insert a nameless asset in org_b'
+); -- 90
+
+select is(
+  (select name from public.assets where id = '10000000-0000-0000-0000-000000000004'),
+  'AST-00001',
+  'org_b''s first auto-named asset is also AST-00001 -- its counter is independent of org_a''s (asset_id_sequences is keyed per organization_id)'
+); -- 91
+
+-- asset_id_sequences itself is never directly reachable by any authenticated
+-- role -- only next_asset_display_id() (SECURITY DEFINER) touches it.
+select throws_ok(
+  $$ select * from public.asset_id_sequences $$,
+  '42501',
+  null,
+  'owner_b cannot directly SELECT from asset_id_sequences (no grant -- reachable only via next_asset_display_id())'
+); -- 92
+
+select throws_ok(
+  $$ insert into public.asset_id_sequences (organization_id, last_number)
+     values ('d0000000-0000-0000-0000-00000000000b', 999) $$,
+  '42501',
+  null,
+  'owner_b cannot directly INSERT into asset_id_sequences (no grant)'
+); -- 93
 
 select * from finish();
 rollback;
