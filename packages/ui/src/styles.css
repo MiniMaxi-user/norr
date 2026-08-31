@@ -542,6 +542,36 @@ a {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Settings admin shell (issue #110) — persistent grouped left rail +
+ * content pane, mounted once by app/(app)/settings/layout.tsx so navigating
+ * between settings leaf routes only swaps the content pane. Deliberately NOT
+ * `.ui-sidebar`'s fixed dark "ink" surface treatment (that's reserved for
+ * the app's own brand chrome) — this rail is a plain, light inline panel
+ * that reads as part of the page, so it reuses `.ui-card`'s own
+ * surface/border tokens (`--ui-bg`/`--ui-border`) rather than
+ * `--ui-surface`.
+ * ---------------------------------------------------------------------- */
+.ui-settings-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+.ui-settings-rail {
+  width: 200px;
+  flex-shrink: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg);
+  padding: 0.75rem;
+  position: sticky;
+  top: var(--ui-page-inset-y, 2rem);
+}
+.ui-settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------- *
  * Badge
  * ---------------------------------------------------------------------- */
 .ui-badge {
