@@ -1,4 +1,4 @@
-import { Boxes, CalendarDays, ClipboardList, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
+import { Boxes, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
 import { REFERENCE_LIST_SECTIONS } from "../reference-lists/sections";
 
 /**
@@ -103,6 +103,16 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: "Templates",
     icon: ClipboardList,
     items: [{ key: "checklist_templates", label: "Checklist Templates", href: "/settings/checklist-templates" }],
+  },
+  {
+    // Issue #109 — org-level fallback billing rates (layer 3 of
+    // `resolve_billing_rate`'s 4-layer precedence). Its own small group
+    // rather than folded into "Articles": the two default Travel/Work
+    // articles are a billing-rate *setting*, not an article catalog entry —
+    // same "own group" treatment "Templates" gets for the same reason.
+    label: "Billing",
+    icon: CreditCard,
+    items: [{ key: "default_rates", label: "Default Rates", href: "/settings/default-rates" }],
   },
   {
     label: "People",

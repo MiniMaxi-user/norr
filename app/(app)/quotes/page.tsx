@@ -10,7 +10,7 @@ import { QuotesScreenSkeleton } from "./components/quotes-screen-skeleton";
 export const metadata = { title: "Quotes" };
 
 interface QuotesPageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; drafts?: string }>;
 }
 
 /**
@@ -41,6 +41,11 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
   const params = await searchParams;
   const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
+  // Issue #109 — auto-draft (system-managed shadow) quotes are hidden from
+  // the default list view (`?drafts=1` reveals them) so `/quotes` isn't
+  // cluttered with one shadow-quote per work order — see `QuotesScreen`'s own
+  // doc comment for the full design.
+  const showDrafts = params.drafts === "1";
 
   return (
     <Stack gap="lg">
@@ -49,9 +54,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         <Text tone="muted">Pre-sale proposals, across every client.</Text>
       </Stack>
 
-      <Suspense key={`${page}`} fallback={<QuotesScreenSkeleton />}>
+      <Suspense key={`${page}-${showDrafts}`} fallback={<QuotesScreenSkeleton />}>
         <QuotesScreen
           page={page}
+          showDrafts={showDrafts}
           canCreate={can(actor, "quotes", "create")}
           canEdit={can(actor, "quotes", "update")}
           canDelete={can(actor, "quotes", "delete")}
