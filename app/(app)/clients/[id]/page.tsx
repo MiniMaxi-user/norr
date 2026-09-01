@@ -149,8 +149,15 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   // (issue #87) — a Planning affordance, gated independently of
   // `activitiesModuleVisible` above (an org could have Activities without
   // Planning, or vice versa; both must hold for this action to make sense).
+  // Issue #113 follow-up: also reused for the Work Orders tab's own
+  // "+ Work order" button, rather than adding a second, parallel check.
   const canCreateWorkOrder =
     workOrdersModuleVisible && can(actor, "planning", "create");
+
+  // Contracts tab's own "+ Contract" button (issue #113 follow-up) — same
+  // `can(actor, "contracts", "create")` gate the standalone Contracts module
+  // page's own "New contract" button uses.
+  const canCreateContracts = contractsModuleVisible && can(actor, "contracts", "create");
 
   // Contacts (issue #26) aren't a separately-entitled module — they're a
   // sub-entity of Clients (see `contacts-actions.ts`'s module comment) — so
@@ -216,6 +223,12 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   // linking here) wins over the last-used-view cookie when it names a real,
   // currently-visible tab; an unrecognized/not-entitled value falls through
   // to the cookie exactly like an unrecognized cookie value already did.
+  //
+  // "access"/"modules" are deliberately absent here (issue #113 moved them
+  // off the page's own `Tabs` into the rail Platform card's edit popup — see
+  // `client-detail.tsx`'s `PlatformDialogTab`) — an old cookie value or deep
+  // link naming either one now just falls through to the next candidate/
+  // "sites" like any other unrecognized value.
   function resolveTab(candidate: string | null | undefined): ClientDetailTab | null {
     switch (candidate) {
       case "assets":
@@ -230,10 +243,6 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         return quotesModuleVisible ? "quotes" : null;
       case "activities":
         return activitiesModuleVisible ? "activities" : null;
-      case "access":
-        return tenantAccessVisible ? "access" : null;
-      case "modules":
-        return tenantAccessVisible ? "modules" : null;
       case "sites":
         return "sites";
       default:
@@ -260,6 +269,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       workOrdersEnabled={workOrdersModuleVisible}
       contracts={contractsResult?.data?.contracts ?? []}
       contractsEnabled={contractsModuleVisible}
+      canCreateContracts={canCreateContracts}
       quotes={quotesResult?.data?.quotes ?? []}
       quotesEnabled={quotesModuleVisible}
       activities={activitiesResult?.data?.activities ?? []}

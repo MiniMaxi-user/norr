@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { Disclosure, EmptyState, Inline, Stack, Text } from "@yourorg/ui";
+import { Disclosure, EmptyState, SectionHeader, Stack, Text } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { CreateAssetButton } from "@/app/(app)/assets/components/create-asset-button";
@@ -82,11 +82,11 @@ export function AssetsPanel({
 
   return (
     <Stack gap="md">
-      {canCreate && (
-        <Inline justify="end">
-          <CreateAssetButton clientId={clientId} size="sm" />
-        </Inline>
-      )}
+      <SectionHeader
+        icon={Boxes}
+        title="Assets"
+        actions={canCreate && <CreateAssetButton clientId={clientId} size="sm" label="+ Asset" />}
+      />
 
       {assets.length === 0 ? (
         <EmptyState

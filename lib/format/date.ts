@@ -38,3 +38,18 @@ export function formatDateTime(
     minute: "2-digit",
   });
 }
+
+/**
+ * Fixed "dd-MM-yyyy HH:mm" timestamp (issue #113 follow-up) — for a precise,
+ * log-style read-out (e.g. the Clients hero's "Last activity" stat) where
+ * `formatDateTime`'s locale-dependent, month-name shape above reads as too
+ * loose/ambiguous. Always this exact numeric form, independent of the
+ * viewer's browser locale.
+ */
+export function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
+import { Badge, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
 import { Bell } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
@@ -40,10 +40,13 @@ function formatDateTime(value: string): string {
  * client already on screen, not a link out to the standalone `/activities`
  * module list.
  *
- * "Create in context": the tab's own "New activity" button pre-scopes
- * `ActivityFormPanel` (a slide-in, per `docs/ARCHITECTURE.md` "Popup vs.
- * full page") to this client via `CreateActivityButton`'s `clientId` prop,
- * same shape as `CreateAssetButton`'s `clientId` prop on the Assets tab.
+ * "Create in context": the tab's own "+ Activity" button (in a
+ * `SectionHeader`, same small-primary tab-panel "Add X" convention as
+ * Sites/Contacts/Assets — issue #113, `docs/ARCHITECTURE.md`'s "Row and
+ * tab-panel conventions") pre-scopes `ActivityFormPanel` (a slide-in, per
+ * `docs/ARCHITECTURE.md` "Popup vs. full page") to this client via
+ * `CreateActivityButton`'s `clientId` prop, same shape as `CreateAssetButton`'s
+ * `clientId` prop on the Assets tab.
  *
  * Row click opens `ActivityFormPanel` in `mode: "edit"` directly (issue #90 —
  * one screen for viewing and editing, no separate read-only quick-view
@@ -64,11 +67,11 @@ export function ActivitiesPanel({
 
   return (
     <Stack gap="md">
-      {canCreate && (
-        <Inline justify="end">
-          <CreateActivityButton clientId={clientId} label="New activity" size="sm" />
-        </Inline>
-      )}
+      <SectionHeader
+        icon={Bell}
+        title="Activiteiten"
+        actions={canCreate && <CreateActivityButton clientId={clientId} label="+ Activity" size="sm" />}
+      />
 
       {activities.length === 0 ? (
         <EmptyState
