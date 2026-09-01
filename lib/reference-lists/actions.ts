@@ -288,6 +288,44 @@ export async function listReferenceItems(
   });
 }
 
+/**
+ * Bulk item-count-per-list, for the Settings landing page (design handoff
+ * "Settings landing redesign") — that page needs every reference-list-backed
+ * nav item's item count up front (14 of its 21 rows), and calling
+ * `listReferenceItems` once per `list_key` would be 14 round trips for
+ * something that's really one aggregate read. Uses PostgREST's embedded-
+ * resource count syntax (`reference_list_items(count)`) to get one row per
+ * list, each carrying its own items' count, in a single query. Same read
+ * gate as `listReferenceItems` (any org member). Lists with zero items still
+ * come back as a `0` entry (an inner join would silently drop them) since
+ * PostgREST's embedded count is a left join by default.
+ */
+export async function countReferenceListItemsByKey(): Promise<ActionResult<{ counts: Record<string, number> }>> {
+  const ctx = await requireModuleContext("settings");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "settings", "read")) {
+    return fail("You do not have permission to view these picklists.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("reference_lists")
+    .select("list_key, reference_list_items(count)")
+    .eq("organization_id", ctx.context.organizationId);
+
+  if (error) return fail(mapDbError(error));
+
+  const counts: Record<string, number> = {};
+  for (const row of (data ?? []) as unknown as {
+    list_key: string;
+    reference_list_items: { count: number }[];
+  }[]) {
+    counts[row.list_key] = row.reference_list_items?.[0]?.count ?? 0;
+  }
+  return ok({ counts });
+}
+
 /** Owner only (per the `settings` RBAC entry + RLS, both agree). */
 export async function createReferenceItem(
   listKey: string,
