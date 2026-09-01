@@ -13,6 +13,7 @@ import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WorkOrderScreen } from "../components/work-order-screen";
 
 export const metadata = { title: "Edit Work Order" };
@@ -105,6 +106,16 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // (`quotes`) AND `can(actor, "quotes", "create")` (owner/planner only).
   const quotesEnabled = await hasFeature(session.organization, "quotes");
   const canCreateQuote = quotesEnabled && canAccessModule(actor, "quotes") && can(actor, "quotes", "create");
+  // Issue #109 — gates the "To invoice" KPI tile's real total, the Hours
+  // section's per-bucket cost figures, and the "N entries missing rate"
+  // warning. Mirrors `getWorkOrderCostSummary`/`getUnresolvedWorkOrderTimeEntries`'s
+  // own gate in `../quote-sync-actions.ts` exactly (`can(actor, "planning",
+  // "read")` — an engineer never satisfies this, only `read_own` — AND
+  // `canAny(actor, "quotes", ["read"])`), used ahead of the fetches below so
+  // an engineer's page load skips both round trips entirely, same
+  // "don't fetch what can't render" precedent every other conditional fetch
+  // in this file already follows.
+  const canSeeCosts = quotesEnabled && can(actor, "planning", "read") && canAny(actor, "quotes", ["read"]);
 
   const [
     clientResult,
@@ -120,6 +131,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     clientsResult,
     statusesResult,
     prioritiesResult,
+    costSummaryResult,
+    unresolvedTimeEntriesResult,
   ] = await Promise.all([
     getClient(workOrder.client_id),
     workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
@@ -150,6 +163,11 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
     canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
     canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
+    // Issue #109 — skipped entirely for an engineer (`canSeeCosts` false),
+    // same "don't fetch what can't render" reasoning as every other
+    // conditional fetch above.
+    canSeeCosts ? getWorkOrderCostSummary(workOrder.id) : Promise.resolve(null),
+    canSeeCosts ? getUnresolvedWorkOrderTimeEntries(workOrder.id) : Promise.resolve(null),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -168,6 +186,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const clients = clientsResult?.data?.clients ?? [];
   const statuses = statusesResult?.data?.items ?? [];
   const priorities = prioritiesResult?.data?.items ?? [];
+  const costSummary = costSummaryResult?.data ?? null;
+  const unresolvedTimeEntryCount = unresolvedTimeEntriesResult?.data?.unresolvedTimeEntryIds.length ?? 0;
 
   const canDelete = can(actor, "planning", "delete");
   // Time Entries (issue #15) share the `planning` module's own actions —
@@ -225,6 +245,9 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
       canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
       canCreateQuote={canCreateQuote}
+      canSeeCosts={canSeeCosts}
+      costSummary={costSummary}
+      unresolvedTimeEntryCount={unresolvedTimeEntryCount}
       canAccessChecklists={canAccessChecklists}
       checklist={checklist}
       checklistItems={checklistItems}

@@ -99,6 +99,19 @@ export interface QuoteRecord {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** True when this quote is the system-managed 1:1 shadow of a work order
+   * (issue #109) — auto-created by `work_orders_create_auto_draft_quote` and
+   * kept in sync with `time_entries`/`work_order_articles` until promoted
+   * (`is_auto_draft -> false`, via `createQuoteFromWorkOrder`'s promotion
+   * path in `app/(app)/work-orders/create-quote-actions.ts`). Already
+   * selected here (part of `QUOTE_SELECT`'s `*`) — pulled into this
+   * interface explicitly so `frontend-ui-engineer` can label/filter an
+   * auto-draft quote on the `/quotes` list without an `as any` cast. A
+   * still-`true` row is, by definition, not yet a "real" quote a human
+   * decided to create — the frontend may want to hide these from the
+   * default list view entirely, or badge them distinctly; left as a UI call,
+   * not decided here. */
+  is_auto_draft: boolean;
   /** Embedded via `reference_list_items!quotes_status_id_fkey(...)` — see
    * `QUOTE_SELECT` below. Postgres's default FK naming for an unnamed column
    * FK is `<table>_<column>_fkey` (same reasoning `app/(app)/contracts/
@@ -300,16 +313,23 @@ function toQuoteLineItemUpdateRow(input: ReturnType<typeof quoteLineItemUpdateSc
 export interface ListQuotesOptions {
   clientId?: string;
   statusId?: string;
+  /** Issue #109 — filter to only auto-draft (`true`) or only "real"
+   * (`false`) quotes. Omitted (`undefined`, the default) returns both, same
+   * as before this filter existed — the frontend's default `/quotes` list
+   * view should almost certainly pass `false` here to hide the
+   * system-managed shadow quotes, but that choice is left to
+   * `frontend-ui-engineer` rather than baked in as this function's default. */
+  isAutoDraft?: boolean;
   limit?: number;
   offset?: number;
 }
 
 /**
  * Lists quotes, org-scoped via RLS automatically. Supports filtering by
- * `clientId` and/or `statusId` (both optional, combinable), same pattern as
- * `listContracts`/`listWorkOrders`. Each returned `QuoteRecord` has its
- * `total` computed from its own embedded `quote_line_items` — no N+1 (see the
- * module comment above).
+ * `clientId`, `statusId`, and/or `isAutoDraft` (issue #109; all optional,
+ * combinable), same pattern as `listContracts`/`listWorkOrders`. Each
+ * returned `QuoteRecord` has its `total` computed from its own embedded
+ * `quote_line_items` — no N+1 (see the module comment above).
  *
  * Default order: most-recently created first — there is no "what's next"
  * queue concept for quotes the way there is for work orders.
@@ -340,6 +360,7 @@ export async function listQuotes(
   let query = supabase.from("quotes").select(QUOTE_SELECT, { count: "exact" });
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.statusId) query = query.eq("status_id", options.statusId);
+  if (options.isAutoDraft !== undefined) query = query.eq("is_auto_draft", options.isAutoDraft);
   query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
 
   const { data, error, count } = await query;

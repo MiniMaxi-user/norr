@@ -5,130 +5,84 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
+import { findAutoDraftQuoteId, computeUnresolvedTimeEntryIds } from "@/lib/quotes/auto-draft";
 
 /**
- * "Create Quote from Work Order" (issue #94, "Werkorder invoice create" —
- * confirmed with the product owner this is about creating a QUOTE, not real
- * invoicing; see `supabase/migrations/20260830100000_work_order_articles_and_quote_traceability.sql`'s
- * header for the full context). Kept in its own file rather than folded into
- * `./actions.ts`/`../quotes/actions.ts` — this is a cross-module orchestration
- * (reads `work_orders`/`time_entries`/`work_order_articles`/`clients`/
- * `memberships`/`articles`, writes `quotes`/`quote_line_items`), not plain
- * CRUD on any single module's own table, so it doesn't fit either file's
- * existing "one table + its embeds" shape.
+ * "Create Quote from Work Order" (issue #94, originally; issue #109 changed
+ * this from an always-create-new action into a PROMOTE-the-existing-
+ * auto-draft action — see `supabase/migrations/20260901090000_work_order_auto_draft_quotes.sql`
+ * for the schema/trigger side of this: every work order created since that
+ * migration already has exactly one `is_auto_draft = true` `quotes` row,
+ * auto-created by `work_orders_create_auto_draft_quote` and kept in sync with
+ * `time_entries`/`work_order_articles` by a set of DB triggers — this file no
+ * longer needs to do any of that sync work itself).
  *
- * **Feature/RBAC gate** — mirrors `attachChecklistTemplate` in
- * `./checklist-actions.ts` (also a Work-Order-sub-resource action that reads
- * a `work_orders` row without a second `requireModuleContext("planning")`
- * call): gated on a single `requireModuleContext("quotes")` (this action's
- * primary output is a Quote), then BOTH of:
- *   - `canAny(actor, "planning", ["read", "read_own"])` — the caller must be
- *     able to view Work Orders at all (reusing `getWorkOrder`'s own gate in
- *     `./actions.ts`, not a new permission tier); and
- *   - `can(actor, "quotes", "create")` — the caller must be able to create
- *     Quotes (reusing `createQuote`'s own gate in `../quotes/actions.ts`).
- * In practice only `owner`/`planner` satisfy the second check at all (Quotes'
- * RBAC row: engineer/finance/administratie are `read`-only), so the first
- * check never actually narrows anything further in today's matrix — kept
- * anyway per the brief's explicit "require both, don't loosen either", and
- * because `work_orders` SELECT RLS still independently re-scopes an engineer
- * to their own assigned row regardless (defense in depth, same reasoning
- * every other module's `can()`-vs-RLS split documents).
+ * **New behavior (issue #109 acceptance criterion 6):** clicking "Create
+ * Quote" now looks for that work order's `is_auto_draft = true` quote first.
+ *   - Found (the normal case for every work order created after the
+ *     migration): PROMOTE it — a single `UPDATE quotes SET is_auto_draft =
+ *     false WHERE id = ... AND is_auto_draft = true`, nothing else. The
+ *     frozen `quote_line_items` already sitting on that quote (written
+ *     incrementally by the sync triggers as time was logged/articles were
+ *     consumed) are correct as-is and are NOT recomputed, re-priced, or
+ *     touched in any way here — recomputing them would silently overwrite
+ *     the whole point of issue #109 (freezing a rate at time-of-registration,
+ *     not at click-Create-Quote time). See `promoteAutoDraftQuote` below.
+ *   - Not found: falls back to the ORIGINAL from-scratch behavior (build a
+ *     brand-new quote + line items from the work order's current
+ *     `time_entries`/`work_order_articles`, resolving rates live). Two real
+ *     cases hit this path:
+ *     1. A legacy work order created BEFORE the issue #109 migration shipped
+ *        — it never got an auto-draft (no backfill, by that migration's own
+ *        explicit design) and never will.
+ *     2. An intentional RE-QUOTE: the work order's original auto-draft was
+ *        already promoted once (`is_auto_draft` is now permanently `false`
+ *        for that row — sync stops forever on promotion, per the migration),
+ *        and the user clicks "Create Quote" again wanting a SECOND,
+ *        independent quote off the work order's current state. This mirrors
+ *        this action's own pre-#109 behavior exactly (a work order may
+ *        legitimately spawn more than one quote over time; see below) — kept
+ *        deliberately unrestricted here (no "only once" guard), since
+ *        limiting it would be new, unrequested scope.
+ *     See `createBrandNewQuoteFromWorkOrder` below — its rate resolution now
+ *     reuses the shared `resolve_billing_rate` SQL function (issue #109) that
+ *     the sync triggers themselves call, upgraded from this action's OLD
+ *     app-layer 2-layer precedence (client override -> engineer override ->
+ *     unresolved) to the SAME 4-layer precedence the auto-draft has used
+ *     since the migration (client override -> engineer override -> org
+ *     default -> unresolved). Leaving this fallback on the old 2-layer logic
+ *     would have made "Create Quote" resolve rates differently depending on
+ *     which of these two paths happened to run, which is exactly the kind of
+ *     silent inconsistency issue #109 exists to eliminate — see
+ *     `resolveBillingRatesForEntries` below.
  *
- * **Rate resolution precedence** (per the confirmed business rules, not
- * re-litigated here):
- *   1. The work order's own `clients.has_custom_rate = true` → use the
- *      CLIENT's own `travel_article_id`/`travel_sale_price` (Travel entries)
- *      or `work_article_id`/`work_sale_price` (Labor entries).
- *   2. Else, the time entry's `user_id` has an `engineer` membership row with
- *      `has_custom_rate = true` → use THAT membership's equivalent
- *      travel/work article + price.
- *   3. Else → no rate resolvable; the entry is left off the quote and its id
- *      is collected into `skippedTimeEntryIds` for the caller to surface as a
- *      "N entries could not be priced" warning.
- * Both override tables store an EDITABLE sale price directly on the override
- * row itself (not a pointer that needs a second live lookup) — see
- * `20260830090000_engineer_client_rate_overrides.sql`'s own design note 2 —
- * so `unit_price` for a time-entry-derived line item is read straight off
- * whichever override row resolved, never `articles.sale_price`. Consumed
- * articles (`work_order_articles`) are the opposite: no price is stored
- * anywhere on that table by design (see that migration's design note 2), so
- * their `unit_price` is always read live from `articles.sale_price`.
+ * The public return shape (`CreateQuoteFromWorkOrderResult`, `{ quoteId,
+ * skippedTimeEntryIds }`) is UNCHANGED from before issue #109 — the caller
+ * (`app/(app)/work-orders/[id]/work-order-detail-actions.tsx`) needs no
+ * changes at all. For the promotion path, `skippedTimeEntryIds` no longer
+ * comes from a resolution loop run at click time — it's now a straight query
+ * (`computeUnresolvedTimeEntryIds`, `lib/quotes/auto-draft.ts`) over the
+ * ALREADY-resolved-at-sync-time `quote_line_items`, per issue #109's own
+ * instruction that this become "queryable" rather than recomputed.
  *
- * **Quantity for a time-entry-derived line item**: hours, computed the exact
- * same way `elapsedMinutes` in `./components/format-work-order-time.ts`
- * computes a duration for display (`Math.round((end - start) / 60000)` whole
- * minutes), converted to a 2-decimal-place hours figure
- * (`quote_line_items.quantity` is `numeric(10,2)`) —
- * `Math.round(totalMinutes / 60 * 100) / 100`. Reusing that exact
- * minute-rounding step (rather than a raw millisecond division) keeps this
- * figure consistent with what the work order's own Hours section already
- * shows the user for the same entry.
- *
- * **Ordering** (`quote_line_items.sort_order`): every time-entry-derived line
- * item (Travel and Work, interleaved) sorted ascending by its source entry's
- * `started_at`, THEN every consumed-article line item, sorted ascending by
- * its source `work_order_articles.created_at` (the order they were logged in
- * — an arbitrary but stable choice per the brief, documented here rather than
- * silently picked).
- *
- * **Which time entries are eligible at all**: Break-type entries are never
- * eligible (not a billable Labor/Travel type — same "fold into Work times but
- * don't invoice it" spirit the Hours section gives Break for display, taken
- * one step further here since a quote line item needs a real price, and
- * Break has no rate-resolution rule at all in the confirmed business rules).
- * A still-running entry (`ended_at: null`) is also never eligible — same
- * "in progress" treatment the Hours section gives it (no computable duration
- * to quantity from yet). Neither of these is counted in `skippedTimeEntryIds`:
- * that field is reserved for the ONE reason the brief actually asks the
- * frontend to warn about ("could not be priced") — a Break entry or a
- * still-running entry was never a pricing candidate in the first place, so
- * folding them into the same warning would misleadingly suggest a pricing
- * gap that isn't one. A rounded-to-zero-hours entry (sub-30-second Travel/
- * Labor, effectively a rounding artifact) is treated the same as
- * "could not be priced" and IS added to `skippedTimeEntryIds` — a
- * zero-quantity quote line item would be meaningless, and unlike Break/
- * running entries this genuinely is "this entry didn't make it onto the
- * quote", which the warning exists to surface.
- *
- * **Consumed articles with no `sale_price` set**: unlike an unresolvable time
- * entry, a consumed article's `article_id` (and therefore its intended
- * pricing target) is always known — it's just possibly unpriced. Rather than
- * silently dropping real "what was consumed" data from the quote the way an
- * unresolvable time entry is dropped, this defaults `unit_price` to `0` and
- * still includes the line item (with `article_id` set for traceability) —
- * visibly wrong-but-present (a 0-priced line the user can see and correct) is
- * a better failure mode here than silently missing.
- *
- * **Quote name**: this codebase has no existing auto-naming precedent for
- * Quotes — `quoteCreateSchema.name` is a plain required, user-typed field on
- * every existing creation path (`../quotes/quote-form-actions.ts`). Generates
- * `"Quote — {work order title}"` here, the exact shape the issue's own brief
- * suggested — the DB fills `status_id` with the org's default (`Draft`) the
- * same way `createQuote` already leaves it omitted.
- *
- * **Partial-failure handling**: this codebase has no existing multi-insert
- * transaction/RPC pattern to reuse — every other multi-step creation flow
- * either is a single trigger-driven round trip (`attachChecklistTemplate`'s
- * template → items snapshot, done entirely in a DB trigger) or is a
- * genuinely independent, sequential, no-rollback pair of Server Action calls
- * left to the frontend (`new-client-panel.tsx`'s client-then-site create).
- * Neither shape fits "one Server Action, two dependent inserts" cleanly, so
- * this introduces a minimal, explicitly-scoped-to-here convention instead:
- * the `quotes` row is inserted first, then every `quote_line_items` row in
- * ONE bulk `.insert([...])` call (a single INSERT statement is atomic in
- * Postgres — either every line item is written, or none are); if that bulk
- * insert fails, the just-created `quotes` row is deleted as a best-effort
- * compensating action (its own failure is swallowed — surfacing the
- * ORIGINAL line-item error is more useful than a secondary cleanup error) so
- * the caller isn't left with an empty, orphaned draft quote instead of a
- * clean failure.
+ * **Feature/RBAC gate** — unchanged from before issue #109: gated on
+ * `requireModuleContext("quotes")`, then BOTH
+ * `canAny(actor, "planning", ["read", "read_own"])` (can view Work Orders at
+ * all) and `can(actor, "quotes", "create")` (can create Quotes) — see the
+ * original design note this file has always carried: in today's matrix only
+ * owner/planner satisfy the second check at all, so the first never actually
+ * narrows anything further, kept anyway per "require both, don't loosen
+ * either", with `work_orders` SELECT RLS independently re-scoping an engineer
+ * to their own assigned row regardless.
  */
 
 const uuidSchema = z.string().uuid("Invalid work order id.");
 
-/** Minimal shape read off `work_orders` — just enough to build the Quote
- * header and resolve client-level rate overrides. */
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/** Minimal shape read off `work_orders` — just enough to build a brand-new
+ * Quote header and resolve rates for its line items (the fallback path
+ * only — the promotion path never needs this). */
 interface SourceWorkOrder {
   id: string;
   client_id: string;
@@ -136,10 +90,9 @@ interface SourceWorkOrder {
   title: string;
 }
 
-/** Minimal shape read off `time_entries`, with its `entry_type_id` resolved
- * to the reference item's `value` (`labor` | `travel` | `break`) in the same
- * round trip — same embed pattern `TIME_ENTRY_SELECT` uses in
- * `./time-entries-actions.ts`. */
+/** Minimal shape read off `time_entries` for the fallback path, with its
+ * `entry_type_id` resolved to the reference item's `value`
+ * (`labor` | `travel` | `break`) in the same round trip. */
 interface SourceTimeEntry {
   id: string;
   user_id: string;
@@ -148,8 +101,9 @@ interface SourceTimeEntry {
   time_entry_type: { value: string } | null;
 }
 
-/** Minimal shape read off `work_order_articles`, with its own article's
- * display fields + live `sale_price` resolved in the same round trip. */
+/** Minimal shape read off `work_order_articles` for the fallback path, with
+ * its own article's display fields + live `sale_price` resolved in the same
+ * round trip. */
 interface SourceWorkOrderArticle {
   id: string;
   article_id: string;
@@ -158,50 +112,25 @@ interface SourceWorkOrderArticle {
   article: { article_number: string; description: string; sale_price: number | null } | null;
 }
 
-/** A resolved rate override row (either `clients` or `memberships`' shared
- * 5-column shape, per `lib/rate-overrides/schema.ts`), with its own
- * travel/work article display fields embedded for building a line item's
- * `description`. */
-interface RateOverrideRow {
-  has_custom_rate: boolean;
-  travel_article_id: string | null;
-  work_article_id: string | null;
-  travel_sale_price: number | null;
-  work_sale_price: number | null;
-  travel_article: { article_number: string; description: string } | null;
-  work_article: { article_number: string; description: string } | null;
-}
-
-/** A resolved (article_id, unit_price, description) triple for one billable
- * time entry, or `null` when no rate could be resolved (rule 1.c — the
- * caller adds the entry's id to `skippedTimeEntryIds` in that case). */
-interface ResolvedRate {
-  articleId: string;
-  unitPrice: number;
-  description: string;
-}
-
-function resolveRateFromOverrideRow(row: RateOverrideRow | null, isTravel: boolean): ResolvedRate | null {
-  if (!row || !row.has_custom_rate) return null;
-  const articleId = isTravel ? row.travel_article_id : row.work_article_id;
-  const unitPrice = isTravel ? row.travel_sale_price : row.work_sale_price;
-  const article = isTravel ? row.travel_article : row.work_article;
-  if (!articleId || unitPrice === null || !article) return null;
-  return {
-    articleId,
-    unitPrice,
-    description: `${article.article_number} — ${article.description}`,
-  };
+/** Row shape returned by the `resolve_billing_rate` SQL function (issue
+ * #109, `supabase/migrations/20260901090000_work_order_auto_draft_quotes.sql`)
+ * — zero rows means unresolved (layer 4). */
+interface ResolvedBillingRate {
+  resolved_article_id: string;
+  resolved_sale_price: number | null;
+  resolved_purchase_price: number | null;
 }
 
 /** Same whole-minute rounding step `elapsedMinutes` uses for display in
  * `./components/format-work-order-time.ts`, converted to a 2-decimal-place
- * hours figure (`quote_line_items.quantity` is `numeric(10,2)`) — see the
- * module comment above for why this reuses that exact step. Returns `null`
- * when a duration genuinely can't be computed (defensive; `ended_at` is
- * already guaranteed non-null and >= `started_at` by the time this is
- * called, same guard `elapsedMinutes` keeps anyway) or rounds to `0` hours
- * (a sub-30-second entry — treated as unresolvable, see the module comment). */
+ * hours figure (`quote_line_items.quantity` is `numeric(10,2)`) — kept
+ * IDENTICAL to `sync_time_entry_to_auto_draft_quote`'s own rounding (see that
+ * function's comment in the issue #109 migration) so a quantity never
+ * differs between this fallback path and the always-on sync path. Returns
+ * `null` when a duration genuinely can't be computed (defensive; `ended_at`
+ * is already guaranteed non-null and >= `started_at` by the time this is
+ * called) or rounds to `0` hours (a sub-30-second entry — treated as
+ * unresolvable, same as the sync trigger). */
 function computeQuantityHours(startedAt: string, endedAt: string): number | null {
   const start = new Date(startedAt).getTime();
   const end = new Date(endedAt).getTime();
@@ -219,9 +148,7 @@ interface DraftLineItem {
   articleId: string;
   /** Only set for a time-entry-derived line item (the source time entry's
    * own `user_id`) — written to `quote_line_items.engineer_user_id` (issue
-   * #95). `undefined` for a consumed-article-derived line item, which has no
-   * associated engineer (`work_order_articles` has no per-row "who consumed
-   * this" concept the way a time entry has "who logged this"). */
+   * #95). `undefined` for a consumed-article-derived line item. */
   engineerUserId?: string;
   /** Only set for a time-entry-derived line item — used purely to sort
    * ascending by `started_at` before `sort_order` is assigned; not written to
@@ -231,49 +158,125 @@ interface DraftLineItem {
 
 export interface CreateQuoteFromWorkOrderResult {
   quoteId: string;
-  /** Ids of `time_entries` rows that were left off the quote because no rate
-   * could be resolved for them (rule 1.c) — surface as a "N time entries
-   * could not be priced and were left off this quote" warning. Does NOT
-   * include Break-type or still-running entries, which were never pricing
-   * candidates in the first place — see the module comment above. */
+  /** Ids of `time_entries` rows left off the quote because no rate could be
+   * resolved for them — surfaced as a "N time entries could not be priced"
+   * warning by the caller. Does NOT include Break-type or still-running
+   * entries, which were never pricing candidates in the first place. */
   skippedTimeEntryIds: string[];
 }
 
 /**
- * Creates a brand-new Quote (header + line items) from a Work Order's logged
- * time and consumed articles. Always creates a NEW quote — never updates an
- * existing one tied to the same work order (a work order may legitimately
- * spawn more than one quote over time; see the module comment above and the
- * confirmed business rules — no dedupe attempted here).
+ * Promotes an existing `is_auto_draft = true` quote: flips the flag to
+ * `false` and returns its id, alongside the set of eligible time entries that
+ * never got a line item synced (queried, not recomputed — see the module
+ * comment above). Computed BEFORE the flag flips, against the quote's OWN id
+ * (not re-derived via `is_auto_draft = true`) — see
+ * `computeUnresolvedTimeEntryIds`'s own comment in `lib/quotes/auto-draft.ts`
+ * for why that ordering independence matters.
+ *
+ * The `.eq("is_auto_draft", true)` on the UPDATE (in addition to `.eq("id",
+ * ...)`) is a defensive no-op guard against a concurrent double-click/second
+ * tab already promoting the same quote between this function's read and
+ * write — `quotes_update_owner_or_planner` RLS would otherwise silently
+ * allow a second no-op UPDATE to "succeed" (it's already `false`, setting it
+ * to `false` again is a valid write), which would let both requests report
+ * success. Filtering on the OLD value means the second one matches zero rows
+ * instead, and is told plainly that someone else already did it.
  */
-export async function createQuoteFromWorkOrder(
+async function promoteAutoDraftQuote(
+  supabase: SupabaseServerClient,
   workOrderId: string,
+  quoteId: string,
 ): Promise<ActionResult<CreateQuoteFromWorkOrderResult>> {
-  const idResult = uuidSchema.safeParse(workOrderId);
-  if (!idResult.success) return fail(idResult.error.issues[0]?.message ?? "Invalid work order id.");
+  const { data: skippedTimeEntryIds, error: unresolvedError } = await computeUnresolvedTimeEntryIds(
+    supabase,
+    workOrderId,
+    quoteId,
+  );
+  if (unresolvedError) return fail(mapDbError(unresolvedError));
 
-  const ctx = await requireModuleContext("quotes");
-  if (!ctx.ok) return fail(ctx.error);
-  const { actor, organizationId } = ctx.context;
+  const { data, error } = await supabase
+    .from("quotes")
+    .update({ is_auto_draft: false })
+    .eq("id", quoteId)
+    .eq("is_auto_draft", true)
+    .select("id")
+    .maybeSingle<{ id: string }>();
 
-  if (!canAny(actor, "planning", ["read", "read_own"])) {
-    return fail("You do not have permission to view this work order.");
+  if (error) return fail(mapDbError(error));
+  if (!data) {
+    return fail("This work order's quote was already created or promoted. Refresh the page and try again.");
   }
-  if (!can(actor, "quotes", "create")) {
-    return fail("Only an owner or planner can create quotes.");
+
+  return ok({ quoteId: data.id, skippedTimeEntryIds });
+}
+
+/**
+ * Resolves a billing rate per (engineer, Travel-vs-Labor) combination present
+ * among `entries`, via the shared `resolve_billing_rate` SQL function (issue
+ * #109) — the SAME 4-layer precedence (client override -> engineer override
+ * -> org default -> unresolved) the auto-draft's own sync triggers use.
+ * Batched by DISTINCT (`user_id`, `isTravel`) pair rather than once per time
+ * entry — a work order typically has very few distinct engineers, so this is
+ * a handful of round trips at most, not one per logged time entry.
+ */
+async function resolveBillingRatesForEntries(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  clientId: string,
+  entries: readonly SourceTimeEntry[],
+): Promise<{ ratesByKey: Map<string, ResolvedBillingRate | null>; error: { code?: string; message: string } | null }> {
+  const distinctKeys = new Map<string, { userId: string; isTravel: boolean }>();
+  for (const entry of entries) {
+    const isTravel = entry.time_entry_type?.value === "travel";
+    distinctKeys.set(`${entry.user_id}:${isTravel}`, { userId: entry.user_id, isTravel });
   }
 
-  const supabase = await createSupabaseServerClient();
+  const ratesByKey = new Map<string, ResolvedBillingRate | null>();
+  const results = await Promise.all(
+    Array.from(distinctKeys.entries()).map(async ([key, { userId, isTravel }]) => {
+      const { data, error } = await supabase
+        .rpc("resolve_billing_rate", {
+          p_organization_id: organizationId,
+          p_client_id: clientId,
+          p_user_id: userId,
+          p_is_travel: isTravel,
+        })
+        .maybeSingle<ResolvedBillingRate>();
+      return { key, data: data ?? null, error };
+    }),
+  );
 
-  const { data: workOrder, error: workOrderError } = await supabase
-    .from("work_orders")
-    .select("id, client_id, site_id, title")
-    .eq("id", idResult.data)
-    .maybeSingle<SourceWorkOrder>();
-  if (workOrderError) return fail(mapDbError(workOrderError));
-  if (!workOrder) return fail("Work order not found, or you do not have permission to view it.");
+  for (const result of results) {
+    if (result.error) return { ratesByKey, error: result.error };
+    ratesByKey.set(result.key, result.data);
+  }
+  return { ratesByKey, error: null };
+}
 
-  const [timeEntriesResult, workOrderArticlesResult, clientRateResult] = await Promise.all([
+/**
+ * Original (pre-#109) "always creates a brand-new quote" behavior — see the
+ * module comment above for the two cases that still reach this path (a
+ * pre-migration legacy work order, or an intentional re-quote after the
+ * first auto-draft was already promoted). Builds a Quote header + line items
+ * from the work order's CURRENT `time_entries`/`work_order_articles`, same
+ * shape/ordering/skip rules as before #109, with rate resolution upgraded to
+ * the shared 4-layer `resolve_billing_rate` function (see
+ * `resolveBillingRatesForEntries` above) instead of this file's own
+ * previously-hand-rolled 2-layer (client/engineer-only) lookup.
+ *
+ * `quote_line_items.purchase_price` (issue #109's new stored snapshot column)
+ * is deliberately left unset here, same as every column already excluded
+ * from this INSERT before #109 — it's withheld from the `quote_line_items`
+ * INSERT column grant entirely (only the SECURITY DEFINER sync triggers may
+ * write it), so this app-layer INSERT could not set it even if it wanted to.
+ */
+async function createBrandNewQuoteFromWorkOrder(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  workOrder: SourceWorkOrder,
+): Promise<ActionResult<CreateQuoteFromWorkOrderResult>> {
+  const [timeEntriesResult, workOrderArticlesResult] = await Promise.all([
     supabase
       .from("time_entries")
       .select("id, user_id, started_at, ended_at, time_entry_type:reference_list_items!time_entries_entry_type_id_fkey(value)")
@@ -286,56 +289,55 @@ export async function createQuoteFromWorkOrder(
       )
       .eq("work_order_id", workOrder.id)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("clients")
-      .select(
-        "has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, travel_article:articles!clients_travel_article_id_fkey(article_number, description), work_article:articles!clients_work_article_id_fkey(article_number, description)",
-      )
-      .eq("id", workOrder.client_id)
-      .maybeSingle<RateOverrideRow>(),
   ]);
 
   if (timeEntriesResult.error) return fail(mapDbError(timeEntriesResult.error));
   if (workOrderArticlesResult.error) return fail(mapDbError(workOrderArticlesResult.error));
-  if (clientRateResult.error) return fail(mapDbError(clientRateResult.error));
 
   const allTimeEntries = (timeEntriesResult.data ?? []) as unknown as SourceTimeEntry[];
   const workOrderArticles = (workOrderArticlesResult.data ?? []) as unknown as SourceWorkOrderArticle[];
-  const clientRate = clientRateResult.data;
 
   // Eligible = Labor or Travel type, AND already finished (`ended_at` set) —
-  // see the module comment above for why Break/still-running entries are
-  // excluded before rate resolution even starts (and never counted in
-  // `skippedTimeEntryIds`).
+  // Break/still-running entries are excluded before rate resolution even
+  // starts, and never counted in `skippedTimeEntryIds` (same rule the sync
+  // triggers apply).
   const eligibleTimeEntries = allTimeEntries.filter(
     (entry) =>
       entry.ended_at !== null &&
       (entry.time_entry_type?.value === "labor" || entry.time_entry_type?.value === "travel"),
   );
 
-  // Engineer rate overrides are only ever consulted when the client itself
-  // has no custom rate (rule precedence 1.a before 1.b) — skip the query
-  // entirely in the common "client has a custom rate" case.
-  let membershipByUserId = new Map<string, RateOverrideRow>();
-  if (!clientRate?.has_custom_rate) {
-    const distinctUserIds = Array.from(new Set(eligibleTimeEntries.map((entry) => entry.user_id)));
-    if (distinctUserIds.length > 0) {
-      const { data: memberships, error: membershipsError } = await supabase
-        .from("memberships")
-        .select(
-          "user_id, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, travel_article:articles!memberships_travel_article_id_fkey(article_number, description), work_article:articles!memberships_work_article_id_fkey(article_number, description)",
-        )
-        .eq("organization_id", organizationId)
-        .eq("role", "engineer")
-        .in("user_id", distinctUserIds);
-      if (membershipsError) return fail(mapDbError(membershipsError));
-      membershipByUserId = new Map(
-        ((memberships ?? []) as unknown as (RateOverrideRow & { user_id: string })[]).map((row) => [
-          row.user_id,
-          row,
-        ]),
-      );
-    }
+  const { ratesByKey, error: rateError } = await resolveBillingRatesForEntries(
+    supabase,
+    organizationId,
+    workOrder.client_id,
+    eligibleTimeEntries,
+  );
+  if (rateError) return fail(mapDbError(rateError));
+
+  // Distinct resolved article ids -> a single batched articles lookup for
+  // display fields (article_number/description), instead of N+1-ing one
+  // lookup per line item.
+  const distinctArticleIds = Array.from(
+    new Set(
+      Array.from(ratesByKey.values())
+        .filter((rate): rate is ResolvedBillingRate => rate !== null)
+        .map((rate) => rate.resolved_article_id),
+    ),
+  );
+  let articleDisplayById = new Map<string, { article_number: string; description: string }>();
+  if (distinctArticleIds.length > 0) {
+    const { data: articles, error: articlesError } = await supabase
+      .from("articles")
+      .select("id, article_number, description")
+      .in("id", distinctArticleIds);
+    if (articlesError) return fail(mapDbError(articlesError));
+    articleDisplayById = new Map(
+      ((articles ?? []) as { id: string; article_number: string; description: string }[]).map((row) => [
+        row.id,
+        { article_number: row.article_number, description: row.description },
+      ]),
+    );
   }
 
   const skippedTimeEntryIds: string[] = [];
@@ -343,9 +345,7 @@ export async function createQuoteFromWorkOrder(
 
   for (const entry of eligibleTimeEntries) {
     const isTravel = entry.time_entry_type?.value === "travel";
-    const resolved =
-      resolveRateFromOverrideRow(clientRate ?? null, isTravel) ??
-      resolveRateFromOverrideRow(membershipByUserId.get(entry.user_id) ?? null, isTravel);
+    const resolved = ratesByKey.get(`${entry.user_id}:${isTravel}`) ?? null;
 
     if (!resolved) {
       skippedTimeEntryIds.push(entry.id);
@@ -354,18 +354,23 @@ export async function createQuoteFromWorkOrder(
 
     const quantity = computeQuantityHours(entry.started_at, entry.ended_at as string);
     if (quantity === null) {
-      // Rounds to 0 hours (or a defensive guard tripped) — see the module
-      // comment above for why this is treated the same as "could not be
-      // priced" rather than inserted as a meaningless zero-quantity line.
+      // Rounds to 0 hours (or a defensive guard tripped) — treated the same
+      // as "could not be priced" rather than inserted as a meaningless
+      // zero-quantity line, same rule as before #109.
       skippedTimeEntryIds.push(entry.id);
       continue;
     }
 
+    const articleDisplay = articleDisplayById.get(resolved.resolved_article_id);
+    const description = articleDisplay
+      ? `${articleDisplay.article_number} — ${articleDisplay.description}`
+      : "Time entry";
+
     timeEntryLineItems.push({
-      description: resolved.description,
+      description,
       quantity,
-      unitPrice: resolved.unitPrice,
-      articleId: resolved.articleId,
+      unitPrice: resolved.resolved_sale_price ?? 0,
+      articleId: resolved.resolved_article_id,
       engineerUserId: entry.user_id,
       sourceStartedAt: entry.started_at,
     });
@@ -373,13 +378,12 @@ export async function createQuoteFromWorkOrder(
 
   // Already fetched in `started_at` ascending order, but re-sort explicitly
   // here rather than relying on that — this is the actual ordering
-  // contract (rule 3), not an incidental side effect of the query's own
-  // `order()`.
+  // contract, not an incidental side effect of the query's own `order()`.
   timeEntryLineItems.sort((a, b) => (a.sourceStartedAt ?? "").localeCompare(b.sourceStartedAt ?? ""));
 
-  // Consumed articles: always included (see the module comment above for why
-  // a missing `sale_price` defaults to 0 instead of being skipped), already
-  // fetched in `created_at` ascending order.
+  // Consumed articles: always included (a missing `sale_price` defaults to 0
+  // instead of being skipped — visibly-wrong-but-present beats silently
+  // missing), already fetched in `created_at` ascending order.
   const articleLineItems: DraftLineItem[] = workOrderArticles.map((row) => ({
     description: row.article
       ? `${row.article.article_number} — ${row.article.description}`
@@ -415,24 +419,64 @@ export async function createQuoteFromWorkOrder(
         quantity: item.quantity,
         unit_price: item.unitPrice,
         article_id: item.articleId,
-        // engineer_user_id (issue #95): set from the source time entry's
-        // user_id for a Travel/Labor-derived line item; omitted (-> null)
-        // for a consumed-article-derived line item, which has no engineer —
-        // see DraftLineItem.engineerUserId's own comment.
         engineer_user_id: item.engineerUserId ?? null,
         sort_order: index,
       })),
     );
 
     if (lineItemsError) {
-      // Best-effort compensating cleanup — see the module comment above for
-      // why this codebase has no transaction/RPC pattern to reach for
-      // instead. Its own failure is swallowed on purpose: the original
-      // `lineItemsError` is the useful one to surface.
+      // Best-effort compensating cleanup, same as before #109: the just-
+      // created `quotes` row is deleted so the caller isn't left with an
+      // empty, orphaned draft quote instead of a clean failure. Its own
+      // failure is swallowed — the ORIGINAL line-item error is the useful
+      // one to surface.
       await supabase.from("quotes").delete().eq("id", quoteId);
       return fail(mapDbError(lineItemsError));
     }
   }
 
   return ok({ quoteId, skippedTimeEntryIds });
+}
+
+/**
+ * "Create Quote" entry point. Promotes the work order's existing
+ * `is_auto_draft = true` quote when one exists; otherwise falls back to
+ * creating a brand-new quote from scratch. See the module comment above for
+ * the full design.
+ */
+export async function createQuoteFromWorkOrder(
+  workOrderId: string,
+): Promise<ActionResult<CreateQuoteFromWorkOrderResult>> {
+  const idResult = uuidSchema.safeParse(workOrderId);
+  if (!idResult.success) return fail(idResult.error.issues[0]?.message ?? "Invalid work order id.");
+
+  const ctx = await requireModuleContext("quotes");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId } = ctx.context;
+
+  if (!canAny(actor, "planning", ["read", "read_own"])) {
+    return fail("You do not have permission to view this work order.");
+  }
+  if (!can(actor, "quotes", "create")) {
+    return fail("Only an owner or planner can create quotes.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("id, client_id, site_id, title")
+    .eq("id", idResult.data)
+    .maybeSingle<SourceWorkOrder>();
+  if (workOrderError) return fail(mapDbError(workOrderError));
+  if (!workOrder) return fail("Work order not found, or you do not have permission to view it.");
+
+  const { data: autoDraftQuoteId, error: autoDraftError } = await findAutoDraftQuoteId(supabase, workOrder.id);
+  if (autoDraftError) return fail(mapDbError(autoDraftError));
+
+  if (autoDraftQuoteId) {
+    return promoteAutoDraftQuote(supabase, workOrder.id, autoDraftQuoteId);
+  }
+
+  return createBrandNewQuoteFromWorkOrder(supabase, organizationId, workOrder);
 }

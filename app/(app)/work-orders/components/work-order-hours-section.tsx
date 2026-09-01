@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
+  Callout,
   Dialog,
   EmptyState,
   Inline,
@@ -18,11 +19,13 @@ import {
   Text,
   Tooltip,
 } from "@yourorg/ui";
-import { Clock, Pencil, Trash2 } from "@yourorg/ui/icons";
+import { AlertTriangle, Clock, Pencil, Trash2 } from "@yourorg/ui/icons";
 import { clockOut, createTimeEntry, updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
+import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { formatCurrency } from "@/lib/format/currency";
 import { DeleteTimeEntryDialog } from "./delete-time-entry-dialog";
 import { elapsedMinutes, formatHoursMinutes, formatTimeOfDay } from "./format-work-order-time";
 
@@ -54,6 +57,27 @@ export interface WorkOrderHoursSectionProps {
   canUpdateAny: boolean;
   canUpdateOwn: boolean;
   canDelete: boolean;
+  /** `can(actor, "planning", "read")` (issue #109) — an engineer never
+   * satisfies this (`planning`'s matrix row only grants `read_own`), matching
+   * `getWorkOrderCostSummary`/`getUnresolvedWorkOrderTimeEntries`'s own gate
+   * in `../quote-sync-actions.ts` exactly. Gates both `costSummary`'s per-
+   * bucket cost figures below the duration totals AND the "N entries missing
+   * rate" warning — an engineer keeps seeing duration-only totals, exactly as
+   * before this issue, with neither addition rendered at all (per that
+   * file's own doc comment: "treat that as hide this widget, not an error
+   * state"). */
+  canSeeCosts?: boolean;
+  /** `getWorkOrderCostSummary(workOrderId)`'s result — only fetched by the
+   * page when `canSeeCosts` is true (see `[id]/page.tsx`'s "don't fetch what
+   * can't render" precedent). `null`/`undefined` renders duration-only, same
+   * as `canSeeCosts: false`. */
+  costSummary?: WorkOrderCostSummary | null;
+  /** `getUnresolvedWorkOrderTimeEntries(workOrderId)`'s
+   * `unresolvedTimeEntryIds.length` — count of billable time entries the
+   * auto-draft sync could not resolve a rate for. Renders a warning
+   * `Callout` above the row list when non-zero, only for `canSeeCosts`
+   * callers. */
+  unresolvedTimeEntryCount?: number;
 }
 
 /**
@@ -89,6 +113,9 @@ export function WorkOrderHoursSection({
   canUpdateAny,
   canUpdateOwn,
   canDelete,
+  canSeeCosts,
+  costSummary,
+  unresolvedTimeEntryCount = 0,
 }: WorkOrderHoursSectionProps) {
   const router = useRouter();
   const [dialogSection, setDialogSection] = useState<"travel" | "work" | null>(null);
@@ -99,6 +126,15 @@ export function WorkOrderHoursSection({
 
   const memberById = new Map(members.map((member) => [member.id, member]));
   const engineers = members.filter((member) => member.role === "engineer");
+
+  // `costSummary.hasPromotedQuote` (its own auto-draft already promoted, so
+  // every one of ITS totals is zero by design — see that field's own doc
+  // comment in `../quote-sync-actions.ts`) is excluded here too, same
+  // "don't show a misleading € 0.00" reasoning `WorkOrderScreen`'s "To
+  // invoice" tile applies — duration-only totals stay accurate regardless
+  // (read live off `timeEntries`, not the auto-draft), so this only ever
+  // suppresses the added cost figures, never the durations themselves.
+  const showCosts = Boolean(canSeeCosts && costSummary && !costSummary.hasPromotedQuote);
 
   const travelType = entryTypes.find((item) => item.value === "travel");
   const laborType = entryTypes.find((item) => item.value === "labor");
@@ -186,6 +222,13 @@ export function WorkOrderHoursSection({
 
       {stopError && <Text tone="danger">{stopError}</Text>}
 
+      {canSeeCosts && unresolvedTimeEntryCount > 0 && (
+        <Callout icon={AlertTriangle}>
+          {unresolvedTimeEntryCount} {unresolvedTimeEntryCount === 1 ? "entry misses" : "entries miss"} a billing
+          rate — set a default rate in Settings → Default Rates, or assign a custom rate to the client or engineer.
+        </Callout>
+      )}
+
       {travelEntries.length === 0 && workEntries.length === 0 ? (
         <EmptyState
           icon={<Clock />}
@@ -201,9 +244,25 @@ export function WorkOrderHoursSection({
           <SummaryRow
             className="ui-summary-row-reserved"
             items={[
-              { label: "Travel", value: formatHoursMinutes(travelMinutes) },
-              { label: "Work", value: formatHoursMinutes(workMinutes) },
-              { label: "Total", value: formatHoursMinutes(travelMinutes + workMinutes), emphasis: "bold" },
+              {
+                label: "Travel",
+                value: showCosts
+                  ? `${formatHoursMinutes(travelMinutes)} · ${formatCurrency(costSummary!.travelTotal)}`
+                  : formatHoursMinutes(travelMinutes),
+              },
+              {
+                label: "Work",
+                value: showCosts
+                  ? `${formatHoursMinutes(workMinutes)} · ${formatCurrency(costSummary!.laborTotal)}`
+                  : formatHoursMinutes(workMinutes),
+              },
+              {
+                label: "Total",
+                value: showCosts
+                  ? `${formatHoursMinutes(travelMinutes + workMinutes)} · ${formatCurrency(costSummary!.travelTotal + costSummary!.laborTotal)}`
+                  : formatHoursMinutes(travelMinutes + workMinutes),
+                emphasis: "bold",
+              },
             ]}
           />
         </>

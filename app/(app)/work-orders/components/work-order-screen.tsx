@@ -32,6 +32,7 @@ import { useClientScopedLists } from "./use-client-scoped-lists";
 import { draftFromWorkOrder, draftToInput, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
 import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
+import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 
@@ -109,6 +110,23 @@ export interface WorkOrderScreenProps {
    * can(actor, "quotes", "create")` — gates the hero's "Create Quote" action
    * (issue #94). */
   canCreateQuote?: boolean;
+  /** `can(actor, "planning", "read")` (issue #109) — gates BOTH the "To
+   * invoice" KPI tile's real (material + travel + labor) total AND
+   * `WorkOrderHoursSection`'s per-bucket cost figures / "N entries missing
+   * rate" warning. False for an engineer (`planning`'s matrix row only
+   * grants `read_own`) — see `[id]/page.tsx`'s own comment for why this is
+   * computed once there and threaded through, same "don't fetch what can't
+   * render" precedent `canCreateWorkOrderArticles` etc. already establish. */
+  canSeeCosts?: boolean;
+  /** `getWorkOrderCostSummary(workOrder.id)`'s result — only fetched by the
+   * page when `canSeeCosts` is true. `null`/`undefined` (including every
+   * `mode: "create"` render, which has no `workOrder.id` yet) falls back to
+   * the pre-#109 material-only "To invoice" figure. */
+  costSummary?: WorkOrderCostSummary | null;
+  /** `getUnresolvedWorkOrderTimeEntries(workOrder.id)`'s
+   * `unresolvedTimeEntryIds.length` — threaded straight through to
+   * `WorkOrderHoursSection`'s warning `Callout`. */
+  unresolvedTimeEntryCount?: number;
   /** `hasFeature(org, "checklists") && canAccessModule(actor, "checklists")`
    * — gates whether `WorkOrderChecklistSection` renders at all (a separately-
    * entitled module, not folded into `planning`). */
@@ -192,6 +210,9 @@ export function WorkOrderScreen({
   canUpdateWorkOrderArticlesAny,
   canUpdateWorkOrderArticlesOwn,
   canCreateQuote,
+  canSeeCosts,
+  costSummary = null,
+  unresolvedTimeEntryCount = 0,
   canAccessChecklists,
   checklist = null,
   checklistItems = [],
@@ -304,20 +325,55 @@ export function WorkOrderScreen({
   // position — and the assigned engineer (previously a separate hero
   // `assignee` block, then briefly a read-out under the Hours header) now
   // takes "To invoice"'s old LAST position instead.
+  //
+  // *** Issue #109 *** replaces the old material-only figure (with its
+  // "Material only — see Create Quote for the full total" caveat) with the
+  // real material + travel + labor total, read straight off the auto-draft
+  // quote's own frozen `quote_line_items` (`costSummary.grandTotal` —
+  // `getWorkOrderCostSummary`, fetched by `[id]/page.tsx` only when
+  // `canSeeCosts`). No live rate re-resolution happens here anymore (that
+  // used to be the whole reason this stayed material-only — pricing an hour
+  // of logged time required the same client -> engineer -> org-default rate
+  // resolution `create-quote-actions.ts` runs, and duplicating that at
+  // render time risked silently disagreeing with the real quote total); the
+  // auto-draft's line items are already resolved and frozen at the moment
+  // each time entry/article was logged, so reading their sum here can never
+  // drift from what "Create Quote" will actually promote — hence the old
+  // caveat `hint` is simply gone for a caller who can see it.
+  //
+  // An engineer (no `canSeeCosts`) gets the exact pre-#109 fallback instead —
+  // material-only, unchanged from what they could already see — just without
+  // implying (via a hint mentioning "Create Quote", an action engineers can
+  // never reach anyway) that the figure represents anything more than
+  // material.
+  //
+  // `costSummary.hasPromotedQuote` (its own auto-draft already promoted, so
+  // THIS summary's totals are all zero by design — see that field's own doc
+  // comment in `../quote-sync-actions.ts`) is special-cased so a work order
+  // that's already been quoted shows "—"/"Already quoted" instead of a
+  // misleading "€ 0.00 to invoice".
+  const toInvoiceValue =
+    mode === "create"
+      ? "—"
+      : canSeeCosts && costSummary
+        ? costSummary.hasPromotedQuote
+          ? "—"
+          : formatCurrency(costSummary.grandTotal)
+        : formatCurrency(materialTotal);
+  const toInvoiceHint =
+    mode === "create"
+      ? "Save the work order first"
+      : canSeeCosts && costSummary
+        ? costSummary.hasPromotedQuote
+          ? "Already quoted — see Quotes"
+          : undefined
+        : "Material only";
+
   const stats: StatStripItem[] = [
-    // "To invoice" (mockup's "Te factureren") — material cost only, not hours
-    // + material. Pricing an hour of logged time requires the same client ->
-    // engineer rate-override resolution `create-quote-actions.ts` runs when
-    // it actually creates a quote (rule precedence: client override, then
-    // engineer override, then "no rate resolvable, left off"); duplicating
-    // that here for a KPI tile risks silently disagreeing with the real
-    // quote total, so this stays deliberately material-only and says so via
-    // `hint` rather than showing a number that looks like the full invoice
-    // total but isn't.
     {
       label: "To invoice",
-      value: mode === "create" ? "—" : formatCurrency(materialTotal),
-      hint: mode === "create" ? "Save the work order first" : "Material only — see Create Quote for the full total",
+      value: toInvoiceValue,
+      hint: toInvoiceHint,
     },
     {
       label: "Material",
@@ -405,6 +461,9 @@ export function WorkOrderScreen({
           canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
           canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
           canDelete={Boolean(canDelete)}
+          canSeeCosts={Boolean(canSeeCosts)}
+          costSummary={costSummary}
+          unresolvedTimeEntryCount={unresolvedTimeEntryCount}
         />
         <WorkOrderMaterialSection
           mode={mode}
