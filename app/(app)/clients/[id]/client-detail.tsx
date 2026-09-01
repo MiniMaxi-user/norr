@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
@@ -11,6 +11,7 @@ import {
   DetailLayout,
   Dialog,
   Heading,
+  IconButton,
   Inline,
   RecordHeroBand,
   Stack,
@@ -19,7 +20,7 @@ import {
   Text,
   type StatStripItem,
 } from "@yourorg/ui";
-import { Bell, Boxes, ClipboardList, FileText, MapPin, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { Bell, Boxes, ClipboardList, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
@@ -35,6 +36,8 @@ import { ActivitiesPanel } from "./activities-panel";
 import { DeleteClientDialog } from "../components/delete-client-dialog";
 import { EditClientPanel } from "../components/edit-client-panel";
 import { formatSiteAddress, formatSiteAddressShort } from "../format-site-address";
+import { formatCurrency } from "@/lib/format/currency";
+import { formatDateTime, formatTimestamp } from "@/lib/format/date";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { AccessPanel } from "./access-panel";
@@ -55,9 +58,21 @@ export type ClientDetailTab =
   | "workOrders"
   | "contracts"
   | "quotes"
-  | "activities"
-  | "access"
-  | "modules";
+  | "activities";
+
+/** The Platform rail card's own popup tabs (issue #113) — "Access"/"Modules"
+ * moved off the page's main `Tabs` (see `ClientDetailTab` above, which no
+ * longer includes them) into a small platform-admin-only `Dialog` reached via
+ * an Edit `IconButton` on that card. Not part of `setLastUsedView`/the
+ * `?tab=` deep-link contract at all — this is a secondary management popup,
+ * not one of the page's own navigable views. */
+type PlatformDialogTab = "access" | "modules";
+
+/** `work_order_status.value`s that mean "done" (seeded in
+ * `20260823120000_work_orders_core.sql`'s lifecycle list) — everything short
+ * of these still needs attention. Feeds the hero's "Open work orders" tile
+ * below. */
+const CLOSED_WORK_ORDER_STATUS_VALUES = ["completed", "invoiced"];
 
 export interface ClientDetailProps {
   client: ClientRecord;
@@ -74,6 +89,11 @@ export interface ClientDetailProps {
   workOrdersEnabled: boolean;
   contracts: ContractRecord[];
   contractsEnabled: boolean;
+  /** `can(actor, "contracts", "create")`, resolved once by `page.tsx` — same
+   * gate the standalone Contracts module page's own "New contract" button
+   * uses, threaded down for the Contracts tab's own "+ Contract" button
+   * (issue #113 follow-up). */
+  canCreateContracts: boolean;
   quotes: QuoteRecord[];
   quotesEnabled: boolean;
   activities: ActivityRecord[];
@@ -121,12 +141,33 @@ export interface ClientDetailProps {
  * The breadcrumb still lives in the Topbar (`usePageHeader`, see
  * `components/shell/page-header-context.tsx`). The client's own fields sit in
  * the full-bleed dark `RecordHeroBand` (`@yourorg/ui`) — the same header
- * pattern Work Orders/Assets/Contracts already use: a plain `<h1>` title, an
- * icon+text primary-address meta line, "Primary"/"Client since"/tenant
- * badges, and a `StatStrip` of Sites/Assets/Orders/Quotes/Meldingen counts
- * baked into the bottom of the band (`relationshipStats` below, each entry
- * gated behind its own `*Enabled` flag — Sites has none, always shown). This
- * is a deliberate hybrid, not a full conversion to the `RecordHeroBand`
+ * pattern Work Orders/Assets/Contracts already use: a plain `<h1>` title, a
+ * `meta` row underneath it whose FIRST item is "Primary"/"Client since"/
+ * tenant badges (`ui-record-hero-band-meta-badges`, same wrapper/placement
+ * Work Orders uses for its status/priority pair, issue #106) followed by the
+ * icon+text primary-address fact, and a `StatStrip` (`heroStats` below)
+ * baked into the bottom of the band. Issue #113 follow-up: badges used to
+ * render via `RecordHeroBand`'s separate `badges` prop, its own row ABOVE
+ * the title — moved into `meta` instead so they sit on the same line as the
+ * address, below the title, per explicit product feedback.
+ *
+ * Issue #113: `heroStats` deliberately does NOT repeat the Sites/Assets/Work
+ * Orders/Quotes/Activities counts that used to live here — every one of
+ * those is already visible as a `(count)` suffix on its own `Tabs.Tab` right
+ * below, so restating them in the hero was pure duplication. Instead the
+ * strip surfaces facts that aren't visible anywhere else on this page: the
+ * client's Account Manager (resolved from `accountManagers` by
+ * `client.account_manager_id`, same lookup `EditClientPanel`'s picker uses),
+ * an active-contracts count + total value, an open-work-orders count (i.e.
+ * not yet `completed`/`invoiced`, mirroring the "needs attention" framing
+ * `work-order-screen.tsx`'s own hero stats use) with its next-scheduled date
+ * as the hint, and the most recent Activiteit's `reported_at` with its type
+ * as the hint. Each of the three relationship-derived tiles is gated behind
+ * the same `*Enabled` flag its tab already uses; Account Manager always
+ * shows (it's a plain client field, not a relationship count). Nothing here
+ * required a new fetch — every value is derived from props this component
+ * already receives (`accountManagers`/`contracts`/`workOrders`/`activities`).
+ * This is a deliberate hybrid, not a full conversion to the `RecordHeroBand`
  * pattern's usual accompanying flat-card layout: the tab-driven rail below
  * stays exactly as it is (see docs/ARCHITECTURE.md's "Two detail-page header
  * patterns" section).
@@ -146,8 +187,15 @@ export interface ClientDetailProps {
  *    the exact same `EditClientPanel` as the hero's own Edit button, one hop
  *    away at the top of the page);
  *  - Platform (platform-admin-only, `tenantAccessVisible`, accent-tinted):
- *    tenant active/deactivated status and a read-only modules line — pure
- *    read-out, management stays exclusively in the Modules tab;
+ *    tenant active/deactivated status and a read-only modules line, plus
+ *    (issue #113) a `Pencil` `IconButton` in its header row that opens a
+ *    small `Dialog` (`platformDialogOpen` below) with the same
+ *    `AccessPanel`/`ModulesPanel` content as two nested `Tabs` — those two
+ *    used to be their own page-level `Tabs.Tab`s; per the story they're a
+ *    platform-admin-only management surface that doesn't need to compete for
+ *    space with the client's own relational tabs, so they moved into this
+ *    card's edit popup instead (docs/ARCHITECTURE.md "Popup vs. full page":
+ *    a small sub-entity management surface, not a top-level module);
  *  - Locations: the real Leaflet map (`SiteMapLoader`/`site-map.tsx`) with
  *    a pin per geocoded site, moved here from the Sites tab's old
  *    side-by-side `.ui-sites-grid` (see `sites-panel.tsx`, now a full-width
@@ -171,6 +219,7 @@ export function ClientDetail({
   workOrdersEnabled,
   contracts,
   contractsEnabled,
+  canCreateContracts,
   quotes,
   quotesEnabled,
   activities,
@@ -189,6 +238,13 @@ export function ClientDetail({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<ClientDetailTab>(defaultTab);
+  // Issue #113: the Platform rail card's own Edit popup — replaces the old
+  // "Access"/"Modules" page-level tabs (see `ClientDetailTab` above).
+  // `platformTab` is local to the popup, not persisted via `setLastUsedView`
+  // (unlike `tab`) — it's a secondary management surface, not one of the
+  // page's own navigable views.
+  const [platformDialogOpen, setPlatformDialogOpen] = useState(false);
+  const [platformTab, setPlatformTab] = useState<PlatformDialogTab>("access");
   const [focusSite, setFocusSite] = useState<{ siteId: string | null; token: number }>({
     siteId: null,
     token: 0,
@@ -259,19 +315,6 @@ export function ClientDetail({
     selectTab("assets");
   }
 
-  // Phone no longer appears here (design decision, rail redesign): it now
-  // only lives in the rail's Company card (`primarySite.phone` below), so it
-  // doesn't double up between the hero meta line and the rail. Only the
-  // primary address stays in the hero, as an icon+text fact per
-  // `RecordHeroBand`'s `meta` convention (see `work-order-hero.tsx`).
-  const heroMeta = primarySite
-    ? [
-        <>
-          <MapPin /> {formatSiteAddress(primarySite)}
-        </>,
-      ]
-    : [];
-
   // Issue #45: this client already represents a real platform tenant once
   // `represents_organization_id` is set — the "Activate as tenant" hero
   // action only makes sense before that.
@@ -285,28 +328,123 @@ export function ClientDetail({
   const isActiveTenant = client.organization_is_active === true;
   const isDeactivatedTenant = isActivatedTenant && client.organization_is_active === false;
   const showActivateTenant = isPlatformAdmin && !isActivatedTenant;
-  // The "Access"/"Modules" tabs manage a tenant's real login/module access —
-  // once a tenant is deactivated its users can no longer log in at all (the
-  // login-gate half of issue #47), so letting a platform admin click into
-  // "invite a user" or "toggle a module" for an org that currently can't log
-  // in either way would just be confusing/dead UI on top of RLS already
-  // blocking the underlying reads. Hiding the tabs outright (rather than a
-  // disabled/explanatory state) also keeps this in sync with `page.tsx`,
-  // which skips the `getTenantAccessStatus` fetch entirely once this is
-  // false — there'd be nothing to show anyway. Reactivating (still visible
-  // via the hero action below) is the way back in.
+
+  // Issue #113 follow-up: badges live in the `meta` row (below the title,
+  // beside the address), not `RecordHeroBand`'s separate `badges` prop
+  // (rendered as its own row ABOVE the title) — product feedback was
+  // explicit these read as one line together, not two. Same
+  // `ui-record-hero-band-meta-badges` wrapper + "first meta item" placement
+  // Work Orders already uses for its status/priority pair (issue #106,
+  // `work-order-hero.tsx`), reused here for Primary/"Client since"/Tenant
+  // instead. Phone no longer appears in `meta` (design decision, rail
+  // redesign): it now only lives in the rail's Company card
+  // (`primarySite.phone` below), so it doesn't double up between the hero
+  // meta line and the rail.
+  const heroMeta: ReactNode[] = [
+    <span className="ui-record-hero-band-meta-badges" key="badges">
+      {primarySite && <Badge variant="accent">Primary</Badge>}
+      <Badge variant="muted">{formatClientSince(client.created_at)}</Badge>
+      {/* Issue #47 acceptance criterion 1: visible to anyone who can see
+          this page (not just the platform admin) whenever this client IS a
+          tenant, active or not — a plain "is this a tenant" fact, distinct
+          from the platform-admin-only manage actions in the rail. */}
+      {isActiveTenant && <Badge variant="success">Tenant</Badge>}
+      {isDeactivatedTenant && <Badge variant="danger">Tenant deactivated</Badge>}
+    </span>,
+  ];
+  if (primarySite) {
+    heroMeta.push(
+      <>
+        <MapPin /> {formatSiteAddress(primarySite)}
+      </>,
+    );
+  }
+  // The rail's Platform card (and its Access/Modules edit popup, issue #113)
+  // manage a tenant's real login/module access — once a tenant is
+  // deactivated its users can no longer log in at all (the login-gate half
+  // of issue #47), so letting a platform admin click into "invite a user" or
+  // "toggle a module" for an org that currently can't log in either way
+  // would just be confusing/dead UI on top of RLS already blocking the
+  // underlying reads. Hiding the card outright (rather than a disabled/
+  // explanatory state) also keeps this in sync with `page.tsx`, which skips
+  // the `getTenantAccessStatus` fetch entirely once this is false — there'd
+  // be nothing to show anyway. Reactivating (still visible via the hero
+  // action below) is the way back in.
   const tenantAccessVisible = isPlatformAdmin && isActiveTenant;
 
-  // Hero `StatStrip` counters (mapped to `StatStripItem[]` below) — Sites has
-  // no `*Enabled` flag (a client's sites always render), the rest mirror the
-  // same flags already gating their own tab above.
-  const relationshipStats = [
-    { key: "sites", label: "Sites", value: sites.length, show: true },
-    { key: "assets", label: "Assets", value: assets.length, show: assetsEnabled },
-    { key: "workOrders", label: "Orders", value: workOrders.length, show: workOrdersEnabled },
-    { key: "quotes", label: "Quotes", value: quotes.length, show: quotesEnabled },
-    { key: "activities", label: "Meldingen", value: activities.length, show: activitiesEnabled },
-  ].filter((stat) => stat.show);
+  // Hero `StatStrip` tiles (issue #113) — see this component's own doc
+  // comment above for why these specific four (not the old Sites/Assets/
+  // Orders/Quotes/Meldingen counts, which just duplicated each tab's own
+  // `(count)` suffix).
+  const accountManagerName = useMemo(() => {
+    if (!client.account_manager_id) return null;
+    const manager = accountManagers.find((item) => item.id === client.account_manager_id);
+    return manager ? `${manager.first_name} ${manager.last_name}`.trim() || null : null;
+  }, [client.account_manager_id, accountManagers]);
+
+  // "Active" = no end date, or an end date that hasn't passed yet — the best
+  // available read of "still in force" from `ContractRecord`'s own fields
+  // (there's no separate `status` column on contracts, see `actions.ts`).
+  const activeContracts = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return contracts.filter((contract) => !contract.end_date || contract.end_date >= today);
+  }, [contracts]);
+  const activeContractsValue = useMemo(
+    () => activeContracts.reduce((sum, contract) => sum + (contract.value ?? 0), 0),
+    [activeContracts],
+  );
+
+  // "Open" = not yet at a terminal `work_order_status` — same framing
+  // `work-order-screen.tsx`'s own hero stats use for "To invoice".
+  const openWorkOrders = useMemo(
+    () => workOrders.filter((order) => !CLOSED_WORK_ORDER_STATUS_VALUES.includes(order.work_order_status?.value ?? "")),
+    [workOrders],
+  );
+  const nextScheduledWorkOrder = useMemo(() => {
+    const scheduled = openWorkOrders
+      .filter((order): order is WorkOrderRecord & { scheduled_at: string } => Boolean(order.scheduled_at))
+      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+    return scheduled[0] ?? null;
+  }, [openWorkOrders]);
+
+  const lastActivity = useMemo(() => {
+    if (activities.length === 0) return null;
+    return [...activities].sort((a, b) => new Date(b.reported_at).getTime() - new Date(a.reported_at).getTime())[0];
+  }, [activities]);
+
+  const heroStats: StatStripItem[] = [
+    {
+      label: "Account manager",
+      value: accountManagerName ?? "Unassigned",
+      hint: accountManagerName ? undefined : "No manager assigned",
+    },
+  ];
+  if (contractsEnabled) {
+    heroStats.push({
+      label: "Active contracts",
+      value: activeContracts.length,
+      hint: activeContractsValue > 0 ? `${formatCurrency(activeContractsValue)} total value` : undefined,
+    });
+  }
+  if (workOrdersEnabled) {
+    heroStats.push({
+      label: "Open work orders",
+      value: openWorkOrders.length,
+      hint:
+        openWorkOrders.length === 0
+          ? "All caught up"
+          : nextScheduledWorkOrder
+            ? `Next: ${formatDateTime(nextScheduledWorkOrder.scheduled_at, { year: false })}`
+            : "Not yet scheduled",
+    });
+  }
+  if (activitiesEnabled) {
+    heroStats.push({
+      label: "Last activity",
+      value: lastActivity ? formatTimestamp(lastActivity.reported_at) : "—",
+      hint: lastActivity?.activity_type?.label,
+    });
+  }
 
   // Rail "Platform" card's read-only modules line. There's no persisted
   // per-tenant module entitlement yet (see `ModulesPanel`'s doc comment —
@@ -337,16 +475,26 @@ export function ClientDetail({
         </Stack>
       </Card>
 
-      {/* Platform-admin-only, same `tenantAccessVisible` gate as the Access/
-          Modules tabs above — a pure read-out (tenant status + which
-          modules are currently visible), no management controls; managing
-          either one stays exclusively in those tabs. */}
+      {/* Platform-admin-only, same `tenantAccessVisible` gate the Access/
+          Modules popup below reuses — a read-out (tenant status + which
+          modules are currently visible) plus (issue #113) an Edit
+          `IconButton` opening that popup; managing either one stays
+          exclusively inside it, never inline on this card. */}
       {tenantAccessVisible && (
         <Card tone="accent">
           <Stack gap="sm">
             <Inline justify="between" align="center">
               <Heading level={6}>Platform</Heading>
-              <Badge variant="accent">Admin only</Badge>
+              <Inline gap="xs" align="center">
+                <Badge variant="accent">Admin only</Badge>
+                <IconButton
+                  variant="ghost"
+                  aria-label="Edit tenant access and modules"
+                  onClick={() => setPlatformDialogOpen(true)}
+                >
+                  <Pencil />
+                </IconButton>
+              </Inline>
             </Inline>
             <DefinitionList
               items={[
@@ -411,18 +559,6 @@ export function ClientDetail({
       <RecordHeroBand
         title={<h1 className="ui-record-hero-band-title">{client.name}</h1>}
         meta={heroMeta}
-        badges={
-          <>
-            {primarySite && <Badge variant="accent">Primary</Badge>}
-            <Badge variant="muted">{formatClientSince(client.created_at)}</Badge>
-            {/* Issue #47 acceptance criterion 1: visible to anyone who can see
-                this page (not just the platform admin) whenever this client
-                IS a tenant, active or not — a plain "is this a tenant" fact,
-                distinct from the platform-admin-only manage actions below. */}
-            {isActiveTenant && <Badge variant="success">Tenant</Badge>}
-            {isDeactivatedTenant && <Badge variant="danger">Tenant deactivated</Badge>}
-          </>
-        }
         actions={
           canWrite || showActivateTenant || (isPlatformAdmin && isActivatedTenant) ? (
             <>
@@ -443,7 +579,7 @@ export function ClientDetail({
             </>
           ) : undefined
         }
-        stats={<StatStrip items={relationshipStats.map((stat): StatStripItem => ({ label: stat.label, value: stat.value }))} />}
+        stats={<StatStrip items={heroStats} />}
       />
 
       <DetailLayout rail={rail}>
@@ -478,16 +614,6 @@ export function ClientDetail({
             {activitiesEnabled && (
               <Tabs.Tab value="activities" icon={<Bell />}>
                 Activiteiten{activities.length > 0 ? ` (${activities.length})` : ""}
-              </Tabs.Tab>
-            )}
-            {tenantAccessVisible && (
-              <Tabs.Tab value="access" icon={<ShieldCheck />}>
-                Access
-              </Tabs.Tab>
-            )}
-            {tenantAccessVisible && (
-              <Tabs.Tab value="modules" icon={<Settings />}>
-                Modules
               </Tabs.Tab>
             )}
           </Tabs.List>
@@ -526,13 +652,13 @@ export function ClientDetail({
 
           {workOrdersEnabled && (
             <Tabs.Panel value="workOrders">
-              <WorkOrdersPanel workOrders={workOrders} />
+              <WorkOrdersPanel clientId={client.id} workOrders={workOrders} canCreate={canCreateWorkOrder} />
             </Tabs.Panel>
           )}
 
           {contractsEnabled && (
             <Tabs.Panel value="contracts">
-              <ContractsPanel contracts={contracts} />
+              <ContractsPanel clientId={client.id} contracts={contracts} canCreate={canCreateContracts} />
             </Tabs.Panel>
           )}
 
@@ -555,17 +681,6 @@ export function ClientDetail({
             </Tabs.Panel>
           )}
 
-          {tenantAccessVisible && (
-            <Tabs.Panel value="access">
-              <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
-            </Tabs.Panel>
-          )}
-
-          {tenantAccessVisible && (
-            <Tabs.Panel value="modules">
-              <ModulesPanel />
-            </Tabs.Panel>
-          )}
         </Tabs>
       </DetailLayout>
 
@@ -586,6 +701,41 @@ export function ClientDetail({
           />
         </>
       )}
+
+      {/* Platform rail card's Edit popup (issue #113) — "Access"/"Modules"
+          used to be their own page-level `Tabs.Tab`s; they're the same
+          `AccessPanel`/`ModulesPanel` content, unchanged internally, just
+          reached from the Platform card's `Pencil` `IconButton` now, as two
+          nested `Tabs` inside a `Dialog size="panel"` (matching
+          `EditClientPanel`'s slide-in convention — this is a small,
+          platform-admin-only management surface, not a top-level module, per
+          docs/ARCHITECTURE.md's "Popup vs. full page"). Only ever rendered
+          when `tenantAccessVisible` (same gate the card itself uses). */}
+      {tenantAccessVisible && (
+        <Dialog open={platformDialogOpen} onOpenChange={setPlatformDialogOpen} size="panel">
+          <Dialog.Header>
+            <Heading level={3}>Tenant access &amp; modules</Heading>
+          </Dialog.Header>
+          <Dialog.Body>
+            <Tabs value={platformTab} onValueChange={(next) => setPlatformTab(next as PlatformDialogTab)}>
+              <Tabs.List aria-label="Tenant access and modules">
+                <Tabs.Tab value="access" icon={<ShieldCheck />}>
+                  Access
+                </Tabs.Tab>
+                <Tabs.Tab value="modules" icon={<Settings />}>
+                  Modules
+                </Tabs.Tab>
+              </Tabs.List>
+              <Tabs.Panel value="access">
+                <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
+              </Tabs.Panel>
+              <Tabs.Panel value="modules">
+                <ModulesPanel />
+              </Tabs.Panel>
+            </Tabs>
+          </Dialog.Body>
+        </Dialog>
+      )}
     </Stack>
   );
 }
@@ -598,7 +748,8 @@ export function ClientDetail({
  * than opening a full `Dialog` (per the story: this doesn't warrant one).
  * On success, `router.refresh()` re-fetches the page's server data, which
  * both flips `client.represents_organization_id` (so this action itself
- * disappears) and reveals the new "Access"/"Modules" tabs.
+ * disappears) and reveals the rail's Platform card (issue #113: with its
+ * Access/Modules edit popup).
  *
  * Once linked, whether that tenant can actually log in/use those tabs is a
  * separate, reversible flag — see `TenantActiveToggleAction` below

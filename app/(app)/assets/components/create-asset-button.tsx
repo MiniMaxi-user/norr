@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, type ButtonSize } from "@yourorg/ui";
+import { Button, type ButtonSize, type ButtonVariant } from "@yourorg/ui";
 import { AssetFormDialog } from "./asset-form-dialog";
 
 export interface CreateAssetButtonProps {
@@ -10,9 +10,10 @@ export interface CreateAssetButtonProps {
   clientId?: string;
   /** Pre-selects (without locking) a site in the dialog. */
   siteId?: string;
-  /** Overrides the default "Add asset" label — the Clients detail page uses
-   * a shorter "Add asset" too, but a future call site might want e.g. "Add
-   * asset to this site". */
+  /** Overrides the default "Add asset" label — the Clients detail page's
+   * Assets tab (`assets-panel.tsx`) passes "+ Asset" to match the
+   * `SectionHeader` "+ X" convention (docs/DESIGN-SYSTEM.md "tab-panel add
+   * button" convention) rather than this default. */
   label?: string;
   /** The standalone Assets module page (`assets-screen.tsx`) wants its own
    * default (larger) toolbar button; a client-detail tab's toolbar wants
@@ -20,6 +21,14 @@ export interface CreateAssetButtonProps {
    * — issue #51). Left undefined (default size) for the module page, passed
    * explicitly as `"sm"` from `clients/[id]/assets-panel.tsx`. */
   size?: ButtonSize;
+  /** Both the standalone module page's own "New Asset" toolbar button and a
+   * client-detail tab's `SectionHeader` "add" action use the default
+   * top-level `"primary"` (accent) treatment, just at different sizes (see
+   * `size` above) — see `docs/DESIGN-SYSTEM.md`'s "Buttons: default size vs.
+   * small" and `docs/ARCHITECTURE.md`'s tab-panel "Add X" button convention.
+   * Left overridable for a future caller that genuinely needs a different
+   * variant; unused by either current caller. */
+  variant?: ButtonVariant;
 }
 
 /**
@@ -30,12 +39,12 @@ export interface CreateAssetButtonProps {
  * `"use client"` component now (owns the dialog's `open` state) rather than
  * the previous plain `<Link>` Server Component.
  */
-export function CreateAssetButton({ clientId, siteId, label, size }: CreateAssetButtonProps) {
+export function CreateAssetButton({ clientId, siteId, label, size, variant }: CreateAssetButtonProps) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button type="button" variant="primary" size={size} onClick={() => setOpen(true)}>
+      <Button type="button" variant={variant ?? "primary"} size={size} onClick={() => setOpen(true)}>
         {label ?? "Add asset"}
       </Button>
       <AssetFormDialog

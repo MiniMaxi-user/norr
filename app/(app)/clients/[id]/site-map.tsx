@@ -94,10 +94,10 @@ export function SiteMap({ pins }: { pins: SiteMapPin[] }) {
         <Marker key={pin.siteId} position={[pin.latitude, pin.longitude]} icon={DEFAULT_ICON}>
           <Popup>
             <Stack gap="xs">
+              {pin.isPrimary && <Badge variant="accent">Primary</Badge>}
               <Text>
                 <strong>{pin.addressLabel}</strong>
               </Text>
-              {pin.isPrimary && <Badge variant="accent">Primary</Badge>}
               <Text tone="muted">{[pin.addressLine1, pin.city].filter(Boolean).join(", ") || "—"}</Text>
             </Stack>
           </Popup>

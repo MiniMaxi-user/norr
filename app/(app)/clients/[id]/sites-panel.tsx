@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
-import { Boxes } from "@yourorg/ui/icons";
+import { Badge, Button, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
+import { Boxes, MapPin } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
@@ -85,13 +85,17 @@ export function SitesPanel({
 
   return (
     <Stack gap="md">
-      {canWrite && (
-        <Inline justify="end">
-          <Button variant="primary" size="sm" onClick={openAddSite}>
-            Add site
-          </Button>
-        </Inline>
-      )}
+      <SectionHeader
+        icon={MapPin}
+        title="Sites"
+        actions={
+          canWrite && (
+            <Button variant="primary" size="sm" onClick={openAddSite}>
+              + Site
+            </Button>
+          )
+        }
+      />
 
       {sites.length === 0 ? (
         <EmptyState
@@ -125,8 +129,8 @@ export function SitesPanel({
                 <Table.Row key={site.id} onClick={canWrite ? () => setSiteForm({ open: true, site }) : undefined}>
                   <Table.Cell>
                     <Inline gap="xs" align="center">
-                      <Text>{formatSiteAddressShort(site) ?? "—"}</Text>
                       {site.is_primary && <Badge variant="accent">Primary</Badge>}
+                      <Text>{formatSiteAddressShort(site) ?? "—"}</Text>
                     </Inline>
                   </Table.Cell>
                   <Table.Cell>{site.address_line1 || <Text tone="muted">—</Text>}</Table.Cell>

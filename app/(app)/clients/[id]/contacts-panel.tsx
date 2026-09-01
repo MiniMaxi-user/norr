@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Avatar, Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
+import { Avatar, Badge, Button, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
 import { Users } from "@yourorg/ui/icons";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -49,13 +49,17 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
 
   return (
     <Stack gap="sm">
-      {canWrite && (
-        <Inline justify="end">
-          <Button variant="primary" size="sm" onClick={openAddContact}>
-            Add contact
-          </Button>
-        </Inline>
-      )}
+      <SectionHeader
+        icon={Users}
+        title="Contacts"
+        actions={
+          canWrite && (
+            <Button variant="primary" size="sm" onClick={openAddContact}>
+              + Contact
+            </Button>
+          )
+        }
+      />
 
       {contacts.length === 0 ? (
         <EmptyState
@@ -93,8 +97,8 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
                     <Inline gap="sm">
                       <Avatar name={contact.name} size="sm" />
                       <Inline gap="xs">
-                        <Text>{contact.name}</Text>
                         {contact.is_primary && <Badge variant="accent">Primary</Badge>}
+                        <Text>{contact.name}</Text>
                       </Inline>
                     </Inline>
                   </Table.Cell>

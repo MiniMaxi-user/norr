@@ -1,12 +1,20 @@
 import Link from "next/link";
-import { Button } from "@yourorg/ui";
+import { Button, type ButtonSize } from "@yourorg/ui";
 
 export interface CreateContractButtonProps {
-  /** Pre-scopes the create page to a single client (`/contracts/new?clientId=...`)
-   * — same `lockedClientId` shape as `CreateAssetButton`/`CreateWorkOrderButton`,
-   * for a future client-scoped "New contract" entry point. */
+  /** Pre-scopes the create page to a single client (`/contracts/new?clientId=...`,
+   * which pre-fills the client there) — same `lockedClientId` shape as
+   * `CreateAssetButton`/`CreateWorkOrderButton`, used both by a future
+   * client-scoped entry point and (issue #113 follow-up) the Clients detail
+   * page's own Contracts tab. */
   clientId?: string;
   label?: string;
+  /** The standalone Contracts module page's own toolbar button wants the
+   * default (larger) size; the Clients detail page's Contracts tab
+   * (`contracts-panel.tsx`) passes `"sm"` to match every other tab's
+   * `SectionHeader` "+ X" button there — same `size` convention
+   * `CreateAssetButton`/`CreateWorkOrderButton` already use. */
+  size?: ButtonSize;
 }
 
 /**
@@ -16,14 +24,14 @@ export interface CreateContractButtonProps {
  * `can(actor, "contracts", "create")` — a planner/engineer/administratie
  * never sees this, matching `createContract`'s own RBAC gate.
  */
-export function CreateContractButton({ clientId, label }: CreateContractButtonProps) {
+export function CreateContractButton({ clientId, label, size }: CreateContractButtonProps) {
   const params = new URLSearchParams();
   if (clientId) params.set("clientId", clientId);
   const query = params.toString();
 
   return (
     <Link href={query ? `/contracts/new?${query}` : "/contracts/new"}>
-      <Button type="button" variant="primary">
+      <Button type="button" variant="primary" size={size}>
         {label ?? "New contract"}
       </Button>
     </Link>
