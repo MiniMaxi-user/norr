@@ -1298,31 +1298,12 @@ a:focus-visible > .ui-card-interactive,
 }
 
 /* ---------------------------------------------------------------------- *
- * Clients page header (issue #58, extended to List view thereafter) — a
- * plain `Card` surface shared by both List and Kanban, scoped to
- * `app/(app)/clients/clients-explorer.tsx`'s own render tree, matching every
- * other page's header (no bespoke dark palette). This rule only adds the
- * vertical layout `Card` itself doesn't provide — surface/border/padding/
- * shadow all come from `.ui-card`.
+ * Clients kanban stat readout (issue #58) — rendered as `OverviewHeroBand`'s
+ * `stats` slot (issue #116; previously sat inline in the now-removed
+ * `.ui-clients-page-header` `Card`). `.ui-clients-page-filters*` below is the
+ * separate light `Card` search/filter row that still sits under the dark
+ * band, unchanged.
  * ---------------------------------------------------------------------- */
-.ui-clients-page-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-md);
-}
-.ui-clients-page-header-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ui-space-lg);
-  flex-wrap: wrap;
-}
-.ui-clients-page-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-md);
-  flex-wrap: wrap;
-}
 .ui-clients-kanban-stats {
   display: flex;
   align-items: center;
@@ -3660,6 +3641,99 @@ select.ui-client-card-status-select {
 }
 .ui-record-hero-band-stats {
   margin-top: -0.25rem;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Overview hero band — see components/overview-hero-band.tsx (issue #116).
+ * The list-page counterpart to `.ui-record-hero-band` above: same full-bleed
+ * dark-fjord surface and token overrides (so any `Badge`/`Button`/stat text
+ * rendered inside it reads correctly on the dark background without its own
+ * per-page overrides), reshaped for a page title + inline stat readout +
+ * right-aligned view-toggle/action row instead of one record's badges/meta/
+ * title/assignee. Rolling out module-by-module starting with Clients — see
+ * docs/ARCHITECTURE.md's "Overview-page header pattern".
+ * ---------------------------------------------------------------------- */
+.ui-overview-hero-band {
+  background: var(--ui-brand-fjord);
+  padding: 1.75rem 2rem;
+  margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x)) 0;
+  width: calc(100% + 2 * var(--ui-page-inset-x));
+  display: flex;
+  flex-direction: column;
+
+  --ui-bg: var(--ui-brand-fjord);
+  --ui-fg: var(--ui-brand-snow);
+  --ui-fg-secondary: rgba(223, 228, 224, 0.85);
+  --ui-muted: rgba(223, 228, 224, 0.68);
+  --ui-muted-subtle: rgba(223, 228, 224, 0.5);
+  --ui-border: rgba(223, 228, 224, 0.25);
+  --ui-surface-2: rgba(223, 228, 224, 0.14);
+  --ui-accent-tint: rgba(199, 154, 62, 0.2);
+  --ui-accent-tint-border: rgba(199, 154, 62, 0.4);
+  --ui-accent-strong: var(--ui-accent-500);
+  --ui-success-tint: rgba(143, 191, 133, 0.18);
+  --ui-success-strong: #b0d6a8;
+  --ui-danger-tint: rgba(224, 132, 118, 0.18);
+  --ui-danger-strong: #eba99e;
+  --ui-warning-tint: rgba(224, 160, 90, 0.18);
+  --ui-warning-strong: #f0b876;
+  color: var(--ui-fg);
+}
+.ui-overview-hero-band-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.ui-overview-hero-band-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.ui-overview-hero-band-title {
+  margin: 0;
+  font-family: var(--ui-font-serif);
+  font-size: 2rem;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.ui-overview-hero-band-subtitle {
+  font-size: 0.875rem;
+  color: var(--ui-fg-secondary);
+}
+.ui-overview-hero-band-right {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.ui-overview-hero-band-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-lg);
+}
+.ui-overview-hero-band-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+/* Same transparent-on-dark treatment as `.ui-record-hero-band-actions
+   .ui-button-outline` — border/label color already resolve correctly since
+   `--ui-border`/`--ui-fg` are re-pointed above; only the background needs
+   flattening. Scoped to `.ui-button-outline` only, not every `.ui-button`,
+   for the same reason `RecordHeroBand`'s own rule is: solid-filled variants
+   (`primary`) already read fine on this dark surface as-is. */
+.ui-overview-hero-band-actions .ui-button-outline {
+  background: transparent;
+}
+.ui-overview-hero-band-actions .ui-button-outline:hover {
+  background: rgba(223, 228, 224, 0.1);
 }
 
 /* ---------------------------------------------------------------------- *

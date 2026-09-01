@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
@@ -43,10 +43,7 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
 
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Work Orders</Heading>
-        <Text tone="muted">Jobs dispatched to your team, across every client and site.</Text>
-      </Stack>
+      <OverviewHeroBand title="Work Orders" subtitle="Jobs dispatched to your team, across every client and site." />
 
       <Suspense key={`${page}`} fallback={<WorkOrdersScreenSkeleton />}>
         <WorkOrdersScreen

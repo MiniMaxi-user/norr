@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -51,10 +51,7 @@ export default async function ArticlesPage({ searchParams }: ArticlesPageProps) 
 
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Articles</Heading>
-        <Text tone="muted">Your organization&rsquo;s product and parts catalog.</Text>
-      </Stack>
+      <OverviewHeroBand title="Articles" subtitle="Your organization&rsquo;s product and parts catalog." />
 
       <Suspense
         key={`${params.search ?? ""}:${params.groupId ?? ""}:${params.manufacturerItemId ?? ""}:${params.active ?? ""}:${params.composite ?? ""}:${page}`}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Breadcrumbs, Button, Card, EmptyState, Heading, Input, Select, Stack, Text } from "@yourorg/ui";
+import { Breadcrumbs, Button, Card, EmptyState, Input, OverviewHeroBand, Select, Stack, Text } from "@yourorg/ui";
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -54,13 +54,15 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * back up (same class of simplification the pre-#58 version of this note
  * already flagged for the list/kanban split in general).
  *
- * Both views share one header shape (issue #58's kanban design mockup,
- * extended to List thereafter): "Customer overview" H1 + `ViewToggle` +
- * "Add client" on the right, on the same `Card` surface every other page's
- * header uses (no bespoke dark palette), with a filter row below. Kanban's
- * filter row additionally carries the "Klanten"/"Pipeline potential" stats
- * and the Account manager/Status selects — List's is just its own search
- * input. Its breadcrumb lives in the Topbar via `usePageHeader`, mirroring
+ * Both views share one header shape: a full-bleed dark `OverviewHeroBand`
+ * (issue #116 — "Customer overview" title + `ViewToggle` + "Add client",
+ * matching the same dark-fjord band already used on detail pages, see
+ * `docs/ARCHITECTURE.md`'s "Overview-page header pattern") followed by a
+ * plain light `Card` filter row below it. Kanban's stats (the "Klanten"/
+ * "Pipeline potential" readout) render in the band's own `stats` slot;
+ * kanban's filter `Card` additionally carries the Account manager/Status
+ * selects — List's filter `Card` is just its own search input. Its
+ * breadcrumb lives in the Topbar via `usePageHeader`, mirroring
  * `client-detail.tsx`'s pattern, and only while kanban view is active — List
  * view has never shown a breadcrumb.
  */
@@ -195,35 +197,44 @@ export function ClientsExplorer({
     );
   }
 
+  const headerActions = (
+    <>
+      <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
+      {canWrite && (
+        <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+          Add client
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <Stack gap="lg">
-      {view === "kanban" ? (
-        <Card className="ui-clients-page-header">
-          <div className="ui-clients-page-header-row">
-            <Heading level={1}>Customer overview</Heading>
-            <div className="ui-clients-page-header-actions">
-              <div className="ui-clients-kanban-stats">
-                <div className="ui-clients-kanban-stat">
-                  <div className="ui-clients-kanban-stat-label">Klanten</div>
-                  <div className="ui-clients-kanban-stat-value">{kanbanFiltered.length}</div>
-                </div>
-                <div className="ui-clients-kanban-stat">
-                  <div className="ui-clients-kanban-stat-label">Pipeline potential</div>
-                  <div className="ui-clients-kanban-stat-value">
-                    {formatPotentialValue(
-                      kanbanFiltered.reduce((sum, client) => sum + (client.potential_value ?? 0), 0),
-                    )}
-                  </div>
+      <OverviewHeroBand
+        title="Customer overview"
+        actions={headerActions}
+        stats={
+          view === "kanban" ? (
+            <div className="ui-clients-kanban-stats">
+              <div className="ui-clients-kanban-stat">
+                <div className="ui-clients-kanban-stat-label">Klanten</div>
+                <div className="ui-clients-kanban-stat-value">{kanbanFiltered.length}</div>
+              </div>
+              <div className="ui-clients-kanban-stat">
+                <div className="ui-clients-kanban-stat-label">Pipeline potential</div>
+                <div className="ui-clients-kanban-stat-value">
+                  {formatPotentialValue(
+                    kanbanFiltered.reduce((sum, client) => sum + (client.potential_value ?? 0), 0),
+                  )}
                 </div>
               </div>
-              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
-              {canWrite && (
-                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                  Add client
-                </Button>
-              )}
             </div>
-          </div>
+          ) : undefined
+        }
+      />
+
+      {view === "kanban" ? (
+        <Card>
           <div className="ui-clients-page-filters">
             <div className="ui-clients-page-filters-search">
               <Input
@@ -269,18 +280,7 @@ export function ClientsExplorer({
           </div>
         </Card>
       ) : (
-        <Card className="ui-clients-page-header">
-          <div className="ui-clients-page-header-row">
-            <Heading level={1}>Customer overview</Heading>
-            <div className="ui-clients-page-header-actions">
-              <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
-              {canWrite && (
-                <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                  Add client
-                </Button>
-              )}
-            </div>
-          </div>
+        <Card>
           <div className="ui-clients-page-filters">
             <div className="ui-clients-page-filters-search">
               <Input

@@ -24,6 +24,12 @@ A lighter, editorial header (an initials mark, serif name, a dot-separated line 
 
 If you're designing a new module and it's genuinely unclear which one fits, ask: *does this page's value come from its own content, or from browsing to its relations?* Content → Pattern A. Relations → Pattern B. Only reach for the Clients-style hybrid when a record is genuinely both at once, and confirm that with the product owner rather than deciding it alone.
 
+## Overview-page header (issue #116, rollout complete)
+
+Every top-level module's OVERVIEW/list page (Clients, Assets, Contracts, Articles, Work Orders, Quotes, Meldingen) now gets the same dark, full-bleed "blue header" band the detail pages above use — just reshaped for a list page: a page title (e.g. "Customer overview"), an optional small inline stat readout on the right, and a right-aligned `ViewToggle` + primary "Add …" button, instead of a record's badges/facts/assignee. The component is `OverviewHeroBand` — visually the same dark surface and typography as `RecordHeroBand`, but its own smaller shape, since a list page has no single record's title/badges/meta to show. The search/filter row stays a plain light card directly below the band, unchanged.
+
+**All seven pages are now converted.** Clients (List and Kanban both) got the full treatment first — title + the `stats`/`actions` slots (view toggle, "Add client", and Kanban's "Klanten"/"Pipeline potential" readout) — since it's a single client component that can compute those synchronously. Assets (map/list), Contracts, Articles, Work Orders, Quotes, and Meldingen followed with a plain title+subtitle band only: each of those pages streams its toolbar/create-button/view-switcher in asynchronously via its own `*Screen` component inside `Suspense`, so that chrome stayed exactly where it was (below the band, inside the `Suspense` boundary) rather than being pulled into the band's `stats`/`actions` slots.
+
 ## Card vs. flat section
 
 - A **card** frames something that stands on its own and could be looked at in isolation — a "linked record" summary (Client, Site), a sidebar fact block in Pattern B.

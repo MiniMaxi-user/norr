@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
@@ -55,10 +55,10 @@ export default async function ActivitiesPage({ searchParams }: ActivitiesPagePro
 
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Meldingen</Heading>
-        <Text tone="muted">Calls, storingen, onderhoud, afspraken, and e-mail opvolging logged against your clients.</Text>
-      </Stack>
+      <OverviewHeroBand
+        title="Meldingen"
+        subtitle="Calls, storingen, onderhoud, afspraken, and e-mail opvolging logged against your clients."
+      />
 
       <Suspense
         key={`${page}:${params.clientId ?? ""}:${params.statusId ?? ""}:${params.typeId ?? ""}:${params.actionHolderId ?? ""}`}

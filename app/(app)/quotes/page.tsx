@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -49,10 +49,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Quotes</Heading>
-        <Text tone="muted">Pre-sale proposals, across every client.</Text>
-      </Stack>
+      <OverviewHeroBand title="Quotes" subtitle="Pre-sale proposals, across every client." />
 
       <Suspense key={`${page}-${showDrafts}`} fallback={<QuotesScreenSkeleton />}>
         <QuotesScreen

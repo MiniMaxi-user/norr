@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Heading, Stack, Text } from "@yourorg/ui";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -53,10 +53,7 @@ export default async function AssetsPage({ searchParams }: AssetsPageProps) {
 
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Assets</Heading>
-        <Text tone="muted">Equipment installed at your clients&rsquo; sites.</Text>
-      </Stack>
+      <OverviewHeroBand title="Assets" subtitle="Equipment installed at your clients&rsquo; sites." />
 
       <Suspense
         key={`${view}:${params.clientId ?? ""}:${params.siteId ?? ""}:${page}`}
