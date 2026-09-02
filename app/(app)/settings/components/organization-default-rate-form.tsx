@@ -37,16 +37,16 @@ const initialState: FormState = {};
  * Org-level default Travel/Work billing rate settings (issue #109 acceptance
  * criterion 4) — layer 3 of `resolve_billing_rate`'s 4-layer precedence
  * (client override -> engineer override -> ORG DEFAULT -> unresolved). Two
- * article pickers, each showing the picked article's own live sale price as
- * a read-only preview — unlike `RateSettingsSection`
- * (`lib/rate-overrides/rate-settings-section.tsx`), there is no separate
- * override sale price to edit at this layer: the price IS the linked
- * article's own `sale_price`, always read live off the FK (see
- * `../organization-rate-actions.ts`'s header comment), so this is its own
- * smaller component rather than a forced reuse of that one — same visual
- * language (article `<Select>` + read-only price preview), just without the
- * "Custom rate" checkbox or an editable sale price field neither applies
- * here.
+ * article pickers, each showing the picked article's own live sale price and
+ * purchase price as a read-only preview (same pair `RateSettingsSection`
+ * shows) — unlike `RateSettingsSection` (`lib/rate-overrides/rate-settings-
+ * section.tsx`), there is no separate override sale price to edit at this
+ * layer: the price IS the linked article's own `sale_price`, always read
+ * live off the FK (see `../organization-rate-actions.ts`'s header comment),
+ * so this is its own smaller component rather than a forced reuse of that
+ * one — same visual language (article `<Select>` + read-only price
+ * previews), just without the "Custom rate" checkbox or an editable sale
+ * price field neither applies here.
  */
 export function OrganizationDefaultRateForm({ initial, articles, canWrite }: OrganizationDefaultRateFormProps) {
   const [travelArticleId, setTravelArticleId] = useState(initial.defaultTravelArticleId ?? "");
@@ -143,7 +143,7 @@ function RateArticleField({
   return (
     <Stack gap="xs">
       <Heading level={6}>{label}</Heading>
-      <FormGrid columns={2}>
+      <FormGrid columns={3}>
         <Stack gap="xs">
           <Label htmlFor={`${idPrefix}-article`}>Article</Label>
           <Select
@@ -169,6 +169,10 @@ function RateArticleField({
           <Label htmlFor={`${idPrefix}-sale-price`}>Current sale price</Label>
           <Text id={`${idPrefix}-sale-price`}>{picked ? formatCurrency(picked.sale_price) : "—"}</Text>
         </Stack>
+        <Stack gap="xs">
+          <Label htmlFor={`${idPrefix}-purchase-price`}>Purchase price</Label>
+          <Text id={`${idPrefix}-purchase-price`}>{picked ? formatCurrency(picked.purchase_price) : "—"}</Text>
+        </Stack>
       </FormGrid>
     </Stack>
   );
@@ -185,7 +189,7 @@ function RateReadOnlyRow({
 }) {
   const picked = articleId ? (articles.find((article) => article.id === articleId) ?? null) : null;
   return (
-    <FormGrid columns={2}>
+    <FormGrid columns={3}>
       <Stack gap="xs">
         <Label>{label} article</Label>
         <Text>{picked ? `${picked.article_number} — ${picked.description}` : "Not set"}</Text>
@@ -193,6 +197,10 @@ function RateReadOnlyRow({
       <Stack gap="xs">
         <Label>Current sale price</Label>
         <Text>{picked ? formatCurrency(picked.sale_price) : "—"}</Text>
+      </Stack>
+      <Stack gap="xs">
+        <Label>Purchase price</Label>
+        <Text>{picked ? formatCurrency(picked.purchase_price) : "—"}</Text>
       </Stack>
     </FormGrid>
   );
