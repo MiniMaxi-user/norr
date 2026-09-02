@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { toSessionCookieOptions } from "@/lib/supabase/cookie-options";
+
 /**
  * Refreshes the Supabase auth session on every request that passes through
  * middleware.ts. This keeps Server Component reads of the session fresh
@@ -27,7 +29,11 @@ export async function updateSession(request: NextRequest) {
           }
           supabaseResponse = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
-            supabaseResponse.cookies.set(name, value, options);
+            supabaseResponse.cookies.set(
+              name,
+              value,
+              toSessionCookieOptions(options),
+            );
           }
         },
       },

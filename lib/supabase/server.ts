@@ -3,6 +3,8 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import { toSessionCookieOptions } from "@/lib/supabase/cookie-options";
+
 /**
  * Supabase client for use in Server Components, Server Actions, and Route
  * Handlers. Runs under the requesting user's session (anon key + cookies),
@@ -25,7 +27,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
+              cookieStore.set(name, value, toSessionCookieOptions(options));
             }
           } catch {
             // Called from a Server Component that can't set cookies (no
