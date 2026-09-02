@@ -112,6 +112,14 @@ export interface QuoteRecord {
    * default list view entirely, or badge them distinctly; left as a UI call,
    * not decided here. */
   is_auto_draft: boolean;
+  /** Nullable FK into `work_orders` (issue #94 schema, `on delete set null`)
+   * — set when this quote was created via a Work Order's "Create Quote"
+   * button (including its own auto-draft, issue #109) rather than from
+   * scratch. Already selected here (part of `QUOTE_SELECT`'s `*`) — pulled
+   * into this interface explicitly (Quote detail redesign) so the detail
+   * page can render a "Source" `RelationCard` linking back to
+   * `/work-orders/[work_order_id]` when set. */
+  work_order_id: string | null;
   /** Embedded via `reference_list_items!quotes_status_id_fkey(...)` — see
    * `QUOTE_SELECT` below. Postgres's default FK naming for an unnamed column
    * FK is `<table>_<column>_fkey` (same reasoning `app/(app)/contracts/

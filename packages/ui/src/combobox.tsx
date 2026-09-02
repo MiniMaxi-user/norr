@@ -23,9 +23,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { cx } from "./cx";
 import { Check, ChevronDown, X } from "./icons";
 
@@ -92,6 +94,26 @@ export interface ComboboxProps {
  * passes it an already-filtered `options` array and remounts via
  * `key={typeValue}` or clears `value` itself when the parent changes, same
  * general shape `CascadingSelect`'s own doc comment describes.
+ *
+ * The listbox is portaled to `document.body` (Quote line items redesign) —
+ * it used to render as a plain `position: absolute` child of `.ui-combobox`,
+ * which broke inside any scrolling/clipping ancestor (e.g. `.ui-table-wrap`,
+ * which needs `overflow-x: auto` for wide-table horizontal scroll — see that
+ * class's own comment in styles.css — and per a CSS spec quirk, setting
+ * `overflow-x` to anything but `visible` forces the computed `overflow-y` to
+ * resolve to `auto` too when left unset, so the listbox got clipped/reordered
+ * underneath later page content instead of floating on top of it). Same fix
+ * `Dialog` already uses (see that component's own doc comment) — portaling
+ * out of the clipping context entirely, rather than fighting `.ui-table-wrap`'s
+ * own overflow behavior. Position is computed from the trigger's own
+ * `getBoundingClientRect()` (viewport-relative, matching `position: fixed`)
+ * and re-measured on scroll/resize while open — see the `position` state
+ * below. `.ui-combobox-listbox-portal`'s `z-index` is higher than
+ * `.ui-dialog-overlay`'s (100) so a Combobox opened from inside a Dialog
+ * (`AssetFormDialog`, `ArticleFormPanel`, …) still renders above that
+ * dialog's own surface once portaled out of it, matching what it looked like
+ * pre-portal (a plain DOM descendant always painted on top of its own
+ * ancestor).
  */
 export function Combobox({
   options,
@@ -120,7 +142,35 @@ export function Combobox({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listboxRef = useRef<HTMLUListElement>(null);
   const pointerDownOutsideRef = useRef(false);
+
+  // Viewport-relative position for the portaled listbox (see this file's own
+  // doc comment) — re-measured whenever the dropdown opens and on every
+  // scroll/resize while it stays open, so it tracks the trigger even inside
+  // a scrolling ancestor (e.g. `.ui-table-wrap`). `capture: true` on the
+  // scroll listener catches scroll events from ANY scrollable ancestor, not
+  // just `window` (a plain non-capturing `window` listener only fires for
+  // the document/window's own scroll, never an inner `overflow: auto` div).
+  const [listboxPosition, setListboxPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setListboxPosition(null);
+      return undefined;
+    }
+    function updatePosition() {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) setListboxPosition({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    }
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open]);
 
   // Keep the visible text in sync with the *selected* option whenever the
   // dropdown is closed (covers an external `value` change — e.g. a parent
@@ -154,15 +204,24 @@ export function Combobox({
   // comment has the full story). Tracked via plain document pointer
   // listeners rather than `onBlur`, so dragging a text selection out of the
   // input and releasing over unrelated page content can never be
-  // misread as "the user clicked away" mid-selection.
+  // misread as "the user clicked away" mid-selection. "Outside" now also
+  // excludes `listboxRef` — since the listbox is portaled to `document.body`
+  // (see this file's own doc comment), it's no longer a DOM descendant of
+  // `containerRef`, so without this a press on an option would register as
+  // "outside" the trigger and close the dropdown before `selectOption`'s own
+  // `onClick` had a chance to run.
+  function isOutside(target: Node) {
+    return !containerRef.current?.contains(target) && !listboxRef.current?.contains(target);
+  }
+
   useEffect(() => {
     if (!open) return undefined;
 
     function handlePointerDown(event: PointerEvent) {
-      pointerDownOutsideRef.current = !containerRef.current?.contains(event.target as Node);
+      pointerDownOutsideRef.current = isOutside(event.target as Node);
     }
     function handlePointerUp(event: PointerEvent) {
-      const endedOutside = !containerRef.current?.contains(event.target as Node);
+      const endedOutside = isOutside(event.target as Node);
       if (pointerDownOutsideRef.current && endedOutside) close();
     }
 
@@ -298,36 +357,56 @@ export function Combobox({
 
       {name ? <input type="hidden" name={name} value={value ?? ""} /> : null}
 
-      {open && !disabled ? (
-        <ul id={listboxId} role="listbox" className="ui-combobox-listbox">
-          {filteredOptions.length === 0 ? (
-            <li className="ui-combobox-empty">{emptyMessage}</li>
-          ) : (
-            filteredOptions.map((option, index) => {
-              const selected = option.value === value;
-              const highlighted = index === highlightedIndex;
+      {open && !disabled && listboxPosition && typeof document !== "undefined"
+        ? createPortal(
+            (() => {
+              const style: CSSProperties = {
+                position: "fixed",
+                top: listboxPosition.top,
+                left: listboxPosition.left,
+                width: listboxPosition.width,
+                right: "auto",
+              };
               return (
-                <li
-                  key={option.value}
-                  id={`${baseId}-option-${option.value}`}
-                  role="option"
-                  aria-selected={selected}
-                  className={cx(
-                    "ui-combobox-option",
-                    highlighted && "ui-combobox-option-highlighted",
-                    selected && "ui-combobox-option-selected",
-                  )}
-                  onMouseEnter={() => setHighlightedIndex(index)}
-                  onClick={() => selectOption(option)}
+                <ul
+                  ref={listboxRef}
+                  id={listboxId}
+                  role="listbox"
+                  className="ui-combobox-listbox ui-combobox-listbox-portal"
+                  style={style}
                 >
-                  <span>{option.label}</span>
-                  {selected ? <Check className="ui-combobox-option-check" aria-hidden="true" /> : null}
-                </li>
+                  {filteredOptions.length === 0 ? (
+                    <li className="ui-combobox-empty">{emptyMessage}</li>
+                  ) : (
+                    filteredOptions.map((option, index) => {
+                      const selected = option.value === value;
+                      const highlighted = index === highlightedIndex;
+                      return (
+                        <li
+                          key={option.value}
+                          id={`${baseId}-option-${option.value}`}
+                          role="option"
+                          aria-selected={selected}
+                          className={cx(
+                            "ui-combobox-option",
+                            highlighted && "ui-combobox-option-highlighted",
+                            selected && "ui-combobox-option-selected",
+                          )}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          onClick={() => selectOption(option)}
+                        >
+                          <span>{option.label}</span>
+                          {selected ? <Check className="ui-combobox-option-check" aria-hidden="true" /> : null}
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
               );
-            })
-          )}
-        </ul>
-      ) : null}
+            })(),
+            document.body,
+          )
+        : null}
     </div>
   );
 }

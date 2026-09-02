@@ -14,6 +14,7 @@ import {
   Input,
   Select,
   Stack,
+  SummaryRow,
   Table,
   Text,
 } from "@yourorg/ui";
@@ -60,7 +61,10 @@ export interface QuoteLineItemsPanelProps {
  * distinction. Every field is a plain string (form-input-shaped); parsed/
  * validated in `saveDraft` before being sent to the Server Action, which
  * re-validates independently regardless (`quoteLineItemCreateSchema`/
- * `quoteLineItemUpdateSchema`). */
+ * `quoteLineItemUpdateSchema`). `description` has no visible input anymore
+ * (see `deriveDescription` below) but is still carried in the draft — it
+ * still needs to survive an edit of an existing, already-described row
+ * unchanged when neither the article nor the asset picker is touched. */
 interface RowDraft {
   rowId: string | null;
   description: string;
@@ -83,7 +87,9 @@ function unitPriceInclDiscount(unitPrice: number, discountPercent: number): numb
 
 /** A line's row total = `quantity * (unit price incl. discount)` (criterion
  * 8) — matches `computeTotal` in `../actions.ts` term-for-term, just spelled
- * out per-row instead of summed. */
+ * out per-row instead of summed. This is the quote's own pre-VAT figure
+ * (`../actions.ts`'s `computeTotal` doc comment: `quote.total` is explicitly
+ * pre-VAT) — the Subtotal/VAT/Total footer below sums exactly this. */
 function rowTotal(quantity: number, unitPrice: number, discountPercent: number): number {
   return quantity * unitPriceInclDiscount(unitPrice, discountPercent);
 }
@@ -94,6 +100,41 @@ function articleOptionLabel(article: { article_number: string; description: stri
 
 function assetOptionLabel(asset: AssetRecord): string {
   return asset.asset_type?.label ? `${asset.name} (${asset.asset_type.label})` : asset.name;
+}
+
+/** A line's own VAT rate, as a plain percentage number — resolved from its
+ * linked article's `vat_rate.value` (a numeric string, e.g. `"21"`).
+ * Deliberately `0` for a line with no linked article: `quote_line_items` has
+ * no VAT-rate column of its own (only the linked article carries one), so
+ * there is nothing to resolve a rate from for a free-text/manual line — this
+ * is "no data to invent a number from", not a bug, same reasoning
+ * `resolveArticlePriceInfo`'s own read-only VAT cell already applies
+ * (renders "—" for exactly this case). */
+function lineVatPercent(item: Pick<QuoteLineItemRecord, "article">): number {
+  const raw = item.article?.vat_rate?.value;
+  return raw ? Number(raw) : 0;
+}
+
+/** No visible "Description" input anymore (this file's own doc comment /
+ * `docs/ARCHITECTURE.md`-adjacent redesign notes) — `description` stays a
+ * required column (`quoteLineItemCreateSchema.description`, `min(1)`), so
+ * every save still needs a non-empty value to send. Resolution order: (1)
+ * whatever is already in the draft (auto-filled the moment an article is
+ * picked, see `handleArticleChange`, or carried over unchanged from an
+ * existing row being edited); (2) the picked asset's own display name, if
+ * one is set but no article is; (3) a generic fallback. This is the
+ * "narrow scope" choice flagged in the redesign hand-off: a brand new line
+ * item with NEITHER an article NOR an asset picked no longer supports a
+ * fully free-text description — it silently becomes "Line item" instead of
+ * failing validation. Existing rows created before this redesign (with a
+ * real hand-typed description) are unaffected — editing one without
+ * changing its article/asset keeps its original text (case 1 above). */
+function deriveDescription(draft: RowDraft, assetById: Map<string, AssetRecord>): string {
+  const trimmed = draft.description.trim();
+  if (trimmed) return trimmed;
+  const asset = draft.assetId ? assetById.get(draft.assetId) : undefined;
+  if (asset) return assetOptionLabel(asset);
+  return "Line item";
 }
 
 /** Resolved purchase-price/VAT display for one row (read-only cells, issue
@@ -131,26 +172,31 @@ function resolveArticlePriceInfo(
 
 /**
  * "Line items" — the pricing rules within one quote (docs/ARCHITECTURE.md
- * "Relational detail pages"), redesigned for issue #95 into a genuinely
- * inline-editable table: no more `QuoteLineItemDialog` popup (removed
- * entirely, criterion 13) — "Add line item" appends a new editable row
- * directly into this `<Table>`, and a row's own "Edit" turns that same row
- * into the identical editable shape in place. Mirrors the interaction
- * convention `ConsumedArticlesPanel`/`TimeEntriesPanel` (issue #94/#89)
- * already established for this exact "inline-editable row with a picker for
- * a related entity + inputs, Save/Cancel" shape, rather than inventing a new
- * one. Delete stays a small `ConfirmDeleteDialog`-based confirm
- * (`DeleteQuoteLineItemDialog`) — same weight those panels give their own
- * sibling sub-resource's delete.
+ * "Relational detail pages"), a genuinely inline-editable table: no popup —
+ * clicking anywhere in a saved row (not just a dedicated "Edit" button, now
+ * removed as redundant) turns that row into the same editable shape "Add
+ * line item" appends. Mirrors the interaction convention
+ * `ConsumedArticlesPanel`/`TimeEntriesPanel` (issue #94/#89) already
+ * established for this exact "inline-editable row with a picker for a
+ * related entity + inputs, Save/Cancel" shape, rather than inventing a new
+ * one — and deliberately NOT migrated to the newer `RowCard`+`Dialog` shape
+ * `WorkOrderHoursSection`/`WorkOrderMaterialSection` use (that convention is
+ * for a different kind of list; this one stays inline-editable by explicit
+ * product direction). Delete stays a small `ConfirmDeleteDialog`-based
+ * confirm (`DeleteQuoteLineItemDialog`) — same weight those panels give
+ * their own sibling sub-resource's delete, and its own button
+ * `stopPropagation`s so a Delete click never also triggers row-edit-mode.
  *
- * A row surfaces, left to right: Description, Article (searchable by article
- * number/EAN/GTIN/description — `Combobox` with `keywords`, criterion 2),
- * Asset (inline picker scoped to the quote's own client, criterion 14/16),
- * Engineer (inline picker, criterion 15), Quantity, Unit price (the editable
- * pre-discount sale price), Purchase price (read-only, from the linked
- * article, criterion 3), VAT (read-only, from the linked article, criterion
- * 4), Discount % (criterion 5), Unit price incl. discount (computed,
- * criterion 6), and Total (computed, criterion 8).
+ * A row surfaces, left to right: Article (searchable by article number/EAN/
+ * GTIN/description — `Combobox` with `keywords`, criterion 2 — no visible
+ * Description column anymore, see `deriveDescription`'s own doc comment for
+ * why and what narrowed), Asset (inline picker scoped to the quote's own
+ * client, criterion 14/16), Engineer (inline picker, criterion 15),
+ * Quantity, Unit price (the editable pre-discount sale price), Purchase
+ * price (read-only, from the linked article, criterion 3), VAT (read-only,
+ * from the linked article, criterion 4), Discount % (criterion 5), Unit
+ * price incl. discount (computed, criterion 6), and Total (computed,
+ * criterion 8).
  *
  * Picking an article auto-fills that row's Description + Unit price from the
  * chosen article's own `article_number`/`description`/`sale_price` (see
@@ -158,11 +204,14 @@ function resolveArticlePriceInfo(
  * comment in `../actions.ts`, which anticipates the frontend doing exactly
  * this rather than a redundant round trip back to the server.
  *
- * The grand total shown here matches the backend's own computed
- * `quote.total`/`listQuoteLineItems`'s own `total` (`sum(quantity *
- * unit_price * (1 - discount_percent / 100))`) since it's derived from the
- * exact same `lineItems` this panel renders — no separate round trip, no
- * drift.
+ * The Subtotal/VAT/Total footer (`SummaryRow`, below the table) matches the
+ * backend's own computed `quote.total`/`listQuoteLineItems`'s own `total`
+ * for the Subtotal figure (`sum(quantity * unit_price * (1 -
+ * discount_percent / 100))`, pre-VAT) since it's derived from the exact same
+ * `lineItems` this panel renders — no separate round trip, no drift. VAT is
+ * computed per-line from that line's own linked article's VAT rate (`0` for
+ * a line with no article, see `lineVatPercent`'s own doc comment) and
+ * summed; Total is Subtotal + VAT.
  *
  * Read-only for anyone who can only `read` quotes (engineer/finance/
  * administratie) — no add/edit/delete affordances render for them at all,
@@ -214,12 +263,21 @@ export function QuoteLineItemsPanel({
     [clientAssets],
   );
 
-  const showActionsColumn = canEdit || canDelete;
+  // Only Delete remains in the Actions column now (the standalone "Edit"
+  // button is gone — clicking anywhere in the row does the same job, see
+  // this file's own doc comment).
+  const showActionsColumn = canDelete;
 
-  const grandTotal = lineItems.reduce(
-    (sum, item) => sum + rowTotal(Number(item.quantity), Number(item.unit_price), Number(item.discount_percent)),
-    0,
-  );
+  const { subtotal, vatAmount, total } = useMemo(() => {
+    let runningSubtotal = 0;
+    let runningVat = 0;
+    for (const item of lineItems) {
+      const lineSubtotal = rowTotal(Number(item.quantity), Number(item.unit_price), Number(item.discount_percent));
+      runningSubtotal += lineSubtotal;
+      runningVat += lineSubtotal * (lineVatPercent(item) / 100);
+    }
+    return { subtotal: runningSubtotal, vatAmount: runningVat, total: runningSubtotal + runningVat };
+  }, [lineItems]);
 
   function startAdd() {
     setError(null);
@@ -255,8 +313,9 @@ export function QuoteLineItemsPanel({
 
   /** Selecting an article auto-fills Description + Unit price from it — see
    * this panel's own doc comment above. Clearing the picker (`articleId ===
-   * ""`) leaves the other fields as the user last set them (a line item can
-   * be a free-text/manual line with no linked article at all). */
+   * ""`) leaves the other fields as the user last set them; `deriveDescription`
+   * resolves what actually gets sent at save time when no article ends up
+   * picked. */
   function handleArticleChange(articleId: string) {
     const article = articleId ? articleById.get(articleId) : undefined;
     updateDraft({
@@ -278,10 +337,6 @@ export function QuoteLineItemsPanel({
     const unitPrice = Number(draft.unitPrice);
     const discountPercent = draft.discountPercent.trim() === "" ? 0 : Number(draft.discountPercent);
 
-    if (!draft.description.trim()) {
-      setError("Enter a description.");
-      return;
-    }
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setError("Enter a quantity greater than zero.");
       return;
@@ -299,7 +354,7 @@ export function QuoteLineItemsPanel({
     setSaving(true);
     startTransition(async () => {
       const input = {
-        description: draft.description.trim(),
+        description: deriveDescription(draft, assetById),
         quantity,
         unitPrice,
         discountPercent,
@@ -338,15 +393,6 @@ export function QuoteLineItemsPanel({
 
     return (
       <Table.Row key={key}>
-        <Table.Cell>
-          <Input
-            autoFocus
-            aria-label="Description"
-            value={draft!.description}
-            onChange={(event) => updateDraft({ description: event.target.value })}
-            disabled={saving}
-          />
-        </Table.Cell>
         <Table.Cell>
           <Combobox
             aria-label="Article"
@@ -446,12 +492,7 @@ export function QuoteLineItemsPanel({
   return (
     <Card>
       <Stack gap="md">
-        <Inline gap="sm" align="center" justify="between">
-          <Heading level={3}>Line items</Heading>
-          <Text>
-            <strong>Total: {formatCurrency(grandTotal)}</strong>
-          </Text>
-        </Inline>
+        <Heading level={3}>Line items</Heading>
 
         {error && <Text tone="danger">{error}</Text>}
 
@@ -467,7 +508,6 @@ export function QuoteLineItemsPanel({
             <Table>
               <Table.Head>
                 <Table.Row>
-                  <Table.HeaderCell>Description</Table.HeaderCell>
                   <Table.HeaderCell>Article</Table.HeaderCell>
                   <Table.HeaderCell>Asset</Table.HeaderCell>
                   <Table.HeaderCell>Engineer</Table.HeaderCell>
@@ -488,15 +528,19 @@ export function QuoteLineItemsPanel({
                   }
                   const asset = item.asset_id ? assetById.get(item.asset_id) : undefined;
                   const inclDiscount = unitPriceInclDiscount(Number(item.unit_price), Number(item.discount_percent));
-                  const total = Number(item.quantity) * inclDiscount;
+                  const rowTotalValue = Number(item.quantity) * inclDiscount;
                   return (
-                    <Table.Row key={item.id}>
-                      <Table.Cell>{item.description}</Table.Cell>
-                      <Table.Cell>{item.article ? articleOptionLabel(item.article) : "—"}</Table.Cell>
+                    <Table.Row
+                      key={item.id}
+                      onClick={canEdit && !draft ? () => startEdit(item) : undefined}
+                    >
+                      <Table.Cell>{item.article ? articleOptionLabel(item.article) : item.description}</Table.Cell>
                       <Table.Cell>
                         {item.asset_id ? (
                           asset ? (
-                            <Link href={`/assets/${asset.id}`}>{assetOptionLabel(asset)}</Link>
+                            <Link href={`/assets/${asset.id}`} onClick={(event) => event.stopPropagation()}>
+                              {assetOptionLabel(asset)}
+                            </Link>
                           ) : (
                             "Unknown asset"
                           )
@@ -521,33 +565,23 @@ export function QuoteLineItemsPanel({
                       </Table.Cell>
                       <Table.Cell>{Number(item.discount_percent) > 0 ? `${Number(item.discount_percent)}%` : "—"}</Table.Cell>
                       <Table.Cell>{formatCurrency(inclDiscount)}</Table.Cell>
-                      <Table.Cell>{formatCurrency(total)}</Table.Cell>
+                      <Table.Cell>{formatCurrency(rowTotalValue)}</Table.Cell>
                       {showActionsColumn && (
                         <Table.Cell align="center">
-                          <Inline gap="sm" align="center">
-                            {canEdit && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => startEdit(item)}
-                                disabled={draft !== null}
-                              >
-                                Edit
-                              </Button>
-                            )}
-                            {canDelete && (
-                              <Button
-                                type="button"
-                                variant="danger"
-                                size="sm"
-                                onClick={() => setDeletingItem(item)}
-                                disabled={draft !== null}
-                              >
-                                Delete
-                              </Button>
-                            )}
-                          </Inline>
+                          {canDelete && (
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeletingItem(item);
+                              }}
+                              disabled={draft !== null}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </Table.Cell>
                       )}
                     </Table.Row>
@@ -556,6 +590,14 @@ export function QuoteLineItemsPanel({
                 {newRowDraft && renderDraftRow("new-row-draft", null)}
               </Table.Body>
             </Table>
+
+            <SummaryRow
+              items={[
+                { label: "Subtotal", value: formatCurrency(subtotal) },
+                { label: "VAT", value: formatCurrency(vatAmount) },
+                { label: "Total", value: formatCurrency(total), emphasis: "bold" },
+              ]}
+            />
 
             {canCreate && (
               <div>

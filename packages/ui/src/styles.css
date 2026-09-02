@@ -1733,6 +1733,15 @@ select.ui-client-card-status-select {
   box-shadow: var(--ui-shadow-lg);
   animation: ui-dialog-in var(--ui-duration-fast) var(--ui-ease);
 }
+/* Portaled to `document.body` (see combobox.tsx's own doc comment) — `top`/
+ * `left`/`width` are set inline per-instance (viewport-relative, tracking
+ * the trigger), so only `position`/`z-index` need overriding here. Higher
+ * than `.ui-dialog-overlay`'s 100 so a Combobox opened from inside a Dialog
+ * still renders above that dialog's own surface once portaled out of it. */
+.ui-combobox-listbox-portal {
+  position: fixed;
+  z-index: 101;
+}
 .ui-combobox-option {
   display: flex;
   align-items: center;

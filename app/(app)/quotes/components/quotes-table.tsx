@@ -24,9 +24,13 @@ export interface QuotesTableProps {
 /**
  * List view table for Quotes — same shape as
  * `app/(app)/contracts/components/contracts-table.tsx`: client-side search
- * over the current page, row click navigates to the detail page, row-level
- * Edit navigates to a real page (`/quotes/[id]/edit`, docs/ARCHITECTURE.md
- * "Popup vs. full page"), Delete stays a lightweight confirm `Dialog`.
+ * over the current page, row click navigates to the detail page. Row-level
+ * "Edit" navigates to that same detail page (Pattern A migration deleted
+ * `/quotes/[id]/edit` — every field that page used to own is inline-editable
+ * on the detail page now, see `[id]/quote-detail.tsx`'s own doc comment) —
+ * same "Edit is just a second, discoverable way to reach the detail page"
+ * precedent `app/(app)/work-orders/components/work-orders-table.tsx` already
+ * establishes (issue #89). Delete stays a lightweight confirm `Dialog`.
  */
 export function QuotesTable({ quotes, clientNameById, canEdit, canDelete, showDraftBadge }: QuotesTableProps) {
   const router = useRouter();
@@ -95,7 +99,7 @@ export function QuotesTable({ quotes, clientNameById, canEdit, canDelete, showDr
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => router.push(`/quotes/${quote.id}/edit`)}
+                          onClick={() => router.push(`/quotes/${quote.id}`)}
                         >
                           Edit
                         </Button>
