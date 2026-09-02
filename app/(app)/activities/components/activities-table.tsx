@@ -1,22 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Inline, Stack, Table, Text } from "@yourorg/ui";
 import type { ActivityRecord } from "../actions";
 import { resolveActivityTypeIcon } from "../icon-map";
 import { memberDisplayName } from "@/lib/members/format";
 import { formatDateTime } from "@/lib/format/date";
-import { ActivityFormPanel } from "./activity-form-panel";
 import { DeleteActivityDialog } from "./delete-activity-dialog";
 
 export interface ActivitiesTableProps {
   activities: ActivityRecord[];
   canEdit: boolean;
   canDelete: boolean;
-  /** Threaded into `ActivityFormPanel` — see that component's own doc
-   * comment (issue #87). */
-  canCreateWorkOrder?: boolean;
 }
 
 function descriptionSnippet(value: string): string {
@@ -25,29 +21,17 @@ function descriptionSnippet(value: string): string {
 
 /**
  * List view table for Activities — same client-side-search-over-current-page
- * shape as `WorkOrdersTable`/`AssetsTable`. There is no `/activities/[id]`
- * detail page — a row click and the row-level Edit action both open the same
- * `ActivityFormPanel` (`mode: "edit"`), which renders read-only for a caller
- * without `canEdit` (issue #90 — one screen for viewing and editing, no
- * separate read-only quick-view dialog).
- *
- * Issue #106 — `?activityId=...` (as linked from a Work Order's Assignment
- * section "From activity" row) auto-opens that specific activity's panel on
- * arrival, since there's still no real `/activities/[id]` route to link to
- * directly.
+ * shape as `WorkOrdersTable`/`AssetsTable`. Issue #118 replaced the row
+ * click/Edit action's old `ActivityFormPanel` (a slide-in `Dialog`, deleted)
+ * with a plain navigation to the real `/activities/[id]` detail page — same
+ * "one screen for viewing and editing" shape as before, just a page instead
+ * of a panel now (that page renders read-only for a caller without
+ * `canEdit`).
  */
-export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkOrder }: ActivitiesTableProps) {
-  const searchParams = useSearchParams();
+export function ActivitiesTable({ activities, canEdit, canDelete }: ActivitiesTableProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [editingActivity, setEditingActivity] = useState<ActivityRecord | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<ActivityRecord | null>(null);
-
-  useEffect(() => {
-    const activityId = searchParams.get("activityId");
-    if (!activityId) return;
-    const match = activities.find((activity) => activity.id === activityId);
-    if (match) setEditingActivity(match);
-  }, [searchParams, activities]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -94,7 +78,7 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
             {filtered.map((activity) => {
               const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
               return (
-                <Table.Row key={activity.id} onClick={() => setEditingActivity(activity)}>
+                <Table.Row key={activity.id} onClick={() => router.push(`/activities/${activity.id}`)}>
                   <Table.Cell>
                     <Inline gap="xs" align="center">
                       <TypeIcon aria-hidden="true" />
@@ -118,7 +102,7 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setEditingActivity(activity)}
+                            onClick={() => router.push(`/activities/${activity.id}`)}
                           >
                             Edit
                           </Button>
@@ -150,19 +134,6 @@ export function ActivitiesTable({ activities, canEdit, canDelete, canCreateWorkO
           activity={deletingActivity}
           open
           onOpenChange={(next) => !next && setDeletingActivity(null)}
-        />
-      )}
-
-      {editingActivity && (
-        <ActivityFormPanel
-          mode="edit"
-          activity={editingActivity}
-          open
-          onOpenChange={(next) => !next && setEditingActivity(null)}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          canCreateWorkOrder={canCreateWorkOrder}
-          onDeleted={() => setEditingActivity(null)}
         />
       )}
     </>

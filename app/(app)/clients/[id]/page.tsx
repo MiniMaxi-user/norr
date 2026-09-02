@@ -275,8 +275,6 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       activities={activitiesResult?.data?.activities ?? []}
       activitiesEnabled={activitiesModuleVisible}
       canCreateActivities={activitiesModuleVisible && canAny(actor, "activities", ["create", "create_own"])}
-      canEditActivities={activitiesModuleVisible && canAny(actor, "activities", ["update", "update_own"])}
-      canDeleteActivities={activitiesModuleVisible && can(actor, "activities", "delete")}
       canCreateWorkOrder={canCreateWorkOrder}
       isPlatformAdmin={session.isPlatformAdmin}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}

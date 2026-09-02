@@ -170,6 +170,7 @@ export { RelationCard, type RelationCardProps } from "./components/relation-card
 export { RowCard, type RowCardProps, type RowCardTone } from "./components/row-card";
 export { SummaryRow, type SummaryRowProps, type SummaryRowItem } from "./components/summary-row";
 export { RecordHeroBand, type RecordHeroBandProps } from "./components/record-hero-band";
+export { DetailColumns, type DetailColumnsProps } from "./components/detail-columns";
 export { OverviewHeroBand, type OverviewHeroBandProps } from "./components/overview-hero-band";
 export { KeyValueList, type KeyValueListProps, type KeyValueListItem } from "./components/key-value-list";
 export { Callout, type CalloutProps } from "./components/callout";

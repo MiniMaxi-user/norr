@@ -96,16 +96,12 @@ export function WorkOrderAssignmentSection({
       // values, e.g. "Scheduled for" above) makes that explicit instead.
       key: "from-activity",
       label: "From activity",
+      // Issue #118 gave Activities a real `/activities/[id]` detail page —
+      // deep-links straight there now instead of the old filtered-list +
+      // auto-open-panel workaround this row used while that route didn't
+      // exist yet.
       value: workOrder?.source_activity_id ? (
-        // Activities has no single-record deep-link route yet (its own
-        // detail view is a client-side quick-view dialog opened from the
-        // list, not a URL) — `?activityId=...` gets threaded through to
-        // `ActivitiesTable`, which auto-opens that specific activity's
-        // panel on arrival (see that component's own doc comment), rather
-        // than just landing on the filtered list.
-        <Link href={`/activities?clientId=${workOrder.client_id}&activityId=${workOrder.source_activity_id}`}>
-          View activity
-        </Link>
+        <Link href={`/activities/${workOrder.source_activity_id}`}>View activity</Link>
       ) : (
         <Text tone="muted">—</Text>
       ),

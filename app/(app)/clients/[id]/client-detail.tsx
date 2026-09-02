@@ -99,13 +99,10 @@ export interface ClientDetailProps {
   activities: ActivityRecord[];
   activitiesEnabled: boolean;
   canCreateActivities: boolean;
-  canEditActivities: boolean;
-  canDeleteActivities: boolean;
-  /** Threaded into `ActivitiesPanel` -> `ActivityFormPanel`'s "Create
-   * work order" action (issue #87) — `hasFeature(org, "planning")` +
-   * `canAccessModule`/`can(actor, "planning", "create")`, resolved once by
-   * `page.tsx`, independent of `activitiesEnabled` (a "Create work order"
-   * action reads as a Planning affordance, not an Activities one). */
+  /** Gates `WorkOrdersPanel`'s own "+ Work order" tab action —
+   * `hasFeature(org, "planning")` + `canAccessModule`/`can(actor, "planning",
+   * "create")`, resolved once by `page.tsx`, independent of
+   * `workOrdersEnabled`/`activitiesEnabled`. */
   canCreateWorkOrder: boolean;
   /** `session.isPlatformAdmin` (issue #45), threaded down the same way
    * `canWrite` etc. already are — gates the "Activate as tenant" hero action
@@ -225,8 +222,6 @@ export function ClientDetail({
   activities,
   activitiesEnabled,
   canCreateActivities,
-  canEditActivities,
-  canDeleteActivities,
   canCreateWorkOrder,
   isPlatformAdmin,
   accessStatusByEmail,
@@ -670,14 +665,7 @@ export function ClientDetail({
 
           {activitiesEnabled && (
             <Tabs.Panel value="activities">
-              <ActivitiesPanel
-                clientId={client.id}
-                activities={activities}
-                canCreate={canCreateActivities}
-                canEdit={canEditActivities}
-                canDelete={canDeleteActivities}
-                canCreateWorkOrder={canCreateWorkOrder}
-              />
+              <ActivitiesPanel clientId={client.id} activities={activities} canCreate={canCreateActivities} />
             </Tabs.Panel>
           )}
 

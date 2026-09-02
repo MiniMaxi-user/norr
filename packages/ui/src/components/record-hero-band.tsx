@@ -37,6 +37,11 @@ export interface RecordHeroBandProps {
   /** The KPI tile strip baked into the bottom of the band — typically a
    * `<StatStrip>`. */
   stats?: ReactNode;
+  /** Adds the bottom padding a `stats` strip's own flat edge would otherwise
+   * provide (issue #118's Activity redesign — the first page to render this
+   * band with no `stats` at all). Omit whenever `stats` IS passed; the two
+   * are mutually exclusive in practice, nothing needs both. */
+  noStats?: boolean;
   className?: string;
 }
 
@@ -79,10 +84,11 @@ export function RecordHeroBand({
   actions,
   assignee,
   stats,
+  noStats,
   className,
 }: RecordHeroBandProps) {
   return (
-    <div className={cx("ui-record-hero-band", className)}>
+    <div className={cx("ui-record-hero-band", noStats && "ui-record-hero-band-no-stats", className)}>
       {(recordLabel || topRight) && (
         <div className="ui-record-hero-band-top">
           {recordLabel && (

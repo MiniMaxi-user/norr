@@ -1945,6 +1945,34 @@ select.ui-client-card-status-select {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Detail columns — see components/detail-columns.tsx. The two-column BODY
+ * layout for a Pattern A detail page's own flat sections (docs/DESIGN-
+ * SYSTEM.md "Column / rail layout"), distinct from `.ui-form-grid` above
+ * (which is for a dialog/form's own equal-width field pairs, `1rem` gap):
+ * a slightly wider left column, `2rem` gap, `align-items: start` so a short
+ * column never stretches to match a taller sibling. First caller: the
+ * Activity detail redesign (issue #118).
+ * ---------------------------------------------------------------------- */
+.ui-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.ui-detail-columns-left,
+.ui-detail-columns-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .ui-detail-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------- *
  * Skeleton
  * ---------------------------------------------------------------------- */
 .ui-skeleton {
@@ -3823,6 +3851,13 @@ select.ui-client-card-status-select {
 .ui-record-hero-band-stats {
   margin-top: -0.25rem;
 }
+/* No `stats` strip to form the band's own flat bottom edge (issue #118's
+   Activity redesign, the first caller with no `StatStrip` at all) — explicit
+   bottom padding stands in for it instead. See `RecordHeroBand`'s own
+   `noStats` prop. */
+.ui-record-hero-band-no-stats {
+  padding-bottom: 1.625rem;
+}
 
 /* ---------------------------------------------------------------------- *
  * Overview hero band — see components/overview-hero-band.tsx (issue #116).
@@ -4313,6 +4348,14 @@ a.ui-relation-card-title:hover {
 .ui-row-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.71875rem;
+}
+/* A `RowCard`'s own primary title/link (e.g. a linked work order's title —
+   issue #118's Activity "Linked work orders" section) — bold, distinct from
+   the muted secondary line typically shown just below it. Utility class,
+   same "referenced directly by class name" precedent as `.ui-row-main`
+   above. */
+.ui-row-title {
+  font-weight: 600;
 }
 
 /* Reserves a fixed width for the row's trailing edit/delete buttons so it

@@ -40,6 +40,28 @@ export function formatDateTime(
 }
 
 /**
+ * Short "time elapsed since" readout (issue #118's Activity hero — "Open
+ * sinds 4h 18m") — minutes-and-hours while under a day old, days-and-hours
+ * once it crosses one (so a multi-day-old activity reads as "2d 3h" instead
+ * of a nonsensical "51h 12m"). Always computed against `Date.now()` at
+ * render time, same as every other formatter in this file — there is no
+ * live-ticking clock here, a Server Component render just bakes in the value
+ * as of that request.
+ */
+export function formatDurationSince(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const start = new Date(iso).getTime();
+  if (Number.isNaN(start)) return "—";
+  const totalMinutes = Math.floor(Math.max(0, Date.now() - start) / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/**
  * Fixed "dd-MM-yyyy HH:mm" timestamp (issue #113 follow-up) — for a precise,
  * log-style read-out (e.g. the Clients hero's "Last activity" stat) where
  * `formatDateTime`'s locale-dependent, month-name shape above reads as too

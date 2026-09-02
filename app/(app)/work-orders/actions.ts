@@ -164,6 +164,11 @@ export interface ListWorkOrdersOptions {
   assetId?: string;
   statusId?: string;
   assignedTo?: string;
+  /** Filters to work orders created FROM a given activity (issue #87's
+   * `source_activity_id` FK) — one activity can have multiple linked work
+   * orders. Used by the Activity detail page's own "Linked work orders"
+   * section (issue #118), `../activities/[id]/page.tsx`. */
+  sourceActivityId?: string;
   limit?: number;
   offset?: number;
 }
@@ -172,8 +177,9 @@ export interface ListWorkOrdersOptions {
  * Lists work orders, org-scoped via RLS automatically (and, for an engineer
  * caller, already scoped to their assigned rows only — see the module
  * comment above). Supports filtering by `clientId`/`siteId`/`assetId`/
- * `statusId`/`assignedTo` (all optional, combinable) for the list/kanban/
- * calendar views per docs/ARCHITECTURE.md's Planning view switcher.
+ * `statusId`/`assignedTo`/`sourceActivityId` (all optional, combinable) for
+ * the list/kanban/calendar views per docs/ARCHITECTURE.md's Planning view
+ * switcher, plus the Activity detail page's own linked-work-orders relation.
  *
  * Default order: soonest-scheduled first (nulls last), then most-recently
  * created — a reasonable default "what's next" queue order; the frontend's
@@ -189,6 +195,7 @@ export async function listWorkOrders(
     ["asset id filter", options.assetId],
     ["status id filter", options.statusId],
     ["assignedTo filter", options.assignedTo],
+    ["source activity id filter", options.sourceActivityId],
   ] as const) {
     if (value !== undefined && !uuidSchema.safeParse(value).success) {
       return fail(`Invalid ${label}.`);
@@ -212,6 +219,7 @@ export async function listWorkOrders(
   if (options.assetId) query = query.eq("asset_id", options.assetId);
   if (options.statusId) query = query.eq("status_id", options.statusId);
   if (options.assignedTo) query = query.eq("assigned_to", options.assignedTo);
+  if (options.sourceActivityId) query = query.eq("source_activity_id", options.sourceActivityId);
   query = query
     .order("scheduled_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })

@@ -9,13 +9,8 @@ export interface DeleteActivityDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Navigate back to the overview after a successful delete instead of just
-   * refreshing in place — used from the edit panel / edit page. */
+   * refreshing in place — used from the detail page's own Delete action. */
   redirectOnDelete?: boolean;
-  /** Called only on a SUCCESSFUL delete, separate from `onOpenChange` (which
-   * also fires on plain Cancel) — lets a caller nested inside another dialog
-   * (`ActivityFormPanel`) tell "the record is gone, close me too" apart from
-   * "the user backed out of the confirmation". */
-  onDeleted?: () => void;
 }
 
 /**
@@ -30,7 +25,6 @@ export function DeleteActivityDialog({
   open,
   onOpenChange,
   redirectOnDelete,
-  onDeleted,
 }: DeleteActivityDialogProps) {
   const router = useRouter();
 
@@ -50,7 +44,6 @@ export function DeleteActivityDialog({
         return { error: !result.data ? (result.error ?? "Could not delete this activity.") : undefined };
       }}
       onDeleted={() => {
-        onDeleted?.();
         if (redirectOnDelete) {
           router.push("/activities");
         }

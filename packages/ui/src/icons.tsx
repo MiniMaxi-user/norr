@@ -352,3 +352,13 @@ export const Clock = createIcon("Clock", (
     <path d="M12 7v5.3l3.4 2" />
   </>
 ));
+
+// Activity detail's "Notes" section header (issue #118) — three ragged
+// text-lines, distinct from `FileText`'s framed document glyph.
+export const AlignLeft = createIcon("AlignLeft", (
+  <>
+    <path d="M4 5.5h9" />
+    <path d="M4 12h16" />
+    <path d="M4 18.5h13" />
+  </>
+));

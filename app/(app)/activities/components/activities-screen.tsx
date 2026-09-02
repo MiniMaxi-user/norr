@@ -20,11 +20,6 @@ export interface ActivitiesScreenProps {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  /** Threaded into `ActivitiesTable` -> `ActivityFormPanel`'s "Create
-   * work order" action (issue #87) — `hasFeature(org, "planning")` +
-   * `canAccessModule`/`can(actor, "planning", "create")`, resolved once by
-   * `app/(app)/activities/page.tsx`. */
-  canCreateWorkOrder: boolean;
 }
 
 function buildPageHref(params: {
@@ -65,7 +60,6 @@ export async function ActivitiesScreen({
   canCreate,
   canEdit,
   canDelete,
-  canCreateWorkOrder,
 }: ActivitiesScreenProps) {
   const offset = page * LIST_PAGE_SIZE;
 
@@ -138,12 +132,7 @@ export async function ActivitiesScreen({
   return (
     <>
       {toolbar}
-      <ActivitiesTable
-        activities={activities}
-        canEdit={canEdit}
-        canDelete={canDelete}
-        canCreateWorkOrder={canCreateWorkOrder}
-      />
+      <ActivitiesTable activities={activities} canEdit={canEdit} canDelete={canDelete} />
       <Stack gap="sm">
         <Text tone="muted">
           Showing {offset + 1}–{Math.min(offset + activities.length, count)} of {count}
