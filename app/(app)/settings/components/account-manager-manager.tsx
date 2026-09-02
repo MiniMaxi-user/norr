@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, EmptyState, Heading, Stack, Table, Text } from "@yourorg/ui";
+import { Button, EmptyState, Stack, Table, Text } from "@yourorg/ui";
 import { Users } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { AccountManagerFormDialog } from "./account-manager-form-dialog";
@@ -58,13 +58,6 @@ export function AccountManagerManager({ accountManagers, loadError, canWrite }: 
 
   return (
     <Stack gap="md">
-      <Stack gap="xs">
-        <Heading level={3}>Account Managers</Heading>
-        <Text tone="muted">
-          The people who can be assigned as a client&rsquo;s Account Manager on the Clients kanban board.
-        </Text>
-      </Stack>
-
       {loadError && <Text tone="danger">{loadError}</Text>}
 
       {canWrite && (

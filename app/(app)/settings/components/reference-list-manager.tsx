@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, EmptyState, Heading, Stack, Table, Text } from "@yourorg/ui";
+import { Badge, Button, EmptyState, Stack, Table, Text } from "@yourorg/ui";
 import { ArrowDown, ArrowUp, Settings } from "@yourorg/ui/icons";
 import { updateReferenceItem, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { DeleteReferenceItemDialog } from "./delete-reference-item-dialog";
@@ -13,8 +13,6 @@ export interface ReferenceListManagerProps {
    * The only thing that changes between reference lists; everything else in
    * this component is generic over it. */
   listKey: string;
-  title: string;
-  description?: string;
   items: ReferenceListItemRecord[];
   /** Non-fatal — `listReferenceItems` failing (e.g. transient network) still
    * renders this component with whatever it got (`items` empty), plus this
@@ -52,8 +50,6 @@ export interface ReferenceListManagerProps {
  */
 export function ReferenceListManager({
   listKey,
-  title,
-  description,
   items,
   loadError,
   canWrite,
@@ -95,11 +91,6 @@ export function ReferenceListManager({
 
   return (
     <Stack gap="md">
-      <Stack gap="xs">
-        <Heading level={3}>{title}</Heading>
-        {description && <Text tone="muted">{description}</Text>}
-      </Stack>
-
       {loadError && <Text tone="danger">{loadError}</Text>}
 
       {canWrite && (

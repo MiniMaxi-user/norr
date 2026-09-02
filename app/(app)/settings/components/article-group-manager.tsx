@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Disclosure, EmptyState, Heading, Inline, Stack, Text } from "@yourorg/ui";
+import { Button, Disclosure, EmptyState, Inline, Stack, Text } from "@yourorg/ui";
 import { Boxes } from "@yourorg/ui/icons";
 import type { ArticleGroupRecord } from "@/app/(app)/articles/groups-actions";
 import { buildArticleGroupTree, type ArticleGroupTreeNode } from "@/app/(app)/articles/group-tree";
@@ -54,14 +54,6 @@ export function ArticleGroupManager({ groups, loadError, canWrite }: ArticleGrou
 
   return (
     <Stack gap="md">
-      <Stack gap="xs">
-        <Heading level={3}>Article Groups</Heading>
-        <Text tone="muted">
-          Organize your article catalog into groups and subgroups, to any depth — e.g. &ldquo;Parts &gt; Filters &gt;
-          Air filters&rdquo;.
-        </Text>
-      </Stack>
-
       {loadError && <Text tone="danger">{loadError}</Text>}
 
       {canWrite && (

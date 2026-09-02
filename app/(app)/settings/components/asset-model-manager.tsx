@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, EmptyState, Heading, Stack, Table, Text } from "@yourorg/ui";
+import { Button, EmptyState, Stack, Table, Text } from "@yourorg/ui";
 import { Settings } from "@yourorg/ui/icons";
 import type { AssetModelRecord } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -54,14 +54,6 @@ export function AssetModelManager({
 
   return (
     <Stack gap="md">
-      <Stack gap="xs">
-        <Heading level={3}>Asset Model</Heading>
-        <Text tone="muted">
-          Equipment models, each tied to a Brand and Type (and optionally a Sub-type), with a default warranty
-          period applied when the model is used on an asset.
-        </Text>
-      </Stack>
-
       {loadError && <Text tone="danger">{loadError}</Text>}
 
       {canWrite && (

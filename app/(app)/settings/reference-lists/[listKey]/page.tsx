@@ -71,8 +71,6 @@ export default async function ReferenceListLeafPage({ params }: ReferenceListLea
       <Text tone="muted">{section.description}</Text>
       <ReferenceListManager
         listKey={section.key}
-        title={section.title}
-        description={section.description}
         items={items}
         loadError={loadError}
         canWrite={canWrite}
