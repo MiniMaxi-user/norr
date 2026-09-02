@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { getSettingsGroupIcon } from "../../components/settings-nav-items";
 import { ReferenceListManager } from "../../components/reference-list-manager";
 import { REFERENCE_LIST_SECTIONS } from "../sections";
 
@@ -67,8 +65,7 @@ export default async function ReferenceListLeafPage({ params }: ReferenceListLea
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon(section.key) ?? Settings} title={section.title} />
-      <Text tone="muted">{section.description}</Text>
+      <OverviewHeroBand title={section.title} subtitle={section.description} />
       <ReferenceListManager
         listKey={section.key}
         items={items}

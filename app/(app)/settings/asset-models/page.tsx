@@ -1,10 +1,8 @@
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAssetModels } from "@/lib/asset-models/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { AssetModelManager } from "../components/asset-model-manager";
 
 export const metadata = { title: "Asset Model" };
@@ -32,10 +30,10 @@ export default async function AssetModelsPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("asset_models") ?? Settings} title="Asset Model" />
-      <Text tone="muted">
-        Manufacturer/model combinations for your assets, each tied to a Brand, Type, and Sub-type.
-      </Text>
+      <OverviewHeroBand
+        title="Asset Model"
+        subtitle="Manufacturer/model combinations for your assets, each tied to a Brand, Type, and Sub-type."
+      />
       <AssetModelManager
         models={modelsResult.data?.models ?? []}
         loadError={modelsResult.error}

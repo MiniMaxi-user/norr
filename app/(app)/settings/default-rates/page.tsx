@@ -1,10 +1,8 @@
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { CreditCard } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack, Text } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getOrganizationDefaultRateSettings } from "../organization-rate-actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { OrganizationDefaultRateForm } from "../components/organization-default-rate-form";
 
 export const metadata = { title: "Default Rates" };
@@ -33,12 +31,10 @@ export default async function DefaultRatesPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("default_rates") ?? CreditCard} title="Default Rates" />
-      <Text tone="muted">
-        Fallback Travel-time and Work-time billing articles, used whenever a client or engineer has no custom rate
-        of their own (Settings → Team, or a client&rsquo;s own detail page). The sale price always mirrors the
-        picked article and can&rsquo;t be overridden here.
-      </Text>
+      <OverviewHeroBand
+        title="Default Rates"
+        subtitle="Fallback Travel-time and Work-time billing articles, used whenever a client or engineer has no custom rate of their own (Settings → Team, or a client&rsquo;s own detail page). The sale price always mirrors the picked article and can&rsquo;t be overridden here."
+      />
       {settingsResult.data ? (
         <OrganizationDefaultRateForm
           initial={settingsResult.data}

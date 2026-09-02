@@ -1,9 +1,7 @@
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { ArticleGroupManager } from "../components/article-group-manager";
 
 export const metadata = { title: "Article Groups" };
@@ -30,11 +28,10 @@ export default async function ArticleGroupsPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("article_groups") ?? Settings} title="Article Groups" />
-      <Text tone="muted">
-        Hierarchical categories for your article catalog — group articles into nested categories for browsing and
-        reporting.
-      </Text>
+      <OverviewHeroBand
+        title="Article Groups"
+        subtitle="Hierarchical categories for your article catalog — group articles into nested categories for browsing and reporting."
+      />
       <ArticleGroupManager
         groups={result.data?.groups ?? []}
         loadError={result.error}

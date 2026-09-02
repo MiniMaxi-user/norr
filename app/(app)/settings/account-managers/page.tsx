@@ -1,9 +1,7 @@
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { AccountManagerManager } from "../components/account-manager-manager";
 
 export const metadata = { title: "Account Managers" };
@@ -23,8 +21,10 @@ export default async function AccountManagersPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("account_managers") ?? Settings} title="Account Managers" />
-      <Text tone="muted">Colleagues who can be assigned as a client&rsquo;s account manager.</Text>
+      <OverviewHeroBand
+        title="Account Managers"
+        subtitle="Colleagues who can be assigned as a client&rsquo;s account manager."
+      />
       <AccountManagerManager
         accountManagers={result.data?.accountManagers ?? []}
         loadError={result.error}

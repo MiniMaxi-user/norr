@@ -1,10 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { TeamBoard } from "./team-board";
 import { TeamSkeleton } from "./team-skeleton";
 
@@ -34,12 +32,14 @@ export default async function TeamPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("team") ?? Settings} title="Team" />
-      <Text tone="muted">
-        {canWrite
-          ? "Invite colleagues, manage their role, and reset access when needed."
-          : "Everyone in your organization — only the owner can invite, change roles, or remove access."}
-      </Text>
+      <OverviewHeroBand
+        title="Team"
+        subtitle={
+          canWrite
+            ? "Invite colleagues, manage their role, and reset access when needed."
+            : "Everyone in your organization — only the owner can invite, change roles, or remove access."
+        }
+      />
 
       <Suspense fallback={<TeamSkeleton />}>
         <TeamBoard canWrite={canWrite} currentUserId={session.userId} />

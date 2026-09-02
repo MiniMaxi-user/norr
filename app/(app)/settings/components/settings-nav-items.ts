@@ -131,9 +131,8 @@ interface FlatSettingsNavEntry {
 
 /**
  * Flattened once at module scope — every `SettingsNavItem` paired with the
- * `SettingsNavGroup` it belongs to — so `findSettingsNavItem`/
- * `getSettingsGroupIcon` below don't re-walk `SETTINGS_NAV_GROUPS` on every
- * call.
+ * `SettingsNavGroup` it belongs to — so `findSettingsNavItem` below doesn't
+ * re-walk `SETTINGS_NAV_GROUPS` on every call.
  */
 const FLAT_SETTINGS_NAV_ITEMS: FlatSettingsNavEntry[] = SETTINGS_NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => ({ group, item })),
@@ -149,14 +148,4 @@ const FLAT_SETTINGS_NAV_ITEMS: FlatSettingsNavEntry[] = SETTINGS_NAV_GROUPS.flat
  */
 export function findSettingsNavItem(pathname: string): FlatSettingsNavEntry | null {
   return FLAT_SETTINGS_NAV_ITEMS.find((entry) => entry.item.href === pathname) ?? null;
-}
-
-/**
- * Given a nav item's own `key` (not its href), returns the `Icon` of the
- * group it belongs to — lets a leaf page's own `SectionHeader` (later
- * stages) reuse "the same icon as my rail entry" without re-declaring which
- * icon that is.
- */
-export function getSettingsGroupIcon(key: string): Icon | undefined {
-  return FLAT_SETTINGS_NAV_ITEMS.find((entry) => entry.item.key === key)?.group.icon;
 }

@@ -1,9 +1,7 @@
 import { Suspense } from "react";
-import { SectionHeader, Stack, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
-import { getSettingsGroupIcon } from "../components/settings-nav-items";
 import { ChecklistTemplatesBoard } from "./checklist-templates-board";
 import { ChecklistTemplatesSkeleton } from "./checklist-templates-skeleton";
 
@@ -25,12 +23,14 @@ export default async function ChecklistTemplatesPage() {
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={getSettingsGroupIcon("checklist_templates") ?? Settings} title="Checklist templates" />
-      <Text tone="muted">
-        {canWrite
-          ? "Build reusable inspection/checklist forms that can be attached to any work order — add, rename, or remove a template, and manage the items inside it."
-          : "Reusable inspection/checklist forms attachable to work orders — only the organization owner can change them."}
-      </Text>
+      <OverviewHeroBand
+        title="Checklist templates"
+        subtitle={
+          canWrite
+            ? "Build reusable inspection/checklist forms that can be attached to any work order — add, rename, or remove a template, and manage the items inside it."
+            : "Reusable inspection/checklist forms attachable to work orders — only the organization owner can change them."
+        }
+      />
 
       <Suspense fallback={<ChecklistTemplatesSkeleton />}>
         <ChecklistTemplatesBoard canWrite={canWrite} />
