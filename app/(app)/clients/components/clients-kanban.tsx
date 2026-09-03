@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Avatar, Badge, Board, Button, Inline, Select, Stack, Text, type BadgeVariant } from "@yourorg/ui";
 import { MapPin } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
+import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import { updateClient, type ClientRecord, type SiteRecord } from "../actions";
 import { CLIENT_STATUS_OPTIONS, formatPotentialValue, groupClientsForKanban, type ClientStatus } from "../kanban";
 
@@ -212,7 +213,7 @@ function ClientKanbanCard({
     <Board.Card draggable={canWrite} onDragStart={canWrite ? onDragStart : undefined} onClick={onOpen}>
       <Stack gap="sm">
         <Inline gap="sm" align="center">
-          <Avatar name={client.name} />
+          <Avatar name={client.name} photoUrl={getClientLogoUrl(client.logo_path, client.logo_updated_at)} />
           <Stack gap="xs">
             <Text className="ui-client-card-name">{client.name}</Text>
             {city && (
