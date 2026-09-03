@@ -10,16 +10,22 @@ import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/render
  * `invoice-actions.ts` and rendered there via `renderToBuffer()`.
  *
  * Layout reference: `docs/invoice/Invoiceexample.pdf` (reviewed before
- * writing this). Copy is in Dutch (`VAN`/`FACTUUR AAN`/`FACTUURDATUM`/etc.),
- * matching that reference's own audience-facing phrasing, per the issue
- * hand-off's explicit "use your judgment" on English vs. Dutch here.
+ * writing this).
  *
- * Deliberately does NOT render a "werkordernummer" the way the reference PDF
- * does — there is no human-facing Work Order display number anywhere in this
- * schema (only Assets have one). When `workOrderReference` is provided (the
- * linked work order's own `title`, fetched by `invoice-actions.ts`), it's
- * shown under a plain "WERKORDER" label instead of implying a formatted
- * number; the meta row is simply omitted when there is no linked work order.
+ * Copy is hardcoded English for now ("FROM"/"BILL TO"/"INVOICE DATE"/etc.)
+ * per explicit product-owner direction — a tenant-level language setting is
+ * planned for later; once that exists, this file's hardcoded strings should
+ * be swapped for a lookup against it rather than staying English-only
+ * forever. No actual i18n infrastructure exists yet; this comment is only a
+ * pointer for whoever builds that.
+ *
+ * Deliberately does NOT render a formatted work-order number the way the
+ * reference PDF does — there is no human-facing Work Order display number
+ * anywhere in this schema (only Assets have one). When `workOrderReference`
+ * is provided (the linked work order's own `title`, fetched by
+ * `invoice-actions.ts`), it's shown under a plain "WORK ORDER" label instead
+ * of implying a formatted number; the meta row is simply omitted when there
+ * is no linked work order.
  *
  * Pagination: `Page`'s default `wrap` behavior automatically flows content
  * (including the line-items table) onto additional pages when it overflows
@@ -52,11 +58,6 @@ export interface InvoicePdfLineItem {
    * asset's serial number/model instead of its name — this PDF has no room
    * for a clickable link, so a plain string is enough here. */
   assetLabel: string | null;
-  /** The line's assigned engineer's display name, resolved server-side the
-   * same way `quote-line-items-panel.tsx`/`memberDisplayName` resolve
-   * `engineer_user_id` against this org's members — `null` when the line has
-   * no assigned engineer. */
-  engineerName: string | null;
   quantity: number;
   unitPrice: number;
   discountPercent: number;
@@ -79,7 +80,7 @@ export interface InvoicePdfProps {
    * the caller so this component stays pure layout, no `Intl` calls here. */
   invoiceDateLabel: string;
   dueDateLabel: string;
-  /** The quote's own `name`, shown as "REFERENTIE". */
+  /** The quote's own `name`, shown as "REFERENCE". */
   reference: string;
   /** The linked work order's `title`, when the quote has one (`work_order_id`
    * set) — `null`/omitted otherwise. See the module comment above for why
@@ -204,27 +205,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#eeeeee",
   },
-  // Nine columns total (Artikelnr, Artikel, Serienr./Model, Engineer, Aantal,
-  // Stukprijs, Korting, Btw, Totaal), matching the reference PDF's column
-  // order (`docs/invoice/Invoiceexample.pdf`) — widths re-proportioned from
-  // the original 7-column layout to fit the two new columns while keeping
-  // Artikel (description) the widest column, since it's the only
-  // unbounded-length field. Every column but the last carries its own
-  // `paddingRight` gutter — with 9 columns this tight, a header/cell whose
-  // text nearly fills its column width would otherwise butt directly up
-  // against the next column's text with zero visual gap (confirmed via a
-  // rendered-fixture text-extraction check on the SERIENR./MODEL + ENGINEER
-  // header pair before this was added); the last column needs none since
-  // there's no further column after it.
-  colArticleNumber: { width: "10%", paddingRight: 4 },
-  colDescription: { width: "20%", paddingRight: 4 },
-  colAsset: { width: "14%", paddingRight: 4 },
-  colEngineer: { width: "12%", paddingRight: 4 },
-  colQuantity: { width: "6%", textAlign: "right", paddingRight: 4 },
-  colUnitPrice: { width: "12%", textAlign: "right", paddingRight: 4 },
-  colDiscount: { width: "8%", textAlign: "right", paddingRight: 4 },
-  colVat: { width: "6%", textAlign: "right", paddingRight: 4 },
-  colTotal: { width: "12%", textAlign: "right" },
+  // Seven columns total (merged Article [number + description stacked],
+  // Serial/Model, Qty, Unit price, Discount, VAT, Total) — down from the
+  // original 9 (the ARTIKELNR./ARTIKEL pair merged into one stacked cell,
+  // and ENGINEER removed outright), widths re-proportioned so the freed-up
+  // width lands on the merged article column (still the only
+  // unbounded-length field) rather than being left as dead space. Every
+  // column but the last carries its own `paddingRight` gutter so a header/
+  // cell whose text nearly fills its column width doesn't butt directly up
+  // against the next column's text with zero visual gap; the last column
+  // needs none since there's no further column after it.
+  colArticle: { width: "31%", paddingRight: 4 },
+  colAsset: { width: "19%", paddingRight: 4 },
+  colQuantity: { width: "7%", textAlign: "right", paddingRight: 4 },
+  colUnitPrice: { width: "14%", textAlign: "right", paddingRight: 4 },
+  colDiscount: { width: "9%", textAlign: "right", paddingRight: 4 },
+  colVat: { width: "7%", textAlign: "right", paddingRight: 4 },
+  colTotal: { width: "13%", textAlign: "right" },
+  articleNumberText: {
+    fontSize: 7,
+    color: "#8a8a8a",
+    marginBottom: 2,
+  },
   tableHeaderText: {
     fontSize: 7,
     fontFamily: "Helvetica-Bold",
@@ -300,7 +302,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const currencyFormatter = new Intl.NumberFormat("nl-NL", {
+const currencyFormatter = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "EUR",
 });
@@ -325,15 +327,13 @@ function AddressLines({ address }: { address: InvoicePdfAddress | null }) {
 function LineItemsHeader() {
   return (
     <View style={styles.tableHeaderRow} fixed>
-      <Text style={[styles.tableHeaderText, styles.colArticleNumber]}>ARTIKELNR.</Text>
-      <Text style={[styles.tableHeaderText, styles.colDescription]}>ARTIKEL</Text>
-      <Text style={[styles.tableHeaderText, styles.colAsset]}>SERIENR. / MODEL</Text>
-      <Text style={[styles.tableHeaderText, styles.colEngineer]}>ENGINEER</Text>
-      <Text style={[styles.tableHeaderText, styles.colQuantity]}>AANTAL</Text>
-      <Text style={[styles.tableHeaderText, styles.colUnitPrice]}>STUKPRIJS</Text>
-      <Text style={[styles.tableHeaderText, styles.colDiscount]}>KORTING</Text>
-      <Text style={[styles.tableHeaderText, styles.colVat]}>BTW</Text>
-      <Text style={[styles.tableHeaderText, styles.colTotal]}>TOTAAL</Text>
+      <Text style={[styles.tableHeaderText, styles.colArticle]}>ARTICLE</Text>
+      <Text style={[styles.tableHeaderText, styles.colAsset]}>SERIAL NO. / MODEL</Text>
+      <Text style={[styles.tableHeaderText, styles.colQuantity]}>QTY</Text>
+      <Text style={[styles.tableHeaderText, styles.colUnitPrice]}>UNIT PRICE</Text>
+      <Text style={[styles.tableHeaderText, styles.colDiscount]}>DISCOUNT</Text>
+      <Text style={[styles.tableHeaderText, styles.colVat]}>VAT</Text>
+      <Text style={[styles.tableHeaderText, styles.colTotal]}>TOTAL</Text>
     </View>
   );
 }
@@ -342,7 +342,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
   const { sender, recipient } = props;
 
   return (
-    <Document title={`Factuur ${props.invoiceNumber}`}>
+    <Document title={`Invoice ${props.invoiceNumber}`}>
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.headerRow}>
           {sender.logoUrl ? (
@@ -357,59 +357,60 @@ export function InvoiceDocument(props: InvoicePdfProps) {
             <Text style={styles.brandFallback}>{sender.name}</Text>
           )}
           <View style={styles.headerRight}>
-            <Text style={styles.title}>Factuur</Text>
+            <Text style={styles.title}>Invoice</Text>
             <Text style={styles.invoiceNumber}>{props.invoiceNumber}</Text>
           </View>
         </View>
 
         <View style={styles.partiesRow}>
           <View style={styles.partyColumn}>
-            <Text style={styles.label}>VAN</Text>
+            <Text style={styles.label}>FROM</Text>
             <Text style={styles.partyName}>{sender.name}</Text>
             <AddressLines address={sender.address} />
             {sender.kvkNumber ? <Text style={styles.partyLine}>KvK {sender.kvkNumber}</Text> : null}
-            {sender.vatNumber ? <Text style={styles.partyLine}>BTW {sender.vatNumber}</Text> : null}
+            {sender.vatNumber ? <Text style={styles.partyLine}>VAT {sender.vatNumber}</Text> : null}
           </View>
           <View style={styles.partyColumn}>
-            <Text style={styles.label}>FACTUUR AAN</Text>
+            <Text style={styles.label}>BILL TO</Text>
             <Text style={styles.partyName}>{recipient.name}</Text>
             <AddressLines address={recipient.address} />
-            {recipient.vatNumber ? <Text style={styles.partyLine}>BTW {recipient.vatNumber}</Text> : null}
+            {recipient.vatNumber ? <Text style={styles.partyLine}>VAT {recipient.vatNumber}</Text> : null}
           </View>
         </View>
 
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Text style={styles.label}>FACTUURDATUM</Text>
+            <Text style={styles.label}>INVOICE DATE</Text>
             <Text style={styles.metaValue}>{props.invoiceDateLabel}</Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.label}>VERVALDATUM</Text>
+            <Text style={styles.label}>DUE DATE</Text>
             <Text style={styles.metaValue}>{props.dueDateLabel}</Text>
           </View>
           {props.workOrderReference ? (
             <View style={styles.metaItem}>
-              <Text style={styles.label}>WERKORDER</Text>
+              <Text style={styles.label}>WORK ORDER</Text>
               <Text style={styles.metaValue}>{props.workOrderReference}</Text>
             </View>
           ) : null}
           <View style={styles.metaItem}>
-            <Text style={styles.label}>REFERENTIE</Text>
+            <Text style={styles.label}>REFERENCE</Text>
             <Text style={styles.metaValue}>{props.reference}</Text>
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Regels</Text>
+        <Text style={styles.sectionTitle}>Items</Text>
 
         <LineItemsHeader />
         {props.lineItems.map((item, index) => (
           // wrap={false}: a single row never splits across a page break —
           // it moves to the next page whole instead (see module comment).
           <View key={index} style={styles.tableRow} wrap={false}>
-            <Text style={[styles.cellText, styles.colArticleNumber]}>{item.articleNumber ?? "—"}</Text>
-            <Text style={[styles.cellText, styles.colDescription]}>{item.description}</Text>
+            <View style={styles.colArticle}>
+              {item.articleNumber ? <Text style={styles.articleNumberText}>{item.articleNumber}</Text> : null}
+              <Text style={styles.cellText}>{item.description}</Text>
+            </View>
             <Text style={[styles.cellText, styles.colAsset]}>{item.assetLabel ?? "—"}</Text>
-            <Text style={[styles.cellText, styles.colEngineer]}>{item.engineerName ?? "—"}</Text>
             <Text style={[styles.cellText, styles.colQuantity]}>{item.quantity}</Text>
             <Text style={[styles.cellText, styles.colUnitPrice]}>{formatCurrency(item.unitPrice)}</Text>
             <Text style={[styles.cellText, styles.colDiscount]}>
@@ -422,35 +423,35 @@ export function InvoiceDocument(props: InvoicePdfProps) {
 
         <View style={styles.totalsBlock} wrap={false}>
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>Subtotaal excl. btw</Text>
+            <Text style={styles.totalsLabel}>Subtotal excl. VAT</Text>
             <Text style={styles.totalsValue}>{formatCurrency(props.subtotal)}</Text>
           </View>
           {props.vatBreakdown.map((entry) => (
             <View key={entry.vatPercent} style={styles.totalsRow}>
-              <Text style={styles.totalsLabel}>Btw {entry.vatPercent}%</Text>
+              <Text style={styles.totalsLabel}>VAT {entry.vatPercent}%</Text>
               <Text style={styles.totalsValue}>{formatCurrency(entry.amount)}</Text>
             </View>
           ))}
           <View style={styles.totalsRowFinal}>
-            <Text style={styles.totalsLabelFinal}>Totaal te betalen</Text>
+            <Text style={styles.totalsLabelFinal}>Total due</Text>
             <Text style={styles.totalsValueFinal}>{formatCurrency(props.total)}</Text>
           </View>
         </View>
 
         <View style={styles.footer} fixed>
           <View style={styles.footerNoteBlock}>
-            <Text style={styles.footerNoteLabel}>BETALING</Text>
+            <Text style={styles.footerNoteLabel}>PAYMENT</Text>
             <Text style={styles.footerNoteText}>
-              Gelieve het totaalbedrag binnen 30 dagen te voldoen
-              {props.iban ? ` op IBAN ${props.iban}` : ""} t.n.v. {sender.name}, onder vermelding van
-              factuurnummer {props.invoiceNumber}
-              {props.workOrderReference ? ` en werkorder ${props.workOrderReference}` : ""}.
+              Please pay the total amount within 30 days
+              {props.iban ? ` to IBAN ${props.iban}` : ""} to the order of {sender.name}, quoting invoice
+              number {props.invoiceNumber}
+              {props.workOrderReference ? ` and work order ${props.workOrderReference}` : ""}.
             </Text>
           </View>
           <Text style={styles.footerTagline}>
             {sender.name}
             {sender.kvkNumber ? ` · KvK ${sender.kvkNumber}` : ""}
-            {sender.vatNumber ? ` · BTW ${sender.vatNumber}` : ""}
+            {sender.vatNumber ? ` · VAT ${sender.vatNumber}` : ""}
             {props.iban ? ` · IBAN ${props.iban}` : ""}
           </Text>
         </View>

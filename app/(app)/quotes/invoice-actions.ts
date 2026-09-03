@@ -7,7 +7,6 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
-import { memberDisplayName } from "@/lib/members/format";
 import { getOrganizationCompanySettings } from "../settings/company-actions";
 import { InvoiceDocument, type InvoicePdfAddress, type InvoicePdfLineItem, type InvoicePdfVatBreakdownEntry } from "./invoice-pdf";
 
@@ -112,11 +111,17 @@ async function resolveClientAddress(
 
 interface InvoiceQuoteLineItemRow {
   description: string;
+  /** Snapshotted at the moment an article was picked (migration
+   * `20260903130000_quote_line_items_article_number.sql`) — the row's own
+   * plain column, independent of `article_id`/the joined `article` below.
+   * Read in preference to the joined article's own `article_number` (see
+   * `computeInvoiceLineItems`) since it survives the source article later
+   * being deleted (`article_id` is `on delete set null`), unlike the join. */
+  article_number: string | null;
   quantity: number | string;
   unit_price: number | string;
   discount_percent: number | string;
   asset_id: string | null;
-  engineer_user_id: string | null;
   article: {
     article_number: string;
     vat_rate: { value: string | number } | null;
@@ -167,7 +172,6 @@ interface ComputedLineItems {
 function computeInvoiceLineItems(
   rows: readonly InvoiceQuoteLineItemRow[],
   assetLabelById: ReadonlyMap<string, string | null>,
-  engineerNameById: ReadonlyMap<string, string>,
 ): ComputedLineItems {
   const vatBuckets = new Map<number, number>();
   let subtotalRaw = 0;
@@ -183,15 +187,21 @@ function computeInvoiceLineItems(
     vatBuckets.set(vatPercent, (vatBuckets.get(vatPercent) ?? 0) + lineTotal * (vatPercent / 100));
 
     return {
-      articleNumber: row.article?.article_number ?? null,
+      // Read the row's OWN snapshotted `article_number` column in
+      // preference to the joined article's — the row's own column survives
+      // the source article later being deleted (`article_id on delete set
+      // null`), unlike the join. Falls back to the joined article's number
+      // only in the defensive case where the row's own column is somehow
+      // null but a live article is still linked (shouldn't normally happen
+      // post-backfill/going-forward).
+      articleNumber: row.article_number ?? row.article?.article_number ?? null,
       description: row.description,
-      // `?? null` twice over here on purpose: no asset/engineer linked at
-      // all (id is `null`) and "linked but its label/name couldn't be
-      // resolved" (id present but missing from the map — shouldn't happen,
-      // same defensive-only reasoning as `quote-line-items-panel.tsx`'s own
-      // "Unknown asset" fallback) both degrade to the same blank cell.
+      // `?? null` here on purpose: no asset linked at all (id is `null`)
+      // and "linked but its label couldn't be resolved" (id present but
+      // missing from the map — shouldn't happen, same defensive-only
+      // reasoning as `quote-line-items-panel.tsx`'s own "Unknown asset"
+      // fallback) both degrade to the same blank cell.
       assetLabel: row.asset_id ? (assetLabelById.get(row.asset_id) ?? null) : null,
-      engineerName: row.engineer_user_id ? (engineerNameById.get(row.engineer_user_id) ?? null) : null,
       quantity,
       unitPrice,
       discountPercent,
@@ -210,7 +220,10 @@ function computeInvoiceLineItems(
   return { lineItems, subtotal, vatBreakdown, vatTotal, total: Math.round((subtotal + vatTotal) * 100) / 100 };
 }
 
-const dateFormatter = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+// "en-GB" (not "nl-NL") to match `invoice-pdf.tsx`'s own English-copy switch
+// — this formats month names ("3 September 2026"), so leaving it Dutch would
+// leave a Dutch month name bleeding into an otherwise all-English PDF.
+const dateFormatter = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -284,19 +297,21 @@ export async function generateInvoice(quoteId: string): Promise<ActionResult<Gen
     return fail("This quote's client could not be found.");
   }
 
-  // 2. Load the quote's line items with their linked article's number + VAT
-  // rate (same embed shape as `../quotes/actions.ts`'s `QUOTE_LINE_ITEM_SELECT`,
-  // trimmed to just the columns the PDF needs), ordered the same way
-  // `listQuoteLineItems` orders them. Also pulls the raw `asset_id`/
-  // `engineer_user_id` uuids — deliberately NOT joined here (no FK embed for
-  // either column, same as `quote-line-items-panel.tsx`'s own resolution):
-  // resolved below via two small, targeted-by-id lookups instead, mirroring
-  // that panel's own "raw uuid, resolve against a small directory" pattern
-  // for both columns.
+  // 2. Load the quote's line items with their own snapshotted
+  // `article_number` plus the linked article's VAT rate (same embed shape as
+  // `../quotes/actions.ts`'s `QUOTE_LINE_ITEM_SELECT`, trimmed to just the
+  // columns the PDF needs), ordered the same way `listQuoteLineItems` orders
+  // them. Also pulls the raw `asset_id` uuid — deliberately NOT joined here
+  // (no FK embed for that column, same as `quote-line-items-panel.tsx`'s own
+  // resolution): resolved below via a small, targeted-by-id lookup instead,
+  // mirroring that panel's own "raw uuid, resolve against a small directory"
+  // pattern. `engineer_user_id` is no longer selected here at all — the
+  // Engineer column has been removed from the PDF (see `invoice-pdf.tsx`),
+  // so there is nothing left to resolve it for.
   const { data: lineItemRows, error: lineItemsError } = await supabase
     .from("quote_line_items")
     .select(
-      "description, quantity, unit_price, discount_percent, asset_id, engineer_user_id," +
+      "description, article_number, quantity, unit_price, discount_percent, asset_id," +
         " article:articles!quote_line_items_article_id_fkey(article_number, vat_rate:reference_list_items!articles_vat_rate_item_id_fkey(value))",
     )
     .eq("quote_id", idResult.data)
@@ -306,39 +321,25 @@ export async function generateInvoice(quoteId: string): Promise<ActionResult<Gen
 
   const lineItemRowsTyped = (lineItemRows ?? []) as unknown as InvoiceQuoteLineItemRow[];
 
-  // 2b. Resolve the small set of distinct assets/engineers actually
-  // referenced by this quote's line items — targeted `.in()` lookups rather
-  // than reusing `listOrgMembers()` (gated on the `planning` feature, a
-  // module `invoicing` has no dependency on) or an org-wide asset list, so
-  // this works even for a tenant that never enabled Planning. Both tables'
-  // own RLS (`users_select_self_or_org_peers`, `assets`' own org-scoped
-  // policy) already restrict either lookup to this caller's own org, same
-  // "RLS is the real backstop" posture as every other query in this file.
+  // 2b. Resolve the small set of distinct assets actually referenced by this
+  // quote's line items — a targeted `.in()` lookup rather than reusing an
+  // org-wide asset list, so this works even for a tenant that never enabled
+  // Planning. `assets`' own org-scoped RLS policy already restricts this to
+  // the caller's own org, same "RLS is the real backstop" posture as every
+  // other query in this file. `.in("id", [])` returns an empty result set
+  // (not an error) in PostgREST/supabase-js, so this runs unconditionally
+  // rather than branching on `assetIds.length`.
   const assetIds = Array.from(new Set(lineItemRowsTyped.map((row) => row.asset_id).filter((id): id is string => Boolean(id))));
-  const engineerIds = Array.from(
-    new Set(lineItemRowsTyped.map((row) => row.engineer_user_id).filter((id): id is string => Boolean(id))),
-  );
 
-  // `.in("id", [])` returns an empty result set (not an error) in
-  // PostgREST/supabase-js, so these run unconditionally rather than branching
-  // on `assetIds.length`/`engineerIds.length` — keeps both query shapes
-  // uniform for `Promise.all` instead of a ternary-per-branch union type.
-  const [assetLabelRows, engineerRows] = await Promise.all([
-    supabase
-      .from("assets")
-      .select("id, serial_number, asset_model:asset_models!assets_model_id_fkey(name)")
-      .in("id", assetIds),
-    supabase.from("users").select("id, email, full_name").in("id", engineerIds),
-  ]);
+  const { data: assetLabelRowsData, error: assetLabelRowsError } = await supabase
+    .from("assets")
+    .select("id, serial_number, asset_model:asset_models!assets_model_id_fkey(name)")
+    .in("id", assetIds);
 
-  if (assetLabelRows.error) return fail(mapDbError(assetLabelRows.error));
-  if (engineerRows.error) return fail(mapDbError(engineerRows.error));
+  if (assetLabelRowsError) return fail(mapDbError(assetLabelRowsError));
 
   const assetLabelById = new Map<string, string | null>(
-    (assetLabelRows.data as unknown as InvoiceAssetLabelRow[]).map((asset) => [asset.id, formatAssetLabel(asset)]),
-  );
-  const engineerNameById = new Map<string, string>(
-    (engineerRows.data ?? []).map((member) => [member.id, memberDisplayName(member)]),
+    (assetLabelRowsData as unknown as InvoiceAssetLabelRow[]).map((asset) => [asset.id, formatAssetLabel(asset)]),
   );
 
   // 3. The tenant's own company data (issue #120) — required for the "VAN"
@@ -357,7 +358,7 @@ export async function generateInvoice(quoteId: string): Promise<ActionResult<Gen
     resolveClientAddress(supabase, quoteRow.client_id),
   ]);
 
-  const computed = computeInvoiceLineItems(lineItemRowsTyped, assetLabelById, engineerNameById);
+  const computed = computeInvoiceLineItems(lineItemRowsTyped, assetLabelById);
 
   // 4. Regenerate = delete the existing invoice (row + Storage object) first,
   // since `invoices` has no UPDATE grant/policy at all and `quote_id` is

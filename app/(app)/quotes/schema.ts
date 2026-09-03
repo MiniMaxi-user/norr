@@ -145,6 +145,15 @@ export const quoteLineItemCreateSchema = z.object({
    * trust boundary as `assetId`/`articleId` above. */
   engineerUserId: clearableUuid("Invalid engineer."),
   sortOrder: z.preprocess(emptyToUndefined, z.coerce.number().int("Sort order must be a whole number.").optional()),
+  /** Nullable at the DB layer (`quote_line_items.article_number text`,
+   * migration `20260903130000_quote_line_items_article_number.sql`) — a
+   * snapshot of the source article's own `article_number` at the moment it
+   * was picked, independent of `description` (no longer concatenated into it,
+   * see `../actions.ts`'s line-item row builders). Free text, no format
+   * constraint — mirrors `articles.article_number`'s own plain-text DB
+   * typing. `null`/omitted for a manually-typed line item with no linked
+   * article. */
+  articleNumber: optionalText(100),
 });
 
 export type QuoteLineItemCreateInput = z.infer<typeof quoteLineItemCreateSchema>;

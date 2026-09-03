@@ -159,6 +159,13 @@ export interface QuoteLineItemRecord {
    * consumer) — the source article this line item was generated/picked from,
    * for reporting traceability. `null` for a free-text/manual line item. */
   article_id: string | null;
+  /** Snapshotted source article number (issue: article number/description
+   * decoupling, migration `20260903130000_quote_line_items_article_number.sql`)
+   * — independently stored, historically frozen at the moment an article was
+   * picked, decoupled from `description` (previously `description` combined
+   * both via `articleOptionLabel`; no longer does). `null` for a manually-
+   * typed line item with no linked article. */
+  article_number: string | null;
   description: string;
   quantity: number;
   unit_price: number;
@@ -292,6 +299,12 @@ function toQuoteLineItemInsertRow(quoteId: string, input: ReturnType<typeof quot
   // omission documents.
   if (input.discountPercent !== undefined) row.discount_percent = input.discountPercent;
   if (input.engineerUserId !== undefined) row.engineer_user_id = input.engineerUserId ?? null;
+  // articleNumber is a snapshot of the source article's own number at pick
+  // time (migration `20260903130000_quote_line_items_article_number.sql`) —
+  // independent of `description`, no longer folded into it. Omitted (not
+  // even sent as null) when not provided, same "let the DB column's own
+  // default/null apply" treatment as the other optional fields above.
+  if (input.articleNumber !== undefined) row.article_number = input.articleNumber ?? null;
   return row;
 }
 
@@ -311,6 +324,7 @@ function toQuoteLineItemUpdateRow(input: ReturnType<typeof quoteLineItemUpdateSc
   if (input.discountPercent !== undefined) row.discount_percent = input.discountPercent;
   if (input.engineerUserId !== undefined) row.engineer_user_id = input.engineerUserId ?? null;
   if (input.sortOrder !== undefined) row.sort_order = input.sortOrder;
+  if (input.articleNumber !== undefined) row.article_number = input.articleNumber ?? null;
   return row;
 }
 

@@ -68,6 +68,13 @@ export interface QuoteLineItemsPanelProps {
 interface RowDraft {
   rowId: string | null;
   description: string;
+  /** Independently editable/hand-typeable (issue "Deze separaat tonen in
+   * quote") — decoupled from `description`: picking an article auto-fills
+   * both from that article's own `article_number`/`description`, but a
+   * free-text line item can also carry a manually typed article number with
+   * no linked article at all, matching `articleNumber`'s nullable/optional
+   * nature at the schema level (`quote_line_items.article_number`). */
+  articleNumber: string;
   articleId: string;
   assetId: string;
   engineerId: string;
@@ -284,6 +291,7 @@ export function QuoteLineItemsPanel({
     setDraft({
       rowId: null,
       description: "",
+      articleNumber: "",
       articleId: "",
       assetId: "",
       engineerId: "",
@@ -298,6 +306,7 @@ export function QuoteLineItemsPanel({
     setDraft({
       rowId: item.id,
       description: item.description,
+      articleNumber: item.article_number ?? "",
       articleId: item.article_id ?? "",
       assetId: item.asset_id ?? "",
       engineerId: item.engineer_user_id ?? "",
@@ -311,9 +320,12 @@ export function QuoteLineItemsPanel({
     setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
-  /** Selecting an article auto-fills Description + Unit price from it — see
-   * this panel's own doc comment above. Clearing the picker (`articleId ===
-   * ""`) leaves the other fields as the user last set them; `deriveDescription`
+  /** Selecting an article auto-fills Article number + Description + Unit
+   * price from it, as three separate fields now — no more squashing article
+   * number and description into one string (product ask: "Deze separaat
+   * tonen in quote"). Clearing the picker (`articleId === ""`) leaves the
+   * other fields as the user last set them (including a hand-typed
+   * `articleNumber` on an otherwise-manual line); `deriveDescription`
    * resolves what actually gets sent at save time when no article ends up
    * picked. */
   function handleArticleChange(articleId: string) {
@@ -321,7 +333,11 @@ export function QuoteLineItemsPanel({
     updateDraft({
       articleId,
       ...(article
-        ? { description: articleOptionLabel(article), unitPrice: String(article.sale_price ?? 0) }
+        ? {
+            articleNumber: article.article_number,
+            description: article.description,
+            unitPrice: String(article.sale_price ?? 0),
+          }
         : {}),
     });
   }
@@ -355,6 +371,13 @@ export function QuoteLineItemsPanel({
     startTransition(async () => {
       const input = {
         description: deriveDescription(draft, assetById),
+        // Independent of `description`/`articleId` — a plain optional text
+        // field (`quoteLineItemCreateSchema.articleNumber`), so an empty
+        // string here is left as "not provided" by the schema's own
+        // `optionalText` preprocessing (matching `notes`'s existing
+        // treatment), not translated to an explicit `null` clear the way the
+        // picker fields below are.
+        articleNumber: draft.articleNumber.trim(),
         quantity,
         unitPrice,
         discountPercent,
@@ -394,16 +417,30 @@ export function QuoteLineItemsPanel({
     return (
       <Table.Row key={key}>
         <Table.Cell>
-          <Combobox
-            aria-label="Article"
-            options={articleOptions}
-            value={draft!.articleId}
-            onChange={handleArticleChange}
-            placeholder="Search article number, EAN, GTIN…"
-            emptyMessage="No matching articles."
-            clearable
-            disabled={saving}
-          />
+          <Stack gap="xs">
+            <Combobox
+              aria-label="Article"
+              options={articleOptions}
+              value={draft!.articleId}
+              onChange={handleArticleChange}
+              placeholder="Search article number, EAN, GTIN…"
+              emptyMessage="No matching articles."
+              clearable
+              disabled={saving}
+            />
+            {/* Independent of the picker above — auto-filled the moment an
+             * article is picked (`handleArticleChange`) but still a plain
+             * editable text field, so a manual/free-text line item can carry
+             * a hand-typed article number too (`articleNumber`'s nullable,
+             * optional nature at the schema level). */}
+            <Input
+              aria-label="Article number"
+              placeholder="Article number (optional)"
+              value={draft!.articleNumber}
+              onChange={(event) => updateDraft({ articleNumber: event.target.value })}
+              disabled={saving}
+            />
+          </Stack>
         </Table.Cell>
         <Table.Cell>
           <Combobox
@@ -534,7 +571,12 @@ export function QuoteLineItemsPanel({
                       key={item.id}
                       onClick={canEdit && !draft ? () => startEdit(item) : undefined}
                     >
-                      <Table.Cell>{item.article ? articleOptionLabel(item.article) : item.description}</Table.Cell>
+                      <Table.Cell>
+                        <Stack gap="xs">
+                          {item.article_number && <Text tone="muted">{item.article_number}</Text>}
+                          <Text>{item.description}</Text>
+                        </Stack>
+                      </Table.Cell>
                       <Table.Cell>
                         {item.asset_id ? (
                           asset ? (
