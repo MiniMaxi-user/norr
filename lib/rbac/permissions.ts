@@ -52,6 +52,7 @@ export type Module =
   | "planning"
   | "checklists"
   | "quotes"
+  | "invoicing"
   | "activities"
   | "articles"
   | "reporting"
@@ -104,6 +105,7 @@ const NONE: readonly Action[] = [] as const;
  * | Planning   | CRUD  | CRUD    | Read/Update/Create own| Read   | Read           |
  * | Checklists | CRUD  | CRUD    | Read/Update own      | Read    | Read           |
  * | Quotes     | CRUD  | CRUD    | Read                 | Read    | Read           |
+ * | Invoicing  | Create/Read/Delete | — | —          | —       | Create/Read/Delete |
  * | Activities | CRUD  | CRUD    | Create/Read/Update own| Read   | Read           |
  * | Articles   | CRUD  | Read    | Read                 | Read    | CRUD           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
@@ -192,6 +194,49 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     engineer: READ_ONLY,
     finance: READ_ONLY,
     administratie: READ_ONLY,
+  },
+  // Invoicing (issue #119, "Als owner / administratie / platform admin wil ik
+  // een factuur kunnen maken"): a NEW top-level module. A button on a Quote's
+  // detail page generates a PDF invoice FROM that quote (its line items/
+  // client, plus the org's own company data from issue #120) into a new
+  // `invoices` table (db-schema-architect, concurrent migration) — the
+  // invoice can be viewed and deleted, but there is no `update` action at
+  // all: regenerating one is delete-then-recreate, matching that migration's
+  // "no UPDATE grant" RLS design, not a `quotes`-style CRUD row.
+  //
+  // Deliberately NOT folded into the `quotes` row above: `quotes` gives
+  // `planner` full CRUD and `administratie` only `read`, and this story
+  // needs the exact opposite asymmetry for invoices (`administratie` full
+  // create/read/delete, `planner` NONE) — no single flat action list on one
+  // row can express both without either breaking `administratie`'s existing
+  // read-only quotes access or wrongly widening `planner` onto invoices. Same
+  // reasoning `checklists`' own comment above gives for not folding into
+  // `planning`.
+  //
+  // Also deliberately NOT the existing `billing` ("Facturatie") module
+  // below: that row (`finance`+`administratie` CRUD, `owner` read-only) is a
+  // docs/ARCHITECTURE.md placeholder from the original matrix (issue #4)
+  // that has never actually been implemented anywhere in code (no
+  // `app/(app)/billing` page/actions exist yet) — it's reserved for a
+  // broader, not-yet-built tenant billing/payment-tracking module, and its
+  // dormant nav entry (`components/shell/nav-items.ts`'s "Facturatie" ->
+  // `/billing`, a route that doesn't exist yet) would light up in the
+  // sidebar for every role — including roles with zero permission on it —
+  // the moment `billing` were added to `SHIPPED_FEATURES` in
+  // lib/rbac/features.ts. This story is a button + panel on the Quote detail
+  // page, not a new top-level Facturatie section, so it gets its own key
+  // instead of prematurely shipping that dormant one.
+  //
+  // `finance` gets NONE: the issue names exactly three actor types (owner,
+  // administratie, platform admin) and explicitly does not include finance —
+  // matching CLAUDE.md rule 7 ("build exactly what a story's acceptance
+  // criteria specify"). `engineer`/`planner` are NONE for the same reason.
+  invoicing: {
+    owner: ["create", "read", "delete"],
+    planner: NONE,
+    engineer: NONE,
+    finance: NONE,
+    administratie: ["create", "read", "delete"],
   },
   // Activities (issue #59, "melding"): a NEW top-level module (a ticket-like
   // entity preceding a Work Order), a NEW shape — not a `planning` alias, per
@@ -297,8 +342,17 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // Quotes' Platform Admin column) — same NONE shape as `planning`/
   // `checklists`/`settings`.
   quotes: NONE,
+  // No cross-tenant carve-out for Invoicing either (issue #119's confirmed
+  // scope decision): "platform admin" here does NOT mean a new cross-tenant
+  // capability — a Platform Admin already qualifies for invoice creation
+  // purely by being an `owner`-role member of their own dedicated Platform
+  // org (docs/ARCHITECTURE.md's existing Platform Admin model), which
+  // `TENANT_PERMISSIONS.invoicing.owner` above already covers. Same NONE
+  // shape as `planning`/`checklists`/`quotes`.
+  invoicing: NONE,
   // No "Read (support only)"-style cross-tenant carve-out documented for
-  // Activities either — same NONE shape as `planning`/`checklists`/`quotes`.
+  // Activities either — same NONE shape as `planning`/`checklists`/`quotes`/
+  // `invoicing`.
   activities: NONE,
   // No "Read (support only)"-style cross-tenant carve-out documented for
   // Articles either (docs/ARCHITECTURE.md's RBAC matrix table shows "—" for

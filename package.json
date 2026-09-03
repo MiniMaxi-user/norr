@@ -20,6 +20,7 @@
     "test": "echo \"no test runner configured yet (tracked separately) \" && exit 0"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "@yourorg/ui": "*",

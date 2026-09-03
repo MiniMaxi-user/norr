@@ -25,6 +25,7 @@ import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
+import type { InvoiceSummary } from "../invoice-actions";
 import { formatDate } from "@/lib/format/date";
 import { QuoteDetailActions } from "./quote-detail-actions";
 import { QuoteRelationCards } from "./quote-relation-cards";
@@ -57,6 +58,13 @@ export interface QuoteDetailProps {
   canCreateLineItems: boolean;
   canEditLineItems: boolean;
   canDeleteLineItems: boolean;
+  /** This quote's invoice, if one has already been generated (issue #119) —
+   * `null` both when none exists yet and when the caller can't read
+   * invoices at all (`page.tsx` only fetches it when `canGenerateInvoice`/
+   * `canDeleteInvoice`'s underlying `read` check passes). */
+  invoice: InvoiceSummary | null;
+  canGenerateInvoice: boolean;
+  canDeleteInvoice: boolean;
 }
 
 /**
@@ -110,6 +118,9 @@ export function QuoteDetail({
   canCreateLineItems,
   canEditLineItems,
   canDeleteLineItems,
+  invoice,
+  canGenerateInvoice,
+  canDeleteInvoice,
 }: QuoteDetailProps) {
   const router = useRouter();
 
@@ -236,7 +247,15 @@ export function QuoteDetail({
           </Badge>
         }
         meta={meta}
-        actions={<QuoteDetailActions quote={quote} canDelete={canDelete} />}
+        actions={
+          <QuoteDetailActions
+            quote={quote}
+            canDelete={canDelete}
+            invoice={invoice}
+            canGenerateInvoice={canGenerateInvoice}
+            canDeleteInvoice={canDeleteInvoice}
+          />
+        }
       />
 
       {saveError && <Text tone="danger">{saveError}</Text>}

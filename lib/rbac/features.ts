@@ -53,6 +53,14 @@ export type FeatureKey =
   // `quotes` module. Every action in that file calls `hasFeature()` first per
   // CLAUDE.md rule 3.
   | "quotes"
+  // Invoicing (issue #119) — see `lib/rbac/permissions.ts`'s dedicated
+  // `invoicing` module (that module's own comment explains why this is a
+  // separate key from both `quotes` and the still-unshipped `billing`
+  // placeholder). No `nav-items.ts` entry of its own: this is a button/panel
+  // on the existing Quote detail page, not a new top-level sidebar
+  // destination. Every invoice Server Action (once `api-backend-engineer`
+  // lands them) must call `hasFeature()` first per CLAUDE.md rule 3.
+  | "invoicing"
   // Activities / "Meldingen" (issue #59) — see
   // `lib/rbac/permissions.ts`'s dedicated `activities` module and
   // `components/shell/nav-items.ts`'s "Meldingen" nav entry. Every Server
@@ -69,6 +77,13 @@ export type FeatureKey =
   // `activities`/`quotes`/`checklists`/`contracts`/`planning` above.
   | "articles"
   | "reporting"
+  // Placeholder from the original matrix (issue #4) for a future, broader
+  // tenant billing/payment-tracking module ("Facturatie" — see
+  // `components/shell/nav-items.ts`) — NOT the same thing as `invoicing`
+  // above (issue #119's PDF-invoice-from-a-quote capability, which has its
+  // own key). Deliberately kept OUT of `SHIPPED_FEATURES` below: this module
+  // has no page/actions of its own yet, and shipping it would light up the
+  // dormant "Facturatie" nav entry for every role.
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
   // lib/reference-lists/actions.ts and lib/rbac/permissions.ts's `settings`
@@ -156,6 +171,19 @@ export type FeatureKey =
  * `activities`/`quotes`/`checklists`/`contracts`/`planning` above. Adding the
  * key here now (rather than waiting for the actions file to exist) avoids
  * repeating the exact omission flagged repeatedly in this comment block.
+ *
+ * `invoicing` added alongside the Invoicing capability (issue #119 —
+ * `invoices` table/Storage bucket landing in a concurrent
+ * db-schema-architect migration): once `api-backend-engineer` lands the
+ * generate/read/delete invoice Server Actions on the Quote detail page,
+ * every one of them will call `hasFeature()` first per CLAUDE.md rule 3 —
+ * same reasoning as `articles`/`activities`/`quotes`/`checklists`/
+ * `contracts`/`planning` above. Deliberately NOT the same as adding `billing`
+ * here — `billing` stays out of this set (see its `FeatureKey` comment
+ * above): it's still an unimplemented placeholder, and adding it now would
+ * light up the dormant "Facturatie" nav entry (`components/shell/
+ * nav-items.ts`, pointing at a `/billing` route that doesn't exist yet) for
+ * every role, which this story does not intend.
  */
 const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
@@ -166,6 +194,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "contracts",
   "checklists",
   "quotes",
+  "invoicing",
   "activities",
   "articles",
 ]);

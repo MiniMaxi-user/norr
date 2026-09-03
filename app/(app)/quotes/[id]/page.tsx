@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getQuote, listQuoteLineItems } from "../actions";
+import { getInvoiceForQuote } from "../invoice-actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
@@ -74,16 +75,42 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   if (!quoteResult.data) notFound();
   const quote = quoteResult.data.quote;
 
-  const [clientResult, clientsResult, lineItemsResult, clientAssetsResult, membersResult, articlesResult, workOrderResult] =
-    await Promise.all([
-      getClient(quote.client_id),
-      listClients({ limit: 200 }),
-      listQuoteLineItems(quote.id),
-      listAssets({ clientId: quote.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
-      listOrgMembers(),
-      listArticlesForSelect(),
-      quote.work_order_id ? getWorkOrder(quote.work_order_id) : Promise.resolve(null),
-    ]);
+  // Invoicing (issue #119): owner/administratie-only, and only when the
+  // `invoicing` feature is entitled to this org — `hasFeature` +
+  // `canAccessModule` are folded into these booleans here so the render
+  // side (`quote-detail.tsx` -> `quote-detail-actions.tsx` ->
+  // `quote-invoice-actions.tsx`) never has to reason about entitlement
+  // itself, same "resolve once in the page, pass a plain boolean down"
+  // convention as `canEdit`/`canDelete` below. `getInvoiceForQuote` is only
+  // called when the caller can even read invoices, so a role with no
+  // invoicing access never triggers (and never sees the result of) that
+  // extra query.
+  const invoicingEnabled = await hasFeature(session.organization, "invoicing");
+  const canReadInvoice = invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "read");
+  const canGenerateInvoice =
+    invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "create");
+  const canDeleteInvoice =
+    invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "delete");
+
+  const [
+    clientResult,
+    clientsResult,
+    lineItemsResult,
+    clientAssetsResult,
+    membersResult,
+    articlesResult,
+    workOrderResult,
+    invoiceResult,
+  ] = await Promise.all([
+    getClient(quote.client_id),
+    listClients({ limit: 200 }),
+    listQuoteLineItems(quote.id),
+    listAssets({ clientId: quote.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
+    listOrgMembers(),
+    listArticlesForSelect(),
+    quote.work_order_id ? getWorkOrder(quote.work_order_id) : Promise.resolve(null),
+    canReadInvoice ? getInvoiceForQuote(quote.id) : Promise.resolve(null),
+  ]);
 
   const client = clientResult.data?.client ?? null;
   const sites = clientResult.data?.sites ?? [];
@@ -94,6 +121,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   const members = membersResult.data?.members ?? [];
   const articles = articlesResult.data?.articles ?? [];
   const sourceWorkOrder = workOrderResult?.data?.workOrder ?? null;
+  const invoice = invoiceResult?.data?.invoice ?? null;
 
   const canEdit = can(actor, "quotes", "update");
   const canDelete = can(actor, "quotes", "delete");
@@ -117,6 +145,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       canCreateLineItems={canCreateLineItems}
       canEditLineItems={canEditLineItems}
       canDeleteLineItems={canDeleteLineItems}
+      invoice={invoice}
+      canGenerateInvoice={canGenerateInvoice}
+      canDeleteInvoice={canDeleteInvoice}
     />
   );
 }
