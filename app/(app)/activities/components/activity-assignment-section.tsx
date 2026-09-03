@@ -47,6 +47,19 @@ export interface ActivityAssignmentSectionProps {
  * small edit-pencil stays, now scoped to ONLY "Action holder" via
  * `ActivityActionHolderDialog` below (renamed from the old combined
  * `ActivityAssignmentDialog` now that description edits inline instead).
+ *
+ * `mode: "create"` does NOT use that dialog for Action holder, even though
+ * it's a required field there (`schema.ts`'s `actionHolderId`,
+ * `ActivityScreen.handleCreate`'s own check) — a required field on a brand
+ * new record has no "already-set value" to occasionally reassign, so hiding
+ * its only input behind a small popup is exactly the wrong weight
+ * (`docs/ARCHITECTURE.md`'s "Popup vs. full page": a `Dialog` is for a small,
+ * secondary edit, not the primary record's own required data). Users were
+ * hitting "Create activity" → "Select an action holder." with no visible way
+ * to fix it short of noticing the header's edit-pencil. `mode: "create"` with
+ * `canAssignOthers` now renders the `<Select>` directly inline instead; an
+ * engineer (`!canAssignOthers`) still sees the same pinned-to-self read-out,
+ * no dialog needed since there's nothing for them to choose.
  */
 export function ActivityAssignmentSection({
   mode,
@@ -60,6 +73,7 @@ export function ActivityAssignmentSection({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [description, setDescription] = useState(draft.description);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [actionHolderError, setActionHolderError] = useState<string | null>(null);
 
   useEffect(() => {
     setDescription(draft.description);
@@ -104,6 +118,17 @@ export function ActivityAssignmentSection({
     await commitDescription(description);
   }
 
+  /** `mode: "create"` only — the inline `<Select>` below commits on every
+   * change, same immediate-commit reasoning as `handleDescriptionChange`
+   * above (a local-only draft merge, no network round trip yet). */
+  async function handleActionHolderChange(nextActionHolderId: string) {
+    setActionHolderError(null);
+    const result = await onSave({ description: draft.description, actionHolderId: nextActionHolderId });
+    if (!result.ok) {
+      setActionHolderError(result.error ?? "Could not set the action holder.");
+    }
+  }
+
   const items: KeyValueListItem[] = [
     {
       key: "action-holder",
@@ -129,7 +154,8 @@ export function ActivityAssignmentSection({
         icon={FileText}
         title="Assignment"
         actions={
-          !readOnly && (
+          !readOnly &&
+          mode === "edit" && (
             <IconButton variant="ghost" aria-label="Edit action holder" onClick={() => setDialogOpen(true)}>
               <Pencil />
             </IconButton>
@@ -156,7 +182,39 @@ export function ActivityAssignmentSection({
         </Stack>
       )}
 
-      <KeyValueList items={items} />
+      {mode === "create" ? (
+        <Stack gap="xs">
+          <Label htmlFor="activity-action-holder-inline">Action holder</Label>
+          {canAssignOthers ? (
+            <>
+              {actionHolderError && <Text tone="danger">{actionHolderError}</Text>}
+              <Select
+                id="activity-action-holder-inline"
+                value={draft.actionHolderId}
+                disabled={readOnly}
+                onChange={(event) => void handleActionHolderChange(event.target.value)}
+              >
+                <option value="" disabled>
+                  Select a member…
+                </option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {memberDisplayName(member)}
+                  </option>
+                ))}
+              </Select>
+            </>
+          ) : (
+            <Inline gap="sm" align="center">
+              <Avatar name={actionHolderName} size="sm" />
+              <Text className="ui-row-title">{actionHolderName}</Text>
+              <Text tone="muted">(Always assigned to you)</Text>
+            </Inline>
+          )}
+        </Stack>
+      ) : (
+        <KeyValueList items={items} />
+      )}
 
       {dialogOpen && (
         <ActivityActionHolderDialog
