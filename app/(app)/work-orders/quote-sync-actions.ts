@@ -162,6 +162,16 @@ export interface WorkOrderCostSummary {
    * this flag to link to the promoted quote instead of showing a
    * misleading-looking "$0 to invoice". */
   hasPromotedQuote: boolean;
+  /** The id of whichever quote this summary's figures belong to — the
+   * auto-draft (`autoDraftQuoteId`) when one exists, otherwise the promoted
+   * quote when `hasPromotedQuote` is true. `null` when neither exists yet.
+   * Lets the "To invoice" KPI tile link straight to the actual quote instead
+   * of just naming it in a hint. */
+  quoteId: string | null;
+  /** That same quote's own `name` (`quotes.name` — see `QuoteRecord`, there is
+   * no separate numeric "quote number" column in this schema) — the label the
+   * "To invoice" tile's quote link displays. `null` alongside `quoteId`. */
+  quoteName: string | null;
   travelTotal: number;
   travelLineItemCount: number;
   laborTotal: number;
@@ -180,7 +190,7 @@ export interface WorkOrderCostSummary {
   grandTotal: number;
 }
 
-const ZERO_COST_SUMMARY: Omit<WorkOrderCostSummary, "autoDraftQuoteId" | "hasPromotedQuote"> = {
+const ZERO_COST_SUMMARY: Omit<WorkOrderCostSummary, "autoDraftQuoteId" | "hasPromotedQuote" | "quoteId" | "quoteName"> = {
   travelTotal: 0,
   travelLineItemCount: 0,
   laborTotal: 0,
@@ -248,28 +258,41 @@ export async function getWorkOrderCostSummary(
   if (!autoDraftQuoteId) {
     const { data: promotedQuote, error: promotedError } = await supabase
       .from("quotes")
-      .select("id")
+      .select("id, name")
       .eq("work_order_id", visibleWorkOrderId)
       .eq("is_auto_draft", false)
       .limit(1)
-      .maybeSingle<{ id: string }>();
+      .maybeSingle<{ id: string; name: string }>();
     if (promotedError) return fail(mapDbError(promotedError));
 
-    return ok({ autoDraftQuoteId: null, hasPromotedQuote: Boolean(promotedQuote), ...ZERO_COST_SUMMARY });
+    return ok({
+      autoDraftQuoteId: null,
+      hasPromotedQuote: Boolean(promotedQuote),
+      quoteId: promotedQuote?.id ?? null,
+      quoteName: promotedQuote?.name ?? null,
+      ...ZERO_COST_SUMMARY,
+    });
   }
 
-  const { data: lineItems, error: lineItemsError } = await supabase
-    .from("quote_line_items")
-    .select(
-      "quantity, unit_price, discount_percent, source_time_entry_id, source_work_order_article_id, source_time_entry:time_entries!quote_line_items_source_time_entry_id_fkey(entry_type:reference_list_items!time_entries_entry_type_id_fkey(value))",
-    )
-    .eq("quote_id", autoDraftQuoteId);
+  const [{ data: lineItems, error: lineItemsError }, { data: autoDraftQuote, error: autoDraftQuoteError }] =
+    await Promise.all([
+      supabase
+        .from("quote_line_items")
+        .select(
+          "quantity, unit_price, discount_percent, source_time_entry_id, source_work_order_article_id, source_time_entry:time_entries!quote_line_items_source_time_entry_id_fkey(entry_type:reference_list_items!time_entries_entry_type_id_fkey(value))",
+        )
+        .eq("quote_id", autoDraftQuoteId),
+      supabase.from("quotes").select("name").eq("id", autoDraftQuoteId).single<{ name: string }>(),
+    ]);
 
   if (lineItemsError) return fail(mapDbError(lineItemsError));
+  if (autoDraftQuoteError) return fail(mapDbError(autoDraftQuoteError));
 
   const summary: WorkOrderCostSummary = {
     autoDraftQuoteId,
     hasPromotedQuote: false,
+    quoteId: autoDraftQuoteId,
+    quoteName: autoDraftQuote?.name ?? null,
     ...ZERO_COST_SUMMARY,
   };
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Breadcrumbs,
   Button,
@@ -360,20 +361,38 @@ export function WorkOrderScreen({
           ? "—"
           : formatCurrency(costSummary.grandTotal)
         : formatCurrency(materialTotal);
+  // The quote backing this figure — the auto-draft while it's still tracking
+  // costs, the promoted quote once "Create Quote" has run (see
+  // `WorkOrderCostSummary.quoteId`'s own comment) — rendered as a clickable
+  // link straight to `/quotes/[id]` instead of just naming it in text, so
+  // "To invoice" is a way to actually reach the quote, not just a figure.
+  const toInvoiceQuoteLink =
+    canSeeCosts && costSummary?.quoteId ? (
+      <Link href={`/quotes/${costSummary.quoteId}`}>{costSummary.quoteName ?? "View quote"}</Link>
+    ) : null;
   const toInvoiceHint =
     mode === "create"
       ? "Save the work order first"
       : canSeeCosts && costSummary
         ? costSummary.hasPromotedQuote
-          ? "Already quoted — see Quotes"
-          : undefined
+          ? toInvoiceQuoteLink
+            ? <>Already quoted — {toInvoiceQuoteLink}</>
+            : "Already quoted — see Quotes"
+          : toInvoiceQuoteLink
         : "Material only";
 
+  // Issue: swap "Engineer" and "To invoice"'s positions in the strip (product
+  // owner request) — Engineer now leads, To invoice takes the strip's last
+  // slot instead. Material/Checklist keep their existing middle order.
   const stats: StatStripItem[] = [
     {
-      label: "To invoice",
-      value: toInvoiceValue,
-      hint: toInvoiceHint,
+      label: "Engineer",
+      value: assignedMember ? memberDisplayName(assignedMember) : "Unassigned",
+      hint: assignedMember
+        ? draft.scheduledAt
+          ? formatDateTime(draft.scheduledAt, { month: "long" })
+          : "Not scheduled"
+        : "No engineer assigned",
     },
     {
       label: "Material",
@@ -393,13 +412,9 @@ export function WorkOrderScreen({
     });
   }
   stats.push({
-    label: "Engineer",
-    value: assignedMember ? memberDisplayName(assignedMember) : "Unassigned",
-    hint: assignedMember
-      ? draft.scheduledAt
-        ? formatDateTime(draft.scheduledAt, { month: "long" })
-        : "Not scheduled"
-      : "No engineer assigned",
+    label: "To invoice",
+    value: toInvoiceValue,
+    hint: toInvoiceHint,
   });
 
   const heroActions =
