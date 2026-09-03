@@ -6,6 +6,7 @@ import { Phone } from "@yourorg/ui/icons";
 import type { ActivityDraft } from "./activity-draft";
 
 export interface ActivityContactSectionProps {
+  mode: "create" | "edit";
   draft: Pick<ActivityDraft, "contactName" | "contactPhone" | "contactEmail">;
   readOnly?: boolean;
   onSave: (
@@ -24,9 +25,20 @@ export interface ActivityContactSectionProps {
  * first, reading the current local state of every field — no debounce
  * needed, a blur only fires once per field per visit. Works fine in
  * `mode: "create"` too (routes through the same `commitPatch`, which
- * `ActivityScreen` already makes a local-only draft merge until create).
+ * `ActivityScreen` already makes a local-only draft merge until create) —
+ * EXCEPT that in `mode: "create"` each field's own `onChange` also commits
+ * immediately (see `handleFieldChange` below), the same "no separate Save
+ * button" pattern `ActivityTypeSection`/`ActivityAssignmentSection`'s
+ * description field use for create-time fields. Name/Phone are conditionally
+ * required server-side for a "Bel activiteit" activity (`schema.ts`'s own
+ * comment) but never re-checked client-side here — deferring their commit to
+ * blur alone risked the exact same "typed it, but the draft the Create
+ * button reads is still stale" gap `ActivityAssignmentSection`'s description
+ * field had (issue: description required error despite text visibly typed).
+ * `mode: "edit"` keeps the blur-only commit (a real `updateActivity` network
+ * call there — one write per edit visit, not one per keystroke).
  */
-export function ActivityContactSection({ draft, readOnly, onSave }: ActivityContactSectionProps) {
+export function ActivityContactSection({ mode, draft, readOnly, onSave }: ActivityContactSectionProps) {
   const [name, setName] = useState(draft.contactName);
   const [phone, setPhone] = useState(draft.contactPhone);
   const [email, setEmail] = useState(draft.contactEmail);
@@ -38,14 +50,25 @@ export function ActivityContactSection({ draft, readOnly, onSave }: ActivityCont
     setEmail(draft.contactEmail);
   }, [draft.contactName, draft.contactPhone, draft.contactEmail]);
 
-  async function handleBlur() {
-    if (readOnly) return;
-    if (name === draft.contactName && phone === draft.contactPhone && email === draft.contactEmail) return;
+  async function commitContact(next: { name: string; phone: string; email: string }) {
     setError(null);
-    const result = await onSave({ contactName: name, contactPhone: phone, contactEmail: email });
+    const result = await onSave({ contactName: next.name, contactPhone: next.phone, contactEmail: next.email });
     if (!result.ok) {
       setError(result.error ?? "Could not save the contact person.");
     }
+  }
+
+  function handleFieldChange(next: { name: string; phone: string; email: string }) {
+    setName(next.name);
+    setPhone(next.phone);
+    setEmail(next.email);
+    if (mode === "create") void commitContact(next);
+  }
+
+  async function handleBlur() {
+    if (readOnly || mode === "create") return;
+    if (name === draft.contactName && phone === draft.contactPhone && email === draft.contactEmail) return;
+    await commitContact({ name, phone, email });
   }
 
   return (
@@ -60,7 +83,7 @@ export function ActivityContactSection({ draft, readOnly, onSave }: ActivityCont
             value={name}
             disabled={readOnly}
             maxLength={200}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => handleFieldChange({ name: event.target.value, phone, email })}
             onBlur={handleBlur}
           />
         </Stack>
@@ -71,7 +94,7 @@ export function ActivityContactSection({ draft, readOnly, onSave }: ActivityCont
             value={phone}
             disabled={readOnly}
             maxLength={50}
-            onChange={(event) => setPhone(event.target.value)}
+            onChange={(event) => handleFieldChange({ name, phone: event.target.value, email })}
             onBlur={handleBlur}
           />
         </Stack>
@@ -83,7 +106,7 @@ export function ActivityContactSection({ draft, readOnly, onSave }: ActivityCont
             value={email}
             disabled={readOnly}
             maxLength={320}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => handleFieldChange({ name, phone, email: event.target.value })}
             onBlur={handleBlur}
           />
         </Stack>

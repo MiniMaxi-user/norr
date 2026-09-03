@@ -73,14 +73,35 @@ export function ActivityAssignmentSection({
       ? memberDisplayName(activity.action_holder)
       : "—";
 
-  async function handleDescriptionBlur() {
-    if (readOnly || description === draft.description) return;
+  async function commitDescription(next: string) {
     setDescriptionError(null);
-    const result = await onSave({ description, actionHolderId: draft.actionHolderId });
+    const result = await onSave({ description: next, actionHolderId: draft.actionHolderId });
     if (!result.ok) {
       setDescription(draft.description);
       setDescriptionError(result.error ?? "Could not save the description.");
     }
+  }
+
+  /** `mode: "create"` has no server round trip to defer to blur — `onSave`
+   * only ever merges into the local draft (see `ActivityScreen.commitPatch`)
+   * — so every keystroke commits immediately, the same "no separate Save
+   * button" pattern `ActivityTypeSection`/the relation dialogs already use
+   * for every other create-time field. Without this, a description typed and
+   * then "Create activity" clicked without first blurring the textarea could
+   * read the pre-edit (empty) draft and reject with "Description is
+   * required." even though the field visibly has text in it. */
+  function handleDescriptionChange(next: string) {
+    setDescription(next);
+    if (mode === "create") void commitDescription(next);
+  }
+
+  /** `mode: "edit"` only — `onSave` is a real `updateActivity` network call
+   * there, so it stays deferred to blur (one write per edit, not one per
+   * keystroke); `mode: "create"` already committed via `handleDescriptionChange`
+   * above. */
+  async function handleDescriptionBlur() {
+    if (readOnly || mode === "create" || description === draft.description) return;
+    await commitDescription(description);
   }
 
   const items: KeyValueListItem[] = [
@@ -129,7 +150,7 @@ export function ActivityAssignmentSection({
             aria-label="Description"
             rows={2}
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => handleDescriptionChange(event.target.value)}
             onBlur={handleDescriptionBlur}
           />
         </Stack>

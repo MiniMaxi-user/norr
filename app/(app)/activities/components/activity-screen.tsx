@@ -267,7 +267,7 @@ export function ActivityScreen({
         }
         right={
           <>
-            <ActivityContactSection draft={draft} readOnly={readOnly} onSave={commitPatch} />
+            <ActivityContactSection mode={mode} draft={draft} readOnly={readOnly} onSave={commitPatch} />
 
             {mode === "edit" && activity && linkedWorkOrders !== undefined && (
               <ActivityLinkedWorkOrders
