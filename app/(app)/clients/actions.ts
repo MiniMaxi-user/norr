@@ -108,6 +108,15 @@ export interface ClientRecord {
   work_article_id: string | null;
   travel_sale_price: number | null;
   work_sale_price: number | null;
+  /** Issue #120 — a per-client logo. See migration
+   * `20260903090000_clients_logo_and_organization_own_client.sql` and
+   * `lib/clients/logo-url.ts`'s `getClientLogoUrl` (path + timestamp ->
+   * cache-busted public URL). `select("*")` already returns both columns on
+   * every query in this file; declared here so callers get typed access
+   * rather than needing a cast, same reasoning as the rate-override fields
+   * above. Written only by `../logo-actions.ts`, never by `updateClient`. */
+  logo_path: string | null;
+  logo_updated_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

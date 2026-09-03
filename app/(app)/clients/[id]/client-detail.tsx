@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
   Breadcrumbs,
   Button,
   Card,
+  CompanyLogo,
   DefinitionList,
   DetailLayout,
   Dialog,
@@ -20,7 +21,8 @@ import {
   Text,
   type StatStripItem,
 } from "@yourorg/ui";
-import { Bell, Boxes, ClipboardList, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { Bell, Boxes, Building2, ClipboardList, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
@@ -50,6 +52,7 @@ import { QuotesPanel } from "./quotes-panel";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
 import { SitesPanel } from "./sites-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
+import { ClientLogoUploader } from "../components/client-logo-uploader";
 
 export type ClientDetailTab =
   | "sites"
@@ -245,6 +248,21 @@ export function ClientDetail({
     token: 0,
   });
   const [, startTransition] = useTransition();
+
+  // Issue #120: local echo of the client's logo, same "instant preview
+  // without waiting on router.refresh()" convention `ProfilePanel`'s own
+  // `localAvatarUrl` uses for `AvatarUploader` — `ClientLogoUploader` calls
+  // `onLogoChange` the moment an upload/remove succeeds. Re-derived whenever
+  // the server-provided `client` prop itself changes (e.g. after a
+  // navigation to a different client, or a `router.refresh()` elsewhere on
+  // this page).
+  const [logoUrl, setLogoUrl] = useState<string | null>(() =>
+    getClientLogoUrl(client.logo_path, client.logo_updated_at),
+  );
+  useEffect(() => setLogoUrl(getClientLogoUrl(client.logo_path, client.logo_updated_at)), [
+    client.logo_path,
+    client.logo_updated_at,
+  ]);
 
   const assetCountBySiteId = useMemo(() => {
     const map = new Map<string, number>();
@@ -459,6 +477,21 @@ export function ClientDetail({
       <Card>
         <Stack gap="sm">
           <Heading level={6}>Company</Heading>
+          {/* Issue #120: logo — owner-only upload/replace/remove control
+              (`canWrite`, same `can(actor, "clients", "update")` gate every
+              other owner-only control on this page already uses); anyone
+              else who can see this card just gets the plain read-only tile
+              (or nothing, if no logo has been set yet). */}
+          {canWrite ? (
+            <ClientLogoUploader
+              clientId={client.id}
+              clientName={client.name}
+              logoUrl={logoUrl}
+              onLogoChange={setLogoUrl}
+            />
+          ) : (
+            logoUrl && <CompanyLogo logoUrl={logoUrl} alt={`${client.name} logo`} fallback={<Building2 />} />
+          )}
           <DefinitionList
             items={[
               { label: "KvK", value: client.kvk_number || <Text tone="muted">—</Text> },

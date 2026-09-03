@@ -1,4 +1,4 @@
-import { Boxes, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
+import { Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
 import { REFERENCE_LIST_SECTIONS } from "../reference-lists/sections";
 
 /**
@@ -121,6 +121,17 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { key: "team", label: "Team", href: "/settings/team" },
       { key: "account_managers", label: "Account Managers", href: "/settings/account-managers" },
     ],
+  },
+  {
+    // Issue #120 — which of the tenant's own `clients` rows represents the
+    // organization itself (`organizations.own_client_id`), for a future
+    // Invoicing module's "from" branding. Its own small group, same
+    // reasoning "Billing" gets above: this is a tenant-identity *setting*,
+    // not a reference-list/picklist or a person/role management surface any
+    // existing group already covers.
+    label: "Company",
+    icon: Building2,
+    items: [{ key: "company", label: "Company", href: "/settings/company" }],
   },
 ];
 
