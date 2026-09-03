@@ -8,7 +8,7 @@
  * from a client component too if a future call site needs it.
  *
  * `logo_path` is a Storage OBJECT PATH (e.g.
- * "{organization_id}/{client_id}/logo.webp"), not a URL — see the migration
+ * "{organization_id}/{client_id}/logo.png"), not a URL — see the migration
  * (`supabase/migrations/20260903090000_clients_logo_and_organization_own_client.sql`)
  * for why: the "client-logos" Storage bucket is public, so the public object
  * URL is always derivable from the path alone, no signed URL needed.

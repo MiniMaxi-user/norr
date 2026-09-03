@@ -4,13 +4,23 @@
  * crop-image.ts`'s canvas-export technique, minus the crop step: a company
  * logo isn't pre-cropped to a fixed shape the way a profile photo is (see
  * `@yourorg/ui`'s `CompanyLogo` doc comment) — "compressed" here just means
- * resize-to-max-dimension (aspect ratio preserved, never upscaled) + webp
+ * resize-to-max-dimension (aspect ratio preserved, never upscaled) + PNG
  * re-encode, which is "sufficient for use on an invoice" per the story. No
  * crop UI is needed for that bar.
+ *
+ * PNG, not webp (issue #119 fix): the invoice PDF (`app/(app)/quotes/
+ * invoice-pdf.tsx`) embeds this same logo via `@react-pdf/renderer`, whose
+ * underlying image resolver (`@react-pdf/image`) only recognizes
+ * jpg/jpeg/png/svg — a webp logo silently fails to resolve (throws inside an
+ * async image-loading path the renderer swallows), so the PDF was rendering
+ * with a completely blank logo slot, no visible error anywhere. PNG also
+ * preserves transparency, which webp did too but jpeg wouldn't have — the
+ * right trade for a logo that's frequently a transparent-background asset.
+ * Resizing to `maxDimension` (not format) is the actual size-reduction lever
+ * here in either format, so this loses negligible compression benefit.
  */
 
-const OUTPUT_MIME = "image/webp";
-const OUTPUT_QUALITY = 0.85;
+const OUTPUT_MIME = "image/png";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -56,13 +66,11 @@ export async function compressLogoImage(file: File, maxDimension: number): Promi
   ctx.drawImage(image, 0, 0, width, height);
 
   return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Could not process the logo."));
-      },
-      OUTPUT_MIME,
-      OUTPUT_QUALITY,
-    );
+    // No quality argument: PNG is lossless, canvas.toBlob's third argument
+    // only has an effect for lossy formats (jpeg/webp) and is ignored here.
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Could not process the logo."));
+    }, OUTPUT_MIME);
   });
 }

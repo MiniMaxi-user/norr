@@ -65,10 +65,16 @@ async function validateClientBelongsToOrg(
 /**
  * Uploads a (already client-side compressed/resized) logo image and points
  * `clients.logo_path` at it. Fixed per-client filename
- * (`{organization_id}/{client_id}/logo.webp`, `upsert: true`) so a re-upload
+ * (`{organization_id}/{client_id}/logo.png`, `upsert: true`) so a re-upload
  * overwrites the same Storage object in place rather than accumulating
  * orphans — see the migration's design note. Expects a single `file` entry
  * in `formData`.
+ *
+ * PNG, not webp (issue #119 fix): the invoice PDF embeds this logo via
+ * `@react-pdf/renderer`, whose image resolver only supports jpg/jpeg/png/svg
+ * — a webp upload silently failed to render there. See `compress-logo.ts`'s
+ * doc comment for the full explanation; this action just mirrors that
+ * format choice in the Storage path/content-type.
  */
 export async function uploadClientLogo(
   clientId: string,
@@ -92,8 +98,8 @@ export async function uploadClientLogo(
   if (!file.type.startsWith("image/")) {
     return fail("The file must be an image.");
   }
-  // The client-side compression always exports a small webp/jpeg — this cap
-  // is just sanity insurance against something unexpected reaching the
+  // The client-side compression always exports a small resized PNG — this
+  // cap is just sanity insurance against something unexpected reaching the
   // action directly, not a real "large logo" limit.
   if (file.size > MAX_LOGO_BYTES) {
     return fail("The logo is too large.");
@@ -104,10 +110,10 @@ export async function uploadClientLogo(
   const clientCheck = await validateClientBelongsToOrg(supabase, idResult.data);
   if (!clientCheck.ok) return fail(clientCheck.error);
 
-  const path = `${organizationId}/${idResult.data}/logo.webp`;
+  const path = `${organizationId}/${idResult.data}/logo.png`;
   const { error: uploadError } = await supabase.storage.from("client-logos").upload(path, file, {
     upsert: true,
-    contentType: file.type || "image/webp",
+    contentType: file.type || "image/png",
   });
   if (uploadError) return fail(uploadError.message);
 

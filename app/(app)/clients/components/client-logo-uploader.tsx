@@ -7,8 +7,8 @@ import { compressLogoImage } from "./compress-logo";
 import { removeClientLogo, uploadClientLogo } from "../logo-actions";
 
 // 512px max dimension — plenty sharp for the tile sizes this app renders a
-// logo at today (`CompanyLogo`'s `lg` is 80px) and for a future invoice PDF
-// render, while keeping the compressed webp small. Same "generous headroom
+// logo at today (`CompanyLogo`'s `lg` is 80px) and for the invoice PDF
+// render, while keeping the compressed PNG small. Same "generous headroom
 // over any realistic current use" reasoning `AvatarUploader`'s own
 // `OUTPUT_SIZE` comment gives.
 const MAX_DIMENSION = 512;
@@ -56,7 +56,7 @@ export function ClientLogoUploader({
       try {
         const blob = await compressLogoImage(file, MAX_DIMENSION);
         const formData = new FormData();
-        formData.set("file", blob, "logo.webp");
+        formData.set("file", blob, "logo.png");
         const result = await uploadClientLogo(clientId, formData);
         if (result.error || !result.data) {
           setError(result.error ?? "Could not upload the logo.");
