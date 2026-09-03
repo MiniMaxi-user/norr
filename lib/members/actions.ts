@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { canAny, type TenantRole } from "@/lib/rbac/permissions";
+import type { FeatureKey } from "@/lib/rbac/features";
 
 /**
  * Minimal "who can this be assigned to" directory for the current org —
@@ -27,9 +28,13 @@ import { canAny, type TenantRole } from "@/lib/rbac/permissions";
  * `users_select_self_or_org_peers` (a user can see the profile of anyone who
  * shares an org with them) — both already in
  * `20260822150910_organizations_memberships_baseline_rls.sql` — are
- * sufficient for this read. Gated here on `requireModuleContext("planning")`
- * since Work Orders is its only caller today; broaden the feature gate the
- * moment a second module needs it instead of duplicating this file.
+ * sufficient for this read. Gated on the CALLING module's own feature key
+ * (default `"planning"`, Work Orders' original caller) rather than a fixed
+ * one — Activities' "action holder" picker (issue #118) is a second caller
+ * that isn't entitled to `"planning"` at all, so hardcoding that key here
+ * left its member picker permanently empty for any org with `activities` but
+ * not `planning` enabled. Pass the caller's own `moduleKey` instead of
+ * duplicating this file per module.
  */
 export interface OrgMemberRecord {
   id: string;
@@ -43,12 +48,14 @@ interface MembershipWithUserRow {
   user: { id: string; email: string; full_name: string | null } | null;
 }
 
-export async function listOrgMembers(): Promise<ActionResult<{ members: OrgMemberRecord[] }>> {
-  const ctx = await requireModuleContext("planning");
+export async function listOrgMembers(
+  moduleKey: FeatureKey = "planning",
+): Promise<ActionResult<{ members: OrgMemberRecord[] }>> {
+  const ctx = await requireModuleContext(moduleKey);
   if (!ctx.ok) return fail(ctx.error);
 
-  if (!canAny(ctx.context.actor, "planning", ["read", "read_own"])) {
-    return fail("You do not have permission to view work orders.");
+  if (!canAny(ctx.context.actor, moduleKey, ["read", "read_own"])) {
+    return fail("You do not have permission to view members.");
   }
 
   const supabase = await createSupabaseServerClient();

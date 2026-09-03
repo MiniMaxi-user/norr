@@ -65,7 +65,7 @@ export async function ActivitiesScreen({
 
   const [clientsResult, membersResult, typesResult, statusesResult, activitiesResult] = await Promise.all([
     listClients({ limit: 200 }),
-    listOrgMembers(),
+    listOrgMembers("activities"),
     listReferenceItems("activity_type"),
     listReferenceItems("activity_status"),
     listActivities({ clientId, statusId, typeId, actionHolderId, limit: LIST_PAGE_SIZE, offset }),

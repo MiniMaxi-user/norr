@@ -50,7 +50,7 @@ export default async function NewActivityPage({ searchParams }: NewActivityPageP
     assetId ? getAsset(assetId) : Promise.resolve(null),
     listReferenceItems("activity_type"),
     listReferenceItems("activity_status"),
-    listOrgMembers(),
+    listOrgMembers("activities"),
   ]);
 
   if (assetId && !lockedAssetResult?.data) notFound();

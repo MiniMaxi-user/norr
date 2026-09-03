@@ -86,7 +86,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
   ] = await Promise.all([
     getClient(activity.client_id),
     activity.asset_id ? getAsset(activity.asset_id) : Promise.resolve(null),
-    listOrgMembers(),
+    listOrgMembers("activities"),
     listReferenceItems("activity_type"),
     listReferenceItems("activity_status"),
     // Client picker — skipped for a read-only viewer, same "don't fetch
