@@ -397,6 +397,40 @@ export async function listContractAssets(
   return ok({ contractAssets: (data ?? []) as unknown as ContractAssetRecord[] });
 }
 
+/** The reverse direction of `listContractAssets` above — every contract
+ * linked to a given asset, for that asset's own detail/edit screen's
+ * "Contract" relation card (asset new/edit design handoff v3: "show the
+ * first linked contract... with a subtitle noting '+N more'"). Same RBAC
+ * gate as `listContractAssets`/`countContractsForAsset` (`read`, any org
+ * member) — reading the same `contract_assets` join, just walked from the
+ * asset side instead of the contract side. Returns full `ContractRecord`s
+ * (not the narrower `ContractAssetRecord` shape) since the relation card
+ * needs the contract's own type/dates, not just its id/name. */
+export async function listContractsForAsset(assetId: string): Promise<ActionResult<{ contracts: ContractRecord[] }>> {
+  const idResult = uuidSchema.safeParse(assetId);
+  if (!idResult.success) return fail("Invalid asset id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this asset's contracts.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_assets")
+    .select(`contract:contracts(${CONTRACT_SELECT})`)
+    .eq("asset_id", idResult.data)
+    .order("created_at", { ascending: false });
+
+  if (error) return fail(mapDbError(error));
+  const contracts = (data ?? [])
+    .map((row) => (row as unknown as { contract: ContractRecord | null }).contract)
+    .filter((contract): contract is ContractRecord => contract !== null);
+  return ok({ contracts });
+}
+
 const linkContractAssetSchema = z.object({
   contractId: z.string().uuid("Invalid contract id."),
   assetId: z.string().uuid("Invalid asset id."),

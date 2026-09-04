@@ -175,7 +175,7 @@ export { DetailColumns, type DetailColumnsProps } from "./components/detail-colu
 export { OverviewHeroBand, type OverviewHeroBandProps } from "./components/overview-hero-band";
 export { KeyValueList, type KeyValueListProps, type KeyValueListItem } from "./components/key-value-list";
 export { Callout, type CalloutProps } from "./components/callout";
-export { FormSaveBar, type FormSaveBarProps } from "./components/form-save-bar";
+export { EditableSection, type EditableSectionProps } from "./components/editable-section";
 export { Timeline, type TimelineProps, type TimelineRowProps, type TimelineBlockProps } from "./components/timeline";
 export {
   MapSurface,

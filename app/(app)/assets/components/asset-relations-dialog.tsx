@@ -4,77 +4,79 @@ import { useState } from "react";
 import { Button, Dialog, Select, Stack, Text } from "@yourorg/ui";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import type { AssetDraft } from "./asset-draft";
 
 export interface AssetRelationsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  clientId: string;
-  siteId: string;
+  draft: Pick<AssetDraft, "clientId" | "siteId">;
   clients: ClientRecord[];
-  /** Pre-scopes to a single client and hides the client picker — same
-   * `lockedClientId` semantics `asset-form-dialog.tsx`/`WorkOrderRelationsDialog`
-   * already use (the Clients detail page's Assets tab, and `?clientId=...`
-   * on `/assets/new`). */
+  /** Pre-scopes to a single client and hides the client picker — the Clients
+   * detail page's Assets tab, or `?clientId=...` on `/assets/new`. */
   lockedClientId?: string;
-  sites: SiteRecord[];
-  loadingSites: boolean;
-  /** Re-fetches `sites` for the newly-picked client — owned by
-   * `AssetFormScreen` (the same client-scoped-sites fetch effect
-   * `asset-form-dialog.tsx`'s `AssetFormBody` already owns), mirroring
-   * `WorkOrderRelationsDialog`'s `onClientChange`. */
+  clientScoped: { sites: SiteRecord[]; loadingSites: boolean };
+  /** Re-fetches `clientScoped` for the newly-previewed client — mirrors
+   * `WorkOrderRelationsDialog`'s identical prop. */
   onClientChange: (clientId: string) => void;
-  /** Commits Client + Site — a local draft merge, since neither field is
-   * submitted until the page's own Save (Site is the only one actually sent
-   * to the server; Client is derived from Site's own `client_id` at the DB
-   * layer — see `asset-form-actions.ts`'s `formDataToAssetInput`, which never
-   * reads a `clientId` field at all). */
-  onSave: (patch: { clientId: string; siteId: string }) => void;
+  /** Commits Client + Site — `updateAsset` in edit mode (immediate), a local
+   * draft merge in create mode (see `AssetScreen.commitPatch`). Only `siteId`
+   * is ever actually sent to the server; Client is derived from the site's
+   * own `client_id` at the DB layer (see `asset-draft.ts`'s `draftToInput`
+   * doc comment). */
+  onSave: (patch: Pick<AssetDraft, "clientId" | "siteId">) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
  * The single small popup behind BOTH the Client and Site `RelationCard`s'
- * pencil buttons (asset new/edit design handoff, variant A: "No dropdown — a
- * pencil icon button... opens the existing entity picker") — same "one
- * popup covers every relation card on the page" shape
- * `WorkOrderRelationCards`'s own doc comment documents for Work Orders'
- * four-card row, just sized down to the two relations an asset actually has.
- * Picking a different client clears the site (both are scoped by client),
- * same reset rule `useRelationCascade`'s `handleClientChange` applies for
- * work orders.
+ * pencil buttons (asset new/edit design handoff v3) — same "one popup covers
+ * every relation card that shares its own cascade" shape
+ * `WorkOrderRelationCards`'s own doc comment documents for Work Orders' four-
+ * card row, sized down to the two relations that are actually a Client ->
+ * Site cascade (Model/Contract each get their own dedicated popup instead —
+ * see `asset-model-dialog.tsx`/`asset-contracts-dialog.tsx`). Picking a
+ * different client clears the site (both are scoped by client) — the same
+ * small local reset rule `useRelationCascade`'s `handleClientChange` applies
+ * for work orders, inlined here rather than reused: an asset has no
+ * "asset"-level cascade tier under Client -> Site for that hook to also own.
  */
 export function AssetRelationsDialog({
   open,
   onOpenChange,
-  clientId,
-  siteId,
+  draft,
   clients,
   lockedClientId,
-  sites,
-  loadingSites,
+  clientScoped,
   onClientChange,
   onSave,
 }: AssetRelationsDialogProps) {
-  const [localClientId, setLocalClientId] = useState(clientId);
-  const [localSiteId, setLocalSiteId] = useState(siteId);
+  const [clientId, setClientId] = useState(draft.clientId);
+  const [siteId, setSiteId] = useState(draft.siteId);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleClientChange(nextClientId: string) {
-    setLocalClientId(nextClientId);
-    setLocalSiteId("");
+    setClientId(nextClientId);
+    setSiteId("");
     onClientChange(nextClientId);
   }
 
-  function handleSave() {
-    if (!localClientId) {
+  async function handleSave() {
+    if (!clientId) {
       setError("Select a client.");
       return;
     }
-    if (!localSiteId) {
+    if (!siteId) {
       setError("Select a site.");
       return;
     }
     setError(null);
-    onSave({ clientId: localClientId, siteId: localSiteId });
+    setSaving(true);
+    const result = await onSave({ clientId, siteId });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? "Could not save.");
+      return;
+    }
     onOpenChange(false);
   }
 
@@ -90,11 +92,7 @@ export function AssetRelationsDialog({
           {!lockedClientId && (
             <Stack gap="xs">
               <Text tone="muted">Client</Text>
-              <Select
-                aria-label="Client"
-                value={localClientId}
-                onChange={(event) => handleClientChange(event.target.value)}
-              >
+              <Select aria-label="Client" value={clientId} onChange={(event) => handleClientChange(event.target.value)}>
                 <option value="" disabled>
                   Select a client…
                 </option>
@@ -111,31 +109,31 @@ export function AssetRelationsDialog({
             <Text tone="muted">Site</Text>
             <Select
               aria-label="Site"
-              value={localSiteId}
-              onChange={(event) => setLocalSiteId(event.target.value)}
-              disabled={!localClientId || loadingSites}
+              value={siteId}
+              onChange={(event) => setSiteId(event.target.value)}
+              disabled={!clientId || clientScoped.loadingSites}
             >
               <option value="" disabled>
-                {loadingSites ? "Loading sites…" : "Select a site…"}
+                {clientScoped.loadingSites ? "Loading sites…" : "Select a site…"}
               </option>
-              {sites.map((site) => (
+              {clientScoped.sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {formatSiteAddressShort(site) ?? "Unnamed site"}
                 </option>
               ))}
             </Select>
-            {localClientId && !loadingSites && sites.length === 0 && (
+            {clientId && !clientScoped.loadingSites && clientScoped.sites.length === 0 && (
               <Text tone="muted">This client has no sites yet — add one from the Clients module first.</Text>
             )}
           </Stack>
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
           Cancel
         </Button>
-        <Button type="button" variant="primary" onClick={handleSave}>
-          Save
+        <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
         </Button>
       </Dialog.Footer>
     </Dialog>

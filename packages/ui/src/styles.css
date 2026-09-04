@@ -4331,34 +4331,15 @@ a.ui-relation-card-title:hover {
   color: var(--ui-warning-strong);
 }
 
-/* Sticky bottom save bar for a full-page create/edit form — see
-   components/form-save-bar.tsx. Same full-bleed/cancel-the-container-padding
-   mechanic as `.ui-record-hero-band` (top of page) but anchored to the
-   BOTTOM of `.ui-app-layout-content`'s own scroll instead, and light
-   (surface, not the dark fjord ink) since this is a form chrome element, not
-   a record-identity band. */
-.ui-form-save-bar {
-  position: sticky;
-  bottom: calc(-1 * var(--ui-page-inset-y));
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 0 calc(-1 * var(--ui-page-inset-x)) calc(-1 * var(--ui-page-inset-y));
-  width: calc(100% + 2 * var(--ui-page-inset-x));
-  padding: 0.75rem var(--ui-page-inset-x);
-  background: var(--ui-surface);
-  border-top: 1px solid var(--ui-border);
-}
-.ui-form-save-bar-label {
-  font-size: var(--ui-text-sm);
-  color: var(--ui-muted);
-}
-.ui-form-save-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+/* Editable-section inline edit card (Asset new/edit v3) — the accent-bordered
+   variant of a plain `.ui-card` that `EditableSection` swaps in while its
+   section is in inline-edit state (Equipment / Status & warranty / Notes on
+   the Asset detail/edit screen). Border-only accent (not `Card tone="accent"`'s
+   whole-card tint — that reads as "promoted/highlighted content", not "you
+   are editing this"), using the same `--ui-accent` token the mock's literal
+   `#c79a3e` resolves to in the light theme. */
+.ui-editable-section-card-editing {
+  border-color: var(--ui-accent);
 }
 
 /* Checklist row (issue #102) — a lighter-weight `RowCard` (smaller padding,

@@ -3,7 +3,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getClient } from "@/app/(app)/clients/actions";
-import { AssetFormScreen } from "../components/asset-form-screen";
+import { AssetScreen } from "../components/asset-screen";
 
 export const metadata = { title: "New Asset" };
 
@@ -12,18 +12,14 @@ interface NewAssetPageProps {
 }
 
 /**
- * Full-page asset create form (asset new/edit design handoff, variant A) —
- * replaces the `AssetFormDialog` slide-in panel's `mode="create"` render
- * (issue #53, reversed by the product owner this session; see
- * `docs/ARCHITECTURE.md`'s "Popup vs. full page" section). Gated on
+ * `mode: "create"` render of the shared `AssetScreen` (asset new/edit design
+ * handoff v3) — replaces the old page-wide `<form>` variant. Gated on
  * `can(actor, "assets", "create")` — owner only, matching `createAsset`'s own
  * RBAC check (and the RLS INSERT policy) exactly.
  *
  * `?clientId=...` (the Clients detail page's Assets tab, via
- * `CreateAssetButton`) locks the Client relation card — same
- * `lockedClientId` semantics `asset-form-dialog.tsx` used to own, now
- * threaded through as a route param instead of a dialog prop, mirroring
- * `app/(app)/work-orders/new/page.tsx`'s identical `?clientId=...` handling.
+ * `CreateAssetButton`) locks the Client relation card — same `lockedClientId`
+ * semantics the previous passes used, now threaded through as a route param.
  * `?siteId=...` pre-selects (without locking) the site.
  */
 export default async function NewAssetPage({ searchParams }: NewAssetPageProps) {
@@ -52,9 +48,10 @@ export default async function NewAssetPage({ searchParams }: NewAssetPageProps) 
   const cancelHref = lockedClient ? `/clients/${lockedClient.id}` : "/assets";
 
   return (
-    <AssetFormScreen
+    <AssetScreen
       mode="create"
       breadcrumbItems={breadcrumbItems}
+      client={lockedClient}
       lockedClientId={lockedClient?.id}
       initialSiteId={siteId}
       cancelHref={cancelHref}
