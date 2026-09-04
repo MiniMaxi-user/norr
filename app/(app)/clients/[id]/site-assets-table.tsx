@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Table } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
-import { AssetFormDialog } from "@/app/(app)/assets/components/asset-form-dialog";
 import { DeleteAssetDialog } from "@/app/(app)/assets/components/delete-asset-dialog";
 
 export interface SiteAssetsTableProps {
@@ -18,21 +18,24 @@ export interface SiteAssetsTableProps {
  * `app/(app)/assets/components/assets-table.tsx` rather than that component
  * reused as-is: there's no "Client" column here (every row already belongs
  * to the site/client this whole page is about). A row click and its Edit
- * button both open the same slide-in `AssetFormDialog` (issue #56 — this
- * tab previously sent a row click to the standalone `/assets/[id]` full
- * page, inconsistent with Edit already opening the dialog right here;
- * `AssetFormDialog`'s fields already cover every value that full page showed
- * except the Client link, which is redundant on a client's own detail page).
- * Row click is gated on `canEdit` (no full-page fallback for a view-only
- * actor — this tab has no read-only detail view of its own), same
- * `canWrite ? handler : undefined` pattern `sites-panel.tsx`'s own table
- * uses. Delete stays a lightweight confirmation `Dialog` (a single
- * flat-record removal, not a relational form).
+ * button both navigate to the full-page `/assets/[id]/edit` (asset new/edit
+ * design handoff) — replaces the `AssetFormDialog` slide-in panel this used
+ * to open (issue #56, reversed by the product owner; see
+ * docs/ARCHITECTURE.md "Popup vs. full page"). A viewer without `canEdit`
+ * now navigates to the read-only `/assets/[id]` detail page instead of the
+ * row being inert — that page is trivially reachable now that it's a real
+ * route, unlike when this tab was `AssetFormDialog`'s only "inspect a record
+ * you can't edit" surface. Delete stays a lightweight confirmation `Dialog`
+ * (a single flat-record removal, not a relational form).
  */
 export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableProps) {
+  const router = useRouter();
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
-  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
   const showActionsColumn = canEdit || canDelete;
+
+  function goToAsset(asset: AssetRecord) {
+    router.push(canEdit ? `/assets/${asset.id}/edit` : `/assets/${asset.id}`);
+  }
 
   return (
     <>
@@ -48,7 +51,7 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
         </Table.Head>
         <Table.Body>
           {assets.map((asset) => (
-            <Table.Row key={asset.id} onClick={canEdit ? () => setEditingAsset(asset) : undefined}>
+            <Table.Row key={asset.id} onClick={() => goToAsset(asset)}>
               <Table.Cell>{asset.name}</Table.Cell>
               <Table.Cell>{asset.asset_type?.label ?? "—"}</Table.Cell>
               <Table.Cell>{asset.serial_number ?? "—"}</Table.Cell>
@@ -61,7 +64,7 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                     {canEdit && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => goToAsset(asset)}>
                         Edit
                       </Button>
                     )}
@@ -80,10 +83,6 @@ export function SiteAssetsTable({ assets, canEdit, canDelete }: SiteAssetsTableP
 
       {deletingAsset && (
         <DeleteAssetDialog asset={deletingAsset} open onOpenChange={(next) => !next && setDeletingAsset(null)} />
-      )}
-
-      {editingAsset && (
-        <AssetFormDialog asset={editingAsset} mode="edit" open onOpenChange={(next) => !next && setEditingAsset(null)} />
       )}
     </>
   );

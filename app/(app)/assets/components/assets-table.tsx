@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
-import { AssetFormDialog } from "./asset-form-dialog";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
 
 export interface AssetsTableProps {
@@ -17,17 +17,17 @@ export interface AssetsTableProps {
  * List view table: client-side search over the current page of `assets`
  * (server-side filtering already narrows by client/site — see
  * `AssetsFilters` — free-text search here is a fast, no-round-trip refinement
- * on top of that). A row click and the row-level Edit action both open the
- * same slide-in `AssetFormDialog` (`mode="edit"`, issue #53, docs/
- * ARCHITECTURE.md "Popup vs. full page — pick by weight, not habit") — issue
- * #105 replaced the old row-click-navigates-to-`/assets/[id]` behavior with
- * this, so a viewer without `canEdit` (Finance/Administratie's plain `read`,
- * or an Engineer without `update_own`) still gets a way to inspect the full
- * record: `AssetFormDialog` renders every field read-only for them instead
- * of the editable form (see that component's own `canEdit` prop doc
- * comment). `/assets/[id]` itself is untouched — other modules still deep
- * link into it. Delete stays a lightweight confirmation `Dialog` (a single
- * flat-record removal, not a relational form).
+ * on top of that). A row click and the row-level Edit action both navigate to
+ * the full-page `/assets/[id]/edit` (asset new/edit design handoff) —
+ * replaces the `AssetFormDialog` slide-in panel this used to open (issue
+ * #53/#105, reversed by the product owner; see docs/ARCHITECTURE.md "Popup
+ * vs. full page"). A viewer without `canEdit` (Finance/Administratie's plain
+ * `read`, or an Engineer without `update_own`) instead navigates to the
+ * existing read-only `/assets/[id]` detail page — the edit route itself also
+ * redirects such a caller there if reached directly (see
+ * `[id]/edit/page.tsx`), so this is belt-and-braces, not the only guard.
+ * Delete stays a lightweight confirmation `Dialog` (a single flat-record
+ * removal, not a relational form).
  *
  * `stickyHeader`/`maxHeight` keep a long page of assets scrolling under a
  * fixed header instead of pushing the pagination row off-screen (docs/
@@ -35,9 +35,9 @@ export interface AssetsTableProps {
  * assets scroll hij niet").
  */
 export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: AssetsTableProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [deletingAsset, setDeletingAsset] = useState<AssetRecord | null>(null);
-  const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -58,6 +58,10 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
   }, [assets, query, clientNameById]);
 
   const showActionsColumn = canEdit || canDelete;
+
+  function goToAsset(asset: AssetRecord) {
+    router.push(canEdit ? `/assets/${asset.id}/edit` : `/assets/${asset.id}`);
+  }
 
   return (
     <>
@@ -88,7 +92,7 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
           </Table.Head>
           <Table.Body>
             {filtered.map((asset) => (
-              <Table.Row key={asset.id} onClick={() => setEditingAsset(asset)}>
+              <Table.Row key={asset.id} onClick={() => goToAsset(asset)}>
                 <Table.Cell>{asset.name}</Table.Cell>
                 <Table.Cell>{asset.asset_type?.label ?? "—"}</Table.Cell>
                 <Table.Cell>{clientNameById.get(asset.client_id) ?? "—"}</Table.Cell>
@@ -100,15 +104,15 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
                 </Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">
-                    {/* Stops the row's own onClick (open the dialog) from
-                        also firing — the actual actions below are real
-                        buttons. `.ui-row-actions` hover-reveals them (styles.css) so
-                        a dense list of assets doesn't repeat two buttons per
-                        row at all times; `:focus-within` keeps them visible
-                        for keyboard navigation. */}
+                    {/* Stops the row's own onClick (navigate) from also
+                        firing — the actual actions below are real buttons/
+                        links. `.ui-row-actions` hover-reveals them
+                        (styles.css) so a dense list of assets doesn't repeat
+                        two buttons per row at all times; `:focus-within`
+                        keeps them visible for keyboard navigation. */}
                     <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                       {canEdit && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => setEditingAsset(asset)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => goToAsset(asset)}>
                           Edit
                         </Button>
                       )}
@@ -138,16 +142,6 @@ export function AssetsTable({ assets, clientNameById, canEdit, canDelete }: Asse
           asset={deletingAsset}
           open
           onOpenChange={(next) => !next && setDeletingAsset(null)}
-        />
-      )}
-
-      {editingAsset && (
-        <AssetFormDialog
-          asset={editingAsset}
-          mode="edit"
-          open
-          onOpenChange={(next) => !next && setEditingAsset(null)}
-          canEdit={canEdit}
         />
       )}
     </>

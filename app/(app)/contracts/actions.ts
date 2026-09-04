@@ -338,6 +338,37 @@ export async function deleteContract(id: string): Promise<ActionResult<{ deleted
 // comment above and the migration's design note 4).
 // ---------------------------------------------------------------------------
 
+/**
+ * The reverse direction of `listContractAssets` below — how many contracts
+ * cover a given asset, for that asset's own detail/edit page's "Linked
+ * records" rail (asset new/edit design handoff). A plain `count`, not the
+ * full `ContractAssetRecord[]` shape `listContractAssets` returns, since the
+ * rail only ever needs a number, not a list to render. Same RBAC gate as
+ * `listContractAssets` (`read`, any org member) — this is still just reading
+ * `contract_assets`, the direction of the join doesn't change who's allowed
+ * to see it.
+ */
+export async function countContractsForAsset(assetId: string): Promise<ActionResult<{ count: number }>> {
+  const idResult = uuidSchema.safeParse(assetId);
+  if (!idResult.success) return fail("Invalid asset id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this asset's contracts.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from("contract_assets")
+    .select("contract_id", { count: "exact", head: true })
+    .eq("asset_id", idResult.data);
+
+  if (error) return fail(mapDbError(error));
+  return ok({ count: count ?? 0 });
+}
+
 /** Lists the assets linked to a contract. Readable by anyone who can read
  * contracts at all (`read`), same as `listContracts`/`getContract` — the
  * DB's SELECT policy on `contract_assets` is likewise "any org member", not

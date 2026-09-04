@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@yourorg/ui";
 import type { AssetRecord } from "../actions";
-import { AssetFormDialog } from "../components/asset-form-dialog";
 import { DeleteAssetDialog } from "../components/delete-asset-dialog";
 
 /**
- * Edit now opens the slide-in `AssetFormDialog` (issue #53) instead of
- * navigating to the old `/assets/[id]/edit` route (deleted) — same "Popup
- * vs. full page" carve-out documented on that component.
+ * Edit now navigates to the full-page `/assets/[id]/edit` (asset new/edit
+ * design handoff) instead of opening the `AssetFormDialog` slide-in panel
+ * (issue #53) — the product owner has reversed that decision back to a real
+ * page; see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section.
  */
 export function AssetDetailActions({
   asset,
@@ -20,15 +21,16 @@ export function AssetDetailActions({
   canEdit: boolean;
   canDelete: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   return (
     <>
       {canEdit && (
-        <Button type="button" variant="outline" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
+        <Link href={`/assets/${asset.id}/edit`}>
+          <Button type="button" variant="outline">
+            Edit
+          </Button>
+        </Link>
       )}
       {canDelete && (
         <Button type="button" variant="danger" onClick={() => setDeleting(true)}>
@@ -36,7 +38,6 @@ export function AssetDetailActions({
         </Button>
       )}
 
-      {canEdit && <AssetFormDialog open={editing} onOpenChange={setEditing} mode="edit" asset={asset} />}
       {deleting && <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />}
     </>
   );

@@ -4331,6 +4331,36 @@ a.ui-relation-card-title:hover {
   color: var(--ui-warning-strong);
 }
 
+/* Sticky bottom save bar for a full-page create/edit form — see
+   components/form-save-bar.tsx. Same full-bleed/cancel-the-container-padding
+   mechanic as `.ui-record-hero-band` (top of page) but anchored to the
+   BOTTOM of `.ui-app-layout-content`'s own scroll instead, and light
+   (surface, not the dark fjord ink) since this is a form chrome element, not
+   a record-identity band. */
+.ui-form-save-bar {
+  position: sticky;
+  bottom: calc(-1 * var(--ui-page-inset-y));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 calc(-1 * var(--ui-page-inset-x)) calc(-1 * var(--ui-page-inset-y));
+  width: calc(100% + 2 * var(--ui-page-inset-x));
+  padding: 0.75rem var(--ui-page-inset-x);
+  background: var(--ui-surface);
+  border-top: 1px solid var(--ui-border);
+}
+.ui-form-save-bar-label {
+  font-size: var(--ui-text-sm);
+  color: var(--ui-muted);
+}
+.ui-form-save-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Checklist row (issue #102) — a lighter-weight `RowCard` (smaller padding,
    subtler border) since a checklist can run to many rows; the `dashed` tone
    already provided by `RowCard` marks an open (unchecked) item. */

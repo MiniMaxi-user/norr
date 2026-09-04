@@ -1,14 +1,11 @@
-"use client";
-
-import { useState } from "react";
+import Link from "next/link";
 import { Button, type ButtonSize, type ButtonVariant } from "@yourorg/ui";
-import { AssetFormDialog } from "./asset-form-dialog";
 
 export interface CreateAssetButtonProps {
-  /** Pre-scopes the dialog to a single client (locks the client picker,
-   * hides it entirely) — passed by the Clients detail page's Assets tab. */
+  /** Pre-scopes (and locks, via `/assets/new?clientId=...`) the Client
+   * relation card — passed by the Clients detail page's Assets tab. */
   clientId?: string;
-  /** Pre-selects (without locking) a site in the dialog. */
+  /** Pre-selects (without locking) a site on the create page. */
   siteId?: string;
   /** Overrides the default "Add asset" label — the Clients detail page's
    * Assets tab (`assets-panel.tsx`) passes "+ Asset" to match the
@@ -32,28 +29,24 @@ export interface CreateAssetButtonProps {
 }
 
 /**
- * Owner-only "Add asset" trigger — opens the slide-in `AssetFormDialog`
- * (issue #53: "Asset edit pagina is omgebouwd als slider popup", see that
- * component's own doc comment and docs/ARCHITECTURE.md "Popup vs. full
- * page") instead of navigating to the old `/assets/new` route (deleted). A
- * `"use client"` component now (owns the dialog's `open` state) rather than
- * the previous plain `<Link>` Server Component.
+ * Owner-only "Add asset" trigger — navigates to the full-page `/assets/new`
+ * create form (asset new/edit design handoff) rather than opening a
+ * `Dialog`. Replaces the `AssetFormDialog` slide-in panel this used to open
+ * (issue #53) now that the product owner has reversed that decision back to
+ * a real page — see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section.
+ * A plain Server Component `<Link>` again (no dialog `open` state to own).
  */
 export function CreateAssetButton({ clientId, siteId, label, size, variant }: CreateAssetButtonProps) {
-  const [open, setOpen] = useState(false);
+  const params = new URLSearchParams();
+  if (clientId) params.set("clientId", clientId);
+  if (siteId) params.set("siteId", siteId);
+  const query = params.toString();
 
   return (
-    <>
-      <Button type="button" variant={variant ?? "primary"} size={size} onClick={() => setOpen(true)}>
+    <Link href={query ? `/assets/new?${query}` : "/assets/new"}>
+      <Button type="button" variant={variant ?? "primary"} size={size}>
         {label ?? "Add asset"}
       </Button>
-      <AssetFormDialog
-        open={open}
-        onOpenChange={setOpen}
-        mode="create"
-        lockedClientId={clientId}
-        initialSiteId={siteId}
-      />
-    </>
+    </Link>
   );
 }
