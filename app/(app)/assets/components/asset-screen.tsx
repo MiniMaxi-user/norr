@@ -70,7 +70,7 @@ export interface AssetScreenProps {
  * `commitPatch` below — in `mode: "edit"` that's an immediate `updateAsset`
  * call (small, section-scoped, saved the instant that section's own Save is
  * clicked — no page-wide Save/Cancel), in `mode: "create"` it's a local-only
- * merge until the hero's own "Add asset" action fires `createAsset` with the
+ * merge until the hero's own "Save asset" action fires `createAsset` with the
  * whole accumulated draft and navigates to the new record.
  *
  * *** The hero's "Edit header" pencil *** (next to the status/type badges)
@@ -298,7 +298,7 @@ export function AssetScreen({
           Cancel
         </Button>
         <Button type="button" variant="primary" onClick={handleCreate} disabled={creating}>
-          {creating ? "Creating…" : "Add asset"}
+          {creating ? "Saving…" : "Save asset"}
         </Button>
       </>
     );

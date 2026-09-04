@@ -39,7 +39,7 @@ export interface AssetHeroProps {
    * `AssetScreen` from data it already fetched/holds, same split
    * `WorkOrderHero`'s own `stats` prop documents for itself. */
   stats: StatStripItem[];
-  /** New activity/Delete in edit mode, or a Cancel/Add asset pair in create
+  /** New activity/Delete in edit mode, or a Cancel/Save asset pair in create
    * mode — owned by `AssetScreen`, just slotted in here. */
   actions?: ReactNode;
   onClientChange: (clientId: string) => void;

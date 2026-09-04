@@ -39,9 +39,12 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
 
 export function emptyDraft(options: {
   /** Pre-scopes (and hides the picker for) a single client — mirrors
-   * `WorkOrderDraft`'s `emptyDraft`'s `lockedClientId`. Ignored when
-   * `lockedAssetId` is also set (an asset's own client is always the source
-   * of truth — see `new/page.tsx`'s own doc comment). */
+   * `WorkOrderDraft`'s `emptyDraft`'s `lockedClientId`. When `lockedAssetId`
+   * is also set, `new/page.tsx` has already resolved this to that asset's own
+   * `client_id` (an asset's own client is always the source of truth — see
+   * that page's own doc comment) before it ever reaches here, so it's used
+   * as-is either way — the Client relation card would otherwise render empty
+   * even though the client is already known and locked. */
   lockedClientId?: string;
   lockedAssetId?: string;
   /** Pins "Action holder" for a caller who can't assign others (mirrors the
@@ -51,7 +54,7 @@ export function emptyDraft(options: {
   initialActionHolderId?: string;
 }): ActivityDraft {
   return {
-    clientId: options.lockedAssetId ? "" : (options.lockedClientId ?? ""),
+    clientId: options.lockedClientId ?? "",
     assetId: options.lockedAssetId ?? "",
     typeId: "",
     statusId: "",
