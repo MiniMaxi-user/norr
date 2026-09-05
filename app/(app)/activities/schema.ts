@@ -93,6 +93,12 @@ const activityBaseSchema = z.object({
    * required there per the acceptance criteria). */
   contactEmail: optionalEmail,
   description: z.string().trim().min(1, "Description is required.").max(5000, "Description is too long."),
+  /** How this melding was resolved — unlike `description`, optional at every
+   * point in the lifecycle (see `activities.solution`'s column comment in
+   * `20260905090000_activity_solution_and_quote_created_event.sql`). Same
+   * `optionalText` shape/max length as every other optional free-text field
+   * in this schema. */
+  solution: optionalText(5000),
   /** The user responsible for following up. Always required on create (the
    * actiehouder picker is always shown/required, even for an engineer whose
    * own id is the only legitimate value) — `createActivity` silently pins

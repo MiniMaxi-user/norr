@@ -94,6 +94,9 @@ export interface ActivityRecord {
   contact_phone: string | null;
   contact_email: string | null;
   description: string;
+  /** Free-text record of how this melding was resolved (issue #121) —
+   * nullable, unlike `description`: a new activity has no solution yet. */
+  solution: string | null;
   reported_at: string;
   reported_by: string | null;
   action_holder_id: string;
@@ -221,6 +224,7 @@ function toActivityUpdateRow(input: ReturnType<typeof activityUpdateSchema.parse
   if (input.contactPhone !== undefined) row.contact_phone = input.contactPhone ?? null;
   if (input.contactEmail !== undefined) row.contact_email = input.contactEmail ?? null;
   if (input.description !== undefined) row.description = input.description;
+  if (input.solution !== undefined) row.solution = input.solution ?? null;
   if (input.actionHolderId !== undefined) row.action_holder_id = input.actionHolderId;
   return row;
 }

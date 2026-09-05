@@ -33,7 +33,9 @@ export interface ActivityAssignmentSectionProps {
    * an engineer only ever acts as themselves). */
   canAssignOthers: boolean;
   readOnly?: boolean;
-  onSave: (patch: Pick<ActivityDraft, "description" | "actionHolderId">) => Promise<{ ok: boolean; error?: string }>;
+  onSave: (
+    patch: Pick<ActivityDraft, "description" | "actionHolderId" | "solution">,
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -73,11 +75,17 @@ export function ActivityAssignmentSection({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [description, setDescription] = useState(draft.description);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [solution, setSolution] = useState(draft.solution);
+  const [solutionError, setSolutionError] = useState<string | null>(null);
   const [actionHolderError, setActionHolderError] = useState<string | null>(null);
 
   useEffect(() => {
     setDescription(draft.description);
   }, [draft.description]);
+
+  useEffect(() => {
+    setSolution(draft.solution);
+  }, [draft.solution]);
 
   const memberById = new Map(members.map((member) => [member.id, member]));
   const actionHolder = draft.actionHolderId ? memberById.get(draft.actionHolderId) : undefined;
@@ -89,11 +97,33 @@ export function ActivityAssignmentSection({
 
   async function commitDescription(next: string) {
     setDescriptionError(null);
-    const result = await onSave({ description: next, actionHolderId: draft.actionHolderId });
+    const result = await onSave({ description: next, solution: draft.solution, actionHolderId: draft.actionHolderId });
     if (!result.ok) {
       setDescription(draft.description);
       setDescriptionError(result.error ?? "Could not save the description.");
     }
+  }
+
+  /** `mode: "edit"` only — the Solution field has no create-time entry point
+   * (see `ActivityDraft.solution`'s own doc comment), so unlike
+   * `commitDescription` this never needs a `mode: "create"` immediate-commit
+   * path. */
+  async function commitSolution(next: string) {
+    setSolutionError(null);
+    const result = await onSave({ description: draft.description, solution: next, actionHolderId: draft.actionHolderId });
+    if (!result.ok) {
+      setSolution(draft.solution);
+      setSolutionError(result.error ?? "Could not save the solution.");
+    }
+  }
+
+  function handleSolutionChange(next: string) {
+    setSolution(next);
+  }
+
+  async function handleSolutionBlur() {
+    if (readOnly || solution === draft.solution) return;
+    await commitSolution(solution);
   }
 
   /** `mode: "create"` has no server round trip to defer to blur — `onSave`
@@ -123,7 +153,11 @@ export function ActivityAssignmentSection({
    * above (a local-only draft merge, no network round trip yet). */
   async function handleActionHolderChange(nextActionHolderId: string) {
     setActionHolderError(null);
-    const result = await onSave({ description: draft.description, actionHolderId: nextActionHolderId });
+    const result = await onSave({
+      description: draft.description,
+      solution: draft.solution,
+      actionHolderId: nextActionHolderId,
+    });
     if (!result.ok) {
       setActionHolderError(result.error ?? "Could not set the action holder.");
     }
@@ -179,6 +213,36 @@ export function ActivityAssignmentSection({
             onChange={(event) => handleDescriptionChange(event.target.value)}
             onBlur={handleDescriptionBlur}
           />
+        </Stack>
+      )}
+
+      {/* Solution (issue #121) — `mode: "edit"` only, same "nothing to show
+          before the record exists" gating `ActivityScreen`'s Notes/Linked
+          work orders/Historie sections already use: a solution is written up
+          once the melding has been worked, never at the moment it's first
+          reported. */}
+      {mode === "edit" && (
+        <Stack gap="xs">
+          <Label htmlFor="activity-solution">Solution</Label>
+          {readOnly ? (
+            draft.solution ? (
+              <Text>{draft.solution}</Text>
+            ) : (
+              <Text tone="muted">No solution yet.</Text>
+            )
+          ) : (
+            <>
+              {solutionError && <Text tone="danger">{solutionError}</Text>}
+              <Textarea
+                id="activity-solution"
+                aria-label="Solution"
+                rows={2}
+                value={solution}
+                onChange={(event) => handleSolutionChange(event.target.value)}
+                onBlur={handleSolutionBlur}
+              />
+            </>
+          )}
         </Stack>
       )}
 
@@ -263,7 +327,7 @@ function ActivityActionHolderDialog({
     }
     setError(null);
     setSaving(true);
-    const result = await onSave({ description: draft.description, actionHolderId });
+    const result = await onSave({ description: draft.description, solution: draft.solution, actionHolderId });
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");

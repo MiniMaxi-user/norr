@@ -19,25 +19,27 @@ import type { ShallowUserRecord } from "./actions";
  * full schema/trigger/RLS design this file consumes but does not modify.
  *
  * `activity_events` is entirely read-only from the app: no INSERT/UPDATE/
- * DELETE grant exists at all (three `SECURITY DEFINER` triggers on
- * `activities`/`work_orders` are the only writers — see the migration's
- * design note 3). `listActivityEvents` below is therefore the only export
- * this file has.
+ * DELETE grant exists at all (four `SECURITY DEFINER` triggers on
+ * `activities`/`work_orders`/`quotes` are the only writers — see the
+ * migration's design note 3, and
+ * `20260905090000_activity_solution_and_quote_created_event.sql` for the
+ * fourth, `quote_created`). `listActivityEvents` below is therefore the only
+ * export this file has.
  *
  * Translation of `event_type` into the exact Dutch display strings the
  * mockup uses ("Melding aangemaakt" etc.) is deliberately NOT done here —
  * this action returns the raw `event_type` plus resolved `actor`/
- * `related_work_order` so a client component can switch on the type and
- * build its own display string (and, for `work_order_linked`, its own
- * `WO-…`-style link) at render time.
+ * `related_work_order`/`related_quote` so a client component can switch on
+ * the type and build its own display string (and, for `work_order_linked`/
+ * `quote_created`, its own link) at render time.
  */
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
-/** One of the three kinds `activity_events_event_type_valid` allows — kept as
+/** One of the four kinds `activity_events_event_type_valid` allows — kept as
  * a union type here (not just `string`) so a frontend switch over it is
  * exhaustively checked. */
-export type ActivityEventType = "created" | "action_holder_changed" | "work_order_linked";
+export type ActivityEventType = "created" | "action_holder_changed" | "work_order_linked" | "quote_created";
 
 /** Shallow embed shape for the `related_work_order_id` FK — just enough for a
  * "WO-…" style link (`id` for the `/work-orders/[id]` href, `title` for the
@@ -51,6 +53,15 @@ export interface ShallowWorkOrderRecord {
   title: string;
 }
 
+/** Shallow embed shape for the `related_quote_id` FK — mirrors
+ * `ShallowWorkOrderRecord` above, just enough for a "Q-…"-style link
+ * (`id` for the `/quotes/[id]` href, `name` for the label — `quotes` has no
+ * separate human-readable number column either, same as `work_orders.title`). */
+export interface ShallowQuoteRecord {
+  id: string;
+  name: string;
+}
+
 export interface ActivityEventRecord {
   id: string;
   organization_id: string;
@@ -59,6 +70,7 @@ export interface ActivityEventRecord {
   event_type: ActivityEventType;
   actor_id: string | null;
   related_work_order_id: string | null;
+  related_quote_id: string | null;
   occurred_at: string;
   /** Embedded via `users!activity_events_actor_id_fkey(...)` — the user who
    * caused this event (`null` only if that user's own row was hard-deleted,
@@ -68,10 +80,14 @@ export interface ActivityEventRecord {
    * — set only for a `work_order_linked` event, per
    * `activity_events_related_work_order_matches_type`. */
   related_work_order: ShallowWorkOrderRecord | null;
+  /** Embedded via `quotes!activity_events_related_quote_id_fkey(...)` — set
+   * only for a `quote_created` event, per
+   * `activity_events_related_quote_matches_type`. */
+  related_quote: ShallowQuoteRecord | null;
 }
 
 const ACTIVITY_EVENT_SELECT =
-  "*, actor:users!activity_events_actor_id_fkey(id,email,full_name), related_work_order:work_orders!activity_events_related_work_order_id_fkey(id,title)";
+  "*, actor:users!activity_events_actor_id_fkey(id,email,full_name), related_work_order:work_orders!activity_events_related_work_order_id_fkey(id,title), related_quote:quotes!activity_events_related_quote_id_fkey(id,name)";
 
 /**
  * Lists an activity's history/audit events, **ascending** `occurred_at` (the

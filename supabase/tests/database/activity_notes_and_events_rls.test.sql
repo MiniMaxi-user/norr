@@ -15,17 +15,24 @@
 -- action_holder_id/created_by columns; owner/planner create+read+delete any
 -- row; engineer create_own/read_own scoped to action_holder_id = auth.uid()
 -- (no update, no delete); finance/administratie read-only; tenant isolation.
--- activity_events' three trigger-populated event kinds (created,
--- action_holder_changed, work_order_linked); that action_holder_id stays in
--- sync (activities_sync_dependents_action_holder) on both tables after the
--- parent activity is reassigned, including retroactively changing which
--- engineer can see a PRE-EXISTING note/event; that activity_events has no
--- client-facing INSERT/UPDATE/DELETE privilege at all, for any role.
+-- activity_events' four trigger-populated event kinds (created,
+-- action_holder_changed, work_order_linked, quote_created); that
+-- action_holder_id stays in sync (activities_sync_dependents_action_holder)
+-- on both tables after the parent activity is reassigned, including
+-- retroactively changing which engineer can see a PRE-EXISTING note/event;
+-- that activity_events has no client-facing INSERT/UPDATE/DELETE privilege
+-- at all, for any role.
+--
+-- quote_created coverage (20260905090000_activity_solution_and_quote_
+-- created_event.sql) lives at the bottom, section 9 — a quote inserted with
+-- work_order_id pointing at the work order from section 8, which itself has
+-- source_activity_id set, so create_activity_quote_created_event resolves
+-- the activity transitively and logs the event there.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(33);
+select plan(37);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -358,6 +365,39 @@ select is(
   'e2444444-4444-4444-4444-444444444444'::uuid,
   'the work_order_linked event''s action_holder_id was denormalized from the activity''s CURRENT action holder (post-reassignment)'
 ); -- 33
+
+-- ---------------------------------------------------------------------------
+-- 9. activities.solution: optional, client-writable.
+-- ---------------------------------------------------------------------------
+select lives_ok(
+  $$ update public.activities set solution = 'Onderdeel vervangen' where id = 'e7000000-0000-0000-0000-00000000000a' $$,
+  'owner_a can set activities.solution on an existing activity'
+); -- 34
+
+select is(
+  (select solution from public.activities where id = 'e7000000-0000-0000-0000-00000000000a'),
+  'Onderdeel vervangen',
+  'activities.solution was saved as given (plain optional free-text column)'
+); -- 35
+
+-- ---------------------------------------------------------------------------
+-- 10. activity_events: quote_created event, created via a quotes insert with
+--     work_order_id pointing at the work order from section 8 (itself
+--     source_activity_id-linked to activity A).
+-- ---------------------------------------------------------------------------
+select lives_ok(
+  $$ insert into public.quotes (id, client_id, work_order_id, name)
+     values ('ea000000-0000-0000-0000-00000000000a', 'e3000000-0000-0000-0000-00000000000a',
+       'e9000000-0000-0000-0000-00000000000a', 'Quote — Werkbon vanuit melding') $$,
+  'owner_a can insert a quote with work_order_id pointing at the work order sourced from activity A'
+); -- 36
+
+select is(
+  (select related_quote_id from public.activity_events
+     where activity_id = 'e7000000-0000-0000-0000-00000000000a' and event_type = 'quote_created'),
+  'ea000000-0000-0000-0000-00000000000a'::uuid,
+  'creating the quote auto-logged a quote_created activity_events row on the activity its work order was sourced from'
+); -- 37
 
 select * from finish();
 rollback;

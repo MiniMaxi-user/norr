@@ -19,6 +19,11 @@ export interface ActivityDraft {
   contactPhone: string;
   contactEmail: string;
   description: string;
+  /** How this melding was resolved (issue #121) — `mode: "edit"` only, see
+   * `ActivityAssignmentSection`'s own doc comment. Always `""` (never
+   * populated) in `mode: "create"`, mirroring every other field with no
+   * create-time entry point. */
+  solution: string;
   actionHolderId: string;
 }
 
@@ -33,6 +38,7 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
     contactPhone: activity.contact_phone ?? "",
     contactEmail: activity.contact_email ?? "",
     description: activity.description,
+    solution: activity.solution ?? "",
     actionHolderId: activity.action_holder_id,
   };
 }
@@ -63,6 +69,7 @@ export function emptyDraft(options: {
     contactPhone: "",
     contactEmail: "",
     description: "",
+    solution: "",
     actionHolderId: options.initialActionHolderId ?? "",
   };
 }
@@ -84,6 +91,7 @@ export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unkn
   if (patch.contactPhone !== undefined) input.contactPhone = patch.contactPhone || undefined;
   if (patch.contactEmail !== undefined) input.contactEmail = patch.contactEmail || undefined;
   if (patch.description !== undefined) input.description = patch.description;
+  if (patch.solution !== undefined) input.solution = patch.solution;
   if (patch.actionHolderId !== undefined) input.actionHolderId = patch.actionHolderId || undefined;
   return input;
 }
