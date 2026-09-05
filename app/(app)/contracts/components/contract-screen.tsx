@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Badge,
   Breadcrumbs,
@@ -9,11 +10,12 @@ import {
   DetailColumns,
   Inline,
   RecordHeroBand,
+  RelationCard,
   Stack,
   Text,
   type BreadcrumbItem,
 } from "@yourorg/ui";
-import { CalendarDays } from "@yourorg/ui/icons";
+import { Building2, CalendarDays } from "@yourorg/ui/icons";
 import { createContract, updateContract, type ContractAssetRecord, type ContractArticleGroupRuleRecord, type ContractArticleRuleRecord, type ContractLineItemRecord, type ContractRecord } from "../actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
@@ -176,6 +178,45 @@ export function ContractScreen({
     router.push(`/contracts/${result.data.contract.id}`);
   }
 
+  // The Client relation card (below) sources its display from `client`
+  // (the server-resolved prop) when it matches the draft's current
+  // `clientId`, falling back to a lookup in `clients` — same "committed vs.
+  // just-picked-locally" resolution `WorkOrderRelationCards` uses, needed
+  // because `mode: "create"` has no `router.refresh()` to re-fetch `client`
+  // after a local-only draft merge.
+  const resolvedClient = draft.clientId
+    ? client?.id === draft.clientId
+      ? client
+      : (clients.find((candidate) => candidate.id === draft.clientId) ?? null)
+    : null;
+  const clientFacts = resolvedClient
+    ? [resolvedClient.kvk_number ? `KvK ${resolvedClient.kvk_number}` : null, resolvedClient.vat_number]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  const clientExpanded = resolvedClient ? (
+    <Stack gap="xs">
+      <div className="ui-relation-card-expand-row">
+        <Text tone="muted">KvK</Text>
+        <Text>{resolvedClient.kvk_number || "—"}</Text>
+      </div>
+      <div className="ui-relation-card-expand-row">
+        <Text tone="muted">VAT</Text>
+        <Text>{resolvedClient.vat_number || "—"}</Text>
+      </div>
+      <div className="ui-relation-card-expand-row">
+        <Text tone="muted">IBAN</Text>
+        <Text>{resolvedClient.iban || "—"}</Text>
+      </div>
+      {resolvedClient.notes && (
+        <div className="ui-relation-card-expand-row">
+          <Text tone="muted">Notes</Text>
+          <Text>{resolvedClient.notes}</Text>
+        </div>
+      )}
+    </Stack>
+  ) : undefined;
+
   const meta =
     mode === "edit" && contract?.start_date && contract?.end_date
       ? [
@@ -228,6 +269,17 @@ export function ContractScreen({
         }
         meta={meta}
         actions={heroActions}
+      />
+
+      <RelationCard
+        icon={Building2}
+        label="Client"
+        loading={false}
+        title={resolvedClient ? <Link href={`/clients/${resolvedClient.id}`}>{resolvedClient.name}</Link> : undefined}
+        subtitle={clientFacts || undefined}
+        emptyText="No client selected yet"
+        onEdit={readOnly ? undefined : () => setDetailsEditing(true)}
+        expandedContent={clientExpanded}
       />
 
       <DetailColumns

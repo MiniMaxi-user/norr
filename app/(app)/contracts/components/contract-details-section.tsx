@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Badge, Button, EditableSection, Inline, Input, KeyValueList, Label, Select, Stack, Text } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ContractRecord } from "../actions";
@@ -171,11 +170,6 @@ export function ContractDetailsSection({
     >
       <KeyValueList
         items={[
-          {
-            key: "client",
-            label: "Client",
-            value: client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : <Text tone="muted">Unknown client</Text>,
-          },
           { key: "name", label: "Name", value: <Text>{contract?.name ?? "—"}</Text> },
           {
             key: "type",
