@@ -67,6 +67,7 @@ export interface ContractRecord {
   type_id: string;
   sla_tier_id: string | null;
   billing_terms_id: string | null;
+  billing_period_id: string | null;
   start_date: string;
   end_date: string | null;
   auto_renew: boolean;
@@ -86,6 +87,58 @@ export interface ContractRecord {
   /** Embedded via `reference_list_items!contracts_billing_terms_id_fkey(...)`.
    * `null` whenever `billing_terms_id` is `null`. */
   billing_terms: ResolvedReferenceItem | null;
+  /** Embedded via `reference_list_items!contracts_billing_period_id_fkey(...)`.
+   * `null` whenever `billing_period_id` is `null`. Independent sibling of
+   * `billing_terms` — see `billing_period_id`'s own migration comment
+   * (`20260905100000_contracts_billing_period_line_items_and_article_rules.sql`). */
+  billing_period: ResolvedReferenceItem | null;
+}
+
+/** A contract's line item — an article the Quote generated from this
+ * contract should be pre-populated with (issue #122). No purchase_price
+ * anywhere on this shape: purchase price is always read live from
+ * `articles.purchase_price` by the caller, never snapshotted (see the
+ * migration's design note 2). */
+export interface ContractLineItemRecord {
+  id: string;
+  contract_id: string;
+  organization_id: string;
+  article_id: string;
+  article_number: string | null;
+  description: string | null;
+  quantity: number;
+  unit_price: number;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A contract's include/exclude rule against an Article Group tree node
+ * (issue #122). `is_excluded = true` means the group is covered by the
+ * contract (excluded from separate invoicing); `false` means explicitly NOT
+ * covered (bill it separately). */
+export interface ContractArticleGroupRuleRecord {
+  id: string;
+  contract_id: string;
+  organization_id: string;
+  article_group_id: string;
+  is_excluded: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** The article-level sibling of `ContractArticleGroupRuleRecord` — same
+ * `is_excluded` semantics, against an individual article instead of a
+ * group. */
+export interface ContractArticleRuleRecord {
+  id: string;
+  contract_id: string;
+  organization_id: string;
+  article_id: string;
+  is_excluded: boolean;
+  created_by: string | null;
+  created_at: string;
 }
 
 /** A contract's linked asset — `contract_assets` joined out to the asset's
@@ -113,7 +166,7 @@ export interface ContractAssetRecord {
  * in one round trip instead of N+1-ing a lookup per row per column — same
  * reasoning as `WORK_ORDER_SELECT` in `app/(app)/work-orders/actions.ts`. */
 const CONTRACT_SELECT =
-  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color)";
+  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color)";
 
 /** Shared select shape for every query returning a `ContractAssetRecord`. */
 const CONTRACT_ASSET_SELECT = "*, asset:assets(id, name, client_id, site_id)";
@@ -126,6 +179,7 @@ function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse
     name: input.name,
     sla_tier_id: input.slaTierId ?? null,
     billing_terms_id: input.billingTermsId ?? null,
+    billing_period_id: input.billingPeriodId ?? null,
     start_date: input.startDate,
     end_date: input.endDate ?? null,
     value: input.value ?? null,
@@ -152,6 +206,7 @@ function toContractUpdateRow(input: ReturnType<typeof contractUpdateSchema.parse
   if (input.typeId !== undefined) row.type_id = input.typeId;
   if (input.slaTierId !== undefined) row.sla_tier_id = input.slaTierId ?? null;
   if (input.billingTermsId !== undefined) row.billing_terms_id = input.billingTermsId ?? null;
+  if (input.billingPeriodId !== undefined) row.billing_period_id = input.billingPeriodId ?? null;
   if (input.startDate !== undefined) row.start_date = input.startDate;
   if (input.endDate !== undefined) row.end_date = input.endDate ?? null;
   if (input.autoRenew !== undefined) row.auto_renew = input.autoRenew;
@@ -508,4 +563,391 @@ export async function unlinkContractAsset(
     return fail("This asset is not linked to the contract, or you do not have permission to unlink it.");
   }
   return ok({ contractId: data.contract_id as string, assetId: data.asset_id as string });
+}
+
+// ---------------------------------------------------------------------------
+// Contract line items — the `contract_line_items` sub-entity (issue #122):
+// articles a Quote generated from this contract should be pre-populated
+// with. Gated on the same `contracts` RBAC module as the contract record
+// itself (not a separate matrix row), same "if you can manage the contract,
+// you can manage its line items" boundary as `contract_assets` above. No
+// purchase price anywhere here or in any caller of these actions — always
+// read `articles.purchase_price` live, per the migration's design note 2.
+// ---------------------------------------------------------------------------
+
+const contractLineItemWriteSchema = z.object({
+  articleId: z.string().uuid("Invalid article id."),
+  articleNumber: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+  description: z.preprocess(emptyToUndefined, z.string().trim().max(2000).optional()),
+  quantity: z.coerce.number({ invalid_type_error: "Quantity must be a number." }).finite().optional(),
+  unitPrice: z.coerce.number({ invalid_type_error: "Unit price must be a number." }).finite().optional(),
+  sortOrder: z.coerce.number().int().optional(),
+});
+
+function emptyToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
+
+/** Lists a contract's line items, ordered the same way `quote_line_items`
+ * lists are (sort_order, then created_at). Readable by anyone who can read
+ * contracts at all (`read`), same as `listContractAssets`. */
+export async function listContractLineItems(
+  contractId: string,
+): Promise<ActionResult<{ lineItems: ContractLineItemRecord[] }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract's line items.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_line_items")
+    .select("*")
+    .eq("contract_id", idResult.data)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+  return ok({ lineItems: (data ?? []) as ContractLineItemRecord[] });
+}
+
+/** Owner/finance only, matching `contract_line_items_insert_owner_or_finance`.
+ * `articleId` must belong to the contract's own organization — enforced by
+ * `validate_contract_line_item_relations` (not re-validated here, same trust
+ * boundary this module extends throughout). */
+export async function createContractLineItem(
+  contractId: string,
+  input: unknown,
+): Promise<ActionResult<{ lineItem: ContractLineItemRecord }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "create")) {
+    return fail("Only an owner or finance user can add line items to a contract.");
+  }
+
+  const parsed = contractLineItemWriteSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const row: Record<string, unknown> = {
+    contract_id: idResult.data,
+    article_id: parsed.data.articleId,
+    article_number: parsed.data.articleNumber ?? null,
+    description: parsed.data.description ?? null,
+  };
+  if (parsed.data.quantity !== undefined) row.quantity = parsed.data.quantity;
+  if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
+  if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_line_items")
+    .insert(row)
+    .select("*")
+    .single();
+
+  if (error) return fail(mapDbError(error));
+  return ok({ lineItem: data as ContractLineItemRecord });
+}
+
+/** Owner/finance only, matching `contract_line_items_update_owner_or_finance`. */
+export async function updateContractLineItem(
+  lineItemId: string,
+  input: unknown,
+): Promise<ActionResult<{ lineItem: ContractLineItemRecord }>> {
+  const idResult = uuidSchema.safeParse(lineItemId);
+  if (!idResult.success) return fail("Invalid line item id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "update")) {
+    return fail("Only an owner or finance user can update a contract line item.");
+  }
+
+  const parsed = contractLineItemWriteSchema.partial().safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const row: Record<string, unknown> = {};
+  if (parsed.data.articleId !== undefined) row.article_id = parsed.data.articleId;
+  if (parsed.data.articleNumber !== undefined) row.article_number = parsed.data.articleNumber ?? null;
+  if (parsed.data.description !== undefined) row.description = parsed.data.description ?? null;
+  if (parsed.data.quantity !== undefined) row.quantity = parsed.data.quantity;
+  if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
+  if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
+  if (Object.keys(row).length === 0) {
+    return fail("No changes provided.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_line_items")
+    .update(row)
+    .eq("id", idResult.data)
+    .select("*")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Line item not found, or you do not have permission to update it.");
+  return ok({ lineItem: data as ContractLineItemRecord });
+}
+
+/** Owner/finance only, matching `contract_line_items_delete_owner_or_finance`. */
+export async function deleteContractLineItem(lineItemId: string): Promise<ActionResult<{ deletedId: string }>> {
+  const idResult = uuidSchema.safeParse(lineItemId);
+  if (!idResult.success) return fail("Invalid line item id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "delete")) {
+    return fail("Only an owner or finance user can delete a contract line item.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_line_items")
+    .delete()
+    .eq("id", idResult.data)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Line item not found, or you do not have permission to delete it.");
+  return ok({ deletedId: data.id as string });
+}
+
+// ---------------------------------------------------------------------------
+// Contract article group/individual article rules — `contract_article_group_
+// rules` and `contract_article_rules` (issue #122): per-contract include/
+// exclude marking against the Article Group tree and individual articles.
+// Same RBAC/org-scoping boundary as the sections above. `setContract*Rule`
+// upserts on the table's own unique constraint (contract_id, article_
+// group_id|article_id) so a caller flipping an existing rule's direction
+// never has to handle a raw 23505 conflict itself.
+// ---------------------------------------------------------------------------
+
+const contractArticleGroupRuleSchema = z.object({
+  contractId: z.string().uuid("Invalid contract id."),
+  articleGroupId: z.string().uuid("Invalid article group id."),
+  isExcluded: z.boolean(),
+});
+
+const contractArticleRuleSchema = z.object({
+  contractId: z.string().uuid("Invalid contract id."),
+  articleId: z.string().uuid("Invalid article id."),
+  isExcluded: z.boolean(),
+});
+
+/** Lists every article-group rule for a contract. Readable by anyone who can
+ * read contracts at all (`read`). */
+export async function listContractArticleGroupRules(
+  contractId: string,
+): Promise<ActionResult<{ rules: ContractArticleGroupRuleRecord[] }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract's article group rules.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_group_rules")
+    .select("*")
+    .eq("contract_id", idResult.data)
+    .order("created_at", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+  return ok({ rules: (data ?? []) as ContractArticleGroupRuleRecord[] });
+}
+
+/** Creates or updates (upsert on `contract_id, article_group_id`) this
+ * contract's rule for an article group. Owner/finance only, matching
+ * `contract_article_group_rules_insert_owner_or_finance`/`..._update_
+ * owner_or_finance`. `articleGroupId` must belong to the contract's own
+ * organization — enforced by `validate_contract_article_group_rule_
+ * relations` (not re-validated here). */
+export async function setContractArticleGroupRule(
+  input: unknown,
+): Promise<ActionResult<{ rule: ContractArticleGroupRuleRecord }>> {
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "create")) {
+    return fail("Only an owner or finance user can set a contract's article group rules.");
+  }
+
+  const parsed = contractArticleGroupRuleSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_group_rules")
+    .upsert(
+      {
+        contract_id: parsed.data.contractId,
+        article_group_id: parsed.data.articleGroupId,
+        is_excluded: parsed.data.isExcluded,
+      },
+      { onConflict: "contract_id,article_group_id" },
+    )
+    .select("*")
+    .single();
+
+  if (error) return fail(mapDbError(error));
+  return ok({ rule: data as ContractArticleGroupRuleRecord });
+}
+
+/** Removes this contract's rule for an article group entirely (distinct from
+ * setting `isExcluded = false`, which keeps an explicit "not covered"
+ * rule row — this deletes the row, meaning "no explicit rule at all").
+ * Owner/finance only. */
+export async function removeContractArticleGroupRule(
+  contractId: string,
+  articleGroupId: string,
+): Promise<ActionResult<{ contractId: string; articleGroupId: string }>> {
+  const parsed = z
+    .object({ contractId: z.string().uuid("Invalid contract id."), articleGroupId: z.string().uuid("Invalid article group id.") })
+    .safeParse({ contractId, articleGroupId });
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "delete")) {
+    return fail("Only an owner or finance user can remove a contract's article group rule.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_group_rules")
+    .delete()
+    .eq("contract_id", parsed.data.contractId)
+    .eq("article_group_id", parsed.data.articleGroupId)
+    .select("contract_id, article_group_id")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) {
+    return fail("No rule exists for this article group on this contract, or you do not have permission to remove it.");
+  }
+  return ok({ contractId: data.contract_id as string, articleGroupId: data.article_group_id as string });
+}
+
+/** Lists every individual-article rule for a contract. Readable by anyone
+ * who can read contracts at all (`read`). */
+export async function listContractArticleRules(
+  contractId: string,
+): Promise<ActionResult<{ rules: ContractArticleRuleRecord[] }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract's article rules.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_rules")
+    .select("*")
+    .eq("contract_id", idResult.data)
+    .order("created_at", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+  return ok({ rules: (data ?? []) as ContractArticleRuleRecord[] });
+}
+
+/** The article-level sibling of `setContractArticleGroupRule` — same upsert
+ * shape, against `article_id` instead of `article_group_id`. Owner/finance
+ * only. */
+export async function setContractArticleRule(
+  input: unknown,
+): Promise<ActionResult<{ rule: ContractArticleRuleRecord }>> {
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "create")) {
+    return fail("Only an owner or finance user can set a contract's article rules.");
+  }
+
+  const parsed = contractArticleRuleSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_rules")
+    .upsert(
+      {
+        contract_id: parsed.data.contractId,
+        article_id: parsed.data.articleId,
+        is_excluded: parsed.data.isExcluded,
+      },
+      { onConflict: "contract_id,article_id" },
+    )
+    .select("*")
+    .single();
+
+  if (error) return fail(mapDbError(error));
+  return ok({ rule: data as ContractArticleRuleRecord });
+}
+
+/** The article-level sibling of `removeContractArticleGroupRule`. Owner/
+ * finance only. */
+export async function removeContractArticleRule(
+  contractId: string,
+  articleId: string,
+): Promise<ActionResult<{ contractId: string; articleId: string }>> {
+  const parsed = z
+    .object({ contractId: z.string().uuid("Invalid contract id."), articleId: z.string().uuid("Invalid article id.") })
+    .safeParse({ contractId, articleId });
+  if (!parsed.success) {
+    return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
+  }
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "delete")) {
+    return fail("Only an owner or finance user can remove a contract's article rule.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("contract_article_rules")
+    .delete()
+    .eq("contract_id", parsed.data.contractId)
+    .eq("article_id", parsed.data.articleId)
+    .select("contract_id, article_id")
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) {
+    return fail("No rule exists for this article on this contract, or you do not have permission to remove it.");
+  }
+  return ok({ contractId: data.contract_id as string, articleId: data.article_id as string });
 }

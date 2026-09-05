@@ -76,6 +76,14 @@ export const contractCreateSchema = z.object({
   /** FK into this org's `billing_terms` reference list. Nullable, standalone
    * (not a dependent list). Validated by `validate_contract_reference_items`. */
   billingTermsId: optionalUuid("Invalid billing terms."),
+  /** FK into this org's `billing_period` reference list (issue #122).
+   * Nullable, standalone (not a dependent list) — an independent SIBLING of
+   * `billingTermsId`: `billingTermsId` is "how often this contract is
+   * invoiced", `billingPeriodId` is "how the contract's own value accrues/
+   * recurs" (e.g. a monthly value invoiced annually). No default-fill on
+   * omission, matching `billingTermsId`'s own no-default-fill treatment.
+   * Validated by `validate_contract_reference_items`. */
+  billingPeriodId: optionalUuid("Invalid billing period."),
   startDate: requiredIsoDateSchema,
   /** Nullable — open-ended contracts are real. When set, must be >=
    * `startDate` (DB check constraint `contracts_end_date_after_start_date`;
