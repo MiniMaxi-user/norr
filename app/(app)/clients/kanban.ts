@@ -1,3 +1,4 @@
+import type { BadgeVariant } from "@yourorg/ui";
 import type { ClientRecord } from "./actions";
 
 /**
@@ -59,6 +60,20 @@ const COLUMN_DEFINITIONS: readonly Pick<ClientKanbanColumn, "status" | "label" |
 export const CLIENT_STATUS_OPTIONS: readonly { value: ClientStatus; label: string }[] = COLUMN_DEFINITIONS.map(
   ({ status, label }) => ({ value: status, label }),
 );
+
+/** Status badge color per column — mirrors `COLUMN_DEFINITIONS`'s own accent
+ * grouping (gray/accent/warning/success for lead/qualified/proposal/won), so
+ * any status badge anywhere in the Clients module (kanban cards, the Details
+ * tab's Pipeline section) stays visually consistent with the kanban column it
+ * lives in. Previously a private copy inside `clients-kanban.tsx` — hoisted
+ * here (issue: Details tab redo) so `client-pipeline-section.tsx` can reuse
+ * it without duplicating the mapping. */
+export const CLIENT_STATUS_BADGE_VARIANT: Record<ClientStatus, BadgeVariant> = {
+  lead: "muted",
+  qualified: "accent",
+  proposal: "warning",
+  won: "success",
+};
 
 function isWonStillVisible(client: ClientRecord, now: number): boolean {
   if (!client.won_at) return false;

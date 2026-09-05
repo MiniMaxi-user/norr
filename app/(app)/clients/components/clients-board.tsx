@@ -2,7 +2,6 @@ import { Text } from "@yourorg/ui";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
-import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { listClients, listPrimarySitesForClients, type ClientRecord, type SiteRecord } from "../actions";
 import { ClientsExplorer, type ClientsView } from "./clients-explorer";
 
@@ -56,20 +55,15 @@ export async function ClientsBoard({
   const lastUsedView = await preferencesStore.getLastUsedView(userId, "clients");
   const defaultView: ClientsView = lastUsedView === "kanban" ? "kanban" : "list";
 
-  const [result, accountManagersResult, articlesResult] = await Promise.all([
+  const [result, accountManagersResult] = await Promise.all([
     defaultView === "kanban"
       ? listClients({ limit: 200 })
       : listClients({ limit: CLIENTS_PAGE_SIZE, offset }),
     // Fetched once here (any view), threaded down to `ClientsExplorer` and
-    // on into both client forms (the "Account manager" picker, issue #58)
-    // and `ClientsKanban` (each card's Account Manager row) — same
+    // on into `ClientsKanban` (each card's Account Manager row) — same
     // "fetch once server-side, pass down" convention `contactRoles` already
     // uses into `SiteFormDialog`.
     listAccountManagers(),
-    // Issue #93: same "fetch once, pass down" convention as
-    // `listAccountManagers` above — populates both client forms' "Rate"
-    // section article pickers.
-    listArticlesForSelect(),
   ]);
 
   if (result.error || !result.data) {
@@ -79,7 +73,6 @@ export async function ClientsBoard({
   const canWrite = can(actor, "clients", "create");
   const primarySiteByClientId = await fetchPrimarySiteByClientId(result.data.clients);
   const accountManagers = accountManagersResult.data?.accountManagers ?? [];
-  const articles = articlesResult.data?.articles ?? [];
 
   return (
     <ClientsExplorer
@@ -91,12 +84,6 @@ export async function ClientsBoard({
       defaultView={defaultView}
       primarySiteByClientId={primarySiteByClientId}
       accountManagers={accountManagers}
-      articles={articles}
-      // Server-computed "today" (`YYYY-MM-DD`) for `NewClientPanel`'s
-      // "Client since" default (issue #58) — a deliberate choice to use the
-      // server's own date rather than the visitor's local browser date (see
-      // that panel's own doc comment).
-      todayIso={new Date().toISOString().slice(0, 10)}
     />
   );
 }

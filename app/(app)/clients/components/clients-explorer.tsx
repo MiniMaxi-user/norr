@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Breadcrumbs, Button, Card, EmptyState, Input, OverviewHeroBand, Select, Stack, Text } from "@yourorg/ui";
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
-import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import type { ClientRecord, SiteRecord } from "../actions";
 import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "../kanban";
@@ -12,8 +12,6 @@ import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
 import { DeleteClientDialog } from "./delete-client-dialog";
-import { EditClientPanel } from "./edit-client-panel";
-import { NewClientPanel } from "./new-client-panel";
 import { ViewToggle, type ViewOption } from "./view-toggle";
 
 export type ClientsView = "list" | "kanban";
@@ -26,22 +24,19 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
 /**
  * Client component owning all Clients-list interactivity: search/filter
  * (client-side, over the already-fetched page — server-side search is a
- * later improvement per the task spec), the list/kanban view switch, the
- * "Add client" slide-in panel, the "Edit" slide-in panel, and the delete
- * confirmation dialog. As of issue #43, creating a client opens
- * `NewClientPanel` (a `Dialog` `size="panel"`) instead of navigating to a
- * full page; as of issue #46, editing a client opens `EditClientPanel` the
- * same way instead of navigating to the old `/clients/[id]/edit` route
- * (route deleted) — both are explicit, confirmed overrides of this app's
- * usual "Popup vs. full page" default (see docs/ARCHITECTURE.md "Popup vs.
- * full page — pick by weight, not habit", and each panel's own doc comment).
- * `editTarget` mirrors `deleteTarget`'s lifted-dialog pattern: whichever
- * client is currently being edited, or `null` when the panel is closed.
- * `clients`/`count` are fetched once server-side (`clients-board.tsx`) and
- * passed down as props; a delete calls `router.refresh()` (inside the
- * dialog) to re-fetch rather than mutating this component's local copy,
- * keeping this component's own state limited to pure UI state (search text,
- * which view, which client is pending deletion).
+ * later improvement per the task spec), the list/kanban view switch, and the
+ * delete confirmation dialog. As of the Client Details tab redo, both
+ * creating and editing a client are real pages (`/clients/new`,
+ * `/clients/[id]` with its own inline-editable Details tab) rather than the
+ * old `NewClientPanel`/`EditClientPanel` slide-in dialogs (both deleted) —
+ * matching this app's usual "Popup vs. full page" default (a top-level
+ * module's own record gets a real page, never a `Dialog`; see
+ * docs/ARCHITECTURE.md). Both "Add client" buttons below just navigate to
+ * `/clients/new`. `clients`/`count` are fetched once server-side
+ * (`clients-board.tsx`) and passed down as props; a delete calls
+ * `router.refresh()` (inside the dialog) to re-fetch rather than mutating
+ * this component's local copy, keeping this component's own state limited to
+ * pure UI state (search text, which view, which client is pending deletion).
  *
  * NOTE on scope: as of issue #58, list and kanban no longer share the same
  * fetched dataset — `clients-board.tsx` fetches a single paginated page for
@@ -75,8 +70,6 @@ export function ClientsExplorer({
   defaultView,
   primarySiteByClientId,
   accountManagers,
-  articles,
-  todayIso,
 }: {
   clients: ClientRecord[];
   count: number;
@@ -92,25 +85,17 @@ export function ClientsExplorer({
   primarySiteByClientId: Record<string, SiteRecord | null>;
   /** Every account manager in this org (issue #58) — fetched once in
    * `clients-board.tsx`, threaded down into `ClientsKanban` (each card's
-   * Account Manager row), the kanban header's Account manager filter
-   * `<Select>`, and both client forms' own Account manager picker. */
+   * Account Manager row) and the kanban header's Account manager filter
+   * `<Select>`. */
   accountManagers: AccountManagerRecord[];
-  /** `listArticlesForSelect()`'s result (issue #93) — fetched once in
-   * `clients-board.tsx`, threaded down into both client forms' "Rate"
-   * section article pickers. */
-  articles: ArticleSelectOption[];
-  /** Server-computed `YYYY-MM-DD` "today", for `NewClientPanel`'s "Client
-   * since" default — see `clients-board.tsx`. */
-  todayIso: string;
 }) {
+  const router = useRouter();
   const [view, setView] = useState<ClientsView>(defaultView);
   const [search, setSearch] = useState("");
   const [kanbanSearch, setKanbanSearch] = useState("");
   const [kanbanAccountManagerId, setKanbanAccountManagerId] = useState("");
   const [kanbanStatus, setKanbanStatus] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ClientRecord | null>(null);
-  const [editTarget, setEditTarget] = useState<ClientRecord | null>(null);
-  const [newClientOpen, setNewClientOpen] = useState(false);
 
   const accountManagerById = useMemo(
     () => new Map(accountManagers.map((manager) => [manager.id, manager])),
@@ -171,29 +156,18 @@ export function ClientsExplorer({
 
   if (clients.length === 0) {
     return (
-      <>
-        <EmptyState
-          icon={<Users />}
-          heading="No clients yet"
-          text="Add your first client to start tracking their sites and assets."
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={() => setNewClientOpen(true)}>
-                Add client
-              </Button>
-            ) : undefined
-          }
-        />
-        {canWrite && (
-          <NewClientPanel
-            open={newClientOpen}
-            onOpenChange={setNewClientOpen}
-            accountManagers={accountManagers}
-            articles={articles}
-            todayIso={todayIso}
-          />
-        )}
-      </>
+      <EmptyState
+        icon={<Users />}
+        heading="No clients yet"
+        text="Add your first client to start tracking their sites and assets."
+        action={
+          canWrite ? (
+            <Button variant="primary" onClick={() => router.push("/clients/new")}>
+              Add client
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 
@@ -201,7 +175,7 @@ export function ClientsExplorer({
     <>
       <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
       {canWrite && (
-        <Button variant="primary" onClick={() => setNewClientOpen(true)}>
+        <Button variant="primary" onClick={() => router.push("/clients/new")}>
           Add client
         </Button>
       )}
@@ -301,7 +275,6 @@ export function ClientsExplorer({
           <ClientsTable
             clients={filtered}
             canWrite={canWrite}
-            onEdit={setEditTarget}
             onDelete={setDeleteTarget}
             primarySiteByClientId={primarySiteByClientId}
           />
@@ -319,18 +292,6 @@ export function ClientsExplorer({
 
       {view === "list" && <ClientsPagination page={page} pageSize={pageSize} count={count} />}
 
-      {canWrite && editTarget && (
-        <EditClientPanel
-          client={editTarget}
-          accountManagers={accountManagers}
-          articles={articles}
-          open={Boolean(editTarget)}
-          onOpenChange={(open) => {
-            if (!open) setEditTarget(null);
-          }}
-        />
-      )}
-
       {canWrite && (
         <DeleteClientDialog
           open={Boolean(deleteTarget)}
@@ -338,16 +299,6 @@ export function ClientsExplorer({
             if (!open) setDeleteTarget(null);
           }}
           client={deleteTarget}
-        />
-      )}
-
-      {canWrite && (
-        <NewClientPanel
-          open={newClientOpen}
-          onOpenChange={setNewClientOpen}
-          accountManagers={accountManagers}
-          articles={articles}
-          todayIso={todayIso}
         />
       )}
     </Stack>

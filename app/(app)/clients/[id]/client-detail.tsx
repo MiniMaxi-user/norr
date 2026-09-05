@@ -21,7 +21,7 @@ import {
   Text,
   type StatStripItem,
 } from "@yourorg/ui";
-import { Bell, Boxes, Building2, ClipboardList, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { Bell, Boxes, Building2, ClipboardList, CreditCard, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -36,7 +36,7 @@ import { setTenantActive, type TenantAccessStatus } from "../platform-access-act
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ActivitiesPanel } from "./activities-panel";
 import { DeleteClientDialog } from "../components/delete-client-dialog";
-import { EditClientPanel } from "../components/edit-client-panel";
+import { ClientDetailsTab } from "./details-tab";
 import { formatSiteAddress, formatSiteAddressShort } from "../format-site-address";
 import { formatCurrency } from "@/lib/format/currency";
 import { formatDateTime, formatTimestamp } from "@/lib/format/date";
@@ -55,6 +55,7 @@ import { WorkOrdersPanel } from "./work-orders-panel";
 import { ClientLogoUploader } from "../components/client-logo-uploader";
 
 export type ClientDetailTab =
+  | "details"
   | "sites"
   | "assets"
   | "contacts"
@@ -118,13 +119,13 @@ export interface ClientDetailProps {
    * otherwise, in which case the tab itself doesn't render either. */
   accessStatusByEmail: Record<string, TenantAccessStatus> | null;
   defaultTab: ClientDetailTab;
-  /** Fetched once in `page.tsx`, passed down — populates `EditClientPanel`'s
-   * "Account manager" `<Select>` (issue #58), same as `clients-board.tsx` ->
-   * `ClientsExplorer` -> `EditClientPanel` on the list/kanban screen. */
+  /** Fetched once in `page.tsx`, passed down — populates the Details tab's
+   * Pipeline section's "Account manager" `<Select>` (issue #58), same as
+   * `clients-board.tsx` -> `ClientsExplorer` on the list/kanban screen. */
   accountManagers: AccountManagerRecord[];
   /** `listArticlesForSelect()`'s result (issue #93), fetched once in
-   * `page.tsx` — populates `EditClientPanel`'s "Rate" section article
-   * pickers, same "fetch once, pass down" convention as `accountManagers`. */
+   * `page.tsx` — populates the Details tab's Rate section article pickers,
+   * same "fetch once, pass down" convention as `accountManagers`. */
   articles: ArticleSelectOption[];
 }
 
@@ -157,8 +158,9 @@ export interface ClientDetailProps {
  * below, so restating them in the hero was pure duplication. Instead the
  * strip surfaces facts that aren't visible anywhere else on this page: the
  * client's Account Manager (resolved from `accountManagers` by
- * `client.account_manager_id`, same lookup `EditClientPanel`'s picker uses),
- * an active-contracts count + total value, an open-work-orders count (i.e.
+ * `client.account_manager_id`, same lookup the Details tab's Pipeline
+ * section uses), an active-contracts count + total value, an
+ * open-work-orders count (i.e.
  * not yet `completed`/`invoiced`, mirroring the "needs attention" framing
  * `work-order-screen.tsx`'s own hero stats use) with its next-scheduled date
  * as the hint, and the most recent Activiteit's `reported_at` with its type
@@ -183,9 +185,9 @@ export interface ClientDetailProps {
  *    `20260826130000_sites_phone.sql` — a client no longer has its own
  *    phone at all, no email either, `clients.email` was dropped in issue
  *    #43; a client's contact email now only lives on its `Contact` rows,
- *    see the Contacts tab) — no inline Edit of its own (removed — it opened
- *    the exact same `EditClientPanel` as the hero's own Edit button, one hop
- *    away at the top of the page);
+ *    see the Contacts tab) — no inline Edit of its own: editing those same
+ *    fields lives on the Details tab's own Business details section
+ *    instead (see `./details-tab.tsx`), one tab away;
  *  - Platform (platform-admin-only, `tenantAccessVisible`, accent-tinted):
  *    tenant active/deactivated status and a read-only modules line, plus
  *    (issue #113) a `Pencil` `IconButton` in its header row that opens a
@@ -201,8 +203,9 @@ export interface ClientDetailProps {
  *    side-by-side `.ui-sites-grid` (see `sites-panel.tsx`, now a full-width
  *    table) so it's visible regardless of which tab is open, plus the same
  *    primary/other-sites legend that grid used to carry;
- *  - Notes: `client.notes`, only when present (previously a plain muted
- *    line directly under the hero — moved into the rail as its own card).
+ * Notes no longer has its own rail card — it's editable inline on the
+ * Details tab's own Notes section instead (see `./details-tab.tsx`), so a
+ * read-only echo of it here would just be a stale duplicate.
  */
 export function ClientDetail({
   client,
@@ -234,7 +237,6 @@ export function ClientDetail({
 }: ClientDetailProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<ClientDetailTab>(defaultTab);
   // Issue #113: the Platform rail card's own Edit popup — replaces the old
   // "Access"/"Modules" page-level tabs (see `ClientDetailTab` above).
@@ -571,14 +573,6 @@ export function ClientDetail({
         )}
       </Card>
 
-      {client.notes && (
-        <Card>
-          <Stack gap="sm">
-            <Heading level={6}>Notes</Heading>
-            <Text tone="muted">{client.notes}</Text>
-          </Stack>
-        </Card>
-      )}
     </>
   );
 
@@ -591,14 +585,9 @@ export function ClientDetail({
           canWrite || showActivateTenant || (isPlatformAdmin && isActivatedTenant) ? (
             <>
               {canWrite && (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                    Edit
-                  </Button>
-                  <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
-                    Delete
-                  </Button>
-                </>
+                <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+                  Delete
+                </Button>
               )}
               {showActivateTenant && <ActivateTenantAction clientId={client.id} />}
               {isPlatformAdmin && isActivatedTenant && (
@@ -613,6 +602,9 @@ export function ClientDetail({
       <DetailLayout rail={rail}>
         <Tabs value={tab} onValueChange={(next) => selectTab(next as ClientDetailTab)}>
           <Tabs.List aria-label="Client detail">
+            <Tabs.Tab value="details" icon={<CreditCard />}>
+              Details
+            </Tabs.Tab>
             <Tabs.Tab value="sites" icon={<MapPin />}>
               Sites{sites.length > 0 ? ` (${sites.length})` : ""}
             </Tabs.Tab>
@@ -645,6 +637,15 @@ export function ClientDetail({
               </Tabs.Tab>
             )}
           </Tabs.List>
+
+          <Tabs.Panel value="details">
+            <ClientDetailsTab
+              client={client}
+              accountManagers={accountManagers}
+              articles={articles}
+              canWrite={canWrite}
+            />
+          </Tabs.Panel>
 
           <Tabs.Panel value="sites">
             <SitesPanel
@@ -706,31 +707,21 @@ export function ClientDetail({
       </DetailLayout>
 
       {canWrite && (
-        <>
-          <EditClientPanel
-            client={client}
-            accountManagers={accountManagers}
-            articles={articles}
-            open={editOpen}
-            onOpenChange={setEditOpen}
-          />
-          <DeleteClientDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            client={client}
-            onDeleted={() => router.push("/clients")}
-          />
-        </>
+        <DeleteClientDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          client={client}
+          onDeleted={() => router.push("/clients")}
+        />
       )}
 
       {/* Platform rail card's Edit popup (issue #113) — "Access"/"Modules"
           used to be their own page-level `Tabs.Tab`s; they're the same
           `AccessPanel`/`ModulesPanel` content, unchanged internally, just
           reached from the Platform card's `Pencil` `IconButton` now, as two
-          nested `Tabs` inside a `Dialog size="panel"` (matching
-          `EditClientPanel`'s slide-in convention — this is a small,
+          nested `Tabs` inside a `Dialog size="panel"` — this is a small,
           platform-admin-only management surface, not a top-level module, per
-          docs/ARCHITECTURE.md's "Popup vs. full page"). Only ever rendered
+          docs/ARCHITECTURE.md's "Popup vs. full page". Only ever rendered
           when `tenantAccessVisible` (same gate the card itself uses). */}
       {tenantAccessVisible && (
         <Dialog open={platformDialogOpen} onOpenChange={setPlatformDialogOpen} size="panel">

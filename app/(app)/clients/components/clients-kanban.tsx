@@ -2,23 +2,18 @@
 
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, Badge, Board, Button, Inline, Select, Stack, Text, type BadgeVariant } from "@yourorg/ui";
+import { Avatar, Badge, Board, Button, Inline, Select, Stack, Text } from "@yourorg/ui";
 import { MapPin } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import { updateClient, type ClientRecord, type SiteRecord } from "../actions";
-import { CLIENT_STATUS_OPTIONS, formatPotentialValue, groupClientsForKanban, type ClientStatus } from "../kanban";
-
-/** Status badge color per column — mirrors the same accent grouping
- * `kanban.ts`'s `COLUMN_DEFINITIONS` already uses for each column's top
- * border (gray/accent/warning/success for lead/qualified/proposal/won), so
- * a card's status badge always agrees with the column it's sitting in. */
-const STATUS_BADGE_VARIANT: Record<ClientStatus, BadgeVariant> = {
-  lead: "muted",
-  qualified: "accent",
-  proposal: "warning",
-  won: "success",
-};
+import {
+  CLIENT_STATUS_BADGE_VARIANT,
+  CLIENT_STATUS_OPTIONS,
+  formatPotentialValue,
+  groupClientsForKanban,
+  type ClientStatus,
+} from "../kanban";
 
 /** Cards beyond this count in a column collapse behind a "+ N more" toggle
  * (per-column `useState`, plain and simple) — the kanban fetches an
@@ -45,8 +40,9 @@ const CARDS_PER_COLUMN = 5;
  * column immediately, before `updateClient` resolves; a failure reverts the
  * local move and surfaces `dragError`. `router.refresh()` still runs after a
  * successful update to reconcile the Server Component's own data (matching
- * `EditClientPanel`'s existing post-success pattern) — the optimistic move
- * just means the UI doesn't wait on that round trip to feel instant.
+ * the Details tab's own post-save `router.refresh()` pattern) — the
+ * optimistic move just means the UI doesn't wait on that round trip to feel
+ * instant.
  */
 export function ClientsKanban({
   clients,
@@ -257,7 +253,7 @@ function ClientKanbanCard({
                 ))}
               </Select>
             ) : (
-              <Badge variant={STATUS_BADGE_VARIANT[client.status as ClientStatus]}>
+              <Badge variant={CLIENT_STATUS_BADGE_VARIANT[client.status as ClientStatus]}>
                 {CLIENT_STATUS_OPTIONS.find((option) => option.value === client.status)?.label}
               </Badge>
             )}

@@ -190,10 +190,11 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       ? listActivities({ clientId: id, limit: ALL_CLIENT_ACTIVITIES_LIMIT })
       : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CLIENT_DETAIL_VIEW_KEY),
-    // Issue #58: `EditClientPanel`'s "Account manager" picker, same
-    // "fetch once, pass down" convention `contactRoles` above already uses.
+    // Issue #58: the Details tab's Pipeline section's "Account manager"
+    // picker, same "fetch once, pass down" convention `contactRoles` above
+    // already uses.
     listAccountManagers(),
-    // Issue #93: `EditClientPanel`'s "Rate" section article pickers, same
+    // Issue #93: the Details tab's Rate section article pickers, same
     // "fetch once, pass down" convention as `listAccountManagers` above.
     listArticlesForSelect(),
   ]);
@@ -231,6 +232,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   // "sites" like any other unrecognized value.
   function resolveTab(candidate: string | null | undefined): ClientDetailTab | null {
     switch (candidate) {
+      case "details":
+        return "details";
       case "assets":
         return assetsModuleVisible ? "assets" : null;
       case "contacts":
@@ -249,7 +252,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         return null;
     }
   }
-  const defaultTab: ClientDetailTab = resolveTab(requestedTabParam) ?? resolveTab(lastUsedTab) ?? "sites";
+  const defaultTab: ClientDetailTab = resolveTab(requestedTabParam) ?? resolveTab(lastUsedTab) ?? "details";
 
   return (
     <ClientDetail
