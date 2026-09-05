@@ -18,10 +18,11 @@ export interface ContractsTableProps {
 /**
  * List view table for Contracts — same shape as
  * `app/(app)/work-orders/components/work-orders-table.tsx`: client-side
- * search over the current page, row click navigates to the detail page,
- * row-level Edit navigates to a real page (`/contracts/[id]/edit`, docs/
- * ARCHITECTURE.md "Popup vs. full page"), Delete stays a lightweight confirm
- * `Dialog`.
+ * search over the current page, row click and the row-level Edit action both
+ * navigate to the same unified detail/edit screen (`/contracts/[id]`, issue
+ * #122 — editing now happens inline there via each section's own pencil, no
+ * separate `/contracts/[id]/edit` route anymore), Delete stays a lightweight
+ * confirm `Dialog`.
  */
 export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }: ContractsTableProps) {
   const router = useRouter();
@@ -101,7 +102,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => router.push(`/contracts/${contract.id}/edit`)}
+                          onClick={() => router.push(`/contracts/${contract.id}`)}
                         >
                           Edit
                         </Button>
