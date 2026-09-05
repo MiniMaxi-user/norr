@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, EditableSection, FormGrid, Inline, Input, KeyValueList, Label, Stack, Text } from "@yourorg/ui";
 import { CalendarDays } from "@yourorg/ui/icons";
 import type { ContractRecord } from "../actions";
-import { formatDate } from "@/lib/format/date";
+import { formatDate, formatDateTime } from "@/lib/format/date";
 import type { ContractDraft } from "./contract-draft";
 
 export interface ContractDatesSectionProps {
@@ -111,6 +111,11 @@ export function ContractDatesSection({
         items={[
           { key: "start", label: "Start date", value: <Text>{formatDate(contract?.start_date ?? null, { month: "long" })}</Text> },
           { key: "end", label: "End date", value: <Text>{formatDate(contract?.end_date ?? null, { month: "long" })}</Text> },
+          {
+            key: "created",
+            label: "Created",
+            value: <Text>{contract ? formatDateTime(contract.created_at, { month: "long" }) : "—"}</Text>,
+          },
         ]}
       />
     </EditableSection>

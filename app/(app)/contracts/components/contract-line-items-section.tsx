@@ -72,7 +72,7 @@ export function ContractLineItemsSection({
         title="Line items"
         actions={
           canCreate && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Button type="button" variant="primary" size="sm" onClick={() => setAdding(true)}>
               + Article
             </Button>
           )

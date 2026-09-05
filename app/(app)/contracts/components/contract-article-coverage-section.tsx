@@ -266,7 +266,7 @@ export function ContractArticleCoverageSection({
                 <option value="included">Included</option>
                 <option value="excluded">Excluded</option>
               </Select>
-              <Button type="button" variant="outline" size="sm" onClick={handleAddGroupRule} disabled={!addGroupId || isPending}>
+              <Button type="button" variant="primary" size="sm" onClick={handleAddGroupRule} disabled={!addGroupId || isPending}>
                 Add rule
               </Button>
             </Inline>
@@ -294,7 +294,7 @@ export function ContractArticleCoverageSection({
                 <option value="included">Included</option>
                 <option value="excluded">Excluded</option>
               </Select>
-              <Button type="button" variant="outline" size="sm" onClick={handleAddArticleRule} disabled={!addArticleId || isPending}>
+              <Button type="button" variant="primary" size="sm" onClick={handleAddArticleRule} disabled={!addArticleId || isPending}>
                 Add rule
               </Button>
             </Inline>

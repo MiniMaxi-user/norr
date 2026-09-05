@@ -1994,6 +1994,13 @@ select.ui-client-card-status-select {
   gap: 2rem;
   align-items: start;
 }
+/* `ratio="rail"` — a wide primary work column beside a narrow facts rail
+ * (Contract detail "1b" layout). `align-items: start` above already applies
+ * to this variant too, since it's the same base `.ui-detail-columns` class
+ * with just a wider left track. */
+.ui-detail-columns-rail {
+  grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+}
 .ui-detail-columns-left,
 .ui-detail-columns-right {
   display: flex;
