@@ -14,6 +14,7 @@ import {
   Label,
   RadioGroup,
   RadioGroupItem,
+  RowCard,
   Select,
   SectionHeader,
   Stack,
@@ -173,11 +174,13 @@ export function ContractArticleCoverageSection({
 
   function RuleRow({ row }: { row: CoverageRow }) {
     return (
-      <Inline gap="sm" align="center" justify="between">
-        <Inline gap="xs" align="center">
-          <Badge variant={row.kind === "group" ? "accent" : "success"}>{row.kind === "group" ? "Group" : "Article"}</Badge>
-          <Text>{row.label}</Text>
-        </Inline>
+      <RowCard>
+        <div className="ui-row-main">
+          <Inline gap="xs" align="center">
+            <Badge variant={row.kind === "group" ? "accent" : "success"}>{row.kind === "group" ? "Group" : "Article"}</Badge>
+            <Text>{row.label}</Text>
+          </Inline>
+        </div>
         <Inline gap="xs" align="center">
           {canManage ? (
             <Select
@@ -206,7 +209,7 @@ export function ContractArticleCoverageSection({
             </Button>
           )}
         </Inline>
-      </Inline>
+      </RowCard>
     );
   }
 
