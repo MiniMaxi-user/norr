@@ -1,41 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Inline, Table, Text } from "@yourorg/ui";
 import type { ArticleRecord } from "../actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import type { FlattenedArticleGroup } from "../group-tree";
 import { formatCurrency } from "@/lib/format/currency";
-import { ArticleFormPanel } from "./article-form-panel";
 import { DeleteArticleDialog } from "./delete-article-dialog";
 
 export interface ArticlesTableProps {
   articles: ArticleRecord[];
-  groups: FlattenedArticleGroup[];
-  units: ReferenceListItemRecord[];
-  manufacturers: ReferenceListItemRecord[];
-  vatRates: ReferenceListItemRecord[];
   canEdit: boolean;
   canDelete: boolean;
 }
 
 /**
- * Articles list table (issue #92). Server-side filtering already narrows the
- * page (see `ArticlesFilters`) — this component is purely presentational
- * plus the row-level Edit/Delete affordances, same split `AssetsTable` uses.
+ * Articles list table (issue #92, converted off the slide-in `ArticleFormPanel`
+ * by issue #123 — "Article popup"). Server-side filtering already narrows the
+ * page (see `ArticlesFilters`) — this component is purely presentational plus
+ * the row-level navigation/Delete affordance, same split `AssetsTable` uses.
  *
- * A row is only clickable (and only gets an Edit action) when `canEdit` —
- * unlike `AssetsTable`'s row click (which always navigates to a read-only
- * detail page regardless of edit rights), Articles has no separate detail
- * page: the slide-in `ArticleFormPanel` IS the only "see more" surface, and
- * it's a real editable form, not a read-only view. A read-only role
- * (planner/engineer/finance, per `lib/rbac/permissions.ts`'s `articles`
- * entry) already sees every field this table exposes inline; opening an
- * editable panel they can't actually save from would just invite a
- * `can()`-rejected submit.
+ * A row now ALWAYS navigates to the real `/articles/[id]` detail page (same
+ * "always navigates, regardless of edit rights" convention `AssetsTable`'s
+ * own row click uses) — unlike before issue #123, when Articles had no
+ * detail page of its own and a row was only clickable (with an Edit action)
+ * for a caller who could actually edit. A read-only role (planner/engineer/
+ * finance) now gets the same real read-only detail screen `ArticleScreen`
+ * renders for them (`readOnly`, gated server-side by `[id]/article-detail-loader.ts`),
+ * instead of simply having no "see more" surface at all.
  */
-export function ArticlesTable({ articles, groups, units, manufacturers, vatRates, canEdit, canDelete }: ArticlesTableProps) {
-  const [editingArticle, setEditingArticle] = useState<ArticleRecord | null>(null);
+export function ArticlesTable({ articles, canEdit, canDelete }: ArticlesTableProps) {
+  const router = useRouter();
   const [deletingArticle, setDeletingArticle] = useState<ArticleRecord | null>(null);
 
   const showActionsColumn = canEdit || canDelete;
@@ -60,13 +54,13 @@ export function ArticlesTable({ articles, groups, units, manufacturers, vatRates
         </Table.Head>
         <Table.Body>
           {articles.map((article) => (
-            <Table.Row key={article.id} onClick={canEdit ? () => setEditingArticle(article) : undefined}>
+            <Table.Row key={article.id} onClick={() => router.push(`/articles/${article.id}`)}>
               <Table.Cell>
                 {article.image_url ? (
                   // A small, arbitrary-origin tenant-supplied URL isn't a good
                   // fit for `next/image`'s remote-pattern allowlist; same
-                  // plain-`<img>` treatment this module's own live preview
-                  // (`article-form-panel.tsx`) uses.
+                  // plain-`<img>` treatment the detail screen's own `MediaTile`
+                  // (`@yourorg/ui`) uses.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={article.image_url}
@@ -95,7 +89,12 @@ export function ArticlesTable({ articles, groups, units, manufacturers, vatRates
                 <Table.Cell align="center">
                   <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                     {canEdit && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingArticle(article)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/articles/${article.id}/edit`)}
+                      >
                         Edit
                       </Button>
                     )}
@@ -111,19 +110,6 @@ export function ArticlesTable({ articles, groups, units, manufacturers, vatRates
           ))}
         </Table.Body>
       </Table>
-
-      {editingArticle && (
-        <ArticleFormPanel
-          mode="edit"
-          article={editingArticle}
-          groups={groups}
-          units={units}
-          manufacturers={manufacturers}
-          vatRates={vatRates}
-          open
-          onOpenChange={(next) => !next && setEditingArticle(null)}
-        />
-      )}
 
       {deletingArticle && (
         <DeleteArticleDialog article={deletingArticle} open onOpenChange={(next) => !next && setDeletingArticle(null)} />

@@ -8,6 +8,12 @@ export interface DeleteArticleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   article: ArticleRecord | null;
+  /** Navigate back to the Articles overview after a successful delete
+   * instead of just refreshing in place — used from the detail page's own
+   * Delete action (`../[id]/article-detail-actions.tsx`), same
+   * `redirectOnDelete` convention `DeleteActivityDialog`/`DeleteAssetDialog`
+   * use for themselves. */
+  redirectOnDelete?: boolean;
 }
 
 /**
@@ -18,7 +24,7 @@ export interface DeleteArticleDialogProps {
  * BOM component, or still has its own BOM lines, so this dialog's message is
  * a hard blocker rather than a cascade preview.
  */
-export function DeleteArticleDialog({ open, onOpenChange, article }: DeleteArticleDialogProps) {
+export function DeleteArticleDialog({ open, onOpenChange, article, redirectOnDelete }: DeleteArticleDialogProps) {
   const router = useRouter();
 
   return (
@@ -56,7 +62,12 @@ export function DeleteArticleDialog({ open, onOpenChange, article }: DeleteArtic
         const result = await deleteArticle(article.id);
         return { error: result.error };
       }}
-      onDeleted={() => router.refresh()}
+      onDeleted={() => {
+        if (redirectOnDelete) {
+          router.push("/articles");
+        }
+        router.refresh();
+      }}
       confirmLabel="Delete article"
     />
   );

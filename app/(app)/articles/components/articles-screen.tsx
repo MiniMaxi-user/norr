@@ -9,6 +9,15 @@ import { ArticlesFilters } from "./articles-filters";
 import { ArticlesTable } from "./articles-table";
 import { CreateArticleButton } from "./create-article-button";
 
+// Note: `listReferenceItems("article_unit"/"vat_rate")` were fetched here
+// before issue #123 purely to feed the (now-deleted) `ArticleFormPanel`'s own
+// Unit/VAT selects via `CreateArticleButton`/`ArticlesTable` — the list view
+// itself always displayed those via `ArticleRecord`'s own resolved
+// `article_unit`/`vat_rate` embeds, never those fetched lists directly. Now
+// that create/edit lives on its own `/articles/new`/`/articles/[id]` pages
+// (which fetch their own reference data), this screen only still needs
+// `article_manufacturer` (for `ArticlesFilters`' own Manufacturer select).
+
 const PAGE_SIZE = 20;
 
 export interface ArticlesScreenProps {
@@ -55,12 +64,14 @@ function buildPageHref(params: {
  * skeleton shows while these `await`s resolve (route-level streaming, per
  * docs/ARCHITECTURE.md), same shape `AssetsScreen` uses.
  *
- * Fetches every reference list the Article form needs (`article_unit`/
- * `article_manufacturer`/`vat_rate`, plus the whole Article Group tree) ONCE
- * here and passes them down to `ArticlesFilters`/`ArticlesTable`/
- * `CreateArticleButton` — per this issue's own instruction, these are
- * "passed down from the page, fetched once", unlike `AssetFormDialog`'s
- * self-fetch-on-open pattern.
+ * Fetches the Article Group tree + `article_manufacturer` reference list ONCE
+ * here and passes them down to `ArticlesFilters`' own Group/Manufacturer
+ * selects — the only reference data this list VIEW itself still needs (issue
+ * #123 moved create/edit off this screen entirely, onto their own
+ * `/articles/new`/`/articles/[id]` pages, which fetch their own full set of
+ * reference lists — see the module-level note above these imports).
+ * `CreateArticleButton` is now a bare `Link` to `/articles/new`, needing none
+ * of this data itself.
  */
 export async function ArticlesScreen({
   search,
@@ -77,18 +88,14 @@ export async function ArticlesScreen({
   const isComposite = parseBoolParam(composite);
   const offset = page * PAGE_SIZE;
 
-  const [articlesResult, groupsResult, unitsResult, manufacturersResult, vatRatesResult] = await Promise.all([
+  const [articlesResult, groupsResult, manufacturersResult] = await Promise.all([
     listArticles({ search, groupId, manufacturerItemId, isActive, isComposite, limit: PAGE_SIZE, offset }),
     listArticleGroups(),
-    listReferenceItems("article_unit"),
     listReferenceItems("article_manufacturer"),
-    listReferenceItems("vat_rate"),
   ]);
 
   const groups = flattenArticleGroups(groupsResult.data?.groups ?? []);
-  const units = unitsResult.data?.items ?? [];
   const manufacturers = manufacturersResult.data?.items ?? [];
-  const vatRates = vatRatesResult.data?.items ?? [];
 
   const toolbar = (
     <Toolbar>
@@ -103,9 +110,7 @@ export async function ArticlesScreen({
           composite={composite}
         />
       </Toolbar.Section>
-      <Toolbar.Section align="end">
-        {canCreate && <CreateArticleButton groups={groups} units={units} manufacturers={manufacturers} vatRates={vatRates} />}
-      </Toolbar.Section>
+      <Toolbar.Section align="end">{canCreate && <CreateArticleButton />}</Toolbar.Section>
     </Toolbar>
   );
 
@@ -135,11 +140,7 @@ export async function ArticlesScreen({
               ? "Try a different search term or filter."
               : "Add your first article to start building your catalog."
           }
-          action={
-            canCreate && !hasFilters ? (
-              <CreateArticleButton groups={groups} units={units} manufacturers={manufacturers} vatRates={vatRates} />
-            ) : undefined
-          }
+          action={canCreate && !hasFilters ? <CreateArticleButton /> : undefined}
         />
       </>
     );
@@ -151,15 +152,7 @@ export async function ArticlesScreen({
   return (
     <>
       {toolbar}
-      <ArticlesTable
-        articles={articles}
-        groups={groups}
-        units={units}
-        manufacturers={manufacturers}
-        vatRates={vatRates}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
+      <ArticlesTable articles={articles} canEdit={canEdit} canDelete={canDelete} />
       <Stack gap="sm">
         <Text tone="muted">
           Showing {offset + 1}–{Math.min(offset + articles.length, count)} of {count}

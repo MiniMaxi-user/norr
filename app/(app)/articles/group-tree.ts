@@ -16,7 +16,7 @@ import type { ArticleGroupRecord } from "./groups-actions";
  *
  * Plain functions, no "use client"/"use server" — safe to import from both a
  * Server Component (`articles-screen.tsx`, `reference-lists-board.tsx`) and a
- * Client Component (`article-form-panel.tsx`, `article-group-manager.tsx`).
+ * Client Component (`article-classification-section.tsx`, `article-group-manager.tsx`).
  */
 
 function groupChildrenByParent(groups: ArticleGroupRecord[]): Map<string | null, ArticleGroupRecord[]> {
@@ -41,8 +41,9 @@ export interface FlattenedArticleGroup {
   path: string;
   /** This group's own `parent_group_id`, carried through unchanged — `null`
    * for a depth-0 (top-level) group. Added for issue #98's Group/Subgroup
-   * cascading picker (`article-form-panel.tsx`), which needs to walk a
-   * group's ancestor chain (e.g. to find a depth-2+ group's depth-0
+   * cascading picker (`article-classification-section.tsx`, moved there from
+   * the deleted `article-form-panel.tsx` by issue #123), which needs to walk
+   * a group's ancestor chain (e.g. to find a depth-2+ group's depth-0
    * ancestor) without re-fetching `ArticleGroupRecord[]` itself — every
    * existing caller (`articles-filters.tsx`, `articles-table.tsx`,
    * `article-group-form-dialog.tsx`) only ever reads the pre-existing
@@ -79,4 +80,43 @@ export function buildArticleGroupTree(groups: ArticleGroupRecord[]): ArticleGrou
   }
 
   return build(null);
+}
+
+/** This group's own record from `groups`, or `undefined` if `id` is
+ * unset/no longer exists (e.g. the group was deleted after an article was
+ * assigned to it). Moved here from the old `article-form-panel.tsx` (issue
+ * #123's page conversion) since it's a plain tree-walking helper other
+ * Group/Subgroup cascade UIs want too, not form-specific. */
+export function findArticleGroup(
+  groups: FlattenedArticleGroup[],
+  id: string | null | undefined,
+): FlattenedArticleGroup | undefined {
+  return id ? groups.find((group) => group.id === id) : undefined;
+}
+
+/** Walks a group's `parentId` chain up to its depth-0 (top-level) ancestor —
+ * `""` if `id` doesn't resolve to a real group. Depth-0 groups are their own
+ * top ancestor. */
+export function topArticleGroupAncestorId(groups: FlattenedArticleGroup[], id: string | null | undefined): string {
+  let current = findArticleGroup(groups, id);
+  while (current && current.depth > 0 && current.parentId) {
+    current = findArticleGroup(groups, current.parentId);
+  }
+  return current?.id ?? "";
+}
+
+/** Whether `group` sits anywhere underneath `ancestorId` (any depth, not just
+ * a direct child) — used for the depth-2+ Subgroup fallback in the
+ * Classification section's Group/Subgroup cascade. */
+export function isArticleGroupDescendantOf(
+  groups: FlattenedArticleGroup[],
+  group: FlattenedArticleGroup,
+  ancestorId: string,
+): boolean {
+  let current: FlattenedArticleGroup | undefined = group;
+  while (current?.parentId) {
+    if (current.parentId === ancestorId) return true;
+    current = findArticleGroup(groups, current.parentId);
+  }
+  return false;
 }

@@ -11,32 +11,42 @@ const CANDIDATE_FETCH_LIMIT = 200;
 export interface ArticleComponentsEditorProps {
   parentArticleId: string;
   initialComponents: ArticleComponentLineRecord[];
+  /** A caller without `create`/`update`/`delete` on `articles` (issue #123's
+   * detail-page conversion made this screen reachable by every role, not
+   * just `canEdit`) — hides the add-component row and each line's quantity
+   * input/Remove button, same "hide, not disable" convention every other
+   * section on this screen follows. The server actions this component calls
+   * already re-check `can()` on their own, so this is belt-and-suspenders,
+   * not the actual security boundary. */
+  readOnly?: boolean;
 }
 
 /**
  * The bill-of-materials editor for a composite article (issue #92) — a
  * searchable component picker + quantity, an "Add component" action, and an
  * inline-editable/removable table of already-added components. Only ever
- * rendered once a real `parentArticleId` exists (see `ArticleFormPanel`'s own
- * doc comment on the create-mode BOM-editing approach) — `ArticleFormPanel`
- * only ever mounts this component fresh (conditional rendering, never a prop
+ * rendered once a real `parentArticleId` exists (see `ArticleStatusSection`'s
+ * own doc comment, `article-status-section.tsx`, on the create/edit
+ * sequencing — this component moved from the old `ArticleFormPanel` slide-in
+ * onto the Article detail screen unchanged by issue #123) — its caller only
+ * ever mounts this component fresh (conditional rendering, never a prop
  * update on an already-mounted instance), so its own `useEffect`s below don't
  * need an explicit reset trigger from the caller.
  *
  * The component picker is a `Combobox` (per this issue's acceptance
  * criteria) backed by this org's non-composite articles — fetched ONCE per
- * panel open (`listArticles({ isComposite: false, limit: 200 })`), not
- * re-queried per keystroke: `Combobox` (packages/ui/src/combobox.tsx) is a
- * "caller passes the full option list, component filters client-side"
- * primitive with no per-keystroke callback to hang a live server search off
- * of (same contract `AssetModelFormDialog`'s Brand/Type/Sub-type pickers
- * already rely on) — extending that shared primitive with a remote-search
- * mode is a bigger cross-cutting change than this task's scope, so a
- * generous fixed-size fetch is the pragmatic fit here. A catalog with more
- * than 200 non-composite articles would need that follow-up; flagged here
- * rather than silently working around it.
+ * mount (`listArticles({ isComposite: false, limit: 200 })`), not re-queried
+ * per keystroke: `Combobox` (packages/ui/src/combobox.tsx) is a "caller
+ * passes the full option list, component filters client-side" primitive with
+ * no per-keystroke callback to hang a live server search off of (same
+ * contract `AssetModelFormDialog`'s Brand/Type/Sub-type pickers already rely
+ * on) — extending that shared primitive with a remote-search mode is a
+ * bigger cross-cutting change than this task's scope, so a generous
+ * fixed-size fetch is the pragmatic fit here. A catalog with more than 200
+ * non-composite articles would need that follow-up; flagged here rather than
+ * silently working around it.
  */
-export function ArticleComponentsEditor({ parentArticleId, initialComponents }: ArticleComponentsEditorProps) {
+export function ArticleComponentsEditor({ parentArticleId, initialComponents, readOnly }: ArticleComponentsEditorProps) {
   const [components, setComponents] = useState<ArticleComponentLineRecord[]>(initialComponents);
   const [candidates, setCandidates] = useState<ArticleRecord[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(true);
@@ -129,7 +139,7 @@ export function ArticleComponentsEditor({ parentArticleId, initialComponents }: 
               <Table.HeaderCell>Description</Table.HeaderCell>
               <Table.HeaderCell>Quantity</Table.HeaderCell>
               <Table.HeaderCell>Unit</Table.HeaderCell>
-              <Table.HeaderCell align="center">Actions</Table.HeaderCell>
+              {!readOnly && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
             </Table.Row>
           </Table.Head>
           <Table.Body>
@@ -139,44 +149,47 @@ export function ArticleComponentsEditor({ parentArticleId, initialComponents }: 
                 component={component}
                 onRemove={handleRemove}
                 onQuantityChange={handleQuantityChange}
+                readOnly={readOnly}
               />
             ))}
           </Table.Body>
         </Table>
       )}
 
-      <FormGrid columns={3}>
-        <Stack gap="xs">
-          <Label htmlFor="bom-component">Add component</Label>
-          <Combobox
-            id="bom-component"
-            options={options}
-            value={selectedComponentId}
-            onChange={setSelectedComponentId}
-            placeholder={loadingCandidates ? "Loading articles…" : "Search articles…"}
-            disabled={loadingCandidates}
-            clearable
-            emptyMessage="No matching non-composite articles."
-          />
-        </Stack>
-        <Stack gap="xs">
-          <Label htmlFor="bom-quantity">Quantity</Label>
-          <Input
-            id="bom-quantity"
-            type="number"
-            min="0.001"
-            step="0.001"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-          />
-        </Stack>
-        <Stack gap="xs">
-          <Label>&nbsp;</Label>
-          <Button type="button" variant="outline" size="sm" onClick={handleAdd} disabled={adding || loadingCandidates}>
-            {adding ? "Adding…" : "Add component"}
-          </Button>
-        </Stack>
-      </FormGrid>
+      {!readOnly && (
+        <FormGrid columns={3}>
+          <Stack gap="xs">
+            <Label htmlFor="bom-component">Add component</Label>
+            <Combobox
+              id="bom-component"
+              options={options}
+              value={selectedComponentId}
+              onChange={setSelectedComponentId}
+              placeholder={loadingCandidates ? "Loading articles…" : "Search articles…"}
+              disabled={loadingCandidates}
+              clearable
+              emptyMessage="No matching non-composite articles."
+            />
+          </Stack>
+          <Stack gap="xs">
+            <Label htmlFor="bom-quantity">Quantity</Label>
+            <Input
+              id="bom-quantity"
+              type="number"
+              min="0.001"
+              step="0.001"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </Stack>
+          <Stack gap="xs">
+            <Label>&nbsp;</Label>
+            <Button type="button" variant="outline" size="sm" onClick={handleAdd} disabled={adding || loadingCandidates}>
+              {adding ? "Adding…" : "Add component"}
+            </Button>
+          </Stack>
+        </FormGrid>
+      )}
     </Stack>
   );
 }
@@ -185,10 +198,12 @@ function ComponentRow({
   component,
   onRemove,
   onQuantityChange,
+  readOnly,
 }: {
   component: ArticleComponentLineRecord;
   onRemove: (component: ArticleComponentLineRecord) => void;
   onQuantityChange: (componentId: string, quantity: number) => void;
+  readOnly?: boolean;
 }) {
   const [quantity, setQuantity] = useState(String(component.quantity));
   const [saving, setSaving] = useState(false);
@@ -224,26 +239,32 @@ function ComponentRow({
       <Table.Cell>{component.component_article?.article_number ?? "—"}</Table.Cell>
       <Table.Cell>{component.component_article?.description ?? "—"}</Table.Cell>
       <Table.Cell>
-        <Stack gap="xs">
-          <Input
-            aria-label="Quantity"
-            type="number"
-            min="0.001"
-            step="0.001"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            onBlur={commit}
-            disabled={saving || removing}
-          />
-          {error && <Text tone="danger">{error}</Text>}
-        </Stack>
+        {readOnly ? (
+          <Text>{component.quantity}</Text>
+        ) : (
+          <Stack gap="xs">
+            <Input
+              aria-label="Quantity"
+              type="number"
+              min="0.001"
+              step="0.001"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              onBlur={commit}
+              disabled={saving || removing}
+            />
+            {error && <Text tone="danger">{error}</Text>}
+          </Stack>
+        )}
       </Table.Cell>
       <Table.Cell>{component.component_article?.article_unit?.label ?? "—"}</Table.Cell>
-      <Table.Cell align="center">
-        <Button type="button" variant="danger" size="sm" onClick={handleRemoveClick} disabled={saving || removing}>
-          {removing ? "Removing…" : "Remove"}
-        </Button>
-      </Table.Cell>
+      {!readOnly && (
+        <Table.Cell align="center">
+          <Button type="button" variant="danger" size="sm" onClick={handleRemoveClick} disabled={saving || removing}>
+            {removing ? "Removing…" : "Remove"}
+          </Button>
+        </Table.Cell>
+      )}
     </Table.Row>
   );
 }
