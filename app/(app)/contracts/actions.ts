@@ -777,12 +777,21 @@ export async function listContractArticleGroupRules(
   return ok({ rules: (data ?? []) as ContractArticleGroupRuleRecord[] });
 }
 
-/** Creates or updates (upsert on `contract_id, article_group_id`) this
- * contract's rule for an article group. Owner/finance only, matching
+/** Creates or updates (on `contract_id, article_group_id`) this contract's
+ * rule for an article group. Owner/finance only, matching
  * `contract_article_group_rules_insert_owner_or_finance`/`..._update_
  * owner_or_finance`. `articleGroupId` must belong to the contract's own
  * organization — enforced by `validate_contract_article_group_rule_
- * relations` (not re-validated here). */
+ * relations` (not re-validated here).
+ *
+ * Deliberately an explicit lookup + insert-or-update, not a single
+ * `.upsert()`: the table's column grants only permit UPDATE on `is_excluded`
+ * (`contract_id`/`article_group_id` are an immutable pairing — delete +
+ * re-insert to change either side), but `.upsert(...)`'s generated
+ * `INSERT ... ON CONFLICT DO UPDATE SET` names every column passed in,
+ * including those two — and Postgres checks column privileges against that
+ * full SET list at plan time, so it fails with `42501` even on a fresh
+ * insert that never actually hits the conflict path. */
 export async function setContractArticleGroupRule(
   input: unknown,
 ): Promise<ActionResult<{ rule: ContractArticleGroupRuleRecord }>> {
@@ -799,18 +808,30 @@ export async function setContractArticleGroupRule(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("contract_article_group_rules")
-    .upsert(
-      {
-        contract_id: parsed.data.contractId,
-        article_group_id: parsed.data.articleGroupId,
-        is_excluded: parsed.data.isExcluded,
-      },
-      { onConflict: "contract_id,article_group_id" },
-    )
-    .select("*")
-    .single();
+    .select("id")
+    .eq("contract_id", parsed.data.contractId)
+    .eq("article_group_id", parsed.data.articleGroupId)
+    .maybeSingle();
+  if (lookupError) return fail(mapDbError(lookupError));
+
+  const { data, error } = existing
+    ? await supabase
+        .from("contract_article_group_rules")
+        .update({ is_excluded: parsed.data.isExcluded })
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("contract_article_group_rules")
+        .insert({
+          contract_id: parsed.data.contractId,
+          article_group_id: parsed.data.articleGroupId,
+          is_excluded: parsed.data.isExcluded,
+        })
+        .select("*")
+        .single();
 
   if (error) return fail(mapDbError(error));
   return ok({ rule: data as ContractArticleGroupRuleRecord });
@@ -880,9 +901,10 @@ export async function listContractArticleRules(
   return ok({ rules: (data ?? []) as ContractArticleRuleRecord[] });
 }
 
-/** The article-level sibling of `setContractArticleGroupRule` — same upsert
- * shape, against `article_id` instead of `article_group_id`. Owner/finance
- * only. */
+/** The article-level sibling of `setContractArticleGroupRule` — same
+ * lookup + insert-or-update shape (see that function's own doc comment for
+ * why this isn't a plain `.upsert()`), against `article_id` instead of
+ * `article_group_id`. Owner/finance only. */
 export async function setContractArticleRule(
   input: unknown,
 ): Promise<ActionResult<{ rule: ContractArticleRuleRecord }>> {
@@ -899,18 +921,30 @@ export async function setContractArticleRule(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("contract_article_rules")
-    .upsert(
-      {
-        contract_id: parsed.data.contractId,
-        article_id: parsed.data.articleId,
-        is_excluded: parsed.data.isExcluded,
-      },
-      { onConflict: "contract_id,article_id" },
-    )
-    .select("*")
-    .single();
+    .select("id")
+    .eq("contract_id", parsed.data.contractId)
+    .eq("article_id", parsed.data.articleId)
+    .maybeSingle();
+  if (lookupError) return fail(mapDbError(lookupError));
+
+  const { data, error } = existing
+    ? await supabase
+        .from("contract_article_rules")
+        .update({ is_excluded: parsed.data.isExcluded })
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("contract_article_rules")
+        .insert({
+          contract_id: parsed.data.contractId,
+          article_id: parsed.data.articleId,
+          is_excluded: parsed.data.isExcluded,
+        })
+        .select("*")
+        .single();
 
   if (error) return fail(mapDbError(error));
   return ok({ rule: data as ContractArticleRuleRecord });
