@@ -6,11 +6,14 @@ import {
   Badge,
   Button,
   Combobox,
+  Dialog,
   EmptyState,
   FormGrid,
   Heading,
   Inline,
   Label,
+  RadioGroup,
+  RadioGroupItem,
   Select,
   SectionHeader,
   Stack,
@@ -66,13 +69,15 @@ type CoverageRow =
  * exclude marking against the Article Group tree and individual articles,
  * for a future Quote-generation story to consume (not built here).
  *
- * Revision: adding a group rule is now a search-driven `Combobox` flow
- * (`flattenArticleGroups`'s "Parent > Child" path as the searchable label,
- * so a subgroup is reachable directly without browsing the whole tree) —
- * same "search and add," not "browse and toggle every node," pattern
- * `ContractLineItemsSection`'s article picker already uses — replacing the
- * previous full nested `Disclosure` tree render entirely. Existing rules
- * (both groups and individual articles) are now shown under two headings,
+ * Revision: adding a rule is a single "+ Rule" popup (`ContractCoverageRuleDialog`
+ * below, same "+ Article"/"+ Asset" header-action shape every other section
+ * on this page uses) instead of two permanently-visible inline forms — a
+ * radio toggle inside picks group vs. article, then a search-driven
+ * `Combobox` scoped to that choice (`flattenArticleGroups`'s "Parent > Child"
+ * path as the searchable group label, so a subgroup is reachable directly
+ * without browsing the whole tree — same "search and add" pattern
+ * `ContractLineItemsSection`'s article picker already uses). Existing rules
+ * (both groups and individual articles) are shown under two column headings,
  * "Included" (covered by the contract) and "Excluded" (billed separately),
  * each row tagged with a small Group/Article badge and a `<Select>` to
  * change or remove ("No rule") it.
@@ -90,10 +95,7 @@ export function ContractArticleCoverageSection({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [addGroupId, setAddGroupId] = useState("");
-  const [addGroupState, setAddGroupState] = useState<CoverageState>("included");
-  const [addArticleId, setAddArticleId] = useState("");
-  const [addArticleState, setAddArticleState] = useState<CoverageState>("included");
+  const [addOpen, setAddOpen] = useState(false);
 
   const flattenedGroups = useMemo(() => flattenArticleGroups(articleGroups), [articleGroups]);
   const groupPathById = useMemo(() => new Map(flattenedGroups.map((group) => [group.id, group.path])), [flattenedGroups]);
@@ -147,48 +149,14 @@ export function ContractArticleCoverageSection({
     });
   }
 
-  function handleAddGroupRule() {
-    if (!addGroupId) {
-      setError("Select an article group.");
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const result = await setContractArticleGroupRule({
-        contractId,
-        articleGroupId: addGroupId,
-        isExcluded: addGroupState === "included",
-      });
-      if (!result.data) {
-        setError(result.error ?? "Could not add this rule.");
-        return;
-      }
-      setAddGroupId("");
-      setAddGroupState("included");
-      router.refresh();
-    });
-  }
-
-  function handleAddArticleRule() {
-    if (!addArticleId) {
-      setError("Select an article.");
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const result = await setContractArticleRule({
-        contractId,
-        articleId: addArticleId,
-        isExcluded: addArticleState === "included",
-      });
-      if (!result.data) {
-        setError(result.error ?? "Could not add this rule.");
-        return;
-      }
-      setAddArticleId("");
-      setAddArticleState("included");
-      router.refresh();
-    });
+  async function handleAddRule(kind: "group" | "article", id: string, state: CoverageState): Promise<{ ok: boolean; error?: string }> {
+    const result =
+      kind === "group"
+        ? await setContractArticleGroupRule({ contractId, articleGroupId: id, isExcluded: state === "included" })
+        : await setContractArticleRule({ contractId, articleId: id, isExcluded: state === "included" });
+    if (!result.data) return { ok: false, error: result.error ?? "Could not add this rule." };
+    router.refresh();
+    return { ok: true };
   }
 
   const groupOptions: ComboboxOption[] = flattenedGroups
@@ -244,64 +212,18 @@ export function ContractArticleCoverageSection({
 
   return (
     <Stack gap="lg">
-      <SectionHeader icon={Boxes} title="Article coverage" />
+      <SectionHeader
+        icon={Boxes}
+        title="Article coverage"
+        actions={
+          canCreate && (
+            <Button type="button" variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+              + Rule
+            </Button>
+          )
+        }
+      />
       {error && <Text tone="danger">{error}</Text>}
-
-      {canCreate && (
-        <Stack gap="md">
-          <Stack gap="xs">
-            <Text tone="muted">Add an article group (or subgroup):</Text>
-            <Inline gap="sm" align="center">
-              <div style={{ flex: 1 }}>
-                <Label htmlFor="contract-coverage-add-group">Article group</Label>
-                <Combobox
-                  id="contract-coverage-add-group"
-                  options={groupOptions}
-                  value={addGroupId}
-                  onChange={setAddGroupId}
-                  placeholder="Search groups and subgroups…"
-                  emptyMessage="No matching groups"
-                />
-              </div>
-              <Select aria-label="Coverage" value={addGroupState} onChange={(event) => setAddGroupState(event.target.value as CoverageState)}>
-                <option value="included">Included</option>
-                <option value="excluded">Excluded</option>
-              </Select>
-              <Button type="button" variant="primary" size="sm" onClick={handleAddGroupRule} disabled={!addGroupId || isPending}>
-                Add rule
-              </Button>
-            </Inline>
-          </Stack>
-
-          <Stack gap="xs">
-            <Text tone="muted">Add an individual article:</Text>
-            <Inline gap="sm" align="center">
-              <div style={{ flex: 1 }}>
-                <Label htmlFor="contract-coverage-add-article">Article</Label>
-                <Combobox
-                  id="contract-coverage-add-article"
-                  options={articleOptions}
-                  value={addArticleId}
-                  onChange={setAddArticleId}
-                  placeholder="Search by article number or description…"
-                  emptyMessage="No matching articles"
-                />
-              </div>
-              <Select
-                aria-label="Coverage"
-                value={addArticleState}
-                onChange={(event) => setAddArticleState(event.target.value as CoverageState)}
-              >
-                <option value="included">Included</option>
-                <option value="excluded">Excluded</option>
-              </Select>
-              <Button type="button" variant="primary" size="sm" onClick={handleAddArticleRule} disabled={!addArticleId || isPending}>
-                Add rule
-              </Button>
-            </Inline>
-          </Stack>
-        </Stack>
-      )}
 
       <FormGrid columns={2}>
         <Stack gap="sm">
@@ -330,6 +252,122 @@ export function ContractArticleCoverageSection({
           )}
         </Stack>
       </FormGrid>
+
+      {addOpen && (
+        <ContractCoverageRuleDialog
+          open
+          onOpenChange={setAddOpen}
+          groupOptions={groupOptions}
+          articleOptions={articleOptions}
+          onSave={handleAddRule}
+        />
+      )}
     </Stack>
+  );
+}
+
+/**
+ * "+ Rule" popup behind `ContractArticleCoverageSection`'s header action —
+ * a radio toggle picks article group vs. individual article, then a search
+ * `Combobox` scoped to that choice. Mirrors `ContractLineItemDialog`'s
+ * Dialog.Header/Body/Footer shape (`./contract-line-items-section.tsx`).
+ */
+function ContractCoverageRuleDialog({
+  open,
+  onOpenChange,
+  groupOptions,
+  articleOptions,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  groupOptions: ComboboxOption[];
+  articleOptions: ComboboxOption[];
+  onSave: (kind: "group" | "article", id: string, state: CoverageState) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [kind, setKind] = useState<"group" | "article">("group");
+  const [lookupId, setLookupId] = useState("");
+  const [coverageState, setCoverageState] = useState<CoverageState>("included");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleKindChange(next: "group" | "article") {
+    setKind(next);
+    setLookupId("");
+    setError(null);
+  }
+
+  async function handleSave() {
+    if (!lookupId) {
+      setError(kind === "group" ? "Select an article group." : "Select an article.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    const result = await onSave(kind, lookupId, coverageState);
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? "Could not add this rule.");
+      return;
+    }
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
+      <Dialog.Header>
+        <Text>Add rule</Text>
+      </Dialog.Header>
+      <Dialog.Body>
+        <Stack gap="md">
+          {error && <Text tone="danger">{error}</Text>}
+
+          <RadioGroup>
+            <Inline gap="md">
+              <Label>
+                <RadioGroupItem name="contract-coverage-rule-kind" checked={kind === "group"} onChange={() => handleKindChange("group")} />{" "}
+                Article group
+              </Label>
+              <Label>
+                <RadioGroupItem name="contract-coverage-rule-kind" checked={kind === "article"} onChange={() => handleKindChange("article")} />{" "}
+                Article
+              </Label>
+            </Inline>
+          </RadioGroup>
+
+          <Stack gap="xs">
+            <Label htmlFor="contract-coverage-rule-lookup">{kind === "group" ? "Article group" : "Article"}</Label>
+            <Combobox
+              id="contract-coverage-rule-lookup"
+              options={kind === "group" ? groupOptions : articleOptions}
+              value={lookupId}
+              onChange={setLookupId}
+              placeholder={kind === "group" ? "Search groups and subgroups…" : "Search by article number or description…"}
+              emptyMessage={kind === "group" ? "No matching groups" : "No matching articles"}
+            />
+          </Stack>
+
+          <Stack gap="xs">
+            <Label htmlFor="contract-coverage-rule-state">Coverage</Label>
+            <Select
+              id="contract-coverage-rule-state"
+              value={coverageState}
+              onChange={(event) => setCoverageState(event.target.value as CoverageState)}
+            >
+              <option value="included">Included</option>
+              <option value="excluded">Excluded</option>
+            </Select>
+          </Stack>
+        </Stack>
+      </Dialog.Body>
+      <Dialog.Footer>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving…" : "Add rule"}
+        </Button>
+      </Dialog.Footer>
+    </Dialog>
   );
 }
