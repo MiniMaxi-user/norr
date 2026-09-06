@@ -7,6 +7,7 @@ import {
   Button,
   Combobox,
   EmptyState,
+  FormGrid,
   Heading,
   Inline,
   Label,
@@ -206,7 +207,7 @@ export function ContractArticleCoverageSection({
     return (
       <Inline gap="sm" align="center" justify="between">
         <Inline gap="xs" align="center">
-          <Badge variant="muted">{row.kind === "group" ? "Group" : "Article"}</Badge>
+          <Badge variant={row.kind === "group" ? "accent" : "success"}>{row.kind === "group" ? "Group" : "Article"}</Badge>
           <Text>{row.label}</Text>
         </Inline>
         <Inline gap="xs" align="center">
@@ -302,31 +303,33 @@ export function ContractArticleCoverageSection({
         </Stack>
       )}
 
-      <Stack gap="sm">
-        <Heading level={4}>Included</Heading>
-        {includedRows.length === 0 ? (
-          <EmptyState icon={<FileText />} heading="Nothing marked included yet" text="Covered by the contract, excluded from separate invoicing." />
-        ) : (
-          <Stack gap="xs">
-            {includedRows.map((row) => (
-              <RuleRow key={`${row.kind}-${row.id}`} row={row} />
-            ))}
-          </Stack>
-        )}
-      </Stack>
+      <FormGrid columns={2}>
+        <Stack gap="sm">
+          <Heading level={6}>Included</Heading>
+          {includedRows.length === 0 ? (
+            <EmptyState icon={<FileText />} heading="Nothing marked included yet" text="Covered by the contract, excluded from separate invoicing." />
+          ) : (
+            <Stack gap="xs">
+              {includedRows.map((row) => (
+                <RuleRow key={`${row.kind}-${row.id}`} row={row} />
+              ))}
+            </Stack>
+          )}
+        </Stack>
 
-      <Stack gap="sm">
-        <Heading level={4}>Excluded</Heading>
-        {excludedRows.length === 0 ? (
-          <EmptyState icon={<FileText />} heading="Nothing marked excluded yet" text="Explicitly not covered — billed separately." />
-        ) : (
-          <Stack gap="xs">
-            {excludedRows.map((row) => (
-              <RuleRow key={`${row.kind}-${row.id}`} row={row} />
-            ))}
-          </Stack>
-        )}
-      </Stack>
+        <Stack gap="sm">
+          <Heading level={6}>Excluded</Heading>
+          {excludedRows.length === 0 ? (
+            <EmptyState icon={<FileText />} heading="Nothing marked excluded yet" text="Explicitly not covered — billed separately." />
+          ) : (
+            <Stack gap="xs">
+              {excludedRows.map((row) => (
+                <RuleRow key={`${row.kind}-${row.id}`} row={row} />
+              ))}
+            </Stack>
+          )}
+        </Stack>
+      </FormGrid>
     </Stack>
   );
 }
