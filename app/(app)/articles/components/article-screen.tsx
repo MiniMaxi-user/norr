@@ -6,6 +6,7 @@ import { Breadcrumbs, Button, DetailColumns, Stack, Text, type BreadcrumbItem } 
 import { createArticle, updateArticle, type ArticleComponentLineRecord, type ArticleRecord } from "../actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { FlattenedArticleGroup } from "../group-tree";
+import type { ArticleComponentTreeNode } from "../component-tree";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { ArticleDetailActions } from "../[id]/article-detail-actions";
 import { ArticleHero } from "./article-hero";
@@ -27,6 +28,13 @@ export interface ArticleScreenProps {
   article?: ArticleRecord;
   /** `getArticle`'s own BOM lines — `mode: "edit"` only. */
   components?: ArticleComponentLineRecord[];
+  /** `getArticleComponentTree`'s full recursive descendant tree, rooted at
+   * this article — `mode: "edit"` and `article.is_composite === true` only
+   * (see `loadArticleScreenProps`'s own gate); `undefined` otherwise. Fetched
+   * server-side alongside `article`/`components`, same "passed down from the
+   * page, fetched once" shape every other prop on this screen already
+   * follows (issue #124). */
+  componentTree?: ArticleComponentTreeNode;
   /** Never render an edit affordance RLS would reject — a `planner`/
    * `engineer`/`finance` viewer (plain `read`, per `lib/rbac/permissions.ts`'s
    * `articles` entry) gets a fully read-only render (no pencils anywhere),
@@ -80,6 +88,7 @@ export function ArticleScreen({
   breadcrumbItems,
   article,
   components,
+  componentTree,
   readOnly,
   groups,
   units,
@@ -196,6 +205,7 @@ export function ArticleScreen({
               draft={draft}
               article={article}
               components={components}
+              componentTree={componentTree}
               editing={statusEditing}
               onEditToggle={setStatusEditing}
               readOnly={readOnly}

@@ -7,6 +7,12 @@ import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
 import { articleComponentAddSchema, articleComponentUpdateSchema } from "./schema";
 import type { ArticleComponentLineRecord } from "./actions";
+import {
+  buildArticleComponentTree,
+  type ArticleComponentTreeArticle,
+  type ArticleComponentTreeNode,
+  type FlatArticleComponentRow,
+} from "./component-tree";
 
 /**
  * Server Actions for a composite Article's bill-of-materials
@@ -21,13 +27,19 @@ import type { ArticleComponentLineRecord } from "./actions";
  * write, any member reads — "if you can manage the article database, you can
  * manage its bill-of-materials").
  *
- * The composite/non-composite shape (`parent_article_id` must be
- * `is_composite = true`, `component_article_id` must be
- * `is_composite = false`, no nested composites, no self-reference) is
- * entirely enforced by the DB's `validate_article_component` /
- * `article_components_no_self_reference` — not re-validated here, per this
- * task's scope; `mapDbError`'s existing `23514`/`23503` cases already turn a
- * rejection into a clean message.
+ * `parent_article_id` must be `is_composite = true` and no self-reference —
+ * both entirely enforced by the DB's `validate_article_component` /
+ * `article_components_no_self_reference`, not re-validated here.
+ * `component_article_id` no longer has to be `is_composite = false` (issue
+ * #124): a composite article may now itself be used as a component of
+ * another composite article, at arbitrary nesting depth. In its place,
+ * `validate_article_component` does real cycle detection — attaching a
+ * component is rejected if it would make the parent article reachable from
+ * that component's own descendant tree (see
+ * `supabase/migrations/20260906090000_article_components_allow_nested_composites.sql`).
+ * `mapArticleComponentDbError` below special-cases that rejection's exact
+ * message into a clean one; every other DB rejection here still falls
+ * through to the shared `mapDbError`'s `23514`/`23503` cases.
  */
 
 const uuidSchema = z.string().uuid("Invalid id.");
@@ -71,14 +83,30 @@ export async function listArticleComponents(
 }
 
 /** Maps a DB error from an `article_components` write to a clean, user-safe
- * message. Adds the `23505` (unique_violation) case on top of the shared
- * `mapDbError` — `unique (parent_article_id, component_article_id)` means
- * adding the same component twice to one BOM collides here, same "local
+ * message. Adds two cases on top of the shared `mapDbError`, same "local
  * error mapping on top of the shared one" precedent `mapSiteDbError`/
- * `mapChecklistDbError` establish elsewhere in this codebase. */
+ * `mapChecklistDbError` establish elsewhere in this codebase:
+ *  - `23505` (unique_violation): `unique (parent_article_id,
+ *    component_article_id)` means adding the same component twice to one
+ *    BOM collides here.
+ *  - The cycle rejection `validate_article_component` raises (issue #124,
+ *    `20260906090000_article_components_allow_nested_composites.sql`) —
+ *    Postgres gives every custom `raise exception` the same generic-looking
+ *    `23514` check_violation code (same reasoning `mapDbError`'s own doc
+ *    comment gives for why its `23514` case is one generic message covering
+ *    several unrelated triggers), so the exact message text, not the code,
+ *    is what's matched here. */
 function mapArticleComponentDbError(error: { code?: string; message: string }): string {
   if (error.code === "23505") {
     return "This article is already a component of this composite article. Edit its quantity instead of adding it again.";
+  }
+  if (
+    error.code === "23514" &&
+    error.message.includes(
+      "article_components.component_article_id would create a cycle in the bill of materials",
+    )
+  ) {
+    return "Adding this component would create a circular bill of materials (it — or something it's built from — already contains this article higher up the chain).";
   }
   return mapDbError(error);
 }
@@ -182,4 +210,72 @@ export async function removeArticleComponent(id: string): Promise<ActionResult<{
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Component not found, or you do not have permission to remove it.");
   return ok({ deletedId: data.id as string });
+}
+
+/** Basic display fields for one article inside a component tree — same
+ * field set `ArticleComponentTreeArticle` (`./component-tree.ts`) expects,
+ * shared by the root article fetch and every descendant's `component_article`
+ * embed below so both share one shape. */
+const ARTICLE_COMPONENT_TREE_ARTICLE_SELECT =
+  "id,article_number,description,image_url,is_active,is_composite,unit_item_id,article_unit:reference_list_items!articles_unit_item_id_fkey(value,label,color)";
+
+/**
+ * Full multi-level bill-of-materials tree rooted at `articleId` (issue #124)
+ * — this article's direct components, each of THEIR components, and so on,
+ * arbitrarily deep, now that nested composites are allowed (see this file's
+ * header comment and
+ * `supabase/migrations/20260906090000_article_components_allow_nested_composites.sql`).
+ * Downward only: a component article can belong to many different parent
+ * composites simultaneously in this design, so there's no single
+ * well-defined "root" upward the way Assets' physical-instance model has
+ * (that direction is a separate follow-up, out of scope here).
+ *
+ * Fetches the org's ENTIRE `article_components` table once (RLS already
+ * scopes it to the caller's own org — no `.eq("parent_article_id", ...)`
+ * filter here on purpose) plus `articleId`'s own display fields, then hands
+ * both to `buildArticleComponentTree` (`./component-tree.ts`) to assemble
+ * the actual tree in plain TypeScript — same "one flat fetch, build the
+ * tree in TS" precedent `./group-tree.ts` establishes for `article_groups`.
+ * Any org member with `articles` read access may call this, same gate
+ * `listArticleComponents`/`getArticle` already use.
+ */
+export async function getArticleComponentTree(
+  articleId: string,
+): Promise<ActionResult<{ tree: ArticleComponentTreeNode }>> {
+  const idResult = uuidSchema.safeParse(articleId);
+  if (!idResult.success) return fail("Invalid article id.");
+
+  const ctx = await requireModuleContext("articles");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "articles", "read")) {
+    return fail("You do not have permission to view this article's components.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const [rootResult, rowsResult] = await Promise.all([
+    supabase
+      .from("articles")
+      .select(ARTICLE_COMPONENT_TREE_ARTICLE_SELECT)
+      .eq("id", idResult.data)
+      .maybeSingle(),
+    supabase
+      .from("article_components")
+      .select(
+        `id, parent_article_id, component_article_id, quantity, component_article:articles!article_components_component_article_id_fkey(${ARTICLE_COMPONENT_TREE_ARTICLE_SELECT})`,
+      ),
+  ]);
+
+  if (rootResult.error) return fail(mapDbError(rootResult.error));
+  if (!rootResult.data) {
+    return fail("Article not found, or you do not have permission to view it.");
+  }
+  if (rowsResult.error) return fail(mapDbError(rowsResult.error));
+
+  const tree = buildArticleComponentTree(
+    rootResult.data as unknown as ArticleComponentTreeArticle,
+    (rowsResult.data ?? []) as unknown as FlatArticleComponentRow[],
+  );
+
+  return ok({ tree });
 }

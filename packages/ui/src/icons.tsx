@@ -362,3 +362,17 @@ export const AlignLeft = createIcon("AlignLeft", (
     <path d="M4 18.5h13" />
   </>
 ));
+
+// A "composite/composition" section header (issue #125: an Asset's
+// component tree; a near-identical Articles bill-of-materials follow-up
+// reuses it too) — one parent node branching into two child nodes, distinct
+// from `Boxes`' single-item crate glyph.
+export const Network = createIcon("Network", (
+  <>
+    <circle cx={12} cy={4.5} r={2.25} />
+    <circle cx={5.5} cy={19} r={2.25} />
+    <circle cx={18.5} cy={19} r={2.25} />
+    <path d="M12 6.75V11" />
+    <path d="M5.5 16.75V13a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v3.75" />
+  </>
+));

@@ -5,6 +5,7 @@ import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissio
 import { getArticle } from "../actions";
 import { listArticleGroups } from "../groups-actions";
 import { flattenArticleGroups } from "../group-tree";
+import { getArticleComponentTree } from "../components-actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import type { ArticleScreenProps } from "../components/article-screen";
 
@@ -33,17 +34,22 @@ export async function loadArticleScreenProps(
   const canEdit = can(actor, "articles", "update");
   const canDelete = can(actor, "articles", "delete");
 
-  const [groupsResult, unitsResult, manufacturersResult, vatRatesResult] = await Promise.all([
+  const [groupsResult, unitsResult, manufacturersResult, vatRatesResult, componentTreeResult] = await Promise.all([
     listArticleGroups(),
     listReferenceItems("article_unit"),
     listReferenceItems("article_manufacturer"),
     listReferenceItems("vat_rate"),
+    // Only a composite article has a bill-of-materials tree worth fetching —
+    // matches `ArticleStatusSection`'s own `isCompositePersisted` gate on the
+    // rendering side, so a plain article never pays for this extra query.
+    article.is_composite ? getArticleComponentTree(id) : null,
   ]);
 
   return {
     mode: "edit",
     article,
     components,
+    componentTree: componentTreeResult?.data?.tree,
     readOnly: !canEdit,
     groups: flattenArticleGroups(groupsResult.data?.groups ?? []),
     units: unitsResult.data?.items ?? [],

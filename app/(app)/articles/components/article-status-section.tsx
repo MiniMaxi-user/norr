@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge, Button, Checkbox, EditableSection, Heading, Inline, Label, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Checkbox, CompositionTree, EditableSection, Heading, Inline, Label, Stack, Text } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ArticleComponentLineRecord, ArticleRecord } from "../actions";
+import type { ArticleComponentTreeNode } from "../component-tree";
 import type { ArticleDraft } from "./article-draft";
 import { ArticleComponentsEditor } from "./article-components-editor";
 
@@ -15,6 +16,10 @@ export interface ArticleStatusSectionProps {
    * itself — `mode: "edit"` only, `undefined` in `mode: "create"` (nothing to
    * fetch yet). */
   components?: ArticleComponentLineRecord[];
+  /** `getArticleComponentTree`'s full recursive descendant tree, rooted at
+   * this article — `mode: "edit"` and `article.is_composite === true` only
+   * (see `ArticleScreenProps.componentTree`'s own doc comment). */
+  componentTree?: ArticleComponentTreeNode;
   editing: boolean;
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
@@ -52,6 +57,7 @@ export function ArticleStatusSection({
   draft,
   article,
   components,
+  componentTree,
   editing,
   onEditToggle,
   readOnly,
@@ -146,10 +152,44 @@ export function ArticleStatusSection({
           ) : !isCompositePersisted ? (
             <Text tone="muted">Save your changes above first to start adding components.</Text>
           ) : (
-            <ArticleComponentsEditor parentArticleId={article!.id} initialComponents={components ?? []} readOnly={readOnly} />
+            <Stack gap="md">
+              {componentTree && (
+                <CompositionTree
+                  root={componentTree}
+                  getChildren={(node) => node.children}
+                  getKey={(node) => node.componentId ?? node.article.id}
+                  renderNode={(node) => <ArticleComponentTreeNodeContent node={node} />}
+                />
+              )}
+              <ArticleComponentsEditor parentArticleId={article!.id} initialComponents={components ?? []} readOnly={readOnly} />
+            </Stack>
           )}
         </Stack>
       )}
     </Stack>
+  );
+}
+
+/**
+ * One `CompositionTree` node's card content for an Article's bill-of-
+ * materials (issue #124) — the root node (`componentId: null`, this
+ * article itself) shows no quantity badge (its `quantity: 1` is a
+ * placeholder, not a real BOM-line value); every descendant shows the
+ * quantity of it one unit of its own parent consumes.
+ */
+function ArticleComponentTreeNodeContent({ node }: { node: ArticleComponentTreeNode }) {
+  return (
+    <Inline gap="xs" align="center" wrap>
+      <Text className="ui-row-title">{node.article.article_number}</Text>
+      <Text tone="muted">{node.article.description}</Text>
+      {!node.article.is_active && <Badge variant="muted">Inactive</Badge>}
+      {node.article.is_composite && <Badge variant="accent">Composite</Badge>}
+      {node.componentId !== null && (
+        <Badge variant="muted">
+          ×{node.quantity}
+          {node.article.article_unit ? ` ${node.article.article_unit.label}` : ""}
+        </Badge>
+      )}
+    </Inline>
   );
 }

@@ -22,11 +22,20 @@
 -- CRUD" write shape (contracts' owner-or-finance shape's sibling, reusing
 -- current_member_role the same way) — coverage below proves administratie's
 -- own direct writes succeed, not just that other roles are rejected.
+--
+-- Section 4 (article_components) was updated for issue #124
+-- (20260906090000_article_components_allow_nested_composites.sql), which
+-- REVERSED the original "no nested composites" restriction: a composite
+-- article may now be used as a component of another composite article, and
+-- validate_article_is_composite_flip was dropped entirely. What used to be
+-- tested as rejections (a composite component, flipping an in-use component
+-- to is_composite = true) are now asserted as successes, and a new test
+-- covers the cycle-detection guard that replaced the old flat-only shape.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(48);
+select plan(49);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with owner/administratie/finance (a non-write role for
@@ -370,9 +379,10 @@ select is(
 select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
 
 -- ---------------------------------------------------------------------------
--- 4. article_components: BOM happy path, self-reference, composite/
---    non-composite shape enforcement (both directions), cross-org
---    rejection, and the is_composite-flip back-door closure.
+-- 4. article_components: BOM happy path, self-reference, parent-must-be-
+--    composite enforcement, cross-org rejection, nested composites (issue
+--    #124, now allowed), and cycle detection (issue #124, replaces the old
+--    flat-only shape).
 -- ---------------------------------------------------------------------------
 select lives_ok(
   $$ insert into public.article_components (id, parent_article_id, component_article_id, quantity)
@@ -414,13 +424,19 @@ select lives_ok(
   'a second composite article (ART-COMP-2, not yet used as anyone''s component) can be created directly with is_composite = true'
 ); -- 38
 
+select lives_ok(
+  $$ insert into public.article_components (id, parent_article_id, component_article_id, quantity)
+     values ('f6000000-0000-0000-0000-00000000000d', 'f5000000-0000-0000-0000-00000000000e', 'f5000000-0000-0000-0000-00000000000b', 1) $$,
+  'component_article_id can itself be composite (ART-COMP is composite) — nested composites are now allowed (issue #124): ART-COMP-2 is built partly from ART-COMP'
+); -- 39
+
 select throws_ok(
   $$ insert into public.article_components (parent_article_id, component_article_id, quantity)
-     values ('f5000000-0000-0000-0000-00000000000e', 'f5000000-0000-0000-0000-00000000000b', 1) $$,
+     values ('f5000000-0000-0000-0000-00000000000b', 'f5000000-0000-0000-0000-00000000000e', 1) $$,
   '23514',
-  null,
-  'component_article_id cannot itself be composite (ART-COMP is composite) — nested composites are rejected'
-); -- 39
+  'article_components.component_article_id would create a cycle in the bill of materials',
+  'attaching ART-COMP-2 as a component of ART-COMP is rejected as a cycle — ART-COMP-2 already (transitively) contains ART-COMP itself, from the previous insert'
+); -- 40
 
 select throws_ok(
   $$ insert into public.article_components (parent_article_id, component_article_id, quantity)
@@ -429,32 +445,30 @@ select throws_ok(
   '23514',
   null,
   'component_article_id from a different organization than the parent article is rejected'
-); -- 40
-
-select throws_ok(
-  $$ update public.articles set is_composite = true where id = 'f5000000-0000-0000-0000-00000000000c' $$,
-  '23514',
-  null,
-  'cannot flip an in-use component article (ART-PART-1) to is_composite = true — back-door nested-composite closure'
 ); -- 41
+
+select lives_ok(
+  $$ update public.articles set is_composite = true where id = 'f5000000-0000-0000-0000-00000000000c' $$,
+  'flipping an in-use component article (ART-PART-1) to is_composite = true is no longer blocked (issue #124 dropped validate_article_is_composite_flip entirely)'
+); -- 42
 
 select is(
   (select count(*)::int from public.article_components where parent_article_id = 'f5000000-0000-0000-0000-00000000000b'),
   3,
   'the composite article has exactly 3 BOM lines (part 1, part 2, ART-001) after the valid inserts + rejected attempts above'
-); -- 42
+); -- 43
 
 select lives_ok(
   $$ update public.article_components set quantity = 3 where id = 'f6000000-0000-0000-0000-00000000000a' $$,
   'owner_a can update a BOM line''s quantity in place'
-); -- 43
+); -- 44
 
 select throws_ok(
   $$ update public.article_components set parent_article_id = 'f5000000-0000-0000-0000-00000000000e' where id = 'f6000000-0000-0000-0000-00000000000a' $$,
   '42501',
   null,
   'parent_article_id is not updatable after creation (column excluded from the UPDATE grant)'
-); -- 44
+); -- 45
 
 -- ---------------------------------------------------------------------------
 -- 5. Cross-tenant isolation: owner_b sees none of org_a''s Articles-module
@@ -466,19 +480,19 @@ select is(
   (select count(*)::int from public.articles where organization_id = 'f1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s articles'
-); -- 45
+); -- 46
 
 select is(
   (select count(*)::int from public.article_groups where organization_id = 'f1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s article_groups'
-); -- 46
+); -- 47
 
 select is(
   (select count(*)::int from public.article_components where organization_id = 'f1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s article_components'
-); -- 47
+); -- 48
 
 select throws_ok(
   $$ insert into public.articles (organization_id, article_number, description)
@@ -486,7 +500,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT an article into org_a (not is_org_owner/administratie of org_a)'
-); -- 48
+); -- 49
 
 select * from finish();
 rollback;

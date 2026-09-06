@@ -178,6 +178,7 @@ export { KeyValueList, type KeyValueListProps, type KeyValueListItem } from "./c
 export { Callout, type CalloutProps } from "./components/callout";
 export { EditableSection, type EditableSectionProps } from "./components/editable-section";
 export { Timeline, type TimelineProps, type TimelineRowProps, type TimelineBlockProps } from "./components/timeline";
+export { CompositionTree, type CompositionTreeProps } from "./components/composition-tree";
 export {
   MapSurface,
   MapPinPopup,

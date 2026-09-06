@@ -19,6 +19,7 @@ import { AssetNotesSection } from "./asset-notes-section";
 import { AssetRecentActivities, type RecentAssetActivityItem } from "./asset-recent-activities";
 import { useAssetContracts } from "./use-asset-contracts";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
+import { AssetCompositeSection } from "./asset-composite-section";
 
 export interface AssetScreenProps {
   mode: "create" | "edit";
@@ -385,6 +386,14 @@ export function AssetScreen({
           </Stack>
         }
       />
+
+      {mode === "edit" && asset && (
+        // A full-width block below the two columns rather than squeezed into
+        // either — the composition tree can get wide/deep enough (multi-layer
+        // assemblies) that a half-width column would cramp it (see this
+        // screen's own module doc comment / the task's own layout note).
+        <AssetCompositeSection assetId={asset.id} assetName={draft.name || asset.name} readOnly={readOnly} />
+      )}
 
       {mode === "edit" && asset && deleting && (
         <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />

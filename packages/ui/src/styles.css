@@ -4464,3 +4464,116 @@ a.ui-relation-card-title:hover {
 .ui-summary-row-reserved {
   padding-right: 7.125rem; /* 0.875rem row inset + 5.5rem reserved actions column + 0.75rem row gap */
 }
+
+/* ---------------------------------------------------------------------- *
+ * CompositionTree — see components/composition-tree.tsx. A generic,
+ * arbitrary-depth rooted tree of cards with classic file-explorer-style
+ * "elbow" connector lines, built on real <ul>/<li> semantics. First caller:
+ * an Asset's composition tree (issue #125); a near-identical Articles
+ * bill-of-materials follow-up reuses this same primitive.
+ * ---------------------------------------------------------------------- */
+.ui-composition-tree,
+.ui-composition-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ui-composition-tree {
+  display: flex;
+  flex-direction: column;
+}
+.ui-composition-tree-node {
+  position: relative;
+}
+.ui-composition-tree-node + .ui-composition-tree-node {
+  margin-top: 0.625rem;
+}
+.ui-composition-tree-children {
+  padding-left: 1.75rem;
+  margin-top: 0.625rem;
+}
+/* The connector "elbow" — a left+bottom border with a rounded inner corner —
+   drawn on each CHILD node (never the root, since the root's own <li> is a
+   direct child of `.ui-composition-tree`, not `.ui-composition-tree-children`,
+   so this selector never matches it). */
+.ui-composition-tree-children > .ui-composition-tree-node {
+  padding-left: 1.375rem;
+}
+.ui-composition-tree-children > .ui-composition-tree-node::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1.375rem;
+  height: 1.5rem;
+  border-left: 1.5px solid var(--ui-border-strong);
+  border-bottom: 1.5px solid var(--ui-border-strong);
+  border-bottom-left-radius: 8px;
+}
+/* The vertical "trunk" line continuing down to the next sibling — stops
+   short on the last child (no dangling line past the final sibling). */
+.ui-composition-tree-children > .ui-composition-tree-node::after {
+  content: "";
+  position: absolute;
+  top: 1.5rem;
+  left: 0;
+  bottom: -0.625rem;
+  border-left: 1.5px solid var(--ui-border-strong);
+}
+.ui-composition-tree-children > .ui-composition-tree-node:last-child::after {
+  display: none;
+}
+.ui-composition-tree-card {
+  position: relative;
+  z-index: 1; /* sits above the connector lines' own absolute positioning */
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+.ui-composition-tree-card-clickable {
+  cursor: pointer;
+  transition: border-color var(--ui-duration-fast) var(--ui-ease), background-color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-composition-tree-card-clickable:hover {
+  background: var(--ui-surface-hover);
+  border-color: var(--ui-accent-tint-border);
+}
+.ui-composition-tree-card-clickable:focus-visible {
+  outline: 2px solid var(--ui-accent-strong);
+  outline-offset: 2px;
+}
+/* The unmistakable "this is the node you asked about" treatment (issue #125:
+   "clearly indicate which asset in the tree this is") — an accent border/
+   background, not just a subtle tint, so it reads at a glance regardless of
+   how deep in the tree it sits. */
+.ui-composition-tree-card-current {
+  background: var(--ui-accent-25, var(--ui-accent-tint));
+  border-color: var(--ui-accent-strong);
+  border-width: 1.5px;
+}
+.ui-composition-tree-card-content {
+  flex: 1;
+  min-width: 0;
+}
+.ui-composition-tree-current-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-accent);
+  color: var(--ui-accent-fg);
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}

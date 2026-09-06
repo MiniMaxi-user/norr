@@ -91,3 +91,37 @@ export type AssetCreateInput = z.infer<typeof assetCreateSchema>;
 export const assetUpdateSchema = assetCreateSchema.partial();
 
 export type AssetUpdateInput = z.infer<typeof assetUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Asset Components (composite/BOM) — issue #125
+// ---------------------------------------------------------------------------
+
+/** `numeric(12,3)`, `> 0` at the DB (`asset_components_quantity_positive`,
+ * `supabase/migrations/20260906100000_asset_components.sql`). Mirrors
+ * `quantitySchema` in `app/(app)/articles/schema.ts` exactly (same
+ * precision/positivity rules) — kept as a separate literal here since this
+ * module doesn't otherwise depend on `app/(app)/articles`. */
+const assetComponentQuantitySchema = z.coerce
+  .number({ invalid_type_error: "Quantity must be a number." })
+  .finite("Quantity must be a finite number.")
+  .positive("Quantity must be greater than zero.")
+  .refine((value) => Math.abs(value - Math.round(value * 1000) / 1000) < 1e-9, {
+    message: "Quantity must have at most 3 decimal places.",
+  });
+
+export const assetComponentAddSchema = z.object({
+  componentAssetId: z.string().uuid("Invalid component asset."),
+  quantity: assetComponentQuantitySchema,
+});
+
+export type AssetComponentAddInput = z.infer<typeof assetComponentAddSchema>;
+
+/** Quantity is the only mutable field on an existing `asset_components` row
+ * — `parent_asset_id`/`component_asset_id` are insert-only (see the
+ * migration's grant comments); to change either side the caller deletes and
+ * re-adds via `addAssetComponent`. */
+export const assetComponentUpdateSchema = z.object({
+  quantity: assetComponentQuantitySchema,
+});
+
+export type AssetComponentUpdateInput = z.infer<typeof assetComponentUpdateSchema>;
