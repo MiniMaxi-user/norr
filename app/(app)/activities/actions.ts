@@ -87,6 +87,11 @@ export interface ActivityRecord {
   organization_id: string;
   client_id: string;
   asset_id: string | null;
+  /** Nullable FK into `contracts` (issue #127), mirroring
+   * `work_orders.contract_id` exactly — see `activityCreateSchema.contractId`
+   * in `./schema.ts`. Must belong to the same `client_id`, enforced by the
+   * widened `validate_activity_relations` DB trigger. */
+  contract_id: string | null;
   type_id: string;
   status_id: string;
   contact_person_id: string | null;
@@ -116,6 +121,11 @@ export interface ActivityRecord {
   /** Embedded via `assets(id, name)`. `null` whenever `asset_id` is `null`
    * (not every activity is about one specific asset). */
   asset: ShallowNamedRecord | null;
+  /** Embedded via `contracts(id, name)` — the only FK from `activities` into
+   * `contracts`, so no `!fkey` disambiguator is needed, same shape as
+   * `WorkOrderRecord.contract` in `app/(app)/work-orders/actions.ts`. `null`
+   * whenever `contract_id` is `null` (no contract linked). */
+  contract: ShallowNamedRecord | null;
   /** Embedded via `contacts(id, name)`. `null` whenever `contact_person_id`
    * is `null` — see `contact_name`/`contact_phone`/`contact_email` for the
    * (never-synced-back) override snapshot instead. */
@@ -136,7 +146,7 @@ export interface ActivityRecord {
  * need in one round trip — same reasoning as `WORK_ORDER_SELECT`/
  * `ASSET_SELECT` in their respective sibling files. */
 const ACTIVITY_SELECT =
-  "*, activity_type:reference_list_items!activities_type_id_fkey(value,label,color,icon), activity_status:reference_list_items!activities_status_id_fkey(value,label,color), client:clients(id,name), asset:assets(id,name), contact_person:contacts(id,name), action_holder:users!activities_action_holder_id_fkey(id,email,full_name), reporter:users!activities_reported_by_fkey(id,email,full_name)";
+  "*, activity_type:reference_list_items!activities_type_id_fkey(value,label,color,icon), activity_status:reference_list_items!activities_status_id_fkey(value,label,color), client:clients(id,name), asset:assets(id,name), contract:contracts(id,name), contact_person:contacts(id,name), action_holder:users!activities_action_holder_id_fkey(id,email,full_name), reporter:users!activities_reported_by_fkey(id,email,full_name)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -217,6 +227,7 @@ function toActivityUpdateRow(input: ReturnType<typeof activityUpdateSchema.parse
   const row: Record<string, unknown> = {};
   if (input.clientId !== undefined) row.client_id = input.clientId;
   if (input.assetId !== undefined) row.asset_id = input.assetId ?? null;
+  if (input.contractId !== undefined) row.contract_id = input.contractId ?? null;
   if (input.typeId !== undefined) row.type_id = input.typeId;
   if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.contactPersonId !== undefined) row.contact_person_id = input.contactPersonId ?? null;
@@ -394,6 +405,7 @@ export async function createActivity(input: unknown): Promise<ActionResult<{ act
   const row: Record<string, unknown> = {
     client_id: clientIdResult.clientId,
     asset_id: parsed.data.assetId ?? null,
+    contract_id: parsed.data.contractId ?? null,
     type_id: parsed.data.typeId,
     contact_person_id: parsed.data.contactPersonId ?? null,
     contact_name: parsed.data.contactName ?? null,

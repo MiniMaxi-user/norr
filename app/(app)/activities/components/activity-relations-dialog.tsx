@@ -5,6 +5,7 @@ import { Button, Combobox, Dialog, FormGrid, Label, Select, Stack, Text } from "
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { ContactRecord } from "@/app/(app)/clients/contacts-actions";
+import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ActivityDraft } from "./activity-draft";
 
@@ -27,21 +28,29 @@ export interface ActivityRelationsDialogProps {
   clientScoped: {
     assets: AssetRecord[];
     contacts: ContactRecord[];
+    contracts: ContractRecord[];
     loadingAssets: boolean;
     loadingContacts: boolean;
+    loadingContracts: boolean;
   };
   /** Re-fetches `clientScoped` for the newly-picked client — see
    * `ActivityScreen`'s own `scopingClientId` state. */
   onClientChange: (clientId: string) => void;
   onSave: (
-    patch: Pick<ActivityDraft, "clientId" | "assetId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail">,
+    patch: Pick<
+      ActivityDraft,
+      "clientId" | "assetId" | "contractId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail"
+    >,
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
- * Small popup behind every Client/Asset/Contact-person `RelationCard`'s own
- * Edit button — NARROWED by the issue #118 redesign to only these three
- * relations. Type used to live in this same dialog but now has its own
+ * Small popup behind every Client/Asset/Contract/Contact-person
+ * `RelationCard`'s own Edit button — NARROWED by the issue #118 redesign to
+ * only Client/Asset/Contact-person, then WIDENED by issue #127 to also cover
+ * Contract (mirroring `activities.contract_id`'s own single-FK shape, same
+ * "picked through the edit-only relations dialog" precedent Asset already
+ * set). Type used to live in this same dialog but now has its own
  * always-visible "Type" section (`ActivityTypeSection`, an `IconTileSelect`
  * that saves immediately on tile click, no dialog) — and the Name/Phone/
  * Email contact override fields now live in their own always-visible
@@ -69,6 +78,7 @@ export function ActivityRelationsDialog({
 
   const [clientId, setClientId] = useState(draft.clientId);
   const [assetId, setAssetId] = useState(draft.assetId);
+  const [contractId, setContractId] = useState(draft.contractId);
   const [contactPersonId, setContactPersonId] = useState(draft.contactPersonId);
   const [contactName, setContactName] = useState(draft.contactName);
   const [contactPhone, setContactPhone] = useState(draft.contactPhone);
@@ -85,6 +95,10 @@ export function ActivityRelationsDialog({
     () => clientScoped.assets.map((asset) => ({ value: asset.id, label: asset.name })),
     [clientScoped.assets],
   );
+  const contractOptions = useMemo(
+    () => clientScoped.contracts.map((contract) => ({ value: contract.id, label: contract.name })),
+    [clientScoped.contracts],
+  );
   const contactOptions = useMemo(
     () => clientScoped.contacts.map((contact) => ({ value: contact.id, label: contact.name })),
     [clientScoped.contacts],
@@ -93,6 +107,7 @@ export function ActivityRelationsDialog({
   function handleClientChange(nextClientId: string) {
     setClientId(nextClientId);
     setAssetId("");
+    setContractId("");
     setContactPersonId("");
     onClientChange(nextClientId);
   }
@@ -125,7 +140,7 @@ export function ActivityRelationsDialog({
     }
     setError(null);
     setSaving(true);
-    const result = await onSave({ clientId, assetId, contactPersonId, contactName, contactPhone, contactEmail });
+    const result = await onSave({ clientId, assetId, contractId, contactPersonId, contactName, contactPhone, contactEmail });
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");
@@ -137,7 +152,7 @@ export function ActivityRelationsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="sm">
       <Dialog.Header>
-        <Text>Client, asset &amp; contact</Text>
+        <Text>Client, asset, contract &amp; contact</Text>
       </Dialog.Header>
       <Dialog.Body>
         <Stack gap="md">
@@ -193,6 +208,20 @@ export function ActivityRelationsDialog({
             )}
           </FormGrid>
           {assetRequired && !isAssetLocked && <Text tone="muted">Asset is required for Storing or Onderhoud activities.</Text>}
+
+          <Stack gap="xs">
+            <Label htmlFor="activity-relations-contract">Contract</Label>
+            <Combobox
+              id="activity-relations-contract"
+              options={contractOptions}
+              value={contractId}
+              onChange={setContractId}
+              placeholder={!clientId ? "Select a client first…" : "Search contracts…"}
+              disabled={!clientId || clientScoped.loadingContracts}
+              clearable
+              emptyMessage="No contracts for this client."
+            />
+          </Stack>
 
           <Stack gap="xs">
             <Label htmlFor="activity-relations-contact-person">Contact person</Label>

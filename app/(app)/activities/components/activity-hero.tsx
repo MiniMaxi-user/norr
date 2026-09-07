@@ -4,13 +4,14 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { Badge, FormGrid, IconButton, RecordHeroBand, RelationCard } from "@yourorg/ui";
-import { Boxes, Building2, Clock, Pencil, Phone } from "@yourorg/ui/icons";
+import { Boxes, Building2, Clock, FileText, Pencil, Phone } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContactRecord } from "@/app/(app)/clients/contacts-actions";
+import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { formatDurationSince } from "@/lib/format/date";
+import { formatDate, formatDurationSince } from "@/lib/format/date";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import type { ActivityDraft } from "./activity-draft";
 import { ActivityRelationsDialog } from "./activity-relations-dialog";
@@ -31,21 +32,26 @@ export interface ActivityHeroProps {
     assets: AssetRecord[];
     contacts: ContactRecord[];
     sites: SiteRecord[];
+    contracts: ContractRecord[];
     loadingAssets: boolean;
     loadingContacts: boolean;
+    loadingContracts: boolean;
   };
   readOnly?: boolean;
   actions?: ReactNode;
   onClientChange: (clientId: string) => void;
   onRelationsSave: (
-    patch: Pick<ActivityDraft, "clientId" | "assetId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail">,
+    patch: Pick<
+      ActivityDraft,
+      "clientId" | "assetId" | "contractId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail"
+    >,
   ) => Promise<{ ok: boolean; error?: string }>;
   onStatusSave: (patch: Pick<ActivityDraft, "statusId">) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
- * The full-bleed dark hero band + the Client/Asset/Contact relation cards at
- * the top of the Activity detail/create screen
+ * The full-bleed dark hero band + the Client/Asset/Contract/Contact relation
+ * cards at the top of the Activity detail/create screen
  * (`.design-handoff/melding_detail/README.md`) — the Activity equivalent of
  * `WorkOrderHero`, rebuilt for issue #118's Pattern A redesign:
  *
@@ -67,8 +73,9 @@ export interface ActivityHeroProps {
  *
  * Still owns the two small popups (`ActivityStatusDialog`/
  * `ActivityRelationsDialog`, the latter NARROWED by issue #118 to only
- * Client/Asset/Contact-person — see that component's own doc comment)
- * behind the status pencil and the relation cards' own Edit buttons.
+ * Client/Asset/Contact-person, then widened by issue #127 to also cover
+ * Contract — see that component's own doc comment) behind the status pencil
+ * and the relation cards' own Edit buttons.
  */
 export function ActivityHero({
   mode,
@@ -102,6 +109,19 @@ export function ActivityHero({
     ? (clientScoped.contacts.find((candidate) => candidate.id === draft.contactPersonId) ?? null)
     : null;
   const hasContactFacts = Boolean(resolvedContact?.name ?? draft.contactName);
+  // Contract relation card — client-scoped list first (full `ContractRecord`,
+  // resolves the subtitle below), falling back to the server-embedded shallow
+  // `activity.contract` ({id, name} only, per `../actions.ts`) for the
+  // instant before `clientScoped.contracts` has loaded — same fallback gap
+  // `resolvedContact` already has, no subtitle available in that state. Kept
+  // as two separate values (rather than one narrowed union) since
+  // `ContractRecord`/`ShallowNamedRecord` share no discriminant TS can narrow
+  // on cleanly.
+  const resolvedContractFull = draft.contractId
+    ? (clientScoped.contracts.find((candidate) => candidate.id === draft.contractId) ?? null)
+    : null;
+  const resolvedContract =
+    resolvedContractFull ?? (draft.contractId && activity?.contract?.id === draft.contractId ? activity.contract : null);
 
   const selectedType = activityTypes.find((item) => item.id === draft.typeId);
   const statusLabel = activityStatuses.find((item) => item.id === draft.statusId)?.label ?? activity?.activity_status?.label;
@@ -131,6 +151,18 @@ export function ActivityHero({
     [resolvedAsset?.asset_type?.label ?? null, formatSiteAddressShort(assetSite)]
       .filter((part): part is string => Boolean(part))
       .join(" · ") || undefined;
+
+  // Contract relation card subtitle — "{contract_type.label} · from {start_date}",
+  // mirroring `AssetRelationCards`' own Contract card subtitle exactly. Only
+  // available once `clientScoped.contracts` has resolved the full
+  // `ContractRecord` — the shallow `activity.contract` fallback has no
+  // `contract_type`/`start_date` to build a subtitle from, same degraded
+  // fallback state `resolvedContact`'s own fallback already has.
+  const contractSubtitle = resolvedContractFull
+    ? [resolvedContractFull.contract_type?.label ?? null, `from ${formatDate(resolvedContractFull.start_date)}`]
+        .filter((part): part is string => Boolean(part))
+        .join(" · ") || undefined
+    : undefined;
 
   const meta: ReactNode[] = [
     <span className="ui-record-hero-band-meta-badges" key="status">
@@ -177,7 +209,7 @@ export function ActivityHero({
         noStats
       />
 
-      <FormGrid columns={3}>
+      <FormGrid columns={4}>
         <RelationCard
           icon={Building2}
           label="Client"
@@ -193,6 +225,15 @@ export function ActivityHero({
           title={resolvedAsset ? <Link href={`/assets/${resolvedAsset.id}`}>{resolvedAsset.name}</Link> : undefined}
           subtitle={assetSubtitle}
           emptyText="No specific asset"
+          onEdit={readOnly ? undefined : () => setRelationsOpen(true)}
+        />
+        <RelationCard
+          icon={FileText}
+          label="Contract"
+          loading={clientScoped.loadingContracts && Boolean(draft.contractId) && !resolvedContract}
+          title={resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{resolvedContract.name}</Link> : undefined}
+          subtitle={contractSubtitle}
+          emptyText="No contract"
           onEdit={readOnly ? undefined : () => setRelationsOpen(true)}
         />
         <RelationCard
