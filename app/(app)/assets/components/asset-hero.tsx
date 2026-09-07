@@ -6,7 +6,7 @@ import { Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from
 import { CalendarDays, MapPin, Pencil } from "@yourorg/ui/icons";
 import type { AssetRecord } from "../actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
-import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import type { AssetContractCoverage, ContractRecord } from "@/app/(app)/contracts/actions";
 import type { AssetModelRecord } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
@@ -33,7 +33,7 @@ export interface AssetHeroProps {
   assetStatuses: ReferenceListItemRecord[];
   assetModels: AssetModelRecord[];
   assetBrands: ReferenceListItemRecord[];
-  assetContracts: { contracts: ContractRecord[]; loading: boolean };
+  assetContracts: { coverage: AssetContractCoverage[]; loading: boolean };
   readOnly?: boolean;
   /** The Model/Serial/Warranty/Work orders KPI tiles — computed by
    * `AssetScreen` from data it already fetched/holds, same split
@@ -200,7 +200,7 @@ export function AssetHero({
           open
           onOpenChange={setContractsOpen}
           assetId={asset.id}
-          contracts={assetContracts.contracts}
+          coverage={assetContracts.coverage}
           loading={assetContracts.loading}
           clientContracts={clientScoped.contracts}
           onChange={onContractsChange}

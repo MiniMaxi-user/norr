@@ -486,6 +486,158 @@ export async function listContractsForAsset(assetId: string): Promise<ActionResu
   return ok({ contracts });
 }
 
+/**
+ * A single contract that covers an asset, tagged with WHY it covers it —
+ * either a direct `contract_assets` link on the asset itself, or inherited
+ * from an ancestor in the asset's `asset_components` composition chain (issue
+ * #126 product-owner rule: a contract linked to a composite "main" asset also
+ * covers every sub-asset in that asset's tree). A discriminated union on
+ * `type` (rather than the issue's sketched `"direct" | { inheritedFrom }`
+ * shape) so a `switch`/narrowing on `source.type` is exhaustive and
+ * `viaAsset` is only ever reachable once `type` is confirmed `"inherited"`.
+ */
+export type AssetContractCoverageSource =
+  | { type: "direct" }
+  | { type: "inherited"; viaAsset: { id: string; name: string } };
+
+export interface AssetContractCoverage {
+  contract: ContractRecord;
+  source: AssetContractCoverageSource;
+}
+
+/**
+ * The full set of contracts that cover `assetId`, direct AND inherited —
+ * supersedes `listContractsForAsset` for any caller that needs to render the
+ * "via <parent asset>" distinction (the Assets Contract card's follow-up).
+ * `listContractsForAsset` itself is left untouched (still direct-only) since
+ * nothing outside this file's own module needs to change its existing
+ * behavior.
+ *
+ * Two parts:
+ *  1. Direct: contracts linked to `assetId` itself via `contract_assets`
+ *     (identical query to `listContractsForAsset`).
+ *  2. Inherited: walk UP the `asset_components` chain from `assetId` — at
+ *     most one hop matches per level (`component_asset_id` is unique across
+ *     the whole table, see `getAssetCompositionTree`'s own up-walk in
+ *     `app/(app)/assets/components-actions.ts`, mirrored here rather than
+ *     re-derived differently), depth-capped defensively at 100 — then fetch
+ *     every contract directly linked to any ancestor found along that chain.
+ *
+ * Dedupe: a contract directly linked to `assetId` AND (unusually) also linked
+ * to one of its ancestors is only returned once, as `"direct"` (the more
+ * specific/authoritative link) — never duplicated as both. Among purely
+ * inherited contracts, if the same contract is somehow linked to more than
+ * one ancestor in the chain (also unusual — remember the chain is a single
+ * linear walk, so this only happens if an owner links the same contract to
+ * two different ancestors), the CLOSEST ancestor wins for the `viaAsset`
+ * subtitle (ancestors are walked nearest-to-farthest, first-seen-wins).
+ *
+ * Same RBAC gate as `listContractsForAsset`/`countContractsForAsset`
+ * (`canAny(actor, "contracts", ["read"])`, any org member) — this only reads
+ * `contract_assets` and `asset_components`, both already readable by any org
+ * member per their own RLS (`asset_components_select_member`), so no new
+ * permission surface. Ordinary RLS-scoped client throughout, never
+ * service-role.
+ */
+export async function listAssetContractCoverage(
+  assetId: string,
+): Promise<ActionResult<{ coverage: AssetContractCoverage[] }>> {
+  const idResult = uuidSchema.safeParse(assetId);
+  if (!idResult.success) return fail("Invalid asset id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this asset's contracts.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // Direct: identical query to `listContractsForAsset`.
+  const { data: directRows, error: directError } = await supabase
+    .from("contract_assets")
+    .select(`contract:contracts(${CONTRACT_SELECT})`)
+    .eq("asset_id", idResult.data)
+    .order("created_at", { ascending: false });
+  if (directError) return fail(mapDbError(directError));
+
+  const coverage: AssetContractCoverage[] = [];
+  const seenContractIds = new Set<string>();
+  for (const row of directRows ?? []) {
+    const contract = (row as unknown as { contract: ContractRecord | null }).contract;
+    if (!contract || seenContractIds.has(contract.id)) continue;
+    seenContractIds.add(contract.id);
+    coverage.push({ contract, source: { type: "direct" } });
+  }
+
+  // Walk UP the composition chain to find every ancestor, nearest first.
+  // Single linear chain (`asset_components.component_asset_id` is unique) —
+  // never a fan-out — same depth cap as `getAssetCompositionTree`.
+  const ancestorIds: string[] = [];
+  let current = idResult.data;
+  for (let depth = 0; depth < 100; depth++) {
+    const { data: parentLink, error: parentError } = await supabase
+      .from("asset_components")
+      .select("parent_asset_id")
+      .eq("component_asset_id", current)
+      .maybeSingle();
+    if (parentError) return fail(mapDbError(parentError));
+    if (!parentLink) break;
+    const parentId = parentLink.parent_asset_id as string;
+    ancestorIds.push(parentId);
+    current = parentId;
+  }
+
+  if (ancestorIds.length === 0) {
+    return ok({ coverage });
+  }
+
+  const [{ data: ancestorAssets, error: ancestorAssetsError }, { data: ancestorLinkRows, error: ancestorLinksError }] =
+    await Promise.all([
+      supabase.from("assets").select("id,name").in("id", ancestorIds),
+      supabase
+        .from("contract_assets")
+        .select(`asset_id, contract:contracts(${CONTRACT_SELECT})`)
+        .in("asset_id", ancestorIds)
+        .order("created_at", { ascending: false }),
+    ]);
+  if (ancestorAssetsError) return fail(mapDbError(ancestorAssetsError));
+  if (ancestorLinksError) return fail(mapDbError(ancestorLinksError));
+
+  const ancestorNameById = new Map<string, string>();
+  for (const asset of ancestorAssets ?? []) {
+    ancestorNameById.set(asset.id as string, asset.name as string);
+  }
+
+  const linksByAncestorId = new Map<string, { contract: ContractRecord | null }[]>();
+  for (const row of ancestorLinkRows ?? []) {
+    const typedRow = row as unknown as { asset_id: string; contract: ContractRecord | null };
+    const list = linksByAncestorId.get(typedRow.asset_id);
+    if (list) list.push(typedRow);
+    else linksByAncestorId.set(typedRow.asset_id, [typedRow]);
+  }
+
+  // Nearest ancestor first, so a contract linked to more than one ancestor
+  // (unusual) resolves its `viaAsset` to the closest one, first-seen-wins.
+  for (const ancestorId of ancestorIds) {
+    const links = linksByAncestorId.get(ancestorId) ?? [];
+    const ancestorName = ancestorNameById.get(ancestorId);
+    if (!ancestorName) continue; // ancestor asset not found/readable — skip defensively
+    for (const link of links) {
+      const contract = link.contract;
+      if (!contract || seenContractIds.has(contract.id)) continue;
+      seenContractIds.add(contract.id);
+      coverage.push({
+        contract,
+        source: { type: "inherited", viaAsset: { id: ancestorId, name: ancestorName } },
+      });
+    }
+  }
+
+  return ok({ coverage });
+}
+
 const linkContractAssetSchema = z.object({
   contractId: z.string().uuid("Invalid contract id."),
   assetId: z.string().uuid("Invalid asset id."),

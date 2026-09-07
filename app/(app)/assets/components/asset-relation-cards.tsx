@@ -5,7 +5,7 @@ import { FormGrid, RelationCard } from "@yourorg/ui";
 import { Boxes, Building2, FileText, MapPin } from "@yourorg/ui/icons";
 import type { AssetRecord } from "../actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
-import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import type { AssetContractCoverage } from "@/app/(app)/contracts/actions";
 import type { AssetModelRecord } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
@@ -37,7 +37,7 @@ export interface AssetRelationCardsProps {
   assetTypes: ReferenceListItemRecord[];
   assetModels: AssetModelRecord[];
   assetBrands: ReferenceListItemRecord[];
-  assetContracts: { contracts: ContractRecord[]; loading: boolean };
+  assetContracts: { coverage: AssetContractCoverage[]; loading: boolean };
   readOnly?: boolean;
   onEditClientSite?: () => void;
   onEditModel?: () => void;
@@ -105,11 +105,18 @@ export function AssetRelationCards({
     .filter(Boolean)
     .join(" · ");
 
-  const [firstContract, ...restContracts] = assetContracts.contracts;
+  const [firstCoverage, ...restCoverage] = assetContracts.coverage;
+  const firstContract = firstCoverage?.contract;
   const contractFacts = firstContract
     ? [firstContract.contract_type?.label, `from ${formatDate(firstContract.start_date)}`].filter(Boolean).join(" · ")
     : "";
-  const contractSubtitle = restContracts.length > 0 ? `${contractFacts} · +${restContracts.length} more` : contractFacts;
+  // A directly-linked first contract shows its usual facts; an inherited one
+  // also names the ancestor asset it's inherited THROUGH, so it never reads
+  // as indistinguishable from a direct link (issue #126).
+  const contractFactsWithSource =
+    firstCoverage?.source.type === "inherited" ? `${contractFacts} · via ${firstCoverage.source.viaAsset.name}` : contractFacts;
+  const contractSubtitle =
+    restCoverage.length > 0 ? `${contractFactsWithSource} · +${restCoverage.length} more` : contractFactsWithSource;
 
   return (
     <FormGrid columns={4}>

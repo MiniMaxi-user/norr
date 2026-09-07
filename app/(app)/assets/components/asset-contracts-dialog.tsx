@@ -2,17 +2,23 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Combobox, Dialog, IconButton, Inline, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Combobox, Dialog, IconButton, Inline, Stack, Text } from "@yourorg/ui";
 import { X } from "@yourorg/ui/icons";
-import { linkContractAsset, unlinkContractAsset, type ContractRecord } from "@/app/(app)/contracts/actions";
+import {
+  linkContractAsset,
+  unlinkContractAsset,
+  type AssetContractCoverage,
+  type ContractRecord,
+} from "@/app/(app)/contracts/actions";
 import { formatDate } from "@/lib/format/date";
 
 export interface AssetContractsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   assetId: string;
-  /** Every contract currently linked to this asset (`useAssetContracts`). */
-  contracts: ContractRecord[];
+  /** Every contract that covers this asset — directly linked AND inherited
+   * from an ancestor composite asset (`useAssetContracts`, issue #126). */
+  coverage: AssetContractCoverage[];
   loading: boolean;
   /** This asset's own client's contracts (`useClientScopedLists`'s
    * `contracts`) — the "link a contract" combobox filters these down to the
@@ -20,28 +26,32 @@ export interface AssetContractsDialogProps {
    * convention `ContractAssetsPanel`'s own `availableAssets` documents for
    * the reverse direction. */
   clientContracts: ContractRecord[];
-  /** Re-fetches `contracts` (instant popup feedback) AND refreshes the page
+  /** Re-fetches `coverage` (instant popup feedback) AND refreshes the page
    * (so the hero's "Work orders" KPI tile's "N contract" figure stays in
    * sync) — called after every link/unlink. */
   onChange: () => void;
 }
 
 /**
- * The Contract relation card's edit popup (asset new/edit design handoff v3)
- * — built honestly around the real `contract_assets` many-to-many (there is
- * no single `contractId` column on `assets` for a plain picker to write to):
- * lists every contract already linked (each removable via
- * `unlinkContractAsset`) plus a combobox to link one of the asset's own
- * client's contracts (`linkContractAsset`). Each action commits immediately
- * (no page-wide Save), same "add/remove right away, `router.refresh()`
- * after" convention `ContractAssetsPanel` already uses for the reverse
- * (contract -> its assets) relationship.
+ * The Contract relation card's edit popup (asset new/edit design handoff v3,
+ * extended by issue #126 for inherited coverage) — built honestly around the
+ * real `contract_assets` many-to-many (there is no single `contractId`
+ * column on `assets` for a plain picker to write to): lists every contract
+ * that COVERS this asset, direct or inherited, plus a combobox to link one of
+ * the asset's own client's contracts directly (`linkContractAsset`). Only a
+ * `source: "direct"` row is removable (`unlinkContractAsset`) — an
+ * `"inherited"` row has no `contract_assets` row of its own on THIS asset to
+ * remove; it instead links through to the ancestor asset it's inherited
+ * from, where the direct link (or the composition itself) actually lives.
+ * Each action commits immediately (no page-wide Save), same "add/remove
+ * right away, `router.refresh()` after" convention `ContractAssetsPanel`
+ * already uses for the reverse (contract -> its assets) relationship.
  */
 export function AssetContractsDialog({
   open,
   onOpenChange,
   assetId,
-  contracts,
+  coverage,
   loading,
   clientContracts,
   onChange,
@@ -50,7 +60,11 @@ export function AssetContractsDialog({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const linkedIds = useMemo(() => new Set(contracts.map((contract) => contract.id)), [contracts]);
+  // Every contract already COVERING this asset — direct or inherited — is
+  // excluded from the "link a contract" combobox below: an asset already
+  // inheriting a contract from a composite ancestor shouldn't also be
+  // offered it as a redundant direct link.
+  const linkedIds = useMemo(() => new Set(coverage.map((entry) => entry.contract.id)), [coverage]);
   const availableOptions = useMemo(
     () =>
       clientContracts
@@ -96,28 +110,39 @@ export function AssetContractsDialog({
 
           {loading ? (
             <Text tone="muted">Loading…</Text>
-          ) : contracts.length === 0 ? (
+          ) : coverage.length === 0 ? (
             <Text tone="muted">No contracts linked yet.</Text>
           ) : (
             <Stack gap="sm">
-              {contracts.map((contract) => (
+              {coverage.map(({ contract, source }) => (
                 <Inline key={contract.id} justify="between" align="center" gap="sm">
                   <Stack gap="xs">
-                    <Link href={`/contracts/${contract.id}`}>{contract.name}</Link>
+                    <Inline align="center" gap="xs">
+                      <Link href={`/contracts/${contract.id}`}>{contract.name}</Link>
+                      {source.type === "inherited" && <Badge variant="muted">Inherited</Badge>}
+                    </Inline>
                     <Text tone="muted">
                       {[contract.contract_type?.label, `from ${formatDate(contract.start_date)}`]
                         .filter(Boolean)
                         .join(" · ")}
                     </Text>
+                    {source.type === "inherited" && (
+                      <Text tone="muted">
+                        Inherited via{" "}
+                        <Link href={`/assets/${source.viaAsset.id}`}>{source.viaAsset.name}</Link>
+                      </Text>
+                    )}
                   </Stack>
-                  <IconButton
-                    variant="ghost"
-                    aria-label={`Unlink ${contract.name}`}
-                    onClick={() => handleUnlink(contract.id)}
-                    disabled={pending}
-                  >
-                    <X />
-                  </IconButton>
+                  {source.type === "direct" ? (
+                    <IconButton
+                      variant="ghost"
+                      aria-label={`Unlink ${contract.name}`}
+                      onClick={() => handleUnlink(contract.id)}
+                      disabled={pending}
+                    >
+                      <X />
+                    </IconButton>
+                  ) : null}
                 </Inline>
               ))}
             </Stack>

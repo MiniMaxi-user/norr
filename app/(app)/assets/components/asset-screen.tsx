@@ -132,6 +132,14 @@ export function AssetScreen({
   // Model/Equipment, there is no resolved embed on `AssetRecord` itself for
   // this many-to-many; see `use-asset-contracts.ts`'s own doc comment).
   const assetContracts = useAssetContracts(asset?.id, mode === "edit");
+  // The hero's "Work orders" tile hint counts TOTAL contract coverage
+  // (direct + inherited, issue #126) — inherited coverage is real coverage,
+  // not a lesser count. `contractCount` (the server-computed, direct-only
+  // prop, available on first paint before this hook's own client fetch
+  // resolves) is only the fallback while `assetContracts` is still loading,
+  // so the tile never flashes "0 contracts" before settling on the true
+  // (direct + inherited) total.
+  const resolvedContractCount = assetContracts.loading ? contractCount : assetContracts.coverage.length;
 
   // ---- Reference data (Type/Sub-type/Brand/Model/Status + Clients) -------
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -278,10 +286,10 @@ export function AssetScreen({
         hint:
           mode === "create"
             ? "Save the asset first"
-            : `${contractCount} ${contractCount === 1 ? "contract" : "contracts"} · ${activityCount} ${activityCount === 1 ? "activity" : "activities"}`,
+            : `${resolvedContractCount} ${resolvedContractCount === 1 ? "contract" : "contracts"} · ${activityCount} ${activityCount === 1 ? "activity" : "activities"}`,
       },
     ];
-  }, [assetModels, assetBrands, draft, asset, mode, workOrderCount, contractCount, activityCount]);
+  }, [assetModels, assetBrands, draft, asset, mode, workOrderCount, resolvedContractCount, activityCount]);
 
   const heroActions =
     mode === "edit" && asset ? (
@@ -369,6 +377,12 @@ export function AssetScreen({
         }
         right={
           <Stack gap="lg">
+            {mode === "edit" && asset && (
+              // Product-owner placement (2026-09-07): the right column,
+              // above Notes — overrides this section's earlier full-width-
+              // below-the-columns placement.
+              <AssetCompositeSection assetId={asset.id} assetName={draft.name || asset.name} readOnly={readOnly} />
+            )}
             <AssetNotesSection
               draft={draft}
               editing={notesEditing}
@@ -386,14 +400,6 @@ export function AssetScreen({
           </Stack>
         }
       />
-
-      {mode === "edit" && asset && (
-        // A full-width block below the two columns rather than squeezed into
-        // either — the composition tree can get wide/deep enough (multi-layer
-        // assemblies) that a half-width column would cramp it (see this
-        // screen's own module doc comment / the task's own layout note).
-        <AssetCompositeSection assetId={asset.id} assetName={draft.name || asset.name} readOnly={readOnly} />
-      )}
 
       {mode === "edit" && asset && deleting && (
         <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />
