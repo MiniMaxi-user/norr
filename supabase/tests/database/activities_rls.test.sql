@@ -26,16 +26,11 @@
 -- create_own/read_own/update_own scoped to action_holder_id = auth.uid()
 -- (no delete, cannot reassign away from self); finance/administratie
 -- read-only, all rows.
---
--- Also covers activities.contract_id (20260907090000_activities_contract_id.sql,
--- issue #127): a same-client contract is accepted, a different-client
--- contract is rejected (23514), and a nonexistent contract id is rejected
--- (23503) — same shape as work_orders.contract_id's own validation.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(44);
+select plan(41);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -99,14 +94,6 @@ where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a' and rl.list_ke
 insert into public.contacts (id, client_id, name) values
   ('d6000000-0000-0000-0000-00000000000a', 'd3000000-0000-0000-0000-00000000000a', 'Contact A'),
   ('d6000000-0000-0000-0000-00000000000b', 'd3000000-0000-0000-0000-00000000000b', 'Contact A2');
-
--- Contracts, for the activities.contract_id cross-field checks
--- (20260907090000_activities_contract_id.sql, issue #127): one under
--- Client A, one under Client A2 (a different client, same org) to exercise
--- the must-belong-to-the-same-client rejection.
-insert into public.contracts (id, client_id, name, start_date) values
-  ('d8000000-0000-0000-0000-00000000000a', 'd3000000-0000-0000-0000-00000000000a', 'Client A Contract', '2026-01-01'),
-  ('d8000000-0000-0000-0000-00000000000b', 'd3000000-0000-0000-0000-00000000000b', 'Client A2 Contract', '2026-01-01');
 
 select pg_temp.act_as('d2777777-7777-7777-7777-777777777777');
 
@@ -353,51 +340,6 @@ select is(
   'the manually-entered contact_name override was stored as-is (not synced onto/from a contacts row)'
 ); -- 19
 
--- activities.contract_id cross-field checks (20260907090000_activities_contract_id.sql).
-select lives_ok(
-  $$ insert into public.activities (id, client_id, type_id, description, action_holder_id, contract_id)
-     select 'd7000000-0000-0000-0000-00000000000g', 'd3000000-0000-0000-0000-00000000000a',
-       rli.id, 'Onderhoud onder contract', 'd2333333-3333-3333-3333-333333333333',
-       'd8000000-0000-0000-0000-00000000000a'
-     from public.reference_list_items rli
-     join public.reference_lists rl on rl.id = rli.reference_list_id
-     where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
-       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
-  'owner_a can insert an activity with contract_id set to a contract under the same client'
-); -- 20
-
--- Cleanup: delete the fixture row above so it doesn't shift any of the
--- row-count assertions in sections 2-5 below (which were written/counted
--- against the fixture set as it stood before this contract_id coverage was
--- added).
-delete from public.activities where id = 'd7000000-0000-0000-0000-00000000000g';
-
-select throws_ok(
-  $$ insert into public.activities (client_id, type_id, description, action_holder_id, contract_id)
-     select 'd3000000-0000-0000-0000-00000000000a', rli.id, 'Wrong Contract Client',
-       'd2333333-3333-3333-3333-333333333333', 'd8000000-0000-0000-0000-00000000000b'
-     from public.reference_list_items rli
-     join public.reference_lists rl on rl.id = rli.reference_list_id
-     where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
-       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
-  '23514',
-  null,
-  'activities.contract_id from a different client (Client A2''s contract) is rejected when client_id=Client A'
-); -- 21
-
-select throws_ok(
-  $$ insert into public.activities (client_id, type_id, description, action_holder_id, contract_id)
-     select 'd3000000-0000-0000-0000-00000000000a', rli.id, 'Nonexistent Contract',
-       'd2333333-3333-3333-3333-333333333333', '00000000-0000-0000-0000-000000000000'
-     from public.reference_list_items rli
-     join public.reference_lists rl on rl.id = rli.reference_list_id
-     where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
-       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
-  '23503',
-  null,
-  'activities.contract_id must reference an existing contract (dangling id is rejected)'
-); -- 22
-
 -- ---------------------------------------------------------------------------
 -- 2. planner: full CRUD, matching the confirmed permission model.
 -- ---------------------------------------------------------------------------
@@ -412,19 +354,19 @@ select lives_ok(
      where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
        and rl.list_key = 'activity_type' and rli.value = 'email_opvolging' $$,
   'planner_a can insert an activity (actioned by engineer_a2)'
-); -- 23
+); -- 20
 
 select lives_ok(
   $$ update public.activities set description = 'Afspraak ingepland voor dinsdag'
      where id = 'd7000000-0000-0000-0000-00000000000a' $$,
   'planner_a can update any activity in org_a, not just their own'
-); -- 24
+); -- 21
 
 select is(
   (select description from public.activities where id = 'd7000000-0000-0000-0000-00000000000a'),
   'Afspraak ingepland voor dinsdag',
   'planner_a''s update took effect'
-); -- 25
+); -- 22
 
 select lives_ok(
   $$ insert into public.activities (id, client_id, type_id, description, action_holder_id)
@@ -435,24 +377,24 @@ select lives_ok(
      where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
        and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
   'planner_a can insert a disposable activity for the delete test below'
-); -- 26
+); -- 23
 
 select lives_ok(
   $$ delete from public.activities where id = 'd7000000-0000-0000-0000-00000000000e' $$,
   'planner_a can delete an activity in org_a'
-); -- 27
+); -- 24
 
 select is(
   (select count(*)::int from public.activities where id = 'd7000000-0000-0000-0000-00000000000e'),
   0,
   'the disposable activity is actually gone after planner_a''s delete'
-); -- 28
+); -- 25
 
 select is(
   (select count(*)::int from public.activities where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   4,
   'planner_a (unlike an engineer) sees every activity in org_a, not just ones where they are the action holder'
-); -- 29
+); -- 26
 
 -- ---------------------------------------------------------------------------
 -- 3. engineer: create_own/read_own/update_own, scoped to
@@ -464,7 +406,7 @@ select is(
   (select count(*)::int from public.activities where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   2,
   'engineer_a only sees activities where they are the action holder (Afspraak + Storing), not engineer_a2''s'
-); -- 30
+); -- 27
 
 select throws_ok(
   $$ insert into public.activities (client_id, type_id, description, action_holder_id)
@@ -477,7 +419,7 @@ select throws_ok(
   '42501',
   null,
   'engineer_a cannot INSERT an activity with someone else as action_holder_id (create_own is scoped to themselves)'
-); -- 31
+); -- 28
 
 select lives_ok(
   $$ insert into public.activities (id, client_id, type_id, description, action_holder_id)
@@ -488,19 +430,19 @@ select lives_ok(
      where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
        and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
   'engineer_a CAN insert an activity with themselves as action_holder_id (create_own)'
-); -- 32
+); -- 29
 
 select lives_ok(
   $$ update public.activities set description = 'Compressor vervangen'
      where id = 'd7000000-0000-0000-0000-00000000000b' $$,
   'engineer_a can update their own (action_holder_id) activity'
-); -- 33
+); -- 30
 
 select is(
   (select description from public.activities where id = 'd7000000-0000-0000-0000-00000000000b'),
   'Compressor vervangen',
   'engineer_a''s update to their own activity took effect'
-); -- 34
+); -- 31
 
 update public.activities set description = 'Hijacked' where id = 'd7000000-0000-0000-0000-00000000000d';
 
@@ -508,7 +450,7 @@ select is(
   (select description from public.activities where id = 'd7000000-0000-0000-0000-00000000000d'),
   'E-mail opvolgen na offerte',
   'engineer_a''s UPDATE on engineer_a2''s activity is silently excluded by RLS (USING); description unchanged'
-); -- 35
+); -- 32
 
 delete from public.activities where id = 'd7000000-0000-0000-0000-00000000000b';
 
@@ -516,7 +458,7 @@ select is(
   (select count(*)::int from public.activities where id = 'd7000000-0000-0000-0000-00000000000b'),
   1,
   'engineer_a''s DELETE attempt on their own activity is silently excluded by RLS (engineer has no delete action); row still exists'
-); -- 36
+); -- 33
 
 select throws_ok(
   $$ update public.activities set action_holder_id = 'd2444444-4444-4444-4444-444444444444'
@@ -524,7 +466,7 @@ select throws_ok(
   '42501',
   null,
   'engineer_a cannot reassign their own activity away from themselves; USING passes (currently theirs) but WITH CHECK fails on the new row since action_holder_id <> auth.uid() and they are not owner/planner'
-); -- 37
+); -- 34
 
 -- ---------------------------------------------------------------------------
 -- 4. finance / administratie: read-only, all rows (not scoped like engineer).
@@ -535,7 +477,7 @@ select is(
   (select count(*)::int from public.activities where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   5,
   'finance_a can SELECT every activity in org_a (read-only, all rows, not action-holder-scoped)'
-); -- 38
+); -- 35
 
 select throws_ok(
   $$ insert into public.activities (client_id, type_id, description, action_holder_id)
@@ -548,7 +490,7 @@ select throws_ok(
   '42501',
   null,
   'finance_a cannot INSERT an activity (read-only)'
-); -- 39
+); -- 36
 
 update public.activities set description = 'Finance Hijack' where id = 'd7000000-0000-0000-0000-00000000000b';
 
@@ -556,7 +498,7 @@ select is(
   (select description from public.activities where id = 'd7000000-0000-0000-0000-00000000000b'),
   'Compressor vervangen',
   'finance_a''s UPDATE is silently excluded by RLS (read-only); description unchanged'
-); -- 40
+); -- 37
 
 select pg_temp.act_as('d2666666-6666-6666-6666-666666666666');
 
@@ -564,7 +506,7 @@ select is(
   (select count(*)::int from public.activities where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   5,
   'administratie_a can SELECT every activity in org_a (read-only, all rows)'
-); -- 41
+); -- 38
 
 select throws_ok(
   $$ insert into public.activities (client_id, type_id, description, action_holder_id)
@@ -577,7 +519,7 @@ select throws_ok(
   '42501',
   null,
   'administratie_a cannot INSERT an activity (read-only)'
-); -- 42
+); -- 39
 
 -- ---------------------------------------------------------------------------
 -- 5. Tenant isolation: owner_b (org_b) cannot see or write org_a's activities.
@@ -588,7 +530,7 @@ select is(
   (select count(*)::int from public.activities where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s activities'
-); -- 43
+); -- 40
 
 select throws_ok(
   $$ insert into public.activities (client_id, type_id, description, action_holder_id)
@@ -601,7 +543,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT an activity under org_a''s client (not a member of org_a at all, so current_member_role is null)'
-); -- 44
+); -- 41
 
 select * from finish();
 rollback;

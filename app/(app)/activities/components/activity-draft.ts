@@ -12,10 +12,6 @@ import type { ActivityRecord } from "../actions";
 export interface ActivityDraft {
   clientId: string;
   assetId: string;
-  /** Nullable; when set, must belong to `clientId` — issue #127, mirroring
-   * `WorkOrderDraft.contractId`'s identical shape/handling in
-   * `app/(app)/work-orders/components/work-order-draft.ts`. */
-  contractId: string;
   typeId: string;
   statusId: string;
   contactPersonId: string;
@@ -35,7 +31,6 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
   return {
     clientId: activity.client_id,
     assetId: activity.asset_id ?? "",
-    contractId: activity.contract_id ?? "",
     typeId: activity.type_id,
     statusId: activity.status_id,
     contactPersonId: activity.contact_person_id ?? "",
@@ -67,7 +62,6 @@ export function emptyDraft(options: {
   return {
     clientId: options.lockedClientId ?? "",
     assetId: options.lockedAssetId ?? "",
-    contractId: "",
     typeId: "",
     statusId: "",
     contactPersonId: "",
@@ -90,7 +84,6 @@ export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unkn
   const input: Record<string, unknown> = {};
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
   if (patch.assetId !== undefined) input.assetId = patch.assetId || undefined;
-  if (patch.contractId !== undefined) input.contractId = patch.contractId || undefined;
   if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
   if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
   if (patch.contactPersonId !== undefined) input.contactPersonId = patch.contactPersonId || undefined;

@@ -15,30 +15,32 @@ const ALL_CLIENT_SCOPED_LIMIT = 500;
  * Fetches the Sites/Assets/Contracts/Contacts belonging to a single client —
  * the Activity equivalent of `useClientScopedLists`
  * (`app/(app)/work-orders/components/use-client-scoped-lists.ts`). Shared by
- * `ActivityHero`'s relation cards (to resolve the Client/Asset/Contract
- * cards' "KvK … · address"/"{type} · {location}" subtitles as soon as a
- * different client is picked, before any save — issue #118) and
- * `ActivityRelationsDialog` (as the Asset/Contract/Contact picker option
- * lists) — one hook call at the `ActivityScreen` level, same "both always see
- * the exact same fetched lists" reasoning that hook's own doc comment gives.
- * `sites` was added by issue #118 (previously only `assets`/`contacts`) — an
- * activity has no `site_id` of its own, but its Client/Asset relation cards
- * both need a site lookup (the client's primary site, and the resolved
- * asset's own `site_id`) to build their new "KvK … · address" /
- * "{type} · {location}" subtitles. `contracts` was added by issue #127 —
- * `activities.contract_id` mirrors `work_orders.contract_id` exactly, so this
- * fetch mirrors `useClientScopedLists`' own `contracts` fetch exactly
- * (same `listContracts({ clientId, ... })` call, same `loadingContracts`
- * state, same `enabled`-gated pattern as `assets`/`contacts` below — a
- * `contract` is only ever picked through the edit-only relations dialog, same
- * as an asset or contact).
+ * `ActivityHero`'s relation cards (to resolve the Client/Asset cards' "KvK …
+ * · address"/"{type} · {location}" subtitles as soon as a different client is
+ * picked, before any save — issue #118) and `ActivityRelationsDialog` (as the
+ * Asset/Contact picker option lists) — one hook call at the `ActivityScreen`
+ * level, same "both always see the exact same fetched lists" reasoning that
+ * hook's own doc comment gives. `sites` was added by issue #118 (previously
+ * only `assets`/`contacts`) — an activity has no `site_id` of its own, but
+ * its Client/Asset relation cards both need a site lookup (the client's
+ * primary site, and the resolved asset's own `site_id`) to build their new
+ * "KvK … · address" / "{type} · {location}" subtitles.
  *
- * `sites` is fetched whenever `clientId` is set, INDEPENDENT of `enabled` —
- * unlike `assets`/`contacts`/`contracts` (only ever needed for the edit-only
- * relations dialog's pickers, so gated behind `enabled = !readOnly`), `sites`
- * also feeds the relation cards' own passive subtitle text, which a
- * `readOnly` viewer still needs to see even though they can never open that
- * dialog.
+ * `contracts` was added by issue #127 as an editable relations-dialog picker
+ * list (mirroring `activities.contract_id`, since reverted), then repurposed
+ * by issue #128: an activity's Contract relation is now DERIVED, never
+ * picked, and `ActivityRelationsDialog` no longer reads `contracts` at all —
+ * this list survives ONLY as `ActivityHero`'s Contract-card fallback for an
+ * activity that has a client but no asset yet (`useActivityContractCoverage`,
+ * the asset-derived source, has nothing to walk in that case — see
+ * `activity-hero.tsx`'s own `contractCoverage` comment).
+ *
+ * `sites`/`contracts` are both fetched whenever `clientId` is set,
+ * INDEPENDENT of `enabled` — unlike `assets`/`contacts` (only ever needed for
+ * the edit-only relations dialog's pickers, so gated behind
+ * `enabled = !readOnly`), `sites`/`contracts` also feed the relation cards'
+ * own passive subtitle/title text, which a `readOnly` viewer still needs to
+ * see even though they can never open that dialog.
  */
 export function useClientScopedActivityLists(clientId: string, enabled: boolean) {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
@@ -108,7 +110,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
   }, [clientId]);
 
   useEffect(() => {
-    if (!enabled || !clientId) {
+    if (!clientId) {
       setContracts([]);
       return;
     }
@@ -124,7 +126,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
     return () => {
       cancelled = true;
     };
-  }, [enabled, clientId]);
+  }, [clientId]);
 
   return {
     assets,

@@ -9,13 +9,14 @@ import type { ActivityRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContactRecord } from "@/app/(app)/clients/contacts-actions";
-import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import type { AssetContractCoverage, ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDate, formatDurationSince } from "@/lib/format/date";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import type { ActivityDraft } from "./activity-draft";
 import { ActivityRelationsDialog } from "./activity-relations-dialog";
 import { ActivityStatusDialog } from "./activity-status-dialog";
+import { useActivityContractCoverage } from "./use-activity-contract-coverage";
 
 export interface ActivityHeroProps {
   mode: "create" | "edit";
@@ -43,7 +44,7 @@ export interface ActivityHeroProps {
   onRelationsSave: (
     patch: Pick<
       ActivityDraft,
-      "clientId" | "assetId" | "contractId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail"
+      "clientId" | "assetId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail"
     >,
   ) => Promise<{ ok: boolean; error?: string }>;
   onStatusSave: (patch: Pick<ActivityDraft, "statusId">) => Promise<{ ok: boolean; error?: string }>;
@@ -73,9 +74,16 @@ export interface ActivityHeroProps {
  *
  * Still owns the two small popups (`ActivityStatusDialog`/
  * `ActivityRelationsDialog`, the latter NARROWED by issue #118 to only
- * Client/Asset/Contact-person, then widened by issue #127 to also cover
- * Contract — see that component's own doc comment) behind the status pencil
- * and the relation cards' own Edit buttons.
+ * Client/Asset/Contact-person — issue #127 briefly widened it to also cover
+ * Contract, but issue #128 reversed that same-day, see that component's own
+ * doc comment) behind the status pencil and the relation cards' own Edit
+ * buttons.
+ *
+ * The Contract card is the one relation card with NO popup behind its Edit
+ * button — it has none, by design (issue #128): a contract is never picked
+ * for an activity directly, it's DERIVED from whichever asset (or, absent an
+ * asset, client) the activity is already linked to. See `resolvedContract`/
+ * `contractCoverage` below.
  */
 export function ActivityHero({
   mode,
@@ -109,19 +117,28 @@ export function ActivityHero({
     ? (clientScoped.contacts.find((candidate) => candidate.id === draft.contactPersonId) ?? null)
     : null;
   const hasContactFacts = Boolean(resolvedContact?.name ?? draft.contactName);
-  // Contract relation card — client-scoped list first (full `ContractRecord`,
-  // resolves the subtitle below), falling back to the server-embedded shallow
-  // `activity.contract` ({id, name} only, per `../actions.ts`) for the
-  // instant before `clientScoped.contracts` has loaded — same fallback gap
-  // `resolvedContact` already has, no subtitle available in that state. Kept
-  // as two separate values (rather than one narrowed union) since
-  // `ContractRecord`/`ShallowNamedRecord` share no discriminant TS can narrow
-  // on cleanly.
-  const resolvedContractFull = draft.contractId
-    ? (clientScoped.contracts.find((candidate) => candidate.id === draft.contractId) ?? null)
-    : null;
-  const resolvedContract =
-    resolvedContractFull ?? (draft.contractId && activity?.contract?.id === draft.contractId ? activity.contract : null);
+
+  // Contract relation card — DERIVED, not stored (issue #128, same-day
+  // reversal of #127's `contract_id` picker). Per the product-owner
+  // reasoning: if you know the asset, you already know which contract(s)
+  // cover it, so there's no separate FK to pick or edit here.
+  //  - Asset set: the full direct+inherited coverage through that asset's
+  //    composite tree (`useActivityContractCoverage`, issue #126's own
+  //    `listAssetContractCoverage` — same source `AssetRelationCards`' own
+  //    Contract card uses).
+  //  - No asset, but a client: fall back to the client's own directly-linked
+  //    contracts (`clientScoped.contracts` — already fetched for the
+  //    relations dialog's Asset picker's client scoping, no further fetch
+  //    needed).
+  //  - Neither: empty.
+  const contractCoverage = useActivityContractCoverage(draft.assetId || undefined);
+  const [firstContractCoverage, ...restContractCoverage] = draft.assetId
+    ? contractCoverage.coverage
+    : draft.clientId
+      ? clientScoped.contracts.map((contract): AssetContractCoverage => ({ contract, source: { type: "direct" } }))
+      : [];
+  const resolvedContract = firstContractCoverage?.contract ?? null;
+  const contractLoading = Boolean(draft.assetId) && contractCoverage.loading && !resolvedContract;
 
   const selectedType = activityTypes.find((item) => item.id === draft.typeId);
   const statusLabel = activityStatuses.find((item) => item.id === draft.statusId)?.label ?? activity?.activity_status?.label;
@@ -152,17 +169,25 @@ export function ActivityHero({
       .filter((part): part is string => Boolean(part))
       .join(" · ") || undefined;
 
-  // Contract relation card subtitle — "{contract_type.label} · from {start_date}",
-  // mirroring `AssetRelationCards`' own Contract card subtitle exactly. Only
-  // available once `clientScoped.contracts` has resolved the full
-  // `ContractRecord` — the shallow `activity.contract` fallback has no
-  // `contract_type`/`start_date` to build a subtitle from, same degraded
-  // fallback state `resolvedContact`'s own fallback already has.
-  const contractSubtitle = resolvedContractFull
-    ? [resolvedContractFull.contract_type?.label ?? null, `from ${formatDate(resolvedContractFull.start_date)}`]
+  // Contract relation card subtitle — "{contract_type.label} · from
+  // {start_date}", plus a "via {asset name}" hint whenever the first covering
+  // contract is inherited (not directly linked to this activity's own
+  // asset), plus a "+N more" suffix when more than one contract covers it —
+  // same shape `AssetRelationCards`' own Contract card subtitle uses
+  // (issue #126), reused here rather than reinvented.
+  const contractFacts = resolvedContract
+    ? [resolvedContract.contract_type?.label ?? null, `from ${formatDate(resolvedContract.start_date)}`]
         .filter((part): part is string => Boolean(part))
-        .join(" · ") || undefined
-    : undefined;
+        .join(" · ")
+    : "";
+  const contractFactsWithSource =
+    firstContractCoverage?.source.type === "inherited"
+      ? [contractFacts, `via ${firstContractCoverage.source.viaAsset.name}`].filter(Boolean).join(" · ")
+      : contractFacts;
+  const contractSubtitle =
+    (restContractCoverage.length > 0
+      ? `${contractFactsWithSource} · +${restContractCoverage.length} more`
+      : contractFactsWithSource) || undefined;
 
   const meta: ReactNode[] = [
     <span className="ui-record-hero-band-meta-badges" key="status">
@@ -230,11 +255,10 @@ export function ActivityHero({
         <RelationCard
           icon={FileText}
           label="Contract"
-          loading={clientScoped.loadingContracts && Boolean(draft.contractId) && !resolvedContract}
+          loading={contractLoading}
           title={resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{resolvedContract.name}</Link> : undefined}
           subtitle={contractSubtitle}
           emptyText="No contract"
-          onEdit={readOnly ? undefined : () => setRelationsOpen(true)}
         />
         <RelationCard
           icon={Phone}

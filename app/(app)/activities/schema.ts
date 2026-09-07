@@ -77,15 +77,6 @@ const activityBaseSchema = z.object({
    * org's default `activity_status` item ("Open") when omitted, same UX as
    * `work_orders.statusId`. */
   statusId: optionalUuid("Invalid status."),
-  /** Nullable; when set, must belong to the activity's own `clientId` — same
-   * DB-trigger validation (`validate_activity_relations`) as `assetId` above,
-   * mirroring `work_orders.contractId`'s identical shape-only-here trust
-   * boundary in `app/(app)/work-orders/schema.ts` (issue #127). Unlike
-   * `work_orders.contractId`, there's no "no client yet" edge case to
-   * special-case: `activities.client_id` is always non-null (derived from
-   * either `clientId` or `assetId` above before insert), so a contract can be
-   * picked whenever a client is selected. */
-  contractId: optionalUuid("Invalid contract."),
   /** Optional link to an existing `contacts` row for this activity's client.
    * Selecting one is expected to copy that contact's name/phone into
    * `contactName`/`contactPhone` below (UI-layer convenience, per the
