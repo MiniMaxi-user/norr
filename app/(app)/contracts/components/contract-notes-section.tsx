@@ -26,9 +26,7 @@ export interface ContractNotesSectionProps {
  * the same class `EditableSection` itself uses, so the edit chrome still
  * matches every other section on this page). Mirrors `app/(app)/assets/
  * components/asset-notes-section.tsx` almost verbatim otherwise: a normal
- * bidirectional toggle even in `mode: "create"` (its read view sources
- * straight from `draft.notes`, so it renders correctly closed even before
- * the contract exists).
+ * bidirectional toggle, its read view sourcing straight from `draft.notes`.
  */
 export function ContractNotesSection({ draft, editing, onEditToggle, readOnly, onSave }: ContractNotesSectionProps) {
   const [notes, setNotes] = useState(draft.notes);

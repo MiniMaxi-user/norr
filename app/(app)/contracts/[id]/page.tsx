@@ -31,12 +31,13 @@ const ALL_CLIENT_ASSETS_LIMIT = 500;
 
 /**
  * Contract detail/edit page — one unified screen (issue #122, superseding the
- * separate `/contracts/[id]/edit` route) rendered by `ContractScreen` with
- * `mode="edit"`: a `RecordHeroBand`, inline-editable Contract details/Terms/
- * Dates/Notes sections, and the contract's own sub-entities (Line items,
- * Article coverage, Linked assets — all edit-mode-only, nothing to manage
- * before the contract exists). Same "fetch once, pass down" convention every
- * other module's detail page uses — every list below is fetched once here
+ * separate `/contracts/[id]/edit` route, and later `/contracts/new` too once
+ * `CreateContractButton` started creating a bare contract and navigating
+ * straight here) rendered by `ContractScreen`: a `RecordHeroBand`,
+ * inline-editable Terms/Dates/Notes sections, and the contract's own
+ * sub-entities (Line items, Article coverage, Linked assets). Same "fetch
+ * once, pass down" convention every other module's detail page uses — every
+ * list below is fetched once here
  * and handed to `ContractScreen` as props, never re-fetched client-side.
  */
 export default async function ContractDetailPage({ params }: ContractDetailPageProps) {
@@ -107,12 +108,10 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
 
   return (
     <ContractScreen
-      mode="edit"
       breadcrumbItems={breadcrumbItems}
       contract={contract}
       client={client}
       clients={clients}
-      cancelHref="/contracts"
       contractTypes={contractTypes}
       slaTiers={slaTiers}
       billingTerms={billingTerms}

@@ -8,9 +8,8 @@ import { formatDate, formatDateTime } from "@/lib/format/date";
 import type { ContractDraft } from "./contract-draft";
 
 export interface ContractDatesSectionProps {
-  mode: "create" | "edit";
   draft: Pick<ContractDraft, "startDate" | "endDate">;
-  contract?: ContractRecord;
+  contract: ContractRecord;
   editing: boolean;
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
@@ -23,7 +22,6 @@ export interface ContractDatesSectionProps {
  * uses.
  */
 export function ContractDatesSection({
-  mode,
   draft,
   contract,
   editing,
@@ -48,7 +46,7 @@ export function ContractDatesSection({
     setStartDate(draft.startDate);
     setEndDate(draft.endDate);
     setError(null);
-    if (mode === "edit") onEditToggle?.(false);
+    onEditToggle?.(false);
   }
 
   async function handleSave() {
@@ -64,7 +62,7 @@ export function ContractDatesSection({
       setError(result.error ?? "Could not save.");
       return;
     }
-    if (mode === "edit") onEditToggle?.(false);
+    onEditToggle?.(false);
   }
 
   return (
@@ -95,11 +93,9 @@ export function ContractDatesSection({
             </Stack>
           </FormGrid>
           <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
-              </Button>
-            )}
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+              Cancel
+            </Button>
             <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? "Saving…" : "Save"}
             </Button>

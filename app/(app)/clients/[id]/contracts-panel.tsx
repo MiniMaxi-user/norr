@@ -22,12 +22,12 @@ export interface ContractsPanelProps {
  * "Relational detail pages") — every service agreement against this client,
  * each row linking to the real Contracts module's detail page.
  *
- * "+ Contract" opens the real `/contracts/new?clientId=...` create page
+ * "+ Contract" creates the contract immediately (client pre-scoped to this
+ * one, no dialog) and navigates straight to its real `/contracts/[id]` page
  * (Contracts is a top-level module — docs/ARCHITECTURE.md "Popup vs. full
  * page" keeps its create/edit a real page, never a `Dialog`), via
- * `CreateContractButton`'s existing `clientId` prop, which pre-fills/locks
- * that page's own Client field to this client. This tab's own row list stays
- * otherwise read-only (no inline edit/delete) — those actions stay on
+ * `CreateContractButton`'s existing `clientId` prop. This tab's own row list
+ * stays otherwise read-only (no inline edit/delete) — those actions stay on
  * `/contracts` and `/contracts/[id]`.
  */
 export function ContractsPanel({ clientId, contracts, canCreate }: ContractsPanelProps) {

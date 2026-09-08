@@ -47,7 +47,7 @@ export async function ContractsScreen({ page, canCreate, canEdit, canDelete }: C
           {contractsResult.data ? `${contractsResult.data.count} contract${contractsResult.data.count === 1 ? "" : "s"}` : ""}
         </Text>
       </Toolbar.Section>
-      <Toolbar.Section align="end">{canCreate && <CreateContractButton />}</Toolbar.Section>
+      <Toolbar.Section align="end">{canCreate && <CreateContractButton clients={clients} />}</Toolbar.Section>
     </Toolbar>
   );
 
@@ -72,7 +72,7 @@ export async function ContractsScreen({ page, canCreate, canEdit, canDelete }: C
           icon={<FileText />}
           heading="No contracts yet"
           text="Create your first service agreement to start tracking terms and coverage."
-          action={canCreate ? <CreateContractButton /> : undefined}
+          action={canCreate ? <CreateContractButton clients={clients} /> : undefined}
         />
       </>
     );

@@ -23,12 +23,10 @@ import { formatCurrency } from "@/lib/format/currency";
 import type { ContractDraft } from "./contract-draft";
 
 export interface ContractTermsSectionProps {
-  mode: "create" | "edit";
   draft: Pick<ContractDraft, "typeId" | "slaTierId" | "billingTermsId" | "billingPeriodId" | "value" | "autoRenew">;
-  /** Edit mode only — the read view's Type/SLA Tier/Billing terms/Billing
-   * period badges source their label/color straight from this already-
-   * resolved record. */
-  contract?: ContractRecord;
+  /** The read view's Type/SLA Tier/Billing terms/Billing period badges
+   * source their label/color straight from this already-resolved record. */
+  contract: ContractRecord;
   contractTypes: ReferenceListItemRecord[];
   /** This org's `sla_tier` picklist values — a *dependent* list
    * (`parent_list_key = "contract_type"`). Passed down unfiltered; the SLA
@@ -66,7 +64,6 @@ export interface ContractTermsSectionProps {
  * dependent field when its parent changes).
  */
 export function ContractTermsSection({
-  mode,
   draft,
   contract,
   contractTypes,
@@ -120,7 +117,7 @@ export function ContractTermsSection({
     setValue(draft.value);
     setAutoRenew(draft.autoRenew);
     setError(null);
-    if (mode === "edit") onEditToggle?.(false);
+    onEditToggle?.(false);
   }
 
   async function handleSave() {
@@ -132,7 +129,7 @@ export function ContractTermsSection({
       setError(result.error ?? "Could not save.");
       return;
     }
-    if (mode === "edit") onEditToggle?.(false);
+    onEditToggle?.(false);
   }
 
   return (
@@ -241,11 +238,9 @@ export function ContractTermsSection({
           </FormGrid>
 
           <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
-              </Button>
-            )}
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+              Cancel
+            </Button>
             <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? "Saving…" : "Save"}
             </Button>

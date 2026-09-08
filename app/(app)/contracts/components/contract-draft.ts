@@ -2,10 +2,10 @@ import type { ContractRecord } from "../actions";
 
 /**
  * The contract's own editable fields, as one flat draft object — the single
- * source of truth `ContractScreen` owns for the unified create/view/edit
- * screen (issue #122, mirroring `app/(app)/assets/components/asset-draft.ts`).
- * Every section of the page (Contract details/Terms/Dates/Notes) reads from
- * this and writes back through `ContractScreen`'s own `commitPatch`.
+ * source of truth `ContractScreen` (`/contracts/[id]`) owns for its edit
+ * view (issue #122, mirroring `app/(app)/assets/components/asset-draft.ts`).
+ * Every section of the page (Terms/Dates/Notes) reads from this and writes
+ * back through `ContractScreen`'s own `commitPatch`.
  *
  * `value`/`autoRenew` mirror every other free-text/date field here as plain
  * strings (`value`) or a real boolean (`autoRenew`) — `draftToInput` below is
@@ -39,27 +39,6 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
     autoRenew: contract.auto_renew,
     value: contract.value === null ? "" : String(contract.value),
     notes: contract.notes ?? "",
-  };
-}
-
-export function emptyDraft(options: {
-  /** Pre-scopes (and hides the picker for) the client — a future
-   * client-scoped "New contract" entry point, or `/contracts/new?clientId=...`
-   * — same convention `AssetDraft`'s `emptyDraft` documents for itself. */
-  lockedClientId?: string;
-}): ContractDraft {
-  return {
-    clientId: options.lockedClientId ?? "",
-    name: "",
-    typeId: "",
-    slaTierId: "",
-    billingTermsId: "",
-    billingPeriodId: "",
-    startDate: "",
-    endDate: "",
-    autoRenew: false,
-    value: "",
-    notes: "",
   };
 }
 
