@@ -73,6 +73,10 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { key: "contract_type", label: findTitle("contract_type"), href: "/settings/reference-lists/contract_type" },
       { key: "sla_tier", label: findTitle("sla_tier"), href: "/settings/reference-lists/sla_tier" },
       { key: "billing_terms", label: findTitle("billing_terms"), href: "/settings/reference-lists/billing_terms" },
+      // Issue #131 — "Volume" line items on a contract (issue #129). Grouped
+      // under Contracts (its actual usage domain) rather than Articles, even
+      // though it's a *dependent* list on article_unit under the hood.
+      { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume" },
     ],
   },
   {
