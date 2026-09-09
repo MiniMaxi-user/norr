@@ -130,10 +130,18 @@ export function ArticleScreen({
   const [editError, setEditError] = useState<string | null>(null);
 
   /** The page's single Save (`handleEditSave` below) calls this once with the
-   * whole accumulated `draft`. */
-  async function commitPatch(patch: Partial<ArticleDraft>): Promise<{ ok: boolean; error?: string }> {
+   * whole accumulated `draft`. Surfaces `fieldErrors` alongside the generic
+   * `error` — the server's own validation message (e.g. "Purchase price must
+   * be zero or more.") is what actually tells the caller which field is
+   * wrong; the previous per-section Save flow never needed this because each
+   * section only ever sent its OWN few fields, so a stray bad value
+   * elsewhere in the draft could never block an unrelated section's save the
+   * way it now can with one page-wide Save. */
+  async function commitPatch(
+    patch: Partial<ArticleDraft>,
+  ): Promise<{ ok: boolean; error?: string; fieldErrors?: Record<string, string[] | undefined> }> {
     const result = await updateArticle(article.id, draftToInput(patch));
-    if (!result.data) return { ok: false, error: result.error };
+    if (!result.data) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
     setDraft((prev) => ({ ...prev, ...patch }));
     router.refresh();
     return { ok: true };
@@ -166,7 +174,14 @@ export function ArticleScreen({
     const result = await commitPatch(draft);
     setSaving(false);
     if (!result.ok) {
-      setEditError(result.error ?? "Could not save.");
+      const fieldMessages = Object.values(result.fieldErrors ?? {})
+        .flatMap((messages) => messages ?? [])
+        .filter(Boolean);
+      setEditError(
+        fieldMessages.length > 0
+          ? fieldMessages.join(" ")
+          : result.error ?? "Could not save.",
+      );
       return;
     }
     setPageEditing(false);
