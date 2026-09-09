@@ -109,8 +109,19 @@ const activityBaseSchema = z.object({
    * regardless of what they submit here — only a caller with unscoped
    * `create`/`update` (owner/planner) can actually leave it unset. Remains
    * editable after creation ("mag wel worden aangepast na aanmaak") for
-   * anyone with `update`/`update_own`. */
-  actionHolderId: optionalUuid("Invalid action holder."),
+   * anyone with `update`/`update_own`.
+   *
+   * Deliberately NOT `optionalUuid` (issue #133 bugfix) — that helper's
+   * `emptyToUndefined` preprocessing collapses an explicit "clear this back
+   * to unassigned" (`""` from the Action holder `<Select>`'s own "Unassigned"
+   * option) into `undefined`, which `toActivityUpdateRow`'s `!== undefined`
+   * guard then reads as "field not touched at all", silently no-opping the
+   * clear on save. `activity-draft.ts`'s `draftToInput` converts that same
+   * `""` into an explicit `null` instead (not `undefined`) specifically for
+   * this field, so this schema needs `.nullable()` to accept it as a real,
+   * intentional value distinct from "omitted" — `undefined` still means
+   * "don't touch this field", `null` now means "unassign it". */
+  actionHolderId: z.string().uuid("Invalid action holder.").nullable().optional(),
 });
 
 /**

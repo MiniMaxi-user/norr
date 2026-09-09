@@ -85,7 +85,17 @@ export function emptyDraft(options: {
  * "unset" values become `undefined` (not sent) rather than an empty string
  * that would fail the schema's `uuid()` shape check. `description` is the one
  * exception (always sent as-is, even `""`, since it's a plain required string
- * field, not an optional uuid). */
+ * field, not an optional uuid).
+ *
+ * `actionHolderId` is a SECOND exception (issue #133 bugfix): `""` there
+ * means the caller explicitly picked the Action holder `<Select>`'s
+ * "Unassigned" option, not merely "this field wasn't touched" — collapsing
+ * it to `undefined` like every other optional-uuid field made a real
+ * unassign silently no-op, since `undefined` is exactly what a field being
+ * absent from a partial patch already looks like. Converts to `null` instead,
+ * which `activityBaseSchema`'s own `actionHolderId` schema now accepts as a
+ * distinct value ("clear it") from `undefined` ("don't touch it") — see that
+ * field's own doc comment in `../schema.ts`. */
 export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
@@ -98,6 +108,6 @@ export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unkn
   if (patch.contactEmail !== undefined) input.contactEmail = patch.contactEmail || undefined;
   if (patch.description !== undefined) input.description = patch.description;
   if (patch.solution !== undefined) input.solution = patch.solution;
-  if (patch.actionHolderId !== undefined) input.actionHolderId = patch.actionHolderId || undefined;
+  if (patch.actionHolderId !== undefined) input.actionHolderId = patch.actionHolderId === "" ? null : patch.actionHolderId;
   return input;
 }
