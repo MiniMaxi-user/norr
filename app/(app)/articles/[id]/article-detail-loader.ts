@@ -12,14 +12,13 @@ import type { ArticleScreenProps } from "../components/article-screen";
 /**
  * Shared data-fetching + RBAC gating behind `/articles/[id]` and
  * `/articles/[id]/edit` — both routes render the exact same `ArticleScreen`
- * with the exact same props (issue #123, mirroring `asset-detail-loader.ts`'s
- * "not a distinct mode, just another route rendering it" shape), so this is
- * the one place that logic lives rather than being duplicated across both
- * `page.tsx` files.
+ * with the exact same props except `startInEditMode` (each route's own
+ * `page.tsx` decides that one directly), so this is the one place the rest of
+ * this logic lives rather than being duplicated across both `page.tsx` files.
  */
 export async function loadArticleScreenProps(
   id: string,
-): Promise<Omit<ArticleScreenProps, "breadcrumbItems" | "cancelHref">> {
+): Promise<Omit<ArticleScreenProps, "breadcrumbItems" | "startInEditMode">> {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
   if (!(await hasFeature(session.organization, "articles"))) notFound();
@@ -46,7 +45,6 @@ export async function loadArticleScreenProps(
   ]);
 
   return {
-    mode: "edit",
     article,
     components,
     componentTree: componentTreeResult?.data?.tree,

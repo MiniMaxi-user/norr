@@ -8,12 +8,17 @@ interface EditArticlePageProps {
 }
 
 /**
- * `/articles/[id]/edit` — kept only as an alias route onto the exact same
- * `ArticleScreen` render as `/articles/[id]` (issue #123, mirroring the
- * Assets precedent: "not a distinct mode, just another route rendering it").
- * There is no separate "edit mode" anymore: editing happens inline, per
- * section, on the detail page itself — see `../article-detail-loader.ts`
- * (shared by both routes) and `article-screen.tsx`'s own module doc comment.
+ * `/articles/[id]/edit` — renders the exact same `ArticleScreen` as
+ * `/articles/[id]` (same shared `loadArticleScreenProps`, same props), with
+ * one difference: `startInEditMode` is passed `true`, seeding `pageEditing`
+ * so every section starts already in its inline-edit state instead of
+ * requiring a click on the hero's own pencil first. `CreateArticleButton`
+ * (`../../components/create-article-button.tsx`) navigates a just-created
+ * article straight here so the caller can immediately fill in every
+ * placeholder field and hit Save — there is no separate `/articles/new` form
+ * page. This route has real, standing meaning beyond that one flow too: it's
+ * simply "open this article ready to edit," useful any time a caller already
+ * knows they want to edit rather than just look.
  */
 export default async function EditArticlePage({ params }: EditArticlePageProps) {
   const { id } = await params;
@@ -22,7 +27,8 @@ export default async function EditArticlePage({ params }: EditArticlePageProps) 
   return (
     <ArticleScreen
       {...props}
-      breadcrumbItems={[{ label: "Articles", href: "/articles" }, { label: props.article!.article_number }]}
+      startInEditMode
+      breadcrumbItems={[{ label: "Articles", href: "/articles" }, { label: props.article.article_number }]}
     />
   );
 }

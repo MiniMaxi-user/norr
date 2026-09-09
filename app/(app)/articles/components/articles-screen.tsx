@@ -14,9 +14,10 @@ import { CreateArticleButton } from "./create-article-button";
 // Unit/VAT selects via `CreateArticleButton`/`ArticlesTable` — the list view
 // itself always displayed those via `ArticleRecord`'s own resolved
 // `article_unit`/`vat_rate` embeds, never those fetched lists directly. Now
-// that create/edit lives on its own `/articles/new`/`/articles/[id]` pages
-// (which fetch their own reference data), this screen only still needs
-// `article_manufacturer` (for `ArticlesFilters`' own Manufacturer select).
+// that create/edit both live on `/articles/[id]`/`/articles/[id]/edit`
+// (which fetch their own reference data — there is no `/articles/new` form
+// page), this screen only still needs `article_manufacturer` (for
+// `ArticlesFilters`' own Manufacturer select).
 
 const PAGE_SIZE = 20;
 
@@ -67,11 +68,11 @@ function buildPageHref(params: {
  * Fetches the Article Group tree + `article_manufacturer` reference list ONCE
  * here and passes them down to `ArticlesFilters`' own Group/Manufacturer
  * selects — the only reference data this list VIEW itself still needs (issue
- * #123 moved create/edit off this screen entirely, onto their own
- * `/articles/new`/`/articles/[id]` pages, which fetch their own full set of
- * reference lists — see the module-level note above these imports).
- * `CreateArticleButton` is now a bare `Link` to `/articles/new`, needing none
- * of this data itself.
+ * #123 moved create/edit off this screen entirely, onto `/articles/[id]`/
+ * `/articles/[id]/edit`, which fetch their own full set of reference lists —
+ * see the module-level note above these imports). `CreateArticleButton`
+ * creates a bare placeholder article on click and navigates straight to
+ * `/articles/[id]/edit`, needing none of this data itself.
  */
 export async function ArticlesScreen({
   search,

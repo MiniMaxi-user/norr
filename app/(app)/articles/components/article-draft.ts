@@ -57,25 +57,6 @@ export function draftFromArticle(article: ArticleRecord): ArticleDraft {
   };
 }
 
-export function emptyDraft(): ArticleDraft {
-  return {
-    articleNumber: "",
-    mpn: "",
-    ean: "",
-    gtin: "",
-    description: "",
-    imageUrl: "",
-    groupId: "",
-    manufacturerItemId: "",
-    unitItemId: "",
-    purchasePrice: "",
-    salePrice: "",
-    vatRateItemId: "",
-    isActive: true,
-    isComposite: false,
-  };
-}
-
 /** Converts a draft (or a partial patch of one) into the shape
  * `createArticle`/`updateArticle` (`../actions.ts`) expect — empty-string
  * "unset" values become `undefined` (not sent) rather than an empty string

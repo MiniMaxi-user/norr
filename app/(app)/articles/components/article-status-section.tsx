@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Badge, Button, Checkbox, CompositionTree, EditableSection, Heading, Inline, Label, Stack, Text } from "@yourorg/ui";
+import { Badge, Checkbox, CompositionTree, EditableSection, Heading, Inline, Label, Stack, Text } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ArticleComponentLineRecord, ArticleRecord } from "../actions";
 import type { ArticleComponentTreeNode } from "../component-tree";
@@ -9,93 +8,66 @@ import type { ArticleDraft } from "./article-draft";
 import { ArticleComponentsEditor } from "./article-components-editor";
 
 export interface ArticleStatusSectionProps {
-  mode: "create" | "edit";
   draft: Pick<ArticleDraft, "isActive" | "isComposite">;
-  article?: ArticleRecord;
+  article: ArticleRecord;
   /** `getArticle`'s own BOM lines, fetched server-side alongside the article
-   * itself — `mode: "edit"` only, `undefined` in `mode: "create"` (nothing to
-   * fetch yet). */
+   * itself. */
   components?: ArticleComponentLineRecord[];
   /** `getArticleComponentTree`'s full recursive descendant tree, rooted at
-   * this article — `mode: "edit"` and `article.is_composite === true` only
-   * (see `ArticleScreenProps.componentTree`'s own doc comment). */
+   * this article — `article.is_composite === true` only (see
+   * `ArticleScreenProps.componentTree`'s own doc comment). */
   componentTree?: ArticleComponentTreeNode;
   editing: boolean;
-  onEditToggle?: (editing: boolean) => void;
+  /** Still needed here (unlike every other Article section) — forwarded
+   * straight through to `ArticleComponentsEditor`, which is its own
+   * persistent management surface below the toggle-able card (see this
+   * component's own module doc comment), not gated by `editing` itself. */
   readOnly?: boolean;
-  onSave: (patch: Pick<ArticleDraft, "isActive" | "isComposite">) => Promise<{ ok: boolean; error?: string }>;
-  /** `mode: "edit"` only — see `ArticleInfoSectionProps.onFieldChange`'s own
-   * doc comment. */
-  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "isActive" | "isComposite">>) => void;
+  /** See `ArticleInfoSectionProps.onFieldChange`'s own doc comment. */
+  onFieldChange: (patch: Partial<Pick<ArticleDraft, "isActive" | "isComposite">>) => void;
 }
 
 /**
- * "Status & composite" section (issue #123, converting the old
- * `ArticleFormPanel` slide-in) — the Active/Composite checkboxes, same
- * read-card/accent-edit-card toggle as every other section on this screen,
- * plus the bill-of-materials editor for a composite article rendered as a
- * SIBLING block below the toggle-able card (not itself gated by `editing`):
- * `ArticleComponentsEditor` is its own persistent management surface (add/
- * remove/re-quantity a BOM line, each already its own immediate save), not a
- * form field that needs a page-wide Save/Cancel around it.
+ * "Status & composite" section — the Active/Composite checkboxes, same
+ * read-card/accent-edit-card toggle as every other section on this screen
+ * (`editing` driven purely by the parent's single `pageEditing` boolean, see
+ * `article-screen.tsx`'s own module doc comment — no per-section pencil/Save
+ * here), plus the bill-of-materials editor for a composite article rendered
+ * as a SIBLING block below the toggle-able card (not itself gated by
+ * `editing`): `ArticleComponentsEditor` is its own persistent management
+ * surface (add/remove/re-quantity a BOM line, each already its own
+ * immediate save), not a form field that needs the page-wide Save/Cancel
+ * around it.
  *
  * This considerably simplifies the old panel's `is_composite`-persistence
  * sequencing (`isCompositePersisted`/`keepOpen`/`bomUnlockedThisSession`,
- * all now deleted): that dance existed purely to avoid a close-then-reopen
+ * all long deleted): that dance existed purely to avoid a close-then-reopen
  * round trip on a slide-in `Dialog` that could only ever mount `article`
- * fresh once. On a real page, `mode: "create"`'s `handleCreate` (`../
- * components/article-screen.tsx`) already navigates to `/articles/[id]` the
- * moment the article is first persisted — by the time this section ever
- * renders with `mode: "edit"`, `article.is_composite` already reflects
- * whatever the create form's Composite checkbox was checked to, so the BOM
- * editor is simply available immediately, no special-cased "first save that
- * unlocks it" banner needed. The one remaining sequencing case — an EXISTING
- * non-composite article's Composite box being checked for the first time —
- * still needs a save+`router.refresh()` round trip before `article.is_composite`
- * flips server-side and the editor appears (below), same as any other
- * inline-editable field on this screen.
+ * fresh once. On a real page, every article this section ever renders for is
+ * already a real, persisted row (`CreateArticleButton` creates the bare
+ * placeholder before ever navigating here — see `article-screen.tsx`'s own
+ * module doc comment), so `article.is_composite` always already reflects
+ * whatever the Composite checkbox was last saved to, and the BOM editor is
+ * simply available immediately whenever it's `true` — no special-cased
+ * "first save that unlocks it" banner needed. The one remaining sequencing
+ * case — an existing non-composite article's Composite box being checked for
+ * the first time — still needs a save+`router.refresh()` round trip (the
+ * page's own single Save) before `article.is_composite` flips server-side
+ * and the editor appears (below).
  */
 export function ArticleStatusSection({
-  mode,
   draft,
   article,
   components,
   componentTree,
   editing,
-  onEditToggle,
   readOnly,
-  onSave,
   onFieldChange,
 }: ArticleStatusSectionProps) {
-  const [isActive, setIsActive] = useState(draft.isActive);
-  const [isComposite, setIsComposite] = useState(draft.isComposite);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!editing) return;
-    setIsActive(draft.isActive);
-    setIsComposite(draft.isComposite);
-    setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing]);
-
-  async function handleSave() {
-    setError(null);
-    setSaving(true);
-    const result = await onSave({ isActive, isComposite });
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Could not save.");
-      return;
-    }
-    if (mode === "edit") onEditToggle?.(false);
-  }
-
   // The real gate for the BOM editor — the article's own PERSISTED
   // `is_composite`, not the (possibly not-yet-saved) local checkbox state
   // above. See this component's own module doc comment.
-  const isCompositePersisted = mode === "edit" && article?.is_composite === true;
+  const isCompositePersisted = article.is_composite === true;
 
   return (
     <Stack gap="lg">
@@ -103,66 +75,38 @@ export function ArticleStatusSection({
         icon={FileText}
         title="Status & composite"
         editing={editing}
-        onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
         editLabel="Edit status"
         editContent={
-          mode === "edit" ? (
-            <Stack gap="md">
-              <Inline gap="sm" align="center">
-                <Checkbox
-                  id="article-status-active"
-                  checked={draft.isActive}
-                  onChange={(event) => onFieldChange?.({ isActive: event.target.checked })}
-                />
-                <Label htmlFor="article-status-active">Active</Label>
-              </Inline>
-              <Inline gap="sm" align="center">
-                <Checkbox
-                  id="article-status-composite"
-                  checked={draft.isComposite}
-                  onChange={(event) => onFieldChange?.({ isComposite: event.target.checked })}
-                />
-                <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
-              </Inline>
-            </Stack>
-          ) : (
-            <Stack gap="md">
-              {error && <Text tone="danger">{error}</Text>}
-              <Inline gap="sm" align="center">
-                <Checkbox id="article-status-active" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
-                <Label htmlFor="article-status-active">Active</Label>
-              </Inline>
-              <Inline gap="sm" align="center">
-                <Checkbox
-                  id="article-status-composite"
-                  checked={isComposite}
-                  onChange={(event) => setIsComposite(event.target.checked)}
-                />
-                <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
-              </Inline>
-              <Inline gap="sm" justify="end">
-                <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-              </Inline>
-            </Stack>
-          )
+          <Stack gap="md">
+            <Inline gap="sm" align="center">
+              <Checkbox
+                id="article-status-active"
+                checked={draft.isActive}
+                onChange={(event) => onFieldChange({ isActive: event.target.checked })}
+              />
+              <Label htmlFor="article-status-active">Active</Label>
+            </Inline>
+            <Inline gap="sm" align="center">
+              <Checkbox
+                id="article-status-composite"
+                checked={draft.isComposite}
+                onChange={(event) => onFieldChange({ isComposite: event.target.checked })}
+              />
+              <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
+            </Inline>
+          </Stack>
         }
       >
         <Inline gap="xs">
-          <Badge variant={article?.is_active ?? draft.isActive ? "success" : "muted"}>
-            {(article?.is_active ?? draft.isActive) ? "Active" : "Inactive"}
-          </Badge>
-          {(article?.is_composite ?? draft.isComposite) && <Badge variant="accent">Composite</Badge>}
+          <Badge variant={article.is_active ? "success" : "muted"}>{article.is_active ? "Active" : "Inactive"}</Badge>
+          {article.is_composite && <Badge variant="accent">Composite</Badge>}
         </Inline>
       </EditableSection>
 
       {draft.isComposite && (
         <Stack gap="sm">
           <Heading level={4}>Bill of materials</Heading>
-          {mode === "create" ? (
-            <Text tone="muted">Create this article first to start adding bill-of-materials components.</Text>
-          ) : !isCompositePersisted ? (
+          {!isCompositePersisted ? (
             <Text tone="muted">Save your changes above first to start adding components.</Text>
           ) : (
             <Stack gap="md">
@@ -174,7 +118,7 @@ export function ArticleStatusSection({
                   renderNode={(node) => <ArticleComponentTreeNodeContent node={node} />}
                 />
               )}
-              <ArticleComponentsEditor parentArticleId={article!.id} initialComponents={components ?? []} readOnly={readOnly} />
+              <ArticleComponentsEditor parentArticleId={article.id} initialComponents={components ?? []} readOnly={readOnly} />
             </Stack>
           )}
         </Stack>
