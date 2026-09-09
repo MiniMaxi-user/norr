@@ -26,11 +26,20 @@
 -- create_own/read_own/update_own scoped to action_holder_id = auth.uid()
 -- (no delete, cannot reassign away from self); finance/administratie
 -- read-only, all rows.
+--
+-- Section 6 (issue #133, 20260911090000_activities_action_holder_nullable.sql)
+-- covers action_holder_id becoming nullable: owner/planner can create/leave
+-- an activity unassigned; an engineer still cannot (their create_own INSERT
+-- WITH CHECK requires action_holder_id = auth.uid(), which NULL never
+-- satisfies); an unassigned activity is invisible to an engineer via the
+-- "own" SELECT branch (NULL never equals auth.uid()) but remains visible to
+-- finance (read-only, all rows, not action-holder-scoped); assigning an
+-- action holder afterward via UPDATE makes it visible to that engineer.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(48);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -544,6 +553,77 @@ select throws_ok(
   null,
   'owner_b cannot INSERT an activity under org_a''s client (not a member of org_a at all, so current_member_role is null)'
 ); -- 41
+
+-- ---------------------------------------------------------------------------
+-- 6. action_holder_id is nullable (issue #133): owner/planner can create an
+--    unassigned activity; an engineer still cannot (create_own's WITH CHECK
+--    requires action_holder_id = auth.uid(), which NULL never satisfies); an
+--    unassigned activity is invisible to an engineer via the "own" SELECT
+--    branch but stays visible to finance (read-only, all rows); assigning an
+--    action holder afterward via UPDATE makes it visible to that engineer.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('d2111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.activities (id, client_id, type_id, description)
+     select 'd7000000-0000-0000-0000-000000000010', 'd3000000-0000-0000-0000-00000000000a',
+       rli.id, 'Melding zonder actiehouder'
+     from public.reference_list_items rli
+     join public.reference_lists rl on rl.id = rli.reference_list_id
+     where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
+       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
+  'owner_a can insert an activity with action_holder_id omitted (issue #133 — no longer required)'
+); -- 42
+
+select is(
+  (select action_holder_id from public.activities where id = 'd7000000-0000-0000-0000-000000000010'),
+  null::uuid,
+  'the new activity''s action_holder_id was actually stored as NULL, not defaulted to the reporter/creator'
+); -- 43
+
+select pg_temp.act_as('d2333333-3333-3333-3333-333333333333');
+
+select throws_ok(
+  $$ insert into public.activities (client_id, type_id, description)
+     select 'd3000000-0000-0000-0000-00000000000a', rli.id, 'Engineer poogt zonder actiehouder aan te maken'
+     from public.reference_list_items rli
+     join public.reference_lists rl on rl.id = rli.reference_list_id
+     where rl.organization_id = 'd1000000-0000-0000-0000-00000000000a'
+       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
+  '42501',
+  null,
+  'engineer_a still cannot INSERT an activity with a NULL/omitted action_holder_id (create_own''s WITH CHECK requires action_holder_id = auth.uid(), which NULL never satisfies)'
+); -- 44
+
+select is(
+  (select count(*)::int from public.activities where id = 'd7000000-0000-0000-0000-000000000010'),
+  0,
+  'engineer_a (not the action holder — there is none) cannot see the unassigned activity via the "own" SELECT branch'
+); -- 45
+
+select pg_temp.act_as('d2555555-5555-5555-5555-555555555555');
+
+select is(
+  (select count(*)::int from public.activities where id = 'd7000000-0000-0000-0000-000000000010'),
+  1,
+  'finance_a can still SELECT the unassigned activity (read-only, all rows, not action-holder-scoped)'
+); -- 46
+
+select pg_temp.act_as('d2111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ update public.activities set action_holder_id = 'd2333333-3333-3333-3333-333333333333'
+     where id = 'd7000000-0000-0000-0000-000000000010' $$,
+  'owner_a can assign an action holder to a previously-unassigned activity (NULL -> a real value)'
+); -- 47
+
+select pg_temp.act_as('d2333333-3333-3333-3333-333333333333');
+
+select is(
+  (select count(*)::int from public.activities where id = 'd7000000-0000-0000-0000-000000000010'),
+  1,
+  'engineer_a can now see the activity via the "own" SELECT branch, now that they are its assigned action holder'
+); -- 48
 
 select * from finish();
 rollback;

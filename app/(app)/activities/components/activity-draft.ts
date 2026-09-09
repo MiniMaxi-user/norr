@@ -24,6 +24,12 @@ export interface ActivityDraft {
    * populated) in `mode: "create"`, mirroring every other field with no
    * create-time entry point. */
   solution: string;
+  /** `""` means "unassigned" — same optional-uuid convention every other
+   * optional-uuid draft field here already uses (`contactPersonId`, etc.).
+   * Owner/planner may leave this unset (issue #133 — Action holder is no
+   * longer required); an engineer's own create/update always pins it
+   * server-side regardless of what's sent (`createActivity`/`updateActivity`
+   * in `../actions.ts`). */
   actionHolderId: string;
 }
 
@@ -39,7 +45,7 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
     contactEmail: activity.contact_email ?? "",
     description: activity.description,
     solution: activity.solution ?? "",
-    actionHolderId: activity.action_holder_id,
+    actionHolderId: activity.action_holder_id ?? "",
   };
 }
 

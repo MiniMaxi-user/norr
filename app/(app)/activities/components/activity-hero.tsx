@@ -41,6 +41,16 @@ export interface ActivityHeroProps {
   };
   readOnly?: boolean;
   actions?: ReactNode;
+  /** Opens every gated section on the page into its inline-edit state at
+   * once (`activity-screen.tsx`'s `pageEditing`) — omitted (along with the
+   * pencil itself) once already editing, for a `readOnly` viewer, or in
+   * `mode: "create"` (nothing to gate there, every field is already live).
+   * Mirrors `ArticleHero`'s/`AssetHero`'s identical `onEditHeader` (issue
+   * #133). Deliberately separate from the Status badge's own pencil just
+   * below it in `meta` — that one is untouched, out of scope for issue #133
+   * (same "cards/status keep their own pencil" precedent `ArticleScreen`'s
+   * own module comment documents). */
+  onEditHeader?: () => void;
   onClientChange: (clientId: string) => void;
   onRelationsSave: (
     patch: Pick<
@@ -70,8 +80,13 @@ export interface ActivityHeroProps {
  *   (Type is edited in its own section now).
  * - No stats strip — `noStats` on `RecordHeroBand` stands in for the bottom
  *   padding a stats strip would otherwise provide.
- * - `actions` is owned by the caller (`ActivityScreen`): just the kebab
- *   (`ActivityDetailActions`) in edit mode, Cancel/Create in create mode.
+ * - `actions` is owned by the caller (`ActivityScreen`): the kebab
+ *   (`ActivityDetailActions`) or the page's own Save/Cancel pair while dirty
+ *   in edit mode, Cancel/Create in create mode.
+ * - `onEditHeader` (issue #133) adds a second pencil into the same `meta`
+ *   span, next to the status pencil — opens the page's own `pageEditing`,
+ *   gating Type/Description/Solution/Contact person into their inline-edit
+ *   form. `mode: "create"` never passes it (nothing to gate there).
  *
  * Still owns the two small popups (`ActivityStatusDialog`/
  * `ActivityRelationsDialog`, the latter NARROWED by issue #118 to only
@@ -100,6 +115,7 @@ export function ActivityHero({
   clientScoped,
   readOnly,
   actions,
+  onEditHeader,
   onClientChange,
   onRelationsSave,
   onStatusSave,
@@ -205,6 +221,14 @@ export function ActivityHero({
         </IconButton>
       )}
       {selectedType && <Badge variant="muted">{selectedType.label}</Badge>}
+      {/* Central header edit-pencil (issue #133, point 4) — opens the page's
+          own `pageEditing` state, gating Type/Description/Solution/Contact
+          person into their inline-edit form. */}
+      {!readOnly && onEditHeader && (
+        <IconButton variant="ghost" aria-label="Edit header" onClick={onEditHeader}>
+          <Pencil />
+        </IconButton>
+      )}
     </span>,
   ];
   if (resolvedClient) {

@@ -85,18 +85,47 @@ export interface ActivityScreenProps {
  * `DetailColumns` layout (`.design-handoff/melding_detail/README.md`): Type/
  * Assignment/Notes on the left, Contact person/Linked work orders/Historie
  * on the right — replacing the old single-column stack of just Assignment +
- * a standalone `CreateWorkOrderCallout` card. Notes/Linked-work-orders/
- * Historie stay `mode: "edit"`-only (nothing to show before the record
- * exists); Type/Contact-person work in both modes since they only ever touch
- * `commitPatch`, which already makes a local-only draft merge in
- * `mode: "create"`.
+ * a standalone `CreateWorkOrderCallout` card.
  *
- * Owns one flat `ActivityDraft` (`./activity-draft.ts`) as the source of
- * truth for every editable field; every section reads from it and writes
- * back through `commitPatch` below — in `mode: "edit"` that's an immediate
- * `updateActivity` call (small, section-scoped popups/inline fields, saved
- * the instant they're committed — no page-wide Save/Cancel, same as
- * `WorkOrderScreen`), in `mode: "create"` it's a local-only merge until the
+ * *** Issue #133 *** ("Aanpassing Activity") replaced the old "every section
+ * auto-saves the instant it's touched, no page-wide Save/Cancel" design with
+ * `ArticleScreen`'s single-header-pencil model (`article-screen.tsx`'s own
+ * module comment is the fuller reference): one `pageEditing` boolean, flipped
+ * by the hero's own central pencil (`ActivityHero`'s `onEditHeader`), gates
+ * Type/Description/Solution/Contact-person between a read view and an
+ * editable one; every field writes straight into the shared `draft`
+ * (`updateDraft`, passed down as each section's own `onFieldChange`); one
+ * Save/Cancel pair in the hero's `actions` slot commits (or discards) the
+ * whole accumulated `draft` in one shot.
+ *
+ * Two real differences from Article's byte-for-byte shape, both driven by
+ * this story's own acceptance criteria:
+ *  - Action holder is the one field that stays ALWAYS live-editable in
+ *    `mode: "edit"`, independent of `pageEditing` entirely — no pencil, no
+ *    dialog, no gate (`ActivityAssignmentSection`'s own doc comment). It can
+ *    be reassigned without ever touching the header pencil.
+ *  - The Save/Cancel pair's visibility is gated on `isDirty` (a real "did
+ *    anything actually change" flag), NOT on `pageEditing` — Article shows
+ *    Save the instant its pencil is clicked, before anything's touched, but
+ *    Action holder changes can happen with `pageEditing` still `false`
+ *    (point above), and those must ALSO surface Save. `isDirty` is set by
+ *    every field-change path through `updateDraft` (including Action
+ *    holder's own, whether or not `pageEditing` is on) and cleared on Cancel
+ *    or a successful Save. `pageEditing` and `isDirty` are otherwise fully
+ *    independent: `pageEditing` only controls which sections render as
+ *    editable inputs vs. plain read text; it never gates Save/Cancel's own
+ *    visibility.
+ *
+ * The Client/Asset/Contract/Contact-person `RelationCard`s and the Status
+ * badge's own pencil/dialog are UNTOUCHED by issue #133 (same "cards keep
+ * their own pencil" precedent `ArticleScreen`'s module comment documents for
+ * Articles/Assets/Clients) — they keep committing immediately through
+ * `commitPatch` below, exactly as before.
+ *
+ * `mode: "create"` needs none of the above: every section there is already
+ * effectively "always live" (nothing to gate before the record even exists),
+ * so it just writes straight into the shared `draft` via the same
+ * `updateDraft`/`onFieldChange` plumbing, with no network call until the
  * hero's own "Create activity" action fires `createActivity` with the whole
  * accumulated draft and navigates to the new record.
  */
@@ -133,6 +162,26 @@ export function ActivityScreen({
       : emptyDraft({ lockedClientId, lockedAssetId, initialActionHolderId }),
   );
 
+  // The ONE editing surface for Type/Description/Solution/Contact-person
+  // (see this component's own doc comment) — flipped by the hero's own
+  // central pencil (`ActivityHero`'s `onEditHeader`). `mode: "create"` has no
+  // use for this (every section there is already effectively "always live"),
+  // so it's only ever toggled in `mode: "edit"`; forced `false` regardless
+  // for a `readOnly` viewer, same "never render an edit affordance RLS would
+  // reject" convention `ArticleScreen`'s own `pageEditing` documents.
+  const [pageEditing, setPageEditing] = useState(false);
+
+  // Set by every field-change path through `updateDraft` below (including
+  // Action holder's own, whether or not `pageEditing` is on) — the Save/
+  // Cancel pair in the hero's `actions` slot renders whenever this is `true`,
+  // independent of `pageEditing` (see this component's own doc comment for
+  // why the two are deliberately separate). Cleared on Cancel and on a
+  // successful Save.
+  const [isDirty, setIsDirty] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   // The client currently being PREVIEWED for the relation cards + the
   // relations dialog's own asset/contact pickers — kept separate from
   // `draft.clientId` so opening the dialog and trying a different client
@@ -149,9 +198,14 @@ export function ActivityScreen({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  /** Every section's own "Save" ultimately calls this. `mode: "edit"` persists
-   * immediately (`updateActivity`) and refreshes the server-rendered data;
-   * `mode: "create"` only ever merges into local draft state. */
+  /** The Client/Asset/Contract/Contact-person `RelationCard`s' own small
+   * popups (`ActivityRelationsDialog`/`ActivityStatusDialog`) still call this
+   * directly, UNCHANGED by issue #133 (out of scope — see this component's
+   * own doc comment): `mode: "edit"` persists immediately (`updateActivity`)
+   * and refreshes the server-rendered data; `mode: "create"` only ever
+   * merges into local draft state. Deliberately does NOT set `isDirty` —
+   * these two popups already have their own Save/Cancel and persist (or
+   * discard) on their own, independent of the page's own Save. */
   async function commitPatch(patch: Partial<ActivityDraft>): Promise<{ ok: boolean; error?: string }> {
     if (mode === "edit" && activity) {
       const result = await updateActivity(activity.id, draftToInput(patch));
@@ -162,6 +216,51 @@ export function ActivityScreen({
     }
     setDraft((prev) => ({ ...prev, ...patch }));
     return { ok: true };
+  }
+
+  /** Every OTHER section's own field change calls this directly — a
+   * local-only merge into the shared `draft`, never posted to the server
+   * until `mode: "edit"`'s own page-wide Save (`handleEditSave` below) or
+   * `mode: "create"`'s "Create activity" (`handleCreate` below). Always
+   * marks the draft dirty, in both modes — harmless in `mode: "create"`
+   * (nothing reads `isDirty` there; Cancel/Create render unconditionally). */
+  function updateDraft(patch: Partial<ActivityDraft>) {
+    setDraft((prev) => ({ ...prev, ...patch }));
+    setIsDirty(true);
+  }
+
+  function handleEditCancel() {
+    if (!activity) return;
+    setDraft(draftFromActivity(activity));
+    setEditError(null);
+    setIsDirty(false);
+    setPageEditing(false);
+  }
+
+  async function handleEditSave() {
+    if (!activity) return;
+    if (!draft.description.trim()) {
+      setEditError("Description is required.");
+      return;
+    }
+    setEditError(null);
+    setSaving(true);
+    const result = await updateActivity(activity.id, draftToInput(draft));
+    setSaving(false);
+    if (!result.data) {
+      const fieldMessages = Object.values(result.fieldErrors ?? {})
+        .flatMap((messages) => messages ?? [])
+        .filter(Boolean);
+      setEditError(
+        fieldMessages.length > 0
+          ? fieldMessages.join(" ")
+          : result.error ?? "Could not save.",
+      );
+      return;
+    }
+    router.refresh();
+    setIsDirty(false);
+    setPageEditing(false);
   }
 
   async function handleCreate() {
@@ -177,10 +276,6 @@ export function ActivityScreen({
       setCreateError("Description is required.");
       return;
     }
-    if (!draft.actionHolderId) {
-      setCreateError("Select an action holder.");
-      return;
-    }
     setCreateError(null);
     setCreating(true);
     const result = await createActivity(draftToInput(draft));
@@ -194,7 +289,18 @@ export function ActivityScreen({
 
   const heroActions =
     mode === "edit" && activity ? (
-      <ActivityDetailActions activity={activity} canDelete={Boolean(canDelete)} />
+      isDirty ? (
+        <>
+          <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </>
+      ) : (
+        <ActivityDetailActions activity={activity} canDelete={Boolean(canDelete)} />
+      )
     ) : (
       <>
         <Button
@@ -217,9 +323,16 @@ export function ActivityScreen({
   // always does, even before the first note exists.
   const showNotes = mode === "edit" && Boolean(activity) && (!readOnly || (notes?.length ?? 0) > 0);
 
+  // Drives Type/Description/Solution/Contact-person between their read and
+  // editable states — `mode: "create"` is always "editable" (nothing to
+  // gate before the record even exists, same as before issue #133);
+  // `mode: "edit"` follows the page's own `pageEditing` flag.
+  const sectionEditing = mode === "create" || pageEditing;
+
   return (
     <Stack gap="lg">
       {createError && <Text tone="danger">{createError}</Text>}
+      {editError && <Text tone="danger">{editError}</Text>}
 
       <ActivityHero
         mode={mode}
@@ -235,6 +348,7 @@ export function ActivityScreen({
         clientScoped={clientScoped}
         readOnly={readOnly}
         actions={heroActions}
+        onEditHeader={mode === "edit" && !readOnly && !pageEditing ? () => setPageEditing(true) : undefined}
         onClientChange={setScopingClientId}
         onRelationsSave={commitPatch}
         onStatusSave={commitPatch}
@@ -246,8 +360,8 @@ export function ActivityScreen({
             <ActivityTypeSection
               typeId={draft.typeId}
               activityTypes={activityTypes}
-              readOnly={readOnly}
-              onSave={commitPatch}
+              editing={sectionEditing}
+              onFieldChange={updateDraft}
             />
 
             <ActivityAssignmentSection
@@ -256,8 +370,9 @@ export function ActivityScreen({
               activity={activity}
               members={members}
               canAssignOthers={canAssignOthers}
+              editing={sectionEditing}
               readOnly={readOnly}
-              onSave={commitPatch}
+              onFieldChange={updateDraft}
             />
 
             {showNotes && activity && (
@@ -267,7 +382,7 @@ export function ActivityScreen({
         }
         right={
           <>
-            <ActivityContactSection mode={mode} draft={draft} readOnly={readOnly} onSave={commitPatch} />
+            <ActivityContactSection draft={draft} editing={sectionEditing} onFieldChange={updateDraft} />
 
             {mode === "edit" && activity && linkedWorkOrders !== undefined && (
               <ActivityLinkedWorkOrders

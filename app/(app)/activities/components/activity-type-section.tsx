@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { IconTileSelect, SectionHeader, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -10,32 +10,29 @@ import type { ActivityDraft } from "./activity-draft";
 export interface ActivityTypeSectionProps {
   typeId: string;
   activityTypes: ReferenceListItemRecord[];
-  readOnly?: boolean;
-  onSave: (patch: Pick<ActivityDraft, "typeId">) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "create"`'s own screen always passes `true` (no edit gate makes
+   * sense on a not-yet-created record); `mode: "edit"` passes the page's
+   * single `pageEditing` boolean (`activity-screen.tsx`). */
+  editing: boolean;
+  /** Writes straight into the shared `draft` (`activity-screen.tsx`'s
+   * `updateDraft`) — no network call from here anymore. Persistence is
+   * deferred to the page's own Save (`mode: "edit"`) or "Create activity"
+   * (`mode: "create"`). */
+  onFieldChange: (patch: Pick<ActivityDraft, "typeId">) => void;
 }
 
 /**
  * "Type" section (`.design-handoff/melding_detail/README.md`) — the
  * `IconTileSelect` of the 5 `activity_type` options that used to live inside
- * `ActivityRelationsDialog`, now its own always-visible section that saves
- * the instant a tile is clicked ("Type wisselen valideert direct" — no
- * separate Save button). Optimistically shows the newly-picked tile before
- * the save round-trips; reverts back to the last-committed value and surfaces
- * the server's error inline if the save is rejected (e.g. switching to
- * Storing/Onderhoud with no asset set — `validate_activity_relations`'s DB
- * check, surfaced as a clean field error by `updateActivity`). Local
- * `selectedId` mirrors the `typeId` prop via effect (same "self-heals back to
- * the real prop" pattern `ActivityScreen`'s own `scopingClientId` uses) so a
- * save that lands from elsewhere stays in sync.
+ * `ActivityRelationsDialog`. Issue #133 removed this section's own instant
+ * per-click `updateActivity` round trip (and the optimistic-select/
+ * revert-on-error dance that only existed to paper over that instant save):
+ * `!editing` renders a plain read-only `Text` of the selected type, `editing`
+ * renders the same `IconTileSelect` as before, but now just merging the pick
+ * into the shared `draft` — persisted once by the page's own Save, alongside
+ * every other field.
  */
-export function ActivityTypeSection({ typeId, activityTypes, readOnly, onSave }: ActivityTypeSectionProps) {
-  const [selectedId, setSelectedId] = useState(typeId);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelectedId(typeId);
-  }, [typeId]);
-
+export function ActivityTypeSection({ typeId, activityTypes, editing, onFieldChange }: ActivityTypeSectionProps) {
   const typeOptions = useMemo(
     () =>
       activityTypes.map((item) => {
@@ -45,29 +42,21 @@ export function ActivityTypeSection({ typeId, activityTypes, readOnly, onSave }:
     [activityTypes],
   );
 
-  async function handleChange(nextTypeId: string) {
-    if (readOnly || nextTypeId === selectedId) return;
-    const previous = selectedId;
-    setSelectedId(nextTypeId);
-    setError(null);
-    const result = await onSave({ typeId: nextTypeId });
-    if (!result.ok) {
-      setSelectedId(previous);
-      setError(result.error ?? "Could not change the activity type.");
-    }
-  }
+  const selectedType = activityTypes.find((item) => item.id === typeId);
 
   return (
     <Stack gap="md">
       <SectionHeader icon={AlertTriangle} title="Type" />
-      {error && <Text tone="danger">{error}</Text>}
-      <IconTileSelect
-        options={typeOptions}
-        value={selectedId}
-        onChange={handleChange}
-        aria-label="Activity type"
-        disabled={readOnly}
-      />
+      {editing ? (
+        <IconTileSelect
+          options={typeOptions}
+          value={typeId}
+          onChange={(nextTypeId) => onFieldChange({ typeId: nextTypeId })}
+          aria-label="Activity type"
+        />
+      ) : (
+        <Text>{selectedType?.label ?? "No type selected yet."}</Text>
+      )}
       {/* Exact copy + styling from the mockup — `Text` has no `size="xs"`
           prop (see `packages/ui/src/components/typography.tsx`), so this
           matches the raw CSS the design handoff specifies directly via the

@@ -99,16 +99,18 @@ const activityBaseSchema = z.object({
    * `optionalText` shape/max length as every other optional free-text field
    * in this schema. */
   solution: optionalText(5000),
-  /** The user responsible for following up. Always required on create (the
-   * actiehouder picker is always shown/required, even for an engineer whose
-   * own id is the only legitimate value) — `createActivity` silently pins
-   * this to the caller's own id when they only hold `create_own` (mirrors
-   * `timeEntryClockInSchema`/`clockIn`'s `userId` override in
-   * `app/(app)/work-orders/schema.ts` / `time-entries-actions.ts`), rather
-   * than trusting whatever value an engineer's form happened to submit.
-   * Remains editable after creation ("mag wel worden aangepast na
-   * aanmaak") for anyone with `update`/`update_own`. */
-  actionHolderId: z.string().uuid("Invalid action holder."),
+  /** The user responsible for following up. Optional at this schema layer —
+   * an unassigned activity is now a valid state (no longer defaulted to the
+   * reporter), and it can be assigned later via a normal update. Still
+   * effectively always set for an engineer specifically: `createActivity`
+   * silently pins this to the caller's own id when they only hold
+   * `create_own` (mirrors `timeEntryClockInSchema`/`clockIn`'s `userId`
+   * override in `app/(app)/work-orders/schema.ts` / `time-entries-actions.ts`),
+   * regardless of what they submit here — only a caller with unscoped
+   * `create`/`update` (owner/planner) can actually leave it unset. Remains
+   * editable after creation ("mag wel worden aangepast na aanmaak") for
+   * anyone with `update`/`update_own`. */
+  actionHolderId: optionalUuid("Invalid action holder."),
 });
 
 /**

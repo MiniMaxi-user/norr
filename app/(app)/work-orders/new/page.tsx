@@ -185,7 +185,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       initialContractId={contractId}
       initialDescription={activity?.description}
       initialTitle={activity?.activity_type?.label}
-      initialAssignedTo={activity?.action_holder_id}
+      initialAssignedTo={activity?.action_holder_id ?? undefined}
       sourceActivityId={sourceActivityId}
       statuses={statuses}
       priorities={priorities}

@@ -28,11 +28,22 @@
 -- work_order_id pointing at the work order from section 8, which itself has
 -- source_activity_id set, so create_activity_quote_created_event resolves
 -- the activity transitively and logs the event there.
+--
+-- Section 11 (issue #133, 20260911090000_activities_action_holder_nullable.sql)
+-- covers action_holder_id becoming nullable on all three tables: an activity
+-- created with NO action_holder_id still successfully logs its 'created'
+-- activity_events row (NULL action_holder_id, no NOT NULL violation) and
+-- accepts a note (also NULL action_holder_id, derived from the still-
+-- unassigned parent); an engineer cannot see either via the "own" branch
+-- (NULL never equals auth.uid()) while finance still can (read-only, all
+-- rows); assigning an action holder afterward fires action_holder_changed
+-- and actively re-syncs the pre-existing note's action_holder_id from NULL
+-- to the real value, making it visible to that engineer.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(49);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -398,6 +409,103 @@ select is(
   'ea000000-0000-0000-0000-00000000000a'::uuid,
   'creating the quote auto-logged a quote_created activity_events row on the activity its work order was sourced from'
 ); -- 37
+
+-- ---------------------------------------------------------------------------
+-- 11. action_holder_id is nullable (issue #133): an unassigned activity's
+--     'created' event and its notes both carry a NULL action_holder_id
+--     (no NOT NULL violation); invisible to an engineer via the "own"
+--     branch on either table; visible to finance regardless; assigning an
+--     action holder afterward fires action_holder_changed and re-syncs the
+--     pre-existing note to the newly-assigned engineer.
+-- ---------------------------------------------------------------------------
+select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ insert into public.activities (id, client_id, type_id, description)
+     select 'e7000000-0000-0000-0000-00000000000b', 'e3000000-0000-0000-0000-00000000000a',
+       rli.id, 'Melding zonder actiehouder'
+     from public.reference_list_items rli
+     join public.reference_lists rl on rl.id = rli.reference_list_id
+     where rl.organization_id = 'e1000000-0000-0000-0000-00000000000a'
+       and rl.list_key = 'activity_type' and rli.value = 'afspraak' $$,
+  'owner_a can insert an activity with action_holder_id omitted (issue #133 — no longer required)'
+); -- 38
+
+select is(
+  (select action_holder_id from public.activity_events
+     where activity_id = 'e7000000-0000-0000-0000-00000000000b' and event_type = 'created'),
+  null::uuid,
+  'the unassigned activity''s auto-logged created event carries a NULL action_holder_id, not a NOT NULL violation'
+); -- 39
+
+select lives_ok(
+  $$ insert into public.activity_notes (id, activity_id, body)
+     values ('e8000000-0000-0000-0000-00000000000d', 'e7000000-0000-0000-0000-00000000000b', 'Notitie op niet-toegewezen melding') $$,
+  'owner_a can insert a note on the unassigned activity'
+); -- 40
+
+select is(
+  (select action_holder_id from public.activity_notes where id = 'e8000000-0000-0000-0000-00000000000d'),
+  null::uuid,
+  'the note''s action_holder_id was derived as NULL from the still-unassigned parent activity (derive_activity_note_fields), not a NOT NULL violation'
+); -- 41
+
+select pg_temp.act_as('e2333333-3333-3333-3333-333333333333');
+
+select is(
+  (select count(*)::int from public.activity_notes where activity_id = 'e7000000-0000-0000-0000-00000000000b'),
+  0,
+  'engineer_a cannot see the note on the unassigned activity via the "own" branch (NULL action_holder_id never equals auth.uid())'
+); -- 42
+
+select is(
+  (select count(*)::int from public.activity_events where activity_id = 'e7000000-0000-0000-0000-00000000000b'),
+  0,
+  'engineer_a cannot see the created event on the unassigned activity via the "own" branch either'
+); -- 43
+
+select pg_temp.act_as('e2555555-5555-5555-5555-555555555555');
+
+select is(
+  (select count(*)::int from public.activity_notes where activity_id = 'e7000000-0000-0000-0000-00000000000b'),
+  1,
+  'finance_a can still see the note on the unassigned activity (read-only, all rows, not action-holder-scoped)'
+); -- 44
+
+select is(
+  (select count(*)::int from public.activity_events where activity_id = 'e7000000-0000-0000-0000-00000000000b'),
+  1,
+  'finance_a can still see the created event on the unassigned activity'
+); -- 45
+
+select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  $$ update public.activities set action_holder_id = 'e2333333-3333-3333-3333-333333333333'
+     where id = 'e7000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can assign an action holder to the previously-unassigned activity (NULL -> a real value)'
+); -- 46
+
+select is(
+  (select count(*)::int from public.activity_events
+     where activity_id = 'e7000000-0000-0000-0000-00000000000b' and event_type = 'action_holder_changed'),
+  1,
+  'assigning an action holder to a previously-unassigned activity still fires action_holder_changed (old.action_holder_id IS DISTINCT FROM new.action_holder_id is true for NULL -> a real value)'
+); -- 47
+
+select is(
+  (select action_holder_id from public.activity_notes where id = 'e8000000-0000-0000-0000-00000000000d'),
+  'e2333333-3333-3333-3333-333333333333'::uuid,
+  'the pre-existing note''s action_holder_id was actively re-synced from NULL to the newly-assigned engineer (activities_sync_dependents_action_holder)'
+); -- 48
+
+select pg_temp.act_as('e2333333-3333-3333-3333-333333333333');
+
+select is(
+  (select count(*)::int from public.activity_notes where activity_id = 'e7000000-0000-0000-0000-00000000000b'),
+  1,
+  'engineer_a can now see the note, now that they are the activity''s assigned action holder'
+); -- 49
 
 select * from finish();
 rollback;

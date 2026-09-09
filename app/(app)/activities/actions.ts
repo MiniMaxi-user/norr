@@ -99,7 +99,7 @@ export interface ActivityRecord {
   solution: string | null;
   reported_at: string;
   reported_by: string | null;
-  action_holder_id: string;
+  action_holder_id: string | null;
   created_at: string;
   updated_at: string;
   /** Embedded via `reference_list_items!activities_type_id_fkey(...)` — see
@@ -347,6 +347,13 @@ export async function getActivityFormContext(): Promise<
  * (`create_own`, always pinned to their own id as `action_holder_id`, see
  * below). Both entry points from the acceptance criteria are supported via
  * `input.assetId`/`input.clientId` (see `resolveActivityClientId`).
+ *
+ * `action_holder_id` is no longer required: a caller with unscoped `create`
+ * (owner/planner) may leave it unset, landing the new activity unassigned
+ * (`null`) rather than defaulting to the reporter — it can be assigned later
+ * via `updateActivity`. An engineer (`create_own` only) is unaffected by this
+ * and is still always pinned to their own id, never `null` for them (see
+ * below).
  */
 export async function createActivity(input: unknown): Promise<ActionResult<{ activity: ActivityRecord }>> {
   const ctx = await requireModuleContext("activities");
@@ -387,9 +394,10 @@ export async function createActivity(input: unknown): Promise<ActionResult<{ act
   // holder on their own new activity, regardless of what actionHolderId they
   // submitted — mirrors clockIn's userId override in
   // app/(app)/work-orders/time-entries-actions.ts. A caller with plain
-  // `create` (owner/planner) may set any org member as the action holder.
+  // `create` (owner/planner) may set any org member as the action holder, or
+  // leave it unset (null) — an unassigned activity is a valid state.
   const canAssignOthers = can(ctx.context.actor, "activities", "create");
-  const actionHolderId = canAssignOthers ? parsed.data.actionHolderId : ctx.context.session.userId;
+  const actionHolderId = canAssignOthers ? parsed.data.actionHolderId ?? null : ctx.context.session.userId;
 
   const row: Record<string, unknown> = {
     client_id: clientIdResult.clientId,
