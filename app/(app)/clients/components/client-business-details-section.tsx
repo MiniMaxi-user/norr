@@ -14,6 +14,13 @@ export interface ClientBusinessDetailsSectionProps {
   onSave: (
     patch: Pick<ClientDraft, "name" | "kvkNumber" | "vatNumber" | "iban">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `client-create-screen.tsx` only (default `false`) — every field becomes
+   * directly controlled off the shared `draft` and calls `onSave` on every
+   * change instead of rendering this section's own Cancel/Save row, since
+   * that screen already has its own single page-level "Save client" button.
+   * `details-tab.tsx` never passes this — its own independent per-section
+   * pencil+Save stays exactly as-is. */
+  hideActions?: boolean;
 }
 
 /**
@@ -32,6 +39,7 @@ export function ClientBusinessDetailsSection({
   onEditToggle,
   readOnly,
   onSave,
+  hideActions,
 }: ClientBusinessDetailsSectionProps) {
   const [name, setName] = useState(draft.name);
   const [kvkNumber, setKvkNumber] = useState(draft.kvkNumber);
@@ -80,48 +88,96 @@ export function ClientBusinessDetailsSection({
       icon={CreditCard}
       title="Business details"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={hideActions || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit business details"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
-          <Stack gap="xs">
-            <Label htmlFor="client-business-name">Name</Label>
-            <Input id="client-business-name" value={name} onChange={(event) => setName(event.target.value)} required />
+        hideActions ? (
+          <Stack gap="md">
+            <Stack gap="xs">
+              <Label htmlFor="client-business-name">Name</Label>
+              <Input
+                id="client-business-name"
+                value={draft.name}
+                onChange={(event) =>
+                  onSave({ name: event.target.value, kvkNumber: draft.kvkNumber, vatNumber: draft.vatNumber, iban: draft.iban })
+                }
+                required
+              />
+            </Stack>
+            <FormGrid columns={3}>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-kvk">KvK number</Label>
+                <Input
+                  id="client-business-kvk"
+                  value={draft.kvkNumber}
+                  onChange={(event) =>
+                    onSave({ name: draft.name, kvkNumber: event.target.value, vatNumber: draft.vatNumber, iban: draft.iban })
+                  }
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-vat">VAT number</Label>
+                <Input
+                  id="client-business-vat"
+                  value={draft.vatNumber}
+                  onChange={(event) =>
+                    onSave({ name: draft.name, kvkNumber: draft.kvkNumber, vatNumber: event.target.value, iban: draft.iban })
+                  }
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-iban">IBAN</Label>
+                <Input
+                  id="client-business-iban"
+                  value={draft.iban}
+                  onChange={(event) =>
+                    onSave({ name: draft.name, kvkNumber: draft.kvkNumber, vatNumber: draft.vatNumber, iban: event.target.value })
+                  }
+                />
+              </Stack>
+            </FormGrid>
           </Stack>
-          <FormGrid columns={3}>
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
             <Stack gap="xs">
-              <Label htmlFor="client-business-kvk">KvK number</Label>
-              <Input
-                id="client-business-kvk"
-                value={kvkNumber}
-                onChange={(event) => setKvkNumber(event.target.value)}
-              />
+              <Label htmlFor="client-business-name">Name</Label>
+              <Input id="client-business-name" value={name} onChange={(event) => setName(event.target.value)} required />
             </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="client-business-vat">VAT number</Label>
-              <Input
-                id="client-business-vat"
-                value={vatNumber}
-                onChange={(event) => setVatNumber(event.target.value)}
-              />
-            </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="client-business-iban">IBAN</Label>
-              <Input id="client-business-iban" value={iban} onChange={(event) => setIban(event.target.value)} />
-            </Stack>
-          </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+            <FormGrid columns={3}>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-kvk">KvK number</Label>
+                <Input
+                  id="client-business-kvk"
+                  value={kvkNumber}
+                  onChange={(event) => setKvkNumber(event.target.value)}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-vat">VAT number</Label>
+                <Input
+                  id="client-business-vat"
+                  value={vatNumber}
+                  onChange={(event) => setVatNumber(event.target.value)}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-business-iban">IBAN</Label>
+                <Input id="client-business-iban" value={iban} onChange={(event) => setIban(event.target.value)} />
+              </Stack>
+            </FormGrid>
+            <Inline gap="sm" justify="end">
+              {mode === "edit" && (
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                  Cancel
+                </Button>
+              )}
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList

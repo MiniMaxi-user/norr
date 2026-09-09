@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Dialog, Select, Stack, Text } from "@yourorg/ui";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { useRelationDialogSave } from "@/lib/relation-cards/use-relation-dialog-save";
 import type { AssetDraft } from "./asset-draft";
 
 export interface AssetRelationsDialogProps {
@@ -38,6 +39,10 @@ export interface AssetRelationsDialogProps {
  * small local reset rule `useRelationCascade`'s `handleClientChange` applies
  * for work orders, inlined here rather than reused: an asset has no
  * "asset"-level cascade tier under Client -> Site for that hook to also own.
+ * The validate/save/close sequence itself DOES come from the shared
+ * `useRelationDialogSave` (issue #130) — every relation-card dialog bottoms
+ * out in that same sequence regardless of how many cascade tiers it owns;
+ * see that hook's own doc comment.
  */
 export function AssetRelationsDialog({
   open,
@@ -51,8 +56,7 @@ export function AssetRelationsDialog({
 }: AssetRelationsDialogProps) {
   const [clientId, setClientId] = useState(draft.clientId);
   const [siteId, setSiteId] = useState(draft.siteId);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, save } = useRelationDialogSave(onSave, onOpenChange);
 
   function handleClientChange(nextClientId: string) {
     setClientId(nextClientId);
@@ -60,24 +64,12 @@ export function AssetRelationsDialog({
     onClientChange(nextClientId);
   }
 
-  async function handleSave() {
-    if (!clientId) {
-      setError("Select a client.");
-      return;
-    }
-    if (!siteId) {
-      setError("Select a site.");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    const result = await onSave({ clientId, siteId });
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Could not save.");
-      return;
-    }
-    onOpenChange(false);
+  function handleSave() {
+    void save({ clientId, siteId }, () => {
+      if (!clientId) return "Select a client.";
+      if (!siteId) return "Select a site.";
+      return null;
+    });
   }
 
   return (

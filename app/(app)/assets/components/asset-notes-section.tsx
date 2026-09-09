@@ -6,11 +6,15 @@ import { AlignLeft } from "@yourorg/ui/icons";
 import type { AssetDraft } from "./asset-draft";
 
 export interface AssetNotesSectionProps {
+  mode: "create" | "edit";
   draft: Pick<AssetDraft, "notes">;
   editing: boolean;
-  onEditToggle: (editing: boolean) => void;
+  onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
   onSave: (patch: Pick<AssetDraft, "notes">) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `AssetEquipmentSectionProps.onFieldChange`'s
+   * own doc comment. */
+  onFieldChange?: (patch: Partial<Pick<AssetDraft, "notes">>) => void;
 }
 
 /**
@@ -21,8 +25,13 @@ export interface AssetNotesSectionProps {
  * "Nieuw-modus" section, which only calls out Equipment/Status & warranty):
  * its read view sources straight from `draft.notes` (not a saved `asset`
  * record), so it renders correctly closed even before the asset exists.
+ *
+ * `mode: "edit"` no longer owns its own Save/Cancel (this section is now
+ * folded into `AssetScreen`'s single page-level pencil/Save, alongside
+ * Equipment/Status & warranty) — see `onFieldChange` above and
+ * `asset-screen.tsx`'s own module doc comment.
  */
-export function AssetNotesSection({ draft, editing, onEditToggle, readOnly, onSave }: AssetNotesSectionProps) {
+export function AssetNotesSection({ mode, draft, editing, onEditToggle, readOnly, onSave, onFieldChange }: AssetNotesSectionProps) {
   const [notes, setNotes] = useState(draft.notes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +46,7 @@ export function AssetNotesSection({ draft, editing, onEditToggle, readOnly, onSa
   function handleCancel() {
     setNotes(draft.notes);
     setError(null);
-    onEditToggle(false);
+    onEditToggle?.(false);
   }
 
   async function handleSave() {
@@ -49,7 +58,7 @@ export function AssetNotesSection({ draft, editing, onEditToggle, readOnly, onSa
       setError(result.error ?? "Could not save.");
       return;
     }
-    onEditToggle(false);
+    onEditToggle?.(false);
   }
 
   return (
@@ -57,21 +66,30 @@ export function AssetNotesSection({ draft, editing, onEditToggle, readOnly, onSa
       icon={AlignLeft}
       title="Notes"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit notes"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
-          <Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} aria-label="Notes" />
-          <Inline gap="sm" justify="end">
-            <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+        mode === "edit" ? (
+          <Textarea
+            rows={4}
+            value={draft.notes}
+            onChange={(event) => onFieldChange?.({ notes: event.target.value })}
+            aria-label="Notes"
+          />
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} aria-label="Notes" />
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </Inline>
+          </Stack>
+        )
       }
     >
       {draft.notes ? <Text>{draft.notes}</Text> : <Text tone="muted">No notes yet.</Text>}

@@ -16,6 +16,12 @@ export interface ArticleInfoSectionProps {
   onSave: (
     patch: Pick<ArticleDraft, "articleNumber" | "mpn" | "ean" | "gtin" | "description">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — every field becomes directly controlled off the
+   * shared `draft` and writes straight back through this on every change,
+   * instead of the section's own local echo state + Save button (see
+   * `article-screen.tsx`'s own doc comment for why: one page-level pencil/
+   * Save now owns edit mode for this whole screen). */
+  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "articleNumber" | "mpn" | "ean" | "gtin" | "description">>) => void;
 }
 
 /**
@@ -27,8 +33,11 @@ export interface ArticleInfoSectionProps {
  * open, no Cancel" treatment `AssetEquipmentSection` gives its own Type field)
  * — every other section on this screen can be freely opened/closed even
  * while creating, since none of their own fields are required to save.
+ *
+ * `mode: "edit"` no longer owns its own Save/Cancel — see `onFieldChange`
+ * above and `article-screen.tsx`'s module doc comment.
  */
-export function ArticleInfoSection({ mode, draft, article, editing, onEditToggle, readOnly, onSave }: ArticleInfoSectionProps) {
+export function ArticleInfoSection({ mode, draft, article, editing, onEditToggle, readOnly, onSave, onFieldChange }: ArticleInfoSectionProps) {
   const [articleNumber, setArticleNumber] = useState(draft.articleNumber);
   const [mpn, setMpn] = useState(draft.mpn);
   const [ean, setEan] = useState(draft.ean);
@@ -50,16 +59,6 @@ export function ArticleInfoSection({ mode, draft, article, editing, onEditToggle
     // contract every other inline edit in this codebase follows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
-
-  function handleCancel() {
-    setArticleNumber(draft.articleNumber);
-    setMpn(draft.mpn);
-    setEan(draft.ean);
-    setGtin(draft.gtin);
-    setDescription(draft.description);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
-  }
 
   async function handleSave() {
     if (!articleNumber.trim()) {
@@ -86,56 +85,105 @@ export function ArticleInfoSection({ mode, draft, article, editing, onEditToggle
       icon={Boxes}
       title="Article"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit article"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
-          <FormGrid columns={4}>
+        mode === "edit" ? (
+          <Stack gap="md">
+            <FormGrid columns={4}>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-number">Article number *</Label>
+                <Input
+                  id="article-info-number"
+                  value={draft.articleNumber}
+                  onChange={(event) => onFieldChange?.({ articleNumber: event.target.value })}
+                  maxLength={100}
+                  required
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-mpn">MPN (manufacturer part number)</Label>
+                <Input
+                  id="article-info-mpn"
+                  value={draft.mpn}
+                  onChange={(event) => onFieldChange?.({ mpn: event.target.value })}
+                  maxLength={100}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-ean">EAN</Label>
+                <Input
+                  id="article-info-ean"
+                  value={draft.ean}
+                  onChange={(event) => onFieldChange?.({ ean: event.target.value })}
+                  maxLength={64}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-gtin">GTIN</Label>
+                <Input
+                  id="article-info-gtin"
+                  value={draft.gtin}
+                  onChange={(event) => onFieldChange?.({ gtin: event.target.value })}
+                  maxLength={64}
+                />
+              </Stack>
+            </FormGrid>
             <Stack gap="xs">
-              <Label htmlFor="article-info-number">Article number *</Label>
+              <Label htmlFor="article-info-description">Description *</Label>
               <Input
-                id="article-info-number"
-                value={articleNumber}
-                onChange={(event) => setArticleNumber(event.target.value)}
-                maxLength={100}
+                id="article-info-description"
+                value={draft.description}
+                onChange={(event) => onFieldChange?.({ description: event.target.value })}
+                maxLength={2000}
                 required
               />
             </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="article-info-mpn">MPN (manufacturer part number)</Label>
-              <Input id="article-info-mpn" value={mpn} onChange={(event) => setMpn(event.target.value)} maxLength={100} />
-            </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="article-info-ean">EAN</Label>
-              <Input id="article-info-ean" value={ean} onChange={(event) => setEan(event.target.value)} maxLength={64} />
-            </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="article-info-gtin">GTIN</Label>
-              <Input id="article-info-gtin" value={gtin} onChange={(event) => setGtin(event.target.value)} maxLength={64} />
-            </Stack>
-          </FormGrid>
-          <Stack gap="xs">
-            <Label htmlFor="article-info-description">Description *</Label>
-            <Input
-              id="article-info-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              maxLength={2000}
-              required
-            />
           </Stack>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <FormGrid columns={4}>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-number">Article number *</Label>
+                <Input
+                  id="article-info-number"
+                  value={articleNumber}
+                  onChange={(event) => setArticleNumber(event.target.value)}
+                  maxLength={100}
+                  required
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-mpn">MPN (manufacturer part number)</Label>
+                <Input id="article-info-mpn" value={mpn} onChange={(event) => setMpn(event.target.value)} maxLength={100} />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-ean">EAN</Label>
+                <Input id="article-info-ean" value={ean} onChange={(event) => setEan(event.target.value)} maxLength={64} />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-info-gtin">GTIN</Label>
+                <Input id="article-info-gtin" value={gtin} onChange={(event) => setGtin(event.target.value)} maxLength={64} />
+              </Stack>
+            </FormGrid>
+            <Stack gap="xs">
+              <Label htmlFor="article-info-description">Description *</Label>
+              <Input
+                id="article-info-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                maxLength={2000}
+                required
+              />
+            </Stack>
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList

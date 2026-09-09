@@ -25,6 +25,7 @@ import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDate } from "@/lib/format/date";
 import { formatCurrency } from "@/lib/format/currency";
+import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { draftFromContract, draftToInput, type ContractDraft } from "./contract-draft";
 import { ContractTermsSection } from "./contract-terms-section";
@@ -152,15 +153,10 @@ export function ContractScreen({
     }
   }
 
-  // The Client relation card (in the rail below) sources its display from
-  // `client` (the server-resolved prop) when it matches the draft's current
-  // `clientId`, falling back to a lookup in `clients` — same "committed vs.
-  // just-picked-locally" resolution `WorkOrderRelationCards` uses.
-  const resolvedClient = draft.clientId
-    ? client?.id === draft.clientId
-      ? client
-      : (clients.find((candidate) => candidate.id === draft.clientId) ?? null)
-    : null;
+  // The Client relation card (in the rail below) resolves "just-picked-
+  // locally vs. already-persisted" via the shared `resolveRelation` (issue
+  // #130) — same helper `WorkOrderRelationCards` uses for its own cards.
+  const resolvedClient = resolveRelation(draft.clientId, clients, client, (candidate) => candidate.id);
   const clientFacts = resolvedClient
     ? [resolvedClient.kvk_number ? `KvK ${resolvedClient.kvk_number}` : null, resolvedClient.vat_number]
         .filter(Boolean)

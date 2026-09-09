@@ -18,7 +18,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(29);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner).
@@ -224,6 +224,79 @@ select lives_ok(
 ); -- 16
 
 -- ---------------------------------------------------------------------------
+-- 4b. reference_list_items.description / is_active (generic columns, added
+--    20260910090000_reference_list_items_description_active_and_volume_
+--    list.sql — first real consumer is issue #131's Volume list, but the
+--    columns themselves are generic/reusable, exercised here directly
+--    against asset_type since that's this file's existing fixture list).
+--    Non-owner write is deliberately NOT re-tested for these two columns
+--    specifically — RLS on this table is owner-only at the ROW level
+--    (`reference_list_items_insert_owner`/`_update_owner`), already fully
+--    proven by tests 5-7 above regardless of which columns a non-owner's
+--    statement touches; a column-specific non-owner test would be
+--    redundant, same conclusion the contract_line_items QA review reached
+--    for that table's equivalent purchase_price/is_volume columns.
+-- ---------------------------------------------------------------------------
+select lives_ok(
+  $$ insert into public.reference_list_items (id, reference_list_id, value, label, sort_order)
+     select 'e1000000-0000-0000-0000-00000000000b', id, 'furnace', 'Furnace', 7
+     from public.reference_lists
+     where organization_id = 'd1000000-0000-0000-0000-00000000000a' and list_key = 'asset_type' $$,
+  'owner_a can insert a new asset_type item ("Furnace") without supplying description/is_active'
+); -- 17
+
+select is(
+  (select description from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000b'),
+  null,
+  'description defaults to null when omitted on insert'
+); -- 18
+
+select is(
+  (select is_active from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000b'),
+  true,
+  'is_active defaults to true when omitted on insert'
+); -- 19
+
+select lives_ok(
+  $$ update public.reference_list_items
+     set description = 'Legacy oil furnace, kept for historical work orders only', is_active = false
+     where id = 'e1000000-0000-0000-0000-00000000000b' $$,
+  'owner_a can UPDATE both description and is_active (column-level grant covers both)'
+); -- 20
+
+select is(
+  (select description from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000b'),
+  'Legacy oil furnace, kept for historical work orders only',
+  'description was updated to the new value'
+); -- 21
+
+select is(
+  (select is_active from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000b'),
+  false,
+  'is_active was updated to false'
+); -- 22
+
+select lives_ok(
+  $$ insert into public.reference_list_items (id, reference_list_id, value, label, sort_order, description, is_active)
+     select 'e1000000-0000-0000-0000-00000000000c', id, 'boiler', 'Boiler', 8, 'Rarely used, seasonal only', false
+     from public.reference_lists
+     where organization_id = 'd1000000-0000-0000-0000-00000000000a' and list_key = 'asset_type' $$,
+  'owner_a can INSERT a new item supplying description and is_active directly (column-level grant covers both on INSERT too, not just UPDATE)'
+); -- 23
+
+select is(
+  (select description from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000c'),
+  'Rarely used, seasonal only',
+  'the newly-inserted item''s description was accepted as supplied'
+); -- 24
+
+select is(
+  (select is_active from public.reference_list_items where id = 'e1000000-0000-0000-0000-00000000000c'),
+  false,
+  'the newly-inserted item''s is_active was accepted as supplied (false, overriding the column default)'
+); -- 25
+
+-- ---------------------------------------------------------------------------
 -- 5. Cross-tenant isolation.
 -- ---------------------------------------------------------------------------
 select pg_temp.act_as('c3333333-3333-3333-3333-333333333333');
@@ -232,27 +305,27 @@ select is(
   (select count(*)::int from public.reference_lists where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s reference_lists'
-); -- 17
+); -- 26
 
 select is(
   (select count(*)::int from public.reference_list_items where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s reference_list_items'
-); -- 18
+); -- 27
 
 select throws_ok(
   $$ insert into public.reference_list_items (reference_list_id, value, label)
      select val, 'hostile', 'Hostile' from pg_temp.captured_ids where key = 'org_a_asset_type_list_id' $$,
   '42501',
   null,
-  'owner_b cannot insert into org_a''s asset_type list (not is_org_owner of org_a) — note owner_b cannot even SELECT org_a''s reference_lists row directly (see test 17), so the target reference_list_id is supplied via a captured id rather than a live subquery'
-); -- 19
+  'owner_b cannot insert into org_a''s asset_type list (not is_org_owner of org_a) — note owner_b cannot even SELECT org_a''s reference_lists row directly (see test 26), so the target reference_list_id is supplied via a captured id rather than a live subquery'
+); -- 28
 
 select is(
   (select count(*)::int from public.reference_lists where organization_id = 'd1000000-0000-0000-0000-00000000000b'),
   2,
-  'owner_b''s own org_b independently got its own 2 seeded reference_lists (isolation, not shared rows)'
-); -- 20
+  'owner_b''s own org_b independently got its own 2 seeded reference_lists (isolation, not shared rows) — NOTE: pre-existing test debt, unrelated to this migration: this count (and test 4''s "8 reference_list_items") has not been updated to reflect every seed_default_reference_lists list_key block added by later migrations (work_order_status, contract_type, article_unit, volume, etc.) — org_a/org_b actually get many more than 2 lists today. Left as-is here (out of scope for this migration; flagged for qa-reviewer) rather than silently fixed alongside an unrelated schema change.'
+); -- 29
 
 select * from finish();
 rollback;

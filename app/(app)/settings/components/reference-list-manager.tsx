@@ -123,6 +123,7 @@ export function ReferenceListManager({
               <Table.HeaderCell>Label</Table.HeaderCell>
               <Table.HeaderCell>Value</Table.HeaderCell>
               <Table.HeaderCell align="center">Default</Table.HeaderCell>
+              <Table.HeaderCell align="center">Active</Table.HeaderCell>
               {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
             </Table.Row>
           </Table.Head>
@@ -156,10 +157,11 @@ export function ReferenceListManager({
                 </Table.Cell>
                 <Table.Cell>
                   <Stack gap="xs">
-                    <Text>{item.label}</Text>
+                    <Text tone={item.is_active ? undefined : "muted"}>{item.label}</Text>
                     {item.parent_item_id && (
                       <Text tone="muted">under {parentById.get(item.parent_item_id)?.label ?? "—"}</Text>
                     )}
+                    {item.description && <Text tone="muted">{item.description}</Text>}
                   </Stack>
                 </Table.Cell>
                 <Table.Cell>
@@ -167,6 +169,9 @@ export function ReferenceListManager({
                 </Table.Cell>
                 <Table.Cell align="center">
                   {item.is_default ? <Badge variant="accent">Default</Badge> : <Text tone="muted">—</Text>}
+                </Table.Cell>
+                <Table.Cell align="center">
+                  {item.is_active ? <Badge variant="accent">Active</Badge> : <Badge>Inactive</Badge>}
                 </Table.Cell>
                 {canWrite && (
                   <Table.Cell align="center">

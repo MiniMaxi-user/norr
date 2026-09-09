@@ -88,6 +88,16 @@ export const REFERENCE_LIST_SECTIONS = [
     title: "VAT Rate",
     description: "VAT percentages available on an article — e.g. 0%, 9%, 21%.",
   },
+  // Volume (issue #131, "Beheren 'Volume'"): a dependent list scoped to
+  // `article_unit`, exactly like `asset_subtype` -> `asset_type` and
+  // `sla_tier` -> `contract_type` above — needs nothing beyond this entry,
+  // the existing parent-item picker plumbing already handles it generically.
+  {
+    key: "volume",
+    title: "Volume",
+    description:
+      "Pre-agreed usage allowances or bundles that can be linked to a contract line item — e.g. 10,000 cups of coffee per year, or 1,000 B/W prints. Each Volume value is scoped to one Article Unit.",
+  },
 ] as const;
 
 export type ReferenceListSectionKey = (typeof REFERENCE_LIST_SECTIONS)[number]["key"];

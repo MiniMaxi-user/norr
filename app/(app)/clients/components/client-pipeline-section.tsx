@@ -22,6 +22,9 @@ export interface ClientPipelineSectionProps {
   onSave: (
     patch: Pick<ClientDraft, "status" | "accountManagerId" | "potentialValue" | "clientSince">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `client-create-screen.tsx` only — see
+   * `ClientBusinessDetailsSectionProps.hideActions`'s own doc comment. */
+  hideActions?: boolean;
 }
 
 /**
@@ -43,6 +46,7 @@ export function ClientPipelineSection({
   onEditToggle,
   readOnly,
   onSave,
+  hideActions,
 }: ClientPipelineSectionProps) {
   const [status, setStatus] = useState(draft.status);
   const [accountManagerId, setAccountManagerId] = useState(draft.accountManagerId);
@@ -93,18 +97,24 @@ export function ClientPipelineSection({
       icon={BarChart3}
       title="Pipeline"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={hideActions || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit pipeline"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
+        hideActions ? (
           <FormGrid columns={2}>
             <Stack gap="xs">
               <Label htmlFor="client-pipeline-status">Status</Label>
               <Select
                 id="client-pipeline-status"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as ClientStatus)}
+                value={draft.status}
+                onChange={(event) =>
+                  onSave({
+                    status: event.target.value as ClientStatus,
+                    accountManagerId: draft.accountManagerId,
+                    potentialValue: draft.potentialValue,
+                    clientSince: draft.clientSince,
+                  })
+                }
               >
                 {CLIENT_STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -117,8 +127,15 @@ export function ClientPipelineSection({
               <Label htmlFor="client-pipeline-account-manager">Account manager</Label>
               <Select
                 id="client-pipeline-account-manager"
-                value={accountManagerId}
-                onChange={(event) => setAccountManagerId(event.target.value)}
+                value={draft.accountManagerId}
+                onChange={(event) =>
+                  onSave({
+                    status: draft.status,
+                    accountManagerId: event.target.value,
+                    potentialValue: draft.potentialValue,
+                    clientSince: draft.clientSince,
+                  })
+                }
               >
                 <option value="">No account manager</option>
                 {accountManagers.map((manager) => (
@@ -135,8 +152,15 @@ export function ClientPipelineSection({
                 type="number"
                 step="1"
                 min="0"
-                value={potentialValue}
-                onChange={(event) => setPotentialValue(event.target.value)}
+                value={draft.potentialValue}
+                onChange={(event) =>
+                  onSave({
+                    status: draft.status,
+                    accountManagerId: draft.accountManagerId,
+                    potentialValue: event.target.value,
+                    clientSince: draft.clientSince,
+                  })
+                }
               />
             </Stack>
             <Stack gap="xs">
@@ -144,22 +168,84 @@ export function ClientPipelineSection({
               <Input
                 id="client-pipeline-since"
                 type="date"
-                value={clientSince}
-                onChange={(event) => setClientSince(event.target.value)}
+                value={draft.clientSince}
+                onChange={(event) =>
+                  onSave({
+                    status: draft.status,
+                    accountManagerId: draft.accountManagerId,
+                    potentialValue: draft.potentialValue,
+                    clientSince: event.target.value,
+                  })
+                }
               />
             </Stack>
           </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <FormGrid columns={2}>
+              <Stack gap="xs">
+                <Label htmlFor="client-pipeline-status">Status</Label>
+                <Select
+                  id="client-pipeline-status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as ClientStatus)}
+                >
+                  {CLIENT_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-pipeline-account-manager">Account manager</Label>
+                <Select
+                  id="client-pipeline-account-manager"
+                  value={accountManagerId}
+                  onChange={(event) => setAccountManagerId(event.target.value)}
+                >
+                  <option value="">No account manager</option>
+                  {accountManagers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.first_name} {manager.last_name}
+                    </option>
+                  ))}
+                </Select>
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-pipeline-potential">Potential</Label>
+                <Input
+                  id="client-pipeline-potential"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={potentialValue}
+                  onChange={(event) => setPotentialValue(event.target.value)}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="client-pipeline-since">Client since</Label>
+                <Input
+                  id="client-pipeline-since"
+                  type="date"
+                  value={clientSince}
+                  onChange={(event) => setClientSince(event.target.value)}
+                />
+              </Stack>
+            </FormGrid>
+            <Inline gap="sm" justify="end">
+              {mode === "edit" && (
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                  Cancel
+                </Button>
+              )}
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList

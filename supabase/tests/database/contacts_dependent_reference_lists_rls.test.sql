@@ -35,7 +35,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(31);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two orgs, each with an owner + a non-owner member (planner) in
@@ -160,6 +160,21 @@ select is(
   'the seeded "compressor" asset_subtype item''s parent_item_id resolves to the org''s hvac asset_type item'
 ); -- 5
 
+select is(
+  (select parent_list_key from public.reference_lists
+     where organization_id = 'a1000000-0000-0000-0000-00000000000a' and list_key = 'volume'),
+  'article_unit',
+  'org_a''s seeded volume list (issue #131) declares parent_list_key=article_unit'
+); -- 6
+
+select is(
+  (select count(*)::int from public.reference_list_items rli
+     join public.reference_lists rl on rl.id = rli.reference_list_id
+     where rl.organization_id = 'a1000000-0000-0000-0000-00000000000a' and rl.list_key = 'volume'),
+  0,
+  'org_a''s seeded volume list has zero items (fully bespoke per tenant, no universal defaults seeded, unlike every other list in this function)'
+); -- 7
+
 -- ---------------------------------------------------------------------------
 -- 2. contacts: owner CRUD, created_by/organization_id lockdown, role
 --    validation, is_primary enforcement.
@@ -172,19 +187,19 @@ select lives_ok(
           where rl.organization_id = 'a1000000-0000-0000-0000-00000000000a'
             and rl.list_key = 'contact_role' and rli.value = 'primary') $$,
   'owner_a can insert a contact under client A (org_a), role_item_id resolved from org_a''s seeded contact_role list'
-); -- 6
+); -- 8
 
 select is(
   (select organization_id from public.contacts where id = 'a3000000-0000-0000-0000-00000000000a'),
   'a1000000-0000-0000-0000-00000000000a'::uuid,
   'contacts.organization_id was auto-derived from clients.organization_id via client_id'
-); -- 7
+); -- 9
 
 select is(
   (select created_by from public.contacts where id = 'a3000000-0000-0000-0000-00000000000a'),
   'f1111111-1111-1111-1111-111111111111'::uuid,
   'contacts.created_by was auto-stamped to the inserting user (trigger), not client-supplied'
-); -- 8
+); -- 10
 
 select throws_ok(
   $$ insert into public.contacts (client_id, name, organization_id)
@@ -192,7 +207,7 @@ select throws_ok(
   '42501',
   null,
   'owner_a cannot set contacts.organization_id directly on insert (column-level grant withheld)'
-); -- 9
+); -- 11
 
 select throws_ok(
   $$ insert into public.contacts (client_id, name, created_by)
@@ -200,7 +215,7 @@ select throws_ok(
   '42501',
   null,
   'owner_a cannot set contacts.created_by directly on insert (column-level grant withheld)'
-); -- 10
+); -- 12
 
 select throws_ok(
   $$ insert into public.contacts (client_id, name, role_item_id)
@@ -212,7 +227,7 @@ select throws_ok(
   '23514',
   null,
   'contacts.role_item_id must be from the contact_role list, not an asset_type item (validate_contact_role_item)'
-); -- 11
+); -- 13
 
 select throws_ok(
   $$ insert into public.contacts (client_id, name, role_item_id)
@@ -221,26 +236,26 @@ select throws_ok(
   '23514',
   null,
   'contacts.role_item_id from a different organization''s contact_role list is rejected (validate_contact_role_item resolves it via SECURITY DEFINER and detects the organization mismatch)'
-); -- 12
+); -- 14
 
 select lives_ok(
   $$ insert into public.contacts (id, client_id, name, is_primary)
      values ('a3000000-0000-0000-0000-00000000000b', 'a2000000-0000-0000-0000-00000000000a', 'Bob', true) $$,
   'owner_a can insert a second primary contact for the same client'
-); -- 13
+); -- 15
 
 select is(
   (select is_primary from public.contacts where id = 'a3000000-0000-0000-0000-00000000000a'),
   false,
   'enforce_single_primary_contact unset Alice''s is_primary when Bob became the new primary for the same client'
-); -- 14
+); -- 16
 
 select is(
   (select count(*)::int from public.contacts
      where client_id = 'a2000000-0000-0000-0000-00000000000a' and is_primary),
   1,
   'still exactly one primary contact for client A'
-); -- 15
+); -- 17
 
 -- ---------------------------------------------------------------------------
 -- 3. RLS: non-owner (planner_a) can read but not write; cross-tenant
@@ -252,7 +267,7 @@ select is(
   (select count(*)::int from public.contacts where organization_id = 'a1000000-0000-0000-0000-00000000000a'),
   2,
   'planner_a (non-owner member) can SELECT contacts in org_a'
-); -- 16
+); -- 18
 
 select throws_ok(
   $$ insert into public.contacts (client_id, name)
@@ -260,7 +275,7 @@ select throws_ok(
   '42501',
   null,
   'planner_a (non-owner) cannot INSERT a contact (RLS owner-only backstop)'
-); -- 17
+); -- 19
 
 update public.contacts set name = 'Hijacked' where id = 'a3000000-0000-0000-0000-00000000000a';
 
@@ -268,7 +283,7 @@ select is(
   (select name from public.contacts where id = 'a3000000-0000-0000-0000-00000000000a'),
   'Alice',
   'planner_a''s UPDATE on a contact is silently excluded by RLS (USING); name unchanged'
-); -- 18
+); -- 20
 
 select pg_temp.act_as('f3333333-3333-3333-3333-333333333333');
 
@@ -276,7 +291,7 @@ select is(
   (select count(*)::int from public.contacts where organization_id = 'a1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s contacts'
-); -- 19
+); -- 21
 
 -- ---------------------------------------------------------------------------
 -- 4. Generic dependent reference-list mechanism (validate_reference_list_item_parent),
@@ -291,7 +306,7 @@ select throws_ok(
   '23514',
   null,
   'inserting an asset_subtype item without parent_item_id is rejected (list has parent_list_key=asset_type, so parent_item_id is required)'
-); -- 20
+); -- 22
 
 select throws_ok(
   $$ insert into public.reference_list_items (reference_list_id, value, label, parent_item_id)
@@ -304,7 +319,7 @@ select throws_ok(
   '23514',
   null,
   'an asset_subtype item''s parent_item_id must resolve to an asset_type item, not an asset_status item (wrong list_key)'
-); -- 21
+); -- 23
 
 select throws_ok(
   $$ insert into public.reference_list_items (reference_list_id, value, label, parent_item_id)
@@ -315,7 +330,7 @@ select throws_ok(
   '23514',
   null,
   'an asset_subtype item''s parent_item_id from a different organization''s asset_type list (org_a''s hvac item) is rejected (validate_reference_list_item_parent resolves it via SECURITY DEFINER and detects the organization mismatch)'
-); -- 22
+); -- 24
 
 select lives_ok(
   $$ insert into public.reference_list_items (id, reference_list_id, value, label, parent_item_id)
@@ -326,7 +341,7 @@ select lives_ok(
        and type_list.organization_id = 'a1000000-0000-0000-0000-00000000000b'
        and type_list.list_key = 'asset_type' and a_type.value = 'hvac' $$,
   'owner_b can insert a valid asset_subtype item ("motor") with a same-org, correct-list parent_item_id'
-); -- 23
+); -- 25
 
 select throws_ok(
   $$ insert into public.reference_list_items (reference_list_id, value, label, parent_item_id)
@@ -337,7 +352,7 @@ select throws_ok(
   '23514',
   null,
   'setting parent_item_id on an item whose own list has no parent_list_key configured (asset_status) is rejected'
-); -- 24
+); -- 26
 
 -- ---------------------------------------------------------------------------
 -- 5. assets.subtype_id cross-field validation (extends
@@ -369,7 +384,7 @@ select lives_ok(
        and hvac_list.list_key = 'asset_type' and hvac.value = 'hvac'
        and compressor_list.list_key = 'asset_subtype' and compressor.value = 'compressor' $$,
   'owner_a can insert an asset with type_id=hvac and subtype_id=compressor (compressor''s parent_item_id matches type_id)'
-); -- 25
+); -- 27
 
 select throws_ok(
   $$ insert into public.assets (site_id, name, type_id, subtype_id)
@@ -389,7 +404,7 @@ select throws_ok(
   '23514',
   null,
   'assets.subtype_id=compressor (an hvac sub-type) is rejected when type_id=electrical (subtype''s parent_item_id must equal type_id)'
-); -- 26
+); -- 28
 
 select throws_ok(
   $$ insert into public.assets (site_id, name, type_id, subtype_id)
@@ -409,7 +424,7 @@ select throws_ok(
   '23514',
   null,
   'assets.subtype_id must reference an item from the asset_subtype list, not asset_status (got list_key check)'
-); -- 27
+); -- 29
 
 select pg_temp.act_as('f3333333-3333-3333-3333-333333333333');
 
@@ -423,7 +438,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot insert an asset under org_a''s site at all (not is_org_owner of org_a) — the RLS backstop rejects this even though type_id=hvac and subtype_id=compressor are individually well-formed and mutually consistent (both org_a, correct parent relationship), ruling out a 23514 from the type/subtype cross-field trigger as the actual cause'
-); -- 28
+); -- 30
 
 select is(
   (select rli.value from public.assets a
@@ -431,7 +446,7 @@ select is(
      where a.id = 'a5000000-0000-0000-0000-00000000000a'),
   'compressor',
   'the valid asset''s subtype_id is still compressor after the rejected attempts above'
-); -- 29
+); -- 31
 
 select * from finish();
 rollback;

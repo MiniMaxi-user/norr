@@ -65,23 +65,38 @@ export interface ArticleScreenProps {
  * surface as a `RelationCard`, so there's nothing here that needs a small
  * edit-popup — every field is a plain value grouped into one of five flat
  * sections (Article / Photo / Classification / Pricing & VAT / Status &
- * composite), each independently inline-editable in place.
+ * composite).
  *
  * Owns one flat `ArticleDraft` (`./article-draft.ts`) as the source of truth
  * for every editable field; every section reads from it and writes back
- * through `commitPatch` below — in `mode: "edit"` that's an immediate
- * `updateArticle` call (small, section-scoped, saved the instant that
- * section's own Save is clicked — no page-wide Save/Cancel), in
- * `mode: "create"` it's a local-only merge until the hero's own "Create
- * article" action fires `createArticle` with the whole accumulated draft and
- * navigates to the new record — same split `AssetScreen`/`ActivityScreen`
- * both document for themselves.
+ * through `commitPatch` below (`mode: "create"` only — a local-only merge
+ * until the hero's own "Create article" action fires `createArticle` with
+ * the whole accumulated draft and navigates to the new record) or through
+ * `updateDraft` (`mode: "edit"` — a local-only merge too, per keystroke; see
+ * below).
  *
- * Only the "Article" section (Article number + Description, the two hard-
- * required fields) is forced open for the whole `mode: "create"` flow, same
- * "always open, no Cancel" treatment `AssetEquipmentSection` gives its own
- * required Type field — every other section stays freely open/closeable even
- * while creating, since none of their own fields are required to save.
+ * `mode: "edit"` has exactly ONE editing surface, not five independent ones:
+ * the hero's own pencil (`ArticleHero`'s `onEditHeader`, next to the title/
+ * badges) opens every section (Info/Pricing/Status/Media/Classification) into
+ * its inline-edit state at once, driven by the single `pageEditing` boolean
+ * below (each section's own per-section pencil is gone as a natural
+ * consequence — see each section's own `onEdit` computation) — every field
+ * writes straight into the shared `draft` on every change (`updateDraft`,
+ * passed down as each section's own `onFieldChange`), and the ONE Save/Cancel
+ * pair rendered in the hero's `actions` slot (replacing `ArticleDetailActions`
+ * while `pageEditing`) commits the whole `draft` in a single `commitPatch`
+ * call, or discards it and re-derives `draft` from the server record.
+ * Required-field validation (Article number/Description) that used to live
+ * inside `ArticleInfoSection`'s own `handleSave` now lives in this screen's
+ * own `handleEditSave`, surfaced the same way `handleCreate` already
+ * surfaces its own.
+ *
+ * `mode: "create"` is untouched by any of the above — every section still
+ * owns its own local echo state, Save button, and (for every section except
+ * "Article", whose Info/Description fields are the two hard-required fields
+ * and stay forced open for the whole flow, same "always open, no Cancel"
+ * treatment `AssetEquipmentSection` gives its own required Type field) its
+ * own independent open/close toggle, same as before this change.
  */
 export function ArticleScreen({
   mode,
@@ -105,6 +120,10 @@ export function ArticleScreen({
   const [draft, setDraft] = useState<ArticleDraft>(() => (article ? draftFromArticle(article) : emptyDraft()));
 
   // ---- Section edit-open state (see this component's own doc comment) ----
+  // `pageEditing` is the ONLY editing surface for `mode: "edit"` — the other
+  // five booleans below are `mode: "create"`-only (untouched by this
+  // change).
+  const [pageEditing, setPageEditing] = useState(false);
   const [infoEditing, setInfoEditing] = useState(true);
   const [mediaEditing, setMediaEditing] = useState(false);
   const [classificationEditing, setClassificationEditing] = useState(mode === "create");
@@ -113,10 +132,12 @@ export function ArticleScreen({
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
-  /** Every section's own "Save" ultimately calls this. `mode: "edit"`
-   * persists immediately (`updateArticle`) and refreshes the server-rendered
-   * data; `mode: "create"` only ever merges into local draft state. */
+  /** `mode: "create"`'s own sections' Save call this — unchanged. `mode:
+   * "edit"`'s single page-level Save (`handleEditSave` below) also calls
+   * this, once, with the whole `draft`. */
   async function commitPatch(patch: Partial<ArticleDraft>): Promise<{ ok: boolean; error?: string }> {
     if (mode === "edit" && article) {
       const result = await updateArticle(article.id, draftToInput(patch));
@@ -127,6 +148,40 @@ export function ArticleScreen({
     }
     setDraft((prev) => ({ ...prev, ...patch }));
     return { ok: true };
+  }
+
+  /** `mode: "edit"`'s own sections' every field change calls this directly —
+   * a local-only merge, same shape `commitPatch`'s own `mode: "create"`
+   * branch already has, just never posted to the server until the page's own
+   * Save (`handleEditSave` below). */
+  function updateDraft(patch: Partial<ArticleDraft>) {
+    setDraft((prev) => ({ ...prev, ...patch }));
+  }
+
+  function handleEditCancel() {
+    if (article) setDraft(draftFromArticle(article));
+    setEditError(null);
+    setPageEditing(false);
+  }
+
+  async function handleEditSave() {
+    if (!draft.articleNumber.trim()) {
+      setEditError("Article number is required.");
+      return;
+    }
+    if (!draft.description.trim()) {
+      setEditError("Description is required.");
+      return;
+    }
+    setEditError(null);
+    setSaving(true);
+    const result = await commitPatch(draft);
+    setSaving(false);
+    if (!result.ok) {
+      setEditError(result.error ?? "Could not save.");
+      return;
+    }
+    setPageEditing(false);
   }
 
   async function handleCreate() {
@@ -153,7 +208,18 @@ export function ArticleScreen({
 
   const heroActions =
     mode === "edit" && article ? (
-      <ArticleDetailActions article={article} canDelete={Boolean(canDelete)} />
+      pageEditing ? (
+        <>
+          <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </>
+      ) : (
+        <ArticleDetailActions article={article} canDelete={Boolean(canDelete)} />
+      )
     ) : (
       <>
         <Button
@@ -173,8 +239,17 @@ export function ArticleScreen({
   return (
     <Stack gap="lg">
       {createError && <Text tone="danger">{createError}</Text>}
+      {editError && <Text tone="danger">{editError}</Text>}
 
-      <ArticleHero mode={mode} draft={draft} article={article} groups={groups} actions={heroActions} />
+      <ArticleHero
+        mode={mode}
+        draft={draft}
+        article={article}
+        groups={groups}
+        actions={heroActions}
+        readOnly={readOnly}
+        onEditHeader={mode === "edit" && !readOnly && !pageEditing ? () => setPageEditing(true) : undefined}
+      />
 
       <DetailColumns
         left={
@@ -183,10 +258,11 @@ export function ArticleScreen({
               mode={mode}
               draft={draft}
               article={article}
-              editing={infoEditing}
-              onEditToggle={setInfoEditing}
+              editing={mode === "edit" ? pageEditing : infoEditing}
+              onEditToggle={mode === "edit" ? undefined : setInfoEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
 
             <ArticlePricingSection
@@ -194,10 +270,11 @@ export function ArticleScreen({
               draft={draft}
               article={article}
               vatRates={vatRates}
-              editing={pricingEditing}
-              onEditToggle={setPricingEditing}
+              editing={mode === "edit" ? pageEditing : pricingEditing}
+              onEditToggle={mode === "edit" ? undefined : setPricingEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
 
             <ArticleStatusSection
@@ -206,10 +283,11 @@ export function ArticleScreen({
               article={article}
               components={components}
               componentTree={componentTree}
-              editing={statusEditing}
-              onEditToggle={setStatusEditing}
+              editing={mode === "edit" ? pageEditing : statusEditing}
+              onEditToggle={mode === "edit" ? undefined : setStatusEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
           </>
         }
@@ -219,10 +297,11 @@ export function ArticleScreen({
               mode={mode}
               draft={draft}
               articleNumber={draft.articleNumber || undefined}
-              editing={mediaEditing}
-              onEditToggle={setMediaEditing}
+              editing={mode === "edit" ? pageEditing : mediaEditing}
+              onEditToggle={mode === "edit" ? undefined : setMediaEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
 
             <ArticleClassificationSection
@@ -232,10 +311,11 @@ export function ArticleScreen({
               groups={groups}
               units={units}
               manufacturers={manufacturers}
-              editing={classificationEditing}
-              onEditToggle={setClassificationEditing}
+              editing={mode === "edit" ? pageEditing : classificationEditing}
+              onEditToggle={mode === "edit" ? undefined : setClassificationEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
           </>
         }

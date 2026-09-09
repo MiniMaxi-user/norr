@@ -10,6 +10,7 @@ import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import { formatSiteAddress } from "@/app/(app)/clients/format-site-address";
 import { formatCurrency } from "@/lib/format/currency";
 import { formatDate } from "@/lib/format/date";
+import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import type { WorkOrderDraft } from "./work-order-draft";
 
 /** One "Label value" line inside a `RelationCard`'s hover-expanded detail —
@@ -75,18 +76,14 @@ export function WorkOrderRelationCards({
   readOnly,
   onEdit,
 }: WorkOrderRelationCardsProps) {
-  const resolvedClient = draft.clientId
-    ? (client?.id === draft.clientId ? client : (clients.find((candidate) => candidate.id === draft.clientId) ?? null))
-    : null;
-  const resolvedSite =
-    clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
-    (draft.siteId && site?.id === draft.siteId ? site : null);
-  const resolvedAsset =
-    clientScoped.assets.find((candidate) => candidate.id === draft.assetId) ??
-    (draft.assetId && asset?.id === draft.assetId ? asset : null);
-  const resolvedContract =
-    clientScoped.contracts.find((candidate) => candidate.id === draft.contractId) ??
-    (draft.contractId && contract?.id === draft.contractId ? contract : null);
+  // "Just-picked-locally vs. already-persisted" resolution — shared via
+  // `resolveRelation` (issue #130, see its own doc comment for why
+  // candidates-first is safe for the Client card too, not just Site/Asset/
+  // Contract).
+  const resolvedClient = resolveRelation(draft.clientId, clients, client, (candidate) => candidate.id);
+  const resolvedSite = resolveRelation(draft.siteId, clientScoped.sites, site, (candidate) => candidate.id);
+  const resolvedAsset = resolveRelation(draft.assetId, clientScoped.assets, asset, (candidate) => candidate.id);
+  const resolvedContract = resolveRelation(draft.contractId, clientScoped.contracts, contract, (candidate) => candidate.id);
 
   const clientFacts = [resolvedClient?.kvk_number ? `KvK ${resolvedClient.kvk_number}` : null, resolvedClient?.vat_number]
     .filter(Boolean)

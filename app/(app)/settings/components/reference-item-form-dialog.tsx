@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Dialog, Heading, Input, Label, Select, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Checkbox, Dialog, Heading, Inline, Input, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import {
   createReferenceItem,
   updateReferenceItem,
@@ -72,8 +72,14 @@ export function ReferenceItemFormDialog({
     const input = {
       value: formData.get("value"),
       label: formData.get("label"),
+      description: formData.get("description") || undefined,
       color: formData.get("color") || undefined,
       parentItemId: isDependent ? formData.get("parentItemId") || undefined : undefined,
+      // Unlike the optional string fields above, an unchecked checkbox is
+      // simply absent from `FormData` — resolve this unconditionally to an
+      // explicit boolean, never `|| undefined`, or "uncheck Active on an
+      // existing item" would silently never persist.
+      isActive: formData.get("isActive") === "on",
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -106,6 +112,22 @@ export function ReferenceItemFormDialog({
               <Label htmlFor="ref-item-label">Label</Label>
               <Input id="ref-item-label" name="label" defaultValue={item?.label} required maxLength={200} />
               {state.fieldErrors?.label?.map((message) => (
+                <Text key={message} tone="danger">
+                  {message}
+                </Text>
+              ))}
+            </Stack>
+
+            <Stack gap="xs">
+              <Label htmlFor="ref-item-description">Description</Label>
+              <Textarea
+                id="ref-item-description"
+                name="description"
+                defaultValue={item?.description ?? ""}
+                maxLength={500}
+                rows={3}
+              />
+              {state.fieldErrors?.description?.map((message) => (
                 <Text key={message} tone="danger">
                   {message}
                 </Text>
@@ -182,6 +204,18 @@ export function ReferenceItemFormDialog({
                 </div>
               )}
               {state.fieldErrors?.color?.map((message) => (
+                <Text key={message} tone="danger">
+                  {message}
+                </Text>
+              ))}
+            </Stack>
+
+            <Stack gap="xs">
+              <Inline gap="sm" align="center">
+                <Checkbox id="ref-item-is-active" name="isActive" defaultChecked={item ? item.is_active : true} />
+                <Label htmlFor="ref-item-is-active">Active</Label>
+              </Inline>
+              {state.fieldErrors?.isActive?.map((message) => (
                 <Text key={message} tone="danger">
                   {message}
                 </Text>

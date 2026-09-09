@@ -22,6 +22,9 @@ export interface ArticleClassificationSectionProps {
   onSave: (
     patch: Pick<ArticleDraft, "groupId" | "manufacturerItemId" | "unitItemId">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `ArticleInfoSectionProps.onFieldChange`'s own
+   * doc comment. */
+  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "groupId" | "manufacturerItemId" | "unitItemId">>) => void;
 }
 
 /**
@@ -49,6 +52,7 @@ export function ArticleClassificationSection({
   onEditToggle,
   readOnly,
   onSave,
+  onFieldChange,
 }: ArticleClassificationSectionProps) {
   const [topGroupId, setTopGroupId] = useState(() => topArticleGroupAncestorId(groups, draft.groupId));
   const [subGroupId, setSubGroupId] = useState(() => {
@@ -95,19 +99,21 @@ export function ArticleClassificationSection({
     label: subgroupIsDeepFallback ? group.path : group.name,
   }));
 
+  // In `mode: "edit"` the top/subgroup cascade selection itself has nowhere
+  // to live but local state (only the resolved leaf `groupId` is a real
+  // `ArticleDraft` field) — but every change here also writes straight
+  // through to `onFieldChange` so the shared `draft` (and this screen's
+  // single Save) stays in sync, same "controlled off the shared draft"
+  // contract every other field on this screen now follows.
   function handleTopGroupChange(value: string) {
     setTopGroupId(value);
     setSubGroupId("");
+    if (mode === "edit") onFieldChange?.({ groupId: value || "" });
   }
 
-  function handleCancel() {
-    setTopGroupId(topArticleGroupAncestorId(groups, draft.groupId));
-    const node = findArticleGroup(groups, draft.groupId);
-    setSubGroupId(node && node.depth > 0 ? node.id : "");
-    setManufacturerItemId(draft.manufacturerItemId);
-    setUnitItemId(draft.unitItemId);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
+  function handleSubGroupChange(value: string) {
+    setSubGroupId(value);
+    if (mode === "edit") onFieldChange?.({ groupId: value || topGroupId || "" });
   }
 
   async function handleSave() {
@@ -130,11 +136,11 @@ export function ArticleClassificationSection({
       icon={Settings}
       title="Classification"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit classification"
       editContent={
         <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
+          {mode !== "edit" && error && <Text tone="danger">{error}</Text>}
           <FormGrid columns={2}>
             <Stack gap="xs">
               <Label htmlFor="article-cls-group">Group</Label>
@@ -154,7 +160,7 @@ export function ArticleClassificationSection({
                 id="article-cls-subgroup"
                 options={subgroupOptions}
                 value={subGroupId}
-                onChange={setSubGroupId}
+                onChange={handleSubGroupChange}
                 placeholder={topGroupId ? "Search subgroups…" : "Select a group first…"}
                 disabled={!topGroupId}
                 clearable
@@ -165,8 +171,12 @@ export function ArticleClassificationSection({
               <Label htmlFor="article-cls-manufacturer">Manufacturer</Label>
               <Select
                 id="article-cls-manufacturer"
-                value={manufacturerItemId}
-                onChange={(event) => setManufacturerItemId(event.target.value)}
+                value={mode === "edit" ? draft.manufacturerItemId : manufacturerItemId}
+                onChange={(event) =>
+                  mode === "edit"
+                    ? onFieldChange?.({ manufacturerItemId: event.target.value })
+                    : setManufacturerItemId(event.target.value)
+                }
               >
                 <option value="">No manufacturer</option>
                 {manufacturers.map((item) => (
@@ -178,7 +188,13 @@ export function ArticleClassificationSection({
             </Stack>
             <Stack gap="xs">
               <Label htmlFor="article-cls-unit">Unit</Label>
-              <Select id="article-cls-unit" value={unitItemId} onChange={(event) => setUnitItemId(event.target.value)}>
+              <Select
+                id="article-cls-unit"
+                value={mode === "edit" ? draft.unitItemId : unitItemId}
+                onChange={(event) =>
+                  mode === "edit" ? onFieldChange?.({ unitItemId: event.target.value }) : setUnitItemId(event.target.value)
+                }
+              >
                 <option value="">{defaultUnit ? `Use default (${defaultUnit.label})` : "Use organization default"}</option>
                 {units.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -188,16 +204,13 @@ export function ArticleClassificationSection({
               </Select>
             </Stack>
           </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+          {mode !== "edit" && (
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
+            </Inline>
+          )}
         </Stack>
       }
     >

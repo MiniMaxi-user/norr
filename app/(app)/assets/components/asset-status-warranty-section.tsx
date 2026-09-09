@@ -21,6 +21,9 @@ export interface AssetStatusWarrantySectionProps {
   readOnly?: boolean;
   loadingOptions?: boolean;
   onSave: (patch: Pick<AssetDraft, "statusId" | "installedAt" | "warrantyUntil">) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `AssetEquipmentSectionProps.onFieldChange`'s
+   * own doc comment. */
+  onFieldChange?: (patch: Partial<Pick<AssetDraft, "statusId" | "installedAt" | "warrantyUntil">>) => void;
 }
 
 /**
@@ -38,6 +41,7 @@ export function AssetStatusWarrantySection({
   readOnly,
   loadingOptions,
   onSave,
+  onFieldChange,
 }: AssetStatusWarrantySectionProps) {
   const [statusId, setStatusId] = useState(draft.statusId);
   const [installedAt, setInstalledAt] = useState(draft.installedAt);
@@ -56,14 +60,6 @@ export function AssetStatusWarrantySection({
 
   const defaultStatus = assetStatuses.find((item) => item.is_default);
 
-  function handleCancel() {
-    setStatusId(draft.statusId);
-    setInstalledAt(draft.installedAt);
-    setWarrantyUntil(draft.warrantyUntil);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
-  }
-
   async function handleSave() {
     setError(null);
     setSaving(true);
@@ -81,18 +77,17 @@ export function AssetStatusWarrantySection({
       icon={ShieldCheck}
       title="Status & warranty"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit status"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
+        mode === "edit" ? (
           <FormGrid columns={2}>
             <Stack gap="xs">
               <Label htmlFor="asset-sw-status">Status</Label>
               <Select
                 id="asset-sw-status"
-                value={statusId}
-                onChange={(event) => setStatusId(event.target.value)}
+                value={draft.statusId}
+                onChange={(event) => onFieldChange?.({ statusId: event.target.value })}
                 disabled={loadingOptions}
               >
                 <option value="">{defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}</option>
@@ -108,8 +103,8 @@ export function AssetStatusWarrantySection({
               <Input
                 id="asset-sw-installed"
                 type="date"
-                value={installedAt}
-                onChange={(event) => setInstalledAt(event.target.value)}
+                value={draft.installedAt}
+                onChange={(event) => onFieldChange?.({ installedAt: event.target.value })}
               />
             </Stack>
             <Stack gap="xs">
@@ -117,22 +112,57 @@ export function AssetStatusWarrantySection({
               <Input
                 id="asset-sw-warranty"
                 type="date"
-                value={warrantyUntil}
-                onChange={(event) => setWarrantyUntil(event.target.value)}
+                value={draft.warrantyUntil}
+                onChange={(event) => onFieldChange?.({ warrantyUntil: event.target.value })}
               />
             </Stack>
           </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <FormGrid columns={2}>
+              <Stack gap="xs">
+                <Label htmlFor="asset-sw-status">Status</Label>
+                <Select
+                  id="asset-sw-status"
+                  value={statusId}
+                  onChange={(event) => setStatusId(event.target.value)}
+                  disabled={loadingOptions}
+                >
+                  <option value="">{defaultStatus ? `Use default (${defaultStatus.label})` : "Use organization default"}</option>
+                  {assetStatuses.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-sw-installed">Installed on</Label>
+                <Input
+                  id="asset-sw-installed"
+                  type="date"
+                  value={installedAt}
+                  onChange={(event) => setInstalledAt(event.target.value)}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-sw-warranty">Warranty until</Label>
+                <Input
+                  id="asset-sw-warranty"
+                  type="date"
+                  value={warrantyUntil}
+                  onChange={(event) => setWarrantyUntil(event.target.value)}
+                />
+              </Stack>
+            </FormGrid>
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList

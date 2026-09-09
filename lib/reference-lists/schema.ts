@@ -98,6 +98,8 @@ export const referenceItemCreateSchema = z.object({
   color: referenceItemColorSchema,
   sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
   parentItemId: referenceItemParentIdSchema,
+  description: z.preprocess(emptyToUndefined, z.string().trim().max(500).optional()),
+  isActive: z.boolean().optional(),
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;

@@ -24,6 +24,9 @@ export interface ArticleStatusSectionProps {
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
   onSave: (patch: Pick<ArticleDraft, "isActive" | "isComposite">) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `ArticleInfoSectionProps.onFieldChange`'s own
+   * doc comment. */
+  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "isActive" | "isComposite">>) => void;
 }
 
 /**
@@ -62,6 +65,7 @@ export function ArticleStatusSection({
   onEditToggle,
   readOnly,
   onSave,
+  onFieldChange,
 }: ArticleStatusSectionProps) {
   const [isActive, setIsActive] = useState(draft.isActive);
   const [isComposite, setIsComposite] = useState(draft.isComposite);
@@ -75,13 +79,6 @@ export function ArticleStatusSection({
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
-
-  function handleCancel() {
-    setIsActive(draft.isActive);
-    setIsComposite(draft.isComposite);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
-  }
 
   async function handleSave() {
     setError(null);
@@ -106,34 +103,50 @@ export function ArticleStatusSection({
         icon={FileText}
         title="Status & composite"
         editing={editing}
-        onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+        onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
         editLabel="Edit status"
         editContent={
-          <Stack gap="md">
-            {error && <Text tone="danger">{error}</Text>}
-            <Inline gap="sm" align="center">
-              <Checkbox id="article-status-active" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
-              <Label htmlFor="article-status-active">Active</Label>
-            </Inline>
-            <Inline gap="sm" align="center">
-              <Checkbox
-                id="article-status-composite"
-                checked={isComposite}
-                onChange={(event) => setIsComposite(event.target.checked)}
-              />
-              <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
-            </Inline>
-            <Inline gap="sm" justify="end">
-              {mode === "edit" && (
-                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                  Cancel
+          mode === "edit" ? (
+            <Stack gap="md">
+              <Inline gap="sm" align="center">
+                <Checkbox
+                  id="article-status-active"
+                  checked={draft.isActive}
+                  onChange={(event) => onFieldChange?.({ isActive: event.target.checked })}
+                />
+                <Label htmlFor="article-status-active">Active</Label>
+              </Inline>
+              <Inline gap="sm" align="center">
+                <Checkbox
+                  id="article-status-composite"
+                  checked={draft.isComposite}
+                  onChange={(event) => onFieldChange?.({ isComposite: event.target.checked })}
+                />
+                <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
+              </Inline>
+            </Stack>
+          ) : (
+            <Stack gap="md">
+              {error && <Text tone="danger">{error}</Text>}
+              <Inline gap="sm" align="center">
+                <Checkbox id="article-status-active" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
+                <Label htmlFor="article-status-active">Active</Label>
+              </Inline>
+              <Inline gap="sm" align="center">
+                <Checkbox
+                  id="article-status-composite"
+                  checked={isComposite}
+                  onChange={(event) => setIsComposite(event.target.checked)}
+                />
+                <Label htmlFor="article-status-composite">Composite article (has a bill of materials)</Label>
+              </Inline>
+              <Inline gap="sm" justify="end">
+                <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving…" : "Save"}
                 </Button>
-              )}
-              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-            </Inline>
-          </Stack>
+              </Inline>
+            </Stack>
+          )
         }
       >
         <Inline gap="xs">

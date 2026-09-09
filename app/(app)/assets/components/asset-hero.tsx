@@ -50,10 +50,12 @@ export interface AssetHeroProps {
   /** Re-fetches the asset's linked contracts + refreshes the page — see
    * `use-asset-contracts.ts`'s own doc comment. */
   onContractsChange: () => void;
-  /** Opens BOTH the Equipment and Status & warranty sections into their
-   * inline-edit state at once — see `asset-screen.tsx`'s own module doc
-   * comment for why this pencil doesn't get a third editing surface of its
-   * own. Omitted (along with the pencil itself) for a `readOnly` viewer. */
+  /** `mode: "create"`: opens BOTH the Equipment and Status & warranty
+   * sections into their inline-edit state at once — see `asset-screen.tsx`'s
+   * own module doc comment. `mode: "edit"`: opens ALL THREE sections
+   * (Equipment/Status & warranty/Notes) via the single `pageEditing` state —
+   * same doc comment. Omitted (along with the pencil itself) for a
+   * `readOnly` viewer, or once already editing. */
   onEditHeader?: () => void;
 }
 

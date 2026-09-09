@@ -95,10 +95,19 @@ export interface ContractRecord {
 }
 
 /** A contract's line item — an article the Quote generated from this
- * contract should be pre-populated with (issue #122). No purchase_price
- * anywhere on this shape: purchase price is always read live from
- * `articles.purchase_price` by the caller, never snapshotted (see the
- * migration's design note 2). */
+ * contract should be pre-populated with (issue #122). `purchase_price` is a
+ * deliberate, table-specific EXCEPTION to this codebase's usual "never
+ * snapshot the cost side" convention (`supabase/migrations/
+ * 20260909100000_contract_line_items_volume_and_purchase_price.sql`, issue
+ * #129): `contract_line_items` alone stores a real, stored,
+ * user-overridable `purchase_price` so a multi-year contract's margin on a
+ * pre-agreed usage bundle (`is_volume`) reflects the cost true when the deal
+ * was struck, not whatever `articles.purchase_price` happens to be today.
+ * `quote_line_items`, `work_order_articles`, and `rate_overrides` are
+ * UNCHANGED and still read purchase price live from `articles.purchase_price`
+ * — do not "fix" this column back to match those three tables. `is_volume`
+ * flags a line item as a pre-agreed usage allowance/bundle ("Volume", e.g.
+ * "10,000 cups of coffee per year") rather than a plain sale-priced line. */
 export interface ContractLineItemRecord {
   id: string;
   contract_id: string;
@@ -108,6 +117,8 @@ export interface ContractLineItemRecord {
   description: string | null;
   quantity: number;
   unit_price: number;
+  purchase_price: number;
+  is_volume: boolean;
   sort_order: number;
   created_by: string | null;
   created_at: string;
@@ -722,9 +733,14 @@ export async function unlinkContractAsset(
 // articles a Quote generated from this contract should be pre-populated
 // with. Gated on the same `contracts` RBAC module as the contract record
 // itself (not a separate matrix row), same "if you can manage the contract,
-// you can manage its line items" boundary as `contract_assets` above. No
-// purchase price anywhere here or in any caller of these actions — always
-// read `articles.purchase_price` live, per the migration's design note 2.
+// you can manage its line items" boundary as `contract_assets` above.
+// `purchase_price`/`is_volume` (issue #129,
+// `20260909100000_contract_line_items_volume_and_purchase_price.sql`) are a
+// deliberate, table-specific EXCEPTION to this codebase's usual "never
+// snapshot the cost side" convention — see `ContractLineItemRecord`'s doc
+// comment above for the full reasoning. `quote_line_items`,
+// `work_order_articles`, and `rate_overrides` are unchanged and still read
+// purchase price live from `articles.purchase_price`.
 // ---------------------------------------------------------------------------
 
 const contractLineItemWriteSchema = z.object({
@@ -733,6 +749,8 @@ const contractLineItemWriteSchema = z.object({
   description: z.preprocess(emptyToUndefined, z.string().trim().max(2000).optional()),
   quantity: z.coerce.number({ invalid_type_error: "Quantity must be a number." }).finite().optional(),
   unitPrice: z.coerce.number({ invalid_type_error: "Unit price must be a number." }).finite().optional(),
+  purchasePrice: z.coerce.number({ invalid_type_error: "Purchase price must be a number." }).finite().optional(),
+  isVolume: z.boolean().optional(),
   sortOrder: z.coerce.number().int().optional(),
 });
 
@@ -799,6 +817,8 @@ export async function createContractLineItem(
   };
   if (parsed.data.quantity !== undefined) row.quantity = parsed.data.quantity;
   if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
+  if (parsed.data.purchasePrice !== undefined) row.purchase_price = parsed.data.purchasePrice;
+  if (parsed.data.isVolume !== undefined) row.is_volume = parsed.data.isVolume;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
 
   const supabase = await createSupabaseServerClient();
@@ -838,6 +858,8 @@ export async function updateContractLineItem(
   if (parsed.data.description !== undefined) row.description = parsed.data.description ?? null;
   if (parsed.data.quantity !== undefined) row.quantity = parsed.data.quantity;
   if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
+  if (parsed.data.purchasePrice !== undefined) row.purchase_price = parsed.data.purchasePrice;
+  if (parsed.data.isVolume !== undefined) row.is_volume = parsed.data.isVolume;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (Object.keys(row).length === 0) {
     return fail("No changes provided.");

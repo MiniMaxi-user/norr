@@ -10,6 +10,7 @@ import type { AssetModelRecord } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { formatDate } from "@/lib/format/date";
+import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import type { AssetDraft } from "./asset-draft";
 
 export interface AssetRelationCardsProps {
@@ -69,12 +70,14 @@ export function AssetRelationCards({
   onEditModel,
   onEditContract,
 }: AssetRelationCardsProps) {
-  const resolvedClient = draft.clientId
-    ? (client?.id === draft.clientId ? client : (clients.find((candidate) => candidate.id === draft.clientId) ?? null))
-    : null;
-  const resolvedSite =
-    clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
-    (draft.siteId && site?.id === draft.siteId ? site : null);
+  // "Just-picked-locally vs. already-persisted" resolution — shared via
+  // `resolveRelation` (issue #130). Model/Brand/Type/Subtype below stay
+  // bespoke: they key off a DIFFERENT record's sibling field (e.g.
+  // `asset.model_id`) while returning yet another field (`asset.asset_model`
+  // or a plain label), which doesn't fit this helper's "matched record is
+  // the resolved value" shape.
+  const resolvedClient = resolveRelation(draft.clientId, clients, client, (candidate) => candidate.id);
+  const resolvedSite = resolveRelation(draft.siteId, clientScoped.sites, site, (candidate) => candidate.id);
 
   const clientFacts = [resolvedClient?.kvk_number ? `KvK ${resolvedClient.kvk_number}` : null, resolvedClient?.vat_number]
     .filter(Boolean)

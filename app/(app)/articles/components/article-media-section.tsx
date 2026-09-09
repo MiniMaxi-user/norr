@@ -13,6 +13,9 @@ export interface ArticleMediaSectionProps {
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
   onSave: (patch: Pick<ArticleDraft, "imageUrl">) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `ArticleInfoSectionProps.onFieldChange`'s own
+   * doc comment. */
+  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "imageUrl">>) => void;
 }
 
 /**
@@ -35,7 +38,16 @@ export interface ArticleMediaSectionProps {
  * requirements" reasoning `AssetNotesSection` documents for its own default-
  * closed state).
  */
-export function ArticleMediaSection({ mode, draft, articleNumber, editing, onEditToggle, readOnly, onSave }: ArticleMediaSectionProps) {
+export function ArticleMediaSection({
+  mode,
+  draft,
+  articleNumber,
+  editing,
+  onEditToggle,
+  readOnly,
+  onSave,
+  onFieldChange,
+}: ArticleMediaSectionProps) {
   const [imageUrl, setImageUrl] = useState(draft.imageUrl);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,31 +84,47 @@ export function ArticleMediaSection({ mode, draft, articleNumber, editing, onEdi
       icon={Camera}
       title="Photo"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit photo"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
-          <MediaTile size="xl" imageUrl={imageUrl.trim() || undefined} alt={alt} fallback={<Camera />} />
-          <Stack gap="xs">
-            <Label htmlFor="article-media-url">Image URL</Label>
-            <Input
-              id="article-media-url"
-              value={imageUrl}
-              onChange={(event) => setImageUrl(event.target.value)}
-              maxLength={2000}
-              placeholder="https://…"
-            />
+        mode === "edit" ? (
+          <Stack gap="md">
+            <MediaTile size="xl" imageUrl={draft.imageUrl.trim() || undefined} alt={alt} fallback={<Camera />} />
+            <Stack gap="xs">
+              <Label htmlFor="article-media-url">Image URL</Label>
+              <Input
+                id="article-media-url"
+                value={draft.imageUrl}
+                onChange={(event) => onFieldChange?.({ imageUrl: event.target.value })}
+                maxLength={2000}
+                placeholder="https://…"
+              />
+            </Stack>
           </Stack>
-          <Inline gap="sm" justify="end">
-            <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <MediaTile size="xl" imageUrl={imageUrl.trim() || undefined} alt={alt} fallback={<Camera />} />
+            <Stack gap="xs">
+              <Label htmlFor="article-media-url">Image URL</Label>
+              <Input
+                id="article-media-url"
+                value={imageUrl}
+                onChange={(event) => setImageUrl(event.target.value)}
+                maxLength={2000}
+                placeholder="https://…"
+              />
+            </Stack>
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <Stack gap="sm">

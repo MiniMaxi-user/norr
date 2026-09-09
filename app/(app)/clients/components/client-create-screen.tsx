@@ -40,12 +40,15 @@ export interface ClientCreateScreenProps {
  * create, never a `Dialog`.
  *
  * Renders the SAME 4 section components the Details tab uses
- * (`client-business-details-section.tsx` etc.), just in `mode: "create"`:
- * every section starts (and stays) open/editing — no pencil, no toggle — and
- * each section's own "Save" only merges into local `draft` state (no network
- * call) until this screen's own "Save client" action fires, mirroring
- * `AssetScreen`'s identical create-mode shape exactly (see that file's own
- * doc comment).
+ * (`client-business-details-section.tsx` etc.), just in `mode: "create"`
+ * with `hideActions` — every section starts (and stays) open/editing (no
+ * pencil, no toggle), every field is directly controlled off this screen's
+ * own shared `draft` and merges into it (no network call) on every change,
+ * and only the ONE page-level "Save client" button below actually persists
+ * anything (see `ClientBusinessDetailsSectionProps.hideActions`'s own doc
+ * comment for why: this screen used to also render each section's own
+ * Cancel/Save row on top of its own page-level pair — five Save-ish buttons
+ * on one page).
  *
  * Deliberate scope decision (see the story): unlike the old `NewClientPanel`,
  * this does NOT also collect the client's first Site/address in the same
@@ -145,13 +148,14 @@ export function ClientCreateScreen({ breadcrumbItems, accountManagers, articles,
       <DetailColumns
         left={
           <Stack gap="lg">
-            <ClientBusinessDetailsSection mode="create" draft={draft} editing onSave={mergeDraft} />
+            <ClientBusinessDetailsSection mode="create" draft={draft} editing onSave={mergeDraft} hideActions />
             <ClientPipelineSection
               mode="create"
               draft={draft}
               accountManagers={accountManagers}
               editing
               onSave={mergeDraft}
+              hideActions
             />
           </Stack>
         }
@@ -164,8 +168,9 @@ export function ClientCreateScreen({ breadcrumbItems, accountManagers, articles,
               articles={articles}
               editing
               onSave={mergeRateDraft}
+              hideActions
             />
-            <ClientNotesSection mode="create" draft={draft} editing onSave={mergeDraft} />
+            <ClientNotesSection mode="create" draft={draft} editing onSave={mergeDraft} hideActions />
           </Stack>
         }
       />

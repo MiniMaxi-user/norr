@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Badge,
   Button,
+  Checkbox,
   Combobox,
   ConfirmDeleteDialog,
   Dialog,
   EmptyState,
+  Inline,
   Input,
   Label,
   RowCard,
@@ -41,12 +44,14 @@ export interface ContractLineItemsSectionProps {
  * contract should be pre-populated with. Mirrors `app/(app)/work-orders/
  * components/work-order-material-section.tsx`'s row-list + `SummaryRow` +
  * small `Dialog` "+ Article" shape almost exactly, with two additions the
- * work order equivalent doesn't need: an editable Sale price (defaults to
- * the picked article's own `sale_price` the instant it's chosen, then freely
- * editable, same UX as `lib/rate-overrides/rate-settings-section.tsx`'s
- * article-picker-defaults-the-price flow) and a READ-ONLY Purchase price
- * (always live off the picked article — there is no `purchase_price` column
- * on `contract_line_items` at all, per the migration's own design note).
+ * work order equivalent doesn't need: an editable Sale price and an editable
+ * Purchase price (both default to the picked article's own `sale_price`/
+ * `purchase_price` the instant it's chosen, then freely editable, same UX as
+ * `lib/rate-overrides/rate-settings-section.tsx`'s article-picker-defaults-
+ * the-price flow — `purchase_price` is stored/user-overridable on
+ * `contract_line_items`, a deliberate exception to this codebase's usual
+ * "read cost live" convention) and a "Volume" flag (`is_volume`), surfaced as
+ * a checkbox in the dialog and a `Badge` on the row when set.
  * Edit-mode-only — `ContractScreen` never renders this before the contract
  * exists.
  */
@@ -97,6 +102,7 @@ export function ContractLineItemsSection({
                     <Text tone="muted" className="ui-row-code">
                       {row.article_number}
                     </Text>
+                    {row.is_volume && <Badge variant="accent">Volume</Badge>}
                   </div>
                   <Text tone="muted" className="ui-row-mid ui-tabular-nums">
                     {row.quantity} × {formatCurrency(row.unit_price)}
@@ -182,6 +188,8 @@ function ContractLineItemDialog({
   const [articleId, setArticleId] = useState(row?.article_id ?? "");
   const [quantity, setQuantity] = useState(row ? String(row.quantity) : "1");
   const [salePrice, setSalePrice] = useState(row ? String(row.unit_price) : "");
+  const [purchasePrice, setPurchasePrice] = useState(row ? String(row.purchase_price) : "");
+  const [isVolume, setIsVolume] = useState(row?.is_volume ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -196,12 +204,16 @@ function ContractLineItemDialog({
   function handleArticleChange(id: string) {
     setArticleId(id);
     const picked = articles.find((article) => article.id === id);
-    if (picked) setSalePrice(picked.sale_price === null ? "" : String(picked.sale_price));
+    if (picked) {
+      setSalePrice(picked.sale_price === null ? "" : String(picked.sale_price));
+      setPurchasePrice(picked.purchase_price === null ? "" : String(picked.purchase_price));
+    }
   }
 
   async function handleSave() {
     const parsedQuantity = Number(quantity);
     const parsedSalePrice = Number(salePrice);
+    const parsedPurchasePrice = Number(purchasePrice);
     if (!articleId || !pickedArticle) {
       setError("Select an article.");
       return;
@@ -214,6 +226,10 @@ function ContractLineItemDialog({
       setError("Enter a valid sale price.");
       return;
     }
+    if (!Number.isFinite(parsedPurchasePrice) || parsedPurchasePrice < 0) {
+      setError("Enter a valid purchase price.");
+      return;
+    }
     setError(null);
     setSaving(true);
     const input = {
@@ -222,6 +238,8 @@ function ContractLineItemDialog({
       description: pickedArticle.description,
       quantity: parsedQuantity,
       unitPrice: parsedSalePrice,
+      purchasePrice: parsedPurchasePrice,
+      isVolume,
     };
     const result = row ? await updateContractLineItem(row.id, input) : await createContractLineItem(contractId, input);
     setSaving(false);
@@ -264,26 +282,37 @@ function ContractLineItemDialog({
             />
           </Stack>
           <Stack gap="sm">
+            <Label htmlFor="contract-line-item-purchase-price">Purchase price</Label>
+            <Input
+              id="contract-line-item-purchase-price"
+              type="number"
+              step="0.01"
+              min="0"
+              prefix="€"
+              value={purchasePrice}
+              onChange={(event) => setPurchasePrice(event.target.value)}
+            />
+          </Stack>
+          <Stack gap="sm">
             <Label htmlFor="contract-line-item-sale-price">Sale price</Label>
             <Input
               id="contract-line-item-sale-price"
               type="number"
               step="0.01"
               min="0"
+              prefix="€"
               value={salePrice}
               onChange={(event) => setSalePrice(event.target.value)}
             />
           </Stack>
-          <Stack gap="sm">
-            <Label htmlFor="contract-line-item-purchase-price">Purchase price</Label>
-            <Input
-              id="contract-line-item-purchase-price"
-              readOnly
-              tabIndex={-1}
-              value={articleId ? formatCurrency(pickedArticle?.purchase_price ?? null) : ""}
-              placeholder="Select an article"
+          <Inline gap="sm" align="center">
+            <Checkbox
+              id="contract-line-item-is-volume"
+              checked={isVolume}
+              onChange={(event) => setIsVolume(event.target.checked)}
             />
-          </Stack>
+            <Label htmlFor="contract-line-item-is-volume">Volume</Label>
+          </Inline>
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>

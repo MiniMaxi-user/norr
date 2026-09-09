@@ -19,6 +19,9 @@ export interface ArticlePricingSectionProps {
   onSave: (
     patch: Pick<ArticleDraft, "purchasePrice" | "salePrice" | "vatRateItemId">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — see `ArticleInfoSectionProps.onFieldChange`'s own
+   * doc comment. */
+  onFieldChange?: (patch: Partial<Pick<ArticleDraft, "purchasePrice" | "salePrice" | "vatRateItemId">>) => void;
 }
 
 /**
@@ -26,7 +29,17 @@ export interface ArticlePricingSectionProps {
  * slide-in) — Purchase price, Sale price, VAT rate. Same read-card/
  * accent-edit-card toggle as every other section on this screen.
  */
-export function ArticlePricingSection({ mode, draft, article, vatRates, editing, onEditToggle, readOnly, onSave }: ArticlePricingSectionProps) {
+export function ArticlePricingSection({
+  mode,
+  draft,
+  article,
+  vatRates,
+  editing,
+  onEditToggle,
+  readOnly,
+  onSave,
+  onFieldChange,
+}: ArticlePricingSectionProps) {
   const [purchasePrice, setPurchasePrice] = useState(draft.purchasePrice);
   const [salePrice, setSalePrice] = useState(draft.salePrice);
   const [vatRateItemId, setVatRateItemId] = useState(draft.vatRateItemId);
@@ -41,14 +54,6 @@ export function ArticlePricingSection({ mode, draft, article, vatRates, editing,
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
-
-  function handleCancel() {
-    setPurchasePrice(draft.purchasePrice);
-    setSalePrice(draft.salePrice);
-    setVatRateItemId(draft.vatRateItemId);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
-  }
 
   async function handleSave() {
     setError(null);
@@ -69,11 +74,10 @@ export function ArticlePricingSection({ mode, draft, article, vatRates, editing,
       icon={CreditCard}
       title="Pricing & VAT"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit pricing"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
+        mode === "edit" ? (
           <FormGrid columns={3}>
             <Stack gap="xs">
               <Label htmlFor="article-price-purchase">Purchase price</Label>
@@ -82,8 +86,8 @@ export function ArticlePricingSection({ mode, draft, article, vatRates, editing,
                 type="number"
                 step="0.01"
                 min="0"
-                value={purchasePrice}
-                onChange={(event) => setPurchasePrice(event.target.value)}
+                value={draft.purchasePrice}
+                onChange={(event) => onFieldChange?.({ purchasePrice: event.target.value })}
                 prefix="€"
               />
             </Stack>
@@ -94,14 +98,18 @@ export function ArticlePricingSection({ mode, draft, article, vatRates, editing,
                 type="number"
                 step="0.01"
                 min="0"
-                value={salePrice}
-                onChange={(event) => setSalePrice(event.target.value)}
+                value={draft.salePrice}
+                onChange={(event) => onFieldChange?.({ salePrice: event.target.value })}
                 prefix="€"
               />
             </Stack>
             <Stack gap="xs">
               <Label htmlFor="article-price-vat">VAT rate</Label>
-              <Select id="article-price-vat" value={vatRateItemId} onChange={(event) => setVatRateItemId(event.target.value)}>
+              <Select
+                id="article-price-vat"
+                value={draft.vatRateItemId}
+                onChange={(event) => onFieldChange?.({ vatRateItemId: event.target.value })}
+              >
                 <option value="">
                   {defaultVatRate ? `Use default (${defaultVatRate.label})` : "Use organization default"}
                 </option>
@@ -113,17 +121,55 @@ export function ArticlePricingSection({ mode, draft, article, vatRates, editing,
               </Select>
             </Stack>
           </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <FormGrid columns={3}>
+              <Stack gap="xs">
+                <Label htmlFor="article-price-purchase">Purchase price</Label>
+                <Input
+                  id="article-price-purchase"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={purchasePrice}
+                  onChange={(event) => setPurchasePrice(event.target.value)}
+                  prefix="€"
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-price-sale">Sale price</Label>
+                <Input
+                  id="article-price-sale"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={salePrice}
+                  onChange={(event) => setSalePrice(event.target.value)}
+                  prefix="€"
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="article-price-vat">VAT rate</Label>
+                <Select id="article-price-vat" value={vatRateItemId} onChange={(event) => setVatRateItemId(event.target.value)}>
+                  <option value="">
+                    {defaultVatRate ? `Use default (${defaultVatRate.label})` : "Use organization default"}
+                  </option>
+                  {vatRates.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+              </Stack>
+            </FormGrid>
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList

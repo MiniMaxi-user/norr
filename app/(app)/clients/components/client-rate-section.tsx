@@ -25,6 +25,13 @@ export interface ClientRateSectionProps {
    * `updateClientRateSettings`; `mode: "create"` just merges it into the
    * local draft. */
   onSave: (input: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+  /** `client-create-screen.tsx` only — see
+   * `ClientBusinessDetailsSectionProps.hideActions`'s own doc comment.
+   * `RateSettingsSection`'s own fields stay uncontrolled either way (see its
+   * own doc comment) — instead of a per-field `onChange`, this wires a
+   * single delegated `onChange` on the `<form>` itself, reading the same
+   * `FormData` shape `handleSubmit` already reads, on every change. */
+  hideActions?: boolean;
 }
 
 /**
@@ -46,9 +53,18 @@ export function ClientRateSection({
   onEditToggle,
   readOnly,
   onSave,
+  hideActions,
 }: ClientRateSectionProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function readFormInput(form: HTMLFormElement) {
+    const formData = new FormData(form);
+    return {
+      ...Object.fromEntries(formData.entries()),
+      hasCustomRate: formData.get("hasCustomRate") === "on",
+    };
+  }
 
   function handleCancel() {
     setError(null);
@@ -57,14 +73,9 @@ export function ClientRateSection({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const input = {
-      ...Object.fromEntries(formData.entries()),
-      hasCustomRate: formData.get("hasCustomRate") === "on",
-    };
     setError(null);
     setSaving(true);
-    const result = await onSave(input);
+    const result = await onSave(readFormInput(event.currentTarget));
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");
@@ -73,17 +84,26 @@ export function ClientRateSection({
     if (mode === "edit") onEditToggle?.(false);
   }
 
+  // No visible Save button in `hideActions` mode (the page owns the single
+  // one) — every field change on the form instead merges straight into the
+  // shared `draft` live, same "controlled off the shared draft" contract
+  // Article/Asset's own edit-mode sections follow.
+  function handleLiveChange(event: FormEvent<HTMLFormElement>) {
+    if (!hideActions) return;
+    void onSave(readFormInput(event.currentTarget));
+  }
+
   return (
     <EditableSection
       icon={Receipt}
       title="Rate"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={hideActions || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit rate"
       editContent={
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} onChange={handleLiveChange}>
           <Stack gap="md">
-            {error && <Text tone="danger">{error}</Text>}
+            {!hideActions && error && <Text tone="danger">{error}</Text>}
             <RateSettingsSection
               idPrefix={idPrefix}
               initial={{
@@ -96,16 +116,18 @@ export function ClientRateSection({
               articles={articles}
               subjectLabel="client"
             />
-            <Inline gap="sm" justify="end">
-              {mode === "edit" && (
-                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                  Cancel
+            {!hideActions && (
+              <Inline gap="sm" justify="end">
+                {mode === "edit" && (
+                  <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                    Cancel
+                  </Button>
+                )}
+                <Button type="submit" variant="primary" disabled={saving}>
+                  {saving ? "Saving…" : "Save"}
                 </Button>
-              )}
-              <Button type="submit" variant="primary" disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-            </Inline>
+              </Inline>
+            )}
           </Stack>
         </form>
       }

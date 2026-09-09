@@ -72,6 +72,18 @@ export interface ReferenceListItemRecord {
    * `asset_subtype` item's `parent_item_id` points at its `asset_type`
    * item). `null` for every item on a non-dependent (flat) list. */
   parent_item_id: string | null;
+  /** Generic free-text description slot (added by
+   * `supabase/migrations/20260910090000_reference_list_items_description_active_and_volume_list.sql`
+   * alongside the Volume module, issue #131) — reusable by any tenant
+   * reference list, same as `color`/`icon` already are. `null` when unset. */
+  description: string | null;
+  /** Generic active/inactive flag (added by the same migration as
+   * `description` above, issue #131) — lets an owner retire a picklist value
+   * without deleting it (deletion is blocked by FK when the value is still
+   * referenced elsewhere, see `deleteReferenceItem`'s doc comment). Defaults
+   * to `true` at the DB level; reusable by any tenant reference list, same
+   * as `color`/`icon` already are. */
+  is_active: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -371,8 +383,10 @@ export async function createReferenceItem(
     label: parsed.data.label,
     color: parsed.data.color ?? null,
     parent_item_id: parsed.data.parentItemId ?? null,
+    description: parsed.data.description ?? null,
   };
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
+  if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
 
   const { data, error } = await supabase
     .from("reference_list_items")
@@ -412,6 +426,8 @@ export async function updateReferenceItem(
   if (parsed.data.label !== undefined) row.label = parsed.data.label;
   if (parsed.data.color !== undefined) row.color = parsed.data.color ?? null;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
+  if (parsed.data.description !== undefined) row.description = parsed.data.description ?? null;
+  if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
 
   const supabase = await createSupabaseServerClient();
 

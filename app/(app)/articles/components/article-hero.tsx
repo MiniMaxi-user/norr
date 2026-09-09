@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Badge, RecordHeroBand } from "@yourorg/ui";
-import { Building2, Settings } from "@yourorg/ui/icons";
+import { Badge, IconButton, RecordHeroBand } from "@yourorg/ui";
+import { Building2, Pencil, Settings } from "@yourorg/ui/icons";
 import type { ArticleRecord } from "../actions";
 import type { FlattenedArticleGroup } from "../group-tree";
 import { findArticleGroup } from "../group-tree";
@@ -14,6 +14,12 @@ export interface ArticleHeroProps {
   article?: ArticleRecord;
   groups: FlattenedArticleGroup[];
   actions?: ReactNode;
+  readOnly?: boolean;
+  /** Opens every section on the page into its inline-edit state at once —
+   * `mode: "edit"` only, omitted (along with the pencil itself) once already
+   * editing or for a `readOnly` viewer. See `article-screen.tsx`'s own module
+   * doc comment; mirrors `AssetHero`'s identical `onEditHeader`. */
+  onEditHeader?: () => void;
 }
 
 /**
@@ -35,7 +41,7 @@ export interface ArticleHeroProps {
  * 2000 characters and reads far better as a `meta` line/section content than
  * as a giant serif heading.
  */
-export function ArticleHero({ mode, draft, article, groups, actions }: ArticleHeroProps) {
+export function ArticleHero({ mode, draft, article, groups, actions, readOnly, onEditHeader }: ArticleHeroProps) {
   const groupPath = findArticleGroup(groups, draft.groupId)?.path ?? article?.article_group?.name;
 
   const meta: ReactNode[] = [
@@ -46,6 +52,11 @@ export function ArticleHero({ mode, draft, article, groups, actions }: ArticleHe
         <Badge variant="accent">New</Badge>
       )}
       {(article?.is_composite ?? draft.isComposite) && <Badge variant="accent">Composite</Badge>}
+      {!readOnly && onEditHeader && (
+        <IconButton variant="ghost" aria-label="Edit header" onClick={onEditHeader}>
+          <Pencil />
+        </IconButton>
+      )}
     </span>,
   ];
   if (groupPath) {

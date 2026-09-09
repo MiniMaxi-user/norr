@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { Button, Dialog, Stack, Text } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
+import { useRelationDialogSave } from "@/lib/relation-cards/use-relation-dialog-save";
 import type { WorkOrderDraft } from "./work-order-draft";
 import { useRelationCascade } from "./use-relation-cascade";
 import { WorkOrderRelationFields } from "./work-order-relation-fields";
@@ -45,7 +45,9 @@ export interface WorkOrderRelationsDialogProps {
  * `useRelationCascade` and the field markup in `WorkOrderRelationFields`
  * (both `./`, issue #106) — shared with `NewWorkOrderPickerDialog` rather
  * than reimplemented per popup; this component just supplies the Dialog
- * chrome and the "commit to an existing draft/work order" save behavior.
+ * chrome and the "commit to an existing draft/work order" save behavior
+ * (the validate/save/close sequence itself lives in the shared
+ * `useRelationDialogSave`, issue #130 — see that hook's own doc comment).
  */
 export function WorkOrderRelationsDialog({
   open,
@@ -59,23 +61,10 @@ export function WorkOrderRelationsDialog({
 }: WorkOrderRelationsDialogProps) {
   const { clientId, siteId, assetId, contractId, setAssetId, setContractId, handleClientChange, handleSiteChange } =
     useRelationCascade(draft, clientScoped.assets, onClientChange);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, save } = useRelationDialogSave(onSave, onOpenChange);
 
-  async function handleSave() {
-    if (!clientId) {
-      setError("Select a client.");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    const result = await onSave({ clientId, siteId, assetId, contractId });
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Could not save.");
-      return;
-    }
-    onOpenChange(false);
+  function handleSave() {
+    void save({ clientId, siteId, assetId, contractId }, () => (!clientId ? "Select a client." : null));
   }
 
   return (

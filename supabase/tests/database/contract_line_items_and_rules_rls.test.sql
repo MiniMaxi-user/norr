@@ -23,17 +23,19 @@
 -- finance; contract_line_items' organization_id/created_by derivation, the
 -- article_id-must-be-same-org check, owner-or-finance write boundary
 -- (including finance's own direct writes), contract_id immutability
--- (excluded from UPDATE grant), and tenant isolation; contract_article_
--- group_rules / contract_article_rules' identical shape — organization_id
--- derivation, the unique(contract_id, article_group_id|article_id)
--- constraint, the article_group_id/article_id-must-be-same-org check,
--- owner-or-finance write boundary, is_excluded-only UPDATE grant (the pair
--- itself is immutable), and tenant isolation.
+-- (excluded from UPDATE grant), tenant isolation, and (issue #129,
+-- 20260909100000_contract_line_items_volume_and_purchase_price.sql)
+-- purchase_price/is_volume defaulting and owner/finance read-write access;
+-- contract_article_ group_rules / contract_article_rules' identical shape —
+-- organization_id derivation, the unique(contract_id,
+-- article_group_id|article_id) constraint, the article_group_id/article_id-
+-- must-be-same-org check, owner-or-finance write boundary, is_excluded-only
+-- UPDATE grant (the pair itself is immutable), and tenant isolation.
 
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(50);
+select plan(56);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with owner/planner/engineer/finance/administratie members,
@@ -192,7 +194,9 @@ select is(
 
 -- ---------------------------------------------------------------------------
 -- 2. contract_line_items: derivation, cross-org article check, owner-or-
---    finance write boundary, contract_id immutability, tenant isolation.
+--    finance write boundary, contract_id immutability, tenant isolation,
+--    and (issue #129) purchase_price/is_volume defaulting + read-write
+--    access.
 -- ---------------------------------------------------------------------------
 
 select lives_ok(
@@ -214,6 +218,21 @@ select is(
   'contract_line_items.created_by was auto-stamped to the inserting user, not client-supplied'
 ); -- 10
 
+-- issue #129 (20260909100000_contract_line_items_volume_and_purchase_price.sql):
+-- purchase_price/is_volume both default when omitted on insert, mirroring
+-- unit_price's own default-value shape (not a NULL — a concrete default).
+select is(
+  (select purchase_price from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000a'),
+  0.00,
+  'contract_line_items.purchase_price defaults to 0 when omitted on insert'
+); -- 11
+
+select is(
+  (select is_volume from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000a'),
+  false,
+  'contract_line_items.is_volume defaults to false when omitted on insert'
+); -- 12
+
 select throws_ok(
   $$ insert into public.contract_line_items (contract_id, article_id)
      select 'd6000000-0000-0000-0000-00000000000a', val
@@ -221,7 +240,7 @@ select throws_ok(
   '23514',
   null,
   'contract_line_items.article_id from a different organization (org_b''s article) is rejected'
-); -- 11
+); -- 13
 
 select throws_ok(
   $$ insert into public.contract_line_items (contract_id, article_id, organization_id)
@@ -229,7 +248,7 @@ select throws_ok(
   '42501',
   null,
   'owner_a cannot set contract_line_items.organization_id directly on insert (column-level grant withheld)'
-); -- 12
+); -- 14
 
 select throws_ok(
   $$ insert into public.contract_line_items (contract_id, article_id, created_by)
@@ -237,7 +256,7 @@ select throws_ok(
   '42501',
   null,
   'owner_a cannot set contract_line_items.created_by directly on insert (column-level grant withheld)'
-); -- 13
+); -- 15
 
 select pg_temp.act_as('d2222222-2222-2222-2222-222222222222');
 
@@ -247,7 +266,7 @@ select throws_ok(
   '42501',
   null,
   'planner_a cannot INSERT a contract_line_items row (same owner-or-finance write boundary as contracts itself)'
-); -- 14
+); -- 16
 
 update public.contract_line_items set unit_price = 0 where id = 'd9000000-0000-0000-0000-00000000000a';
 
@@ -255,7 +274,7 @@ select is(
   (select unit_price from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000a'),
   150.50,
   'planner_a''s UPDATE is silently excluded by RLS (read-only); unit_price unchanged'
-); -- 15
+); -- 17
 
 delete from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000a';
 
@@ -263,37 +282,69 @@ select is(
   (select count(*)::int from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000a'),
   1,
   'planner_a''s DELETE is silently excluded by RLS (read-only); row still exists'
-); -- 16
+); -- 18
 
 select pg_temp.act_as('d2444444-4444-4444-4444-444444444444');
 
+-- issue #129: finance_a can insert/update purchase_price and is_volume
+-- directly (both are in the column-level INSERT/UPDATE grants, same as
+-- unit_price — no column-grant withholding for these two, unlike
+-- organization_id/created_by above).
 select lives_ok(
-  $$ insert into public.contract_line_items (id, contract_id, article_id)
-     values ('d9000000-0000-0000-0000-00000000000b', 'd6000000-0000-0000-0000-00000000000a', 'd8000000-0000-0000-0000-00000000000b') $$,
-  'finance_a can insert a contract_line_items row'
-); -- 17
+  $$ insert into public.contract_line_items
+       (id, contract_id, article_id, purchase_price, is_volume)
+     values ('d9000000-0000-0000-0000-00000000000b', 'd6000000-0000-0000-0000-00000000000a',
+       'd8000000-0000-0000-0000-00000000000b', 75.25, true) $$,
+  'finance_a can insert a contract_line_items row with explicit purchase_price/is_volume'
+); -- 19
+
+select is(
+  (select purchase_price from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
+  75.25,
+  'the just-inserted row''s purchase_price was stored as supplied (issue #129 snapshot-at-signing column)'
+); -- 20
+
+select is(
+  (select is_volume from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
+  true,
+  'the just-inserted row''s is_volume was stored as supplied ("Volume" line item flag)'
+); -- 21
 
 select lives_ok(
-  $$ update public.contract_line_items set unit_price = 42.00 where id = 'd9000000-0000-0000-0000-00000000000b' $$,
-  'finance_a can update a contract_line_items row'
-); -- 18
+  $$ update public.contract_line_items
+     set unit_price = 42.00, purchase_price = 10.00, is_volume = false
+     where id = 'd9000000-0000-0000-0000-00000000000b' $$,
+  'finance_a can update a contract_line_items row, including purchase_price/is_volume'
+); -- 22
 
 select is(
   (select unit_price from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
   42.00,
-  'finance_a''s update took effect'
-); -- 19
+  'finance_a''s unit_price update took effect'
+); -- 23
+
+select is(
+  (select purchase_price from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
+  10.00,
+  'finance_a''s purchase_price update took effect'
+); -- 24
+
+select is(
+  (select is_volume from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
+  false,
+  'finance_a''s is_volume update took effect'
+); -- 25
 
 select lives_ok(
   $$ delete from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b' $$,
   'finance_a can delete a contract_line_items row'
-); -- 20
+); -- 26
 
 select is(
   (select count(*)::int from public.contract_line_items where id = 'd9000000-0000-0000-0000-00000000000b'),
   0,
   'the deleted contract_line_items row is actually gone'
-); -- 21
+); -- 27
 
 select throws_ok(
   $$ update public.contract_line_items set contract_id = 'd6000000-0000-0000-0000-00000000000b'
@@ -301,7 +352,7 @@ select throws_ok(
   '42501',
   null,
   'contract_line_items.contract_id is immutable after creation (excluded from the UPDATE column grant)'
-); -- 22
+); -- 28
 
 select pg_temp.act_as('d2666666-6666-6666-6666-666666666666');
 
@@ -309,7 +360,7 @@ select is(
   (select count(*)::int from public.contract_line_items where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s contract_line_items rows'
-); -- 23
+); -- 29
 
 select throws_ok(
   $$ insert into public.contract_line_items (contract_id, article_id)
@@ -317,7 +368,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT a contract_line_items row referencing org_a''s contract/article (not a member of org_a)'
-); -- 24
+); -- 30
 
 select pg_temp.act_as('d2111111-1111-1111-1111-111111111111');
 
@@ -332,13 +383,13 @@ select lives_ok(
      values ('da000000-0000-0000-0000-00000000000a', 'd6000000-0000-0000-0000-00000000000a',
        'd7000000-0000-0000-0000-00000000000a', true) $$,
   'owner_a can insert a contract_article_group_rules row for contract_a / group A'
-); -- 25
+); -- 31
 
 select is(
   (select organization_id from public.contract_article_group_rules where id = 'da000000-0000-0000-0000-00000000000a'),
   'd1000000-0000-0000-0000-00000000000a'::uuid,
   'contract_article_group_rules.organization_id was auto-derived from the contract''s organization_id'
-); -- 26
+); -- 32
 
 select throws_ok(
   $$ insert into public.contract_article_group_rules (contract_id, article_group_id)
@@ -346,7 +397,7 @@ select throws_ok(
   '23505',
   null,
   'a second rule for the same (contract_id, article_group_id) pair violates the unique constraint'
-); -- 27
+); -- 33
 
 select throws_ok(
   $$ insert into public.contract_article_group_rules (contract_id, article_group_id)
@@ -355,19 +406,19 @@ select throws_ok(
   '23514',
   null,
   'contract_article_group_rules.article_group_id from a different organization (org_b''s group) is rejected'
-); -- 28
+); -- 34
 
 select lives_ok(
   $$ update public.contract_article_group_rules set is_excluded = false
      where id = 'da000000-0000-0000-0000-00000000000a' $$,
   'owner_a can update is_excluded on an existing rule'
-); -- 29
+); -- 35
 
 select is(
   (select is_excluded from public.contract_article_group_rules where id = 'da000000-0000-0000-0000-00000000000a'),
   false,
   'the is_excluded update took effect'
-); -- 30
+); -- 36
 
 select throws_ok(
   $$ update public.contract_article_group_rules set article_group_id = 'd7000000-0000-0000-0000-00000000000b'
@@ -375,7 +426,7 @@ select throws_ok(
   '42501',
   null,
   'contract_article_group_rules.article_group_id is immutable after creation (excluded from the UPDATE column grant)'
-); -- 31
+); -- 37
 
 select pg_temp.act_as('d2222222-2222-2222-2222-222222222222');
 
@@ -385,7 +436,7 @@ select throws_ok(
   '42501',
   null,
   'planner_a cannot INSERT a contract_article_group_rules row (owner-or-finance write boundary)'
-); -- 32
+); -- 38
 
 select pg_temp.act_as('d2444444-4444-4444-4444-444444444444');
 
@@ -394,18 +445,18 @@ select lives_ok(
      values ('da000000-0000-0000-0000-00000000000b', 'd6000000-0000-0000-0000-00000000000a',
        'd7000000-0000-0000-0000-00000000000b', false) $$,
   'finance_a can insert a contract_article_group_rules row (for group A2)'
-); -- 33
+); -- 39
 
 select lives_ok(
   $$ delete from public.contract_article_group_rules where id = 'da000000-0000-0000-0000-00000000000b' $$,
   'finance_a can delete a contract_article_group_rules row'
-); -- 34
+); -- 40
 
 select is(
   (select count(*)::int from public.contract_article_group_rules where id = 'da000000-0000-0000-0000-00000000000b'),
   0,
   'the deleted contract_article_group_rules row is actually gone'
-); -- 35
+); -- 41
 
 select pg_temp.act_as('d2666666-6666-6666-6666-666666666666');
 
@@ -413,7 +464,7 @@ select is(
   (select count(*)::int from public.contract_article_group_rules where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s contract_article_group_rules rows'
-); -- 36
+); -- 42
 
 select throws_ok(
   $$ insert into public.contract_article_group_rules (contract_id, article_group_id)
@@ -421,7 +472,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT a contract_article_group_rules row referencing org_a''s contract/group (not a member of org_a)'
-); -- 37
+); -- 43
 
 select pg_temp.act_as('d2111111-1111-1111-1111-111111111111');
 
@@ -435,13 +486,13 @@ select lives_ok(
      values ('db000000-0000-0000-0000-00000000000a', 'd6000000-0000-0000-0000-00000000000a',
        'd8000000-0000-0000-0000-00000000000a', true) $$,
   'owner_a can insert a contract_article_rules row for contract_a / article_a'
-); -- 38
+); -- 44
 
 select is(
   (select organization_id from public.contract_article_rules where id = 'db000000-0000-0000-0000-00000000000a'),
   'd1000000-0000-0000-0000-00000000000a'::uuid,
   'contract_article_rules.organization_id was auto-derived from the contract''s organization_id'
-); -- 39
+); -- 45
 
 select throws_ok(
   $$ insert into public.contract_article_rules (contract_id, article_id)
@@ -449,7 +500,7 @@ select throws_ok(
   '23505',
   null,
   'a second rule for the same (contract_id, article_id) pair violates the unique constraint'
-); -- 40
+); -- 46
 
 select throws_ok(
   $$ insert into public.contract_article_rules (contract_id, article_id)
@@ -458,19 +509,19 @@ select throws_ok(
   '23514',
   null,
   'contract_article_rules.article_id from a different organization (org_b''s article) is rejected'
-); -- 41
+); -- 47
 
 select lives_ok(
   $$ update public.contract_article_rules set is_excluded = false
      where id = 'db000000-0000-0000-0000-00000000000a' $$,
   'owner_a can update is_excluded on an existing rule'
-); -- 42
+); -- 48
 
 select is(
   (select is_excluded from public.contract_article_rules where id = 'db000000-0000-0000-0000-00000000000a'),
   false,
   'the is_excluded update took effect'
-); -- 43
+); -- 49
 
 select throws_ok(
   $$ update public.contract_article_rules set article_id = 'd8000000-0000-0000-0000-00000000000b'
@@ -478,7 +529,7 @@ select throws_ok(
   '42501',
   null,
   'contract_article_rules.article_id is immutable after creation (excluded from the UPDATE column grant)'
-); -- 44
+); -- 50
 
 select pg_temp.act_as('d2222222-2222-2222-2222-222222222222');
 
@@ -488,7 +539,7 @@ select throws_ok(
   '42501',
   null,
   'planner_a cannot INSERT a contract_article_rules row (owner-or-finance write boundary)'
-); -- 45
+); -- 51
 
 select pg_temp.act_as('d2444444-4444-4444-4444-444444444444');
 
@@ -497,18 +548,18 @@ select lives_ok(
      values ('db000000-0000-0000-0000-00000000000b', 'd6000000-0000-0000-0000-00000000000a',
        'd8000000-0000-0000-0000-00000000000b', false) $$,
   'finance_a can insert a contract_article_rules row (for article A2)'
-); -- 46
+); -- 52
 
 select lives_ok(
   $$ delete from public.contract_article_rules where id = 'db000000-0000-0000-0000-00000000000b' $$,
   'finance_a can delete a contract_article_rules row'
-); -- 47
+); -- 53
 
 select is(
   (select count(*)::int from public.contract_article_rules where id = 'db000000-0000-0000-0000-00000000000b'),
   0,
   'the deleted contract_article_rules row is actually gone'
-); -- 48
+); -- 54
 
 select pg_temp.act_as('d2666666-6666-6666-6666-666666666666');
 
@@ -516,7 +567,7 @@ select is(
   (select count(*)::int from public.contract_article_rules where organization_id = 'd1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s contract_article_rules rows'
-); -- 49
+); -- 55
 
 select throws_ok(
   $$ insert into public.contract_article_rules (contract_id, article_id)
@@ -524,7 +575,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT a contract_article_rules row referencing org_a''s contract/article (not a member of org_a)'
-); -- 50
+); -- 56
 
 select * from finish();
 rollback;

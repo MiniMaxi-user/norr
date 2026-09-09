@@ -13,6 +13,7 @@ import type { AssetContractCoverage, ContractRecord } from "@/app/(app)/contract
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDate, formatDurationSince } from "@/lib/format/date";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import type { ActivityDraft } from "./activity-draft";
 import { ActivityRelationsDialog } from "./activity-relations-dialog";
 import { ActivityStatusDialog } from "./activity-status-dialog";
@@ -106,16 +107,12 @@ export function ActivityHero({
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
 
-  const resolvedClient = draft.clientId
-    ? (client?.id === draft.clientId ? client : (clients.find((candidate) => candidate.id === draft.clientId) ?? null))
-    : null;
-  const resolvedAsset = draft.assetId
-    ? (clientScoped.assets.find((candidate) => candidate.id === draft.assetId) ??
-      (asset?.id === draft.assetId ? asset : null))
-    : null;
-  const resolvedContact = draft.contactPersonId
-    ? (clientScoped.contacts.find((candidate) => candidate.id === draft.contactPersonId) ?? null)
-    : null;
+  // "Just-picked-locally vs. already-persisted" resolution — shared via
+  // `resolveRelation` (issue #130); the Contract card just below is
+  // deliberately NOT resolved this way — see its own comment.
+  const resolvedClient = resolveRelation(draft.clientId, clients, client, (candidate) => candidate.id);
+  const resolvedAsset = resolveRelation(draft.assetId, clientScoped.assets, asset, (candidate) => candidate.id);
+  const resolvedContact = resolveRelation(draft.contactPersonId, clientScoped.contacts, undefined, (candidate) => candidate.id);
   const hasContactFacts = Boolean(resolvedContact?.name ?? draft.contactName);
 
   // Contract relation card — DERIVED, not stored (issue #128, same-day

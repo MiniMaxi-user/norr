@@ -12,6 +12,9 @@ export interface ClientNotesSectionProps {
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
   onSave: (patch: Pick<ClientDraft, "notes">) => Promise<{ ok: boolean; error?: string }>;
+  /** `client-create-screen.tsx` only — see
+   * `ClientBusinessDetailsSectionProps.hideActions`'s own doc comment. */
+  hideActions?: boolean;
 }
 
 /**
@@ -20,7 +23,7 @@ export interface ClientNotesSectionProps {
  * design handoff v3's own Notes section), same plain text-card/`Textarea`
  * toggle.
  */
-export function ClientNotesSection({ mode, draft, editing, onEditToggle, readOnly, onSave }: ClientNotesSectionProps) {
+export function ClientNotesSection({ mode, draft, editing, onEditToggle, readOnly, onSave, hideActions }: ClientNotesSectionProps) {
   const [notes, setNotes] = useState(draft.notes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,23 +58,32 @@ export function ClientNotesSection({ mode, draft, editing, onEditToggle, readOnl
       icon={AlignLeft}
       title="Notes"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={hideActions || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit notes"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
-          <Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} aria-label="Notes" />
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        hideActions ? (
+          <Textarea
+            rows={4}
+            value={draft.notes}
+            onChange={(event) => onSave({ notes: event.target.value })}
+            aria-label="Notes"
+          />
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} aria-label="Notes" />
+            <Inline gap="sm" justify="end">
+              {mode === "edit" && (
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                  Cancel
+                </Button>
+              )}
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       {draft.notes ? <Text>{draft.notes}</Text> : <Text tone="muted">No notes yet.</Text>}

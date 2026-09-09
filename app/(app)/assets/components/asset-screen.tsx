@@ -68,26 +68,33 @@ export interface AssetScreenProps {
  *
  * Owns one flat `AssetDraft` (`./asset-draft.ts`) as the source of truth for
  * every editable field; every section reads from it and writes back through
- * `commitPatch` below — in `mode: "edit"` that's an immediate `updateAsset`
- * call (small, section-scoped, saved the instant that section's own Save is
- * clicked — no page-wide Save/Cancel), in `mode: "create"` it's a local-only
- * merge until the hero's own "Save asset" action fires `createAsset` with the
- * whole accumulated draft and navigates to the new record.
+ * `commitPatch` (`mode: "create"`'s own sections' Save, unchanged) or
+ * `updateDraft` (`mode: "edit"`'s sections, on every field change — see
+ * below).
  *
- * *** The hero's "Edit header" pencil *** (next to the status/type badges)
- * does not open a third editing surface — Status lives in the Status &
- * warranty section, Type/Sub-type live in Equipment, so a dedicated header
- * popup would just duplicate fields already editable elsewhere. It simply
- * opens BOTH of those sections into their inline-edit state at once (a
- * "jump to edit everything in the header" shortcut) via `equipmentEditing`/
- * `statusEditing` below, owned here (not by either section, and not by
- * `AssetHero`) since the pencil needs to set both simultaneously.
+ * `mode: "edit"` has exactly ONE editing surface across Equipment/Status &
+ * warranty/Notes, not three independent ones: the hero's own pencil
+ * (`AssetHero`'s `onEditHeader`, next to the status/type badges) opens all
+ * three sections into their inline-edit state at once, driven by the single
+ * `pageEditing` boolean below (each section's own per-section pencil is gone
+ * as a natural consequence). Every field writes straight into the shared
+ * `draft` on every change (`updateDraft`, passed down as each section's own
+ * `onFieldChange`), and the ONE Save/Cancel pair rendered in the hero's
+ * `actions` slot (replacing "New activity"/"Delete" while `pageEditing`)
+ * commits the whole `draft` in a single `commitPatch` call, or discards it
+ * and re-derives `draft` from the server record. The Type-required
+ * validation that used to live inside `AssetEquipmentSection`'s own
+ * `handleSave` now lives in this screen's own `handleEditSave`, surfaced the
+ * same way `handleCreate` already surfaces its own.
  *
- * In `mode: "create"`, `equipmentEditing`/`statusEditing` start (and stay)
- * `true` — both sections' own components refuse to close themselves in
- * create mode (nothing exists yet for their read view to source from), same
- * "sections just accumulate into local draft state" pattern `WorkOrderScreen`
- * already establishes for its own create-mode sections.
+ * `mode: "create"` is untouched by any of the above: `equipmentEditing`/
+ * `statusEditing` still start (and stay) `true` — both sections' own
+ * components still refuse to close themselves in create mode (nothing exists
+ * yet for their read view to source from), same "sections just accumulate
+ * into local draft state" pattern `WorkOrderScreen` already establishes for
+ * its own create-mode sections — and the hero's pencil still only opens
+ * those two (not Notes, which was never part of the "start open" instruction
+ * — see `AssetNotesSection`'s own doc comment).
  */
 export function AssetScreen({
   mode,
@@ -199,6 +206,9 @@ export function AssetScreen({
     : clients;
 
   // ---- Section edit-open state (see this component's own doc comment) ---
+  // `pageEditing` is the ONLY editing surface for `mode: "edit"` — the three
+  // booleans below are `mode: "create"`-only (untouched by this change).
+  const [pageEditing, setPageEditing] = useState(false);
   const [equipmentEditing, setEquipmentEditing] = useState(mode === "create");
   const [statusEditing, setStatusEditing] = useState(mode === "create");
   const [notesEditing, setNotesEditing] = useState(false);
@@ -206,11 +216,12 @@ export function AssetScreen({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
-  /** Every section's own "Save" ultimately calls this. `mode: "edit"`
-   * persists immediately (`updateAsset`) and refreshes the server-rendered
-   * data (`router.refresh()`); `mode: "create"` only ever merges into local
-   * draft state — see this component's own module doc comment. */
+  /** `mode: "create"`'s own sections' Save call this — unchanged. `mode:
+   * "edit"`'s single page-level Save (`handleEditSave` below) also calls
+   * this, once, with the whole `draft`. */
   async function commitPatch(patch: Partial<AssetDraft>): Promise<{ ok: boolean; error?: string }> {
     if (mode === "edit" && asset) {
       const result = await updateAsset(asset.id, draftToInput(patch));
@@ -221,6 +232,36 @@ export function AssetScreen({
     }
     setDraft((prev) => ({ ...prev, ...patch }));
     return { ok: true };
+  }
+
+  /** `mode: "edit"`'s own sections' every field change calls this directly —
+   * a local-only merge, same shape `commitPatch`'s own `mode: "create"`
+   * branch already has, just never posted to the server until the page's own
+   * Save (`handleEditSave` below). */
+  function updateDraft(patch: Partial<AssetDraft>) {
+    setDraft((prev) => ({ ...prev, ...patch }));
+  }
+
+  function handleEditCancel() {
+    if (asset) setDraft(draftFromAsset(asset));
+    setEditError(null);
+    setPageEditing(false);
+  }
+
+  async function handleEditSave() {
+    if (!draft.typeId) {
+      setEditError("Select a type.");
+      return;
+    }
+    setEditError(null);
+    setSaving(true);
+    const result = await commitPatch(draft);
+    setSaving(false);
+    if (!result.ok) {
+      setEditError(result.error ?? "Could not save.");
+      return;
+    }
+    setPageEditing(false);
   }
 
   async function handleCreate() {
@@ -293,14 +334,25 @@ export function AssetScreen({
 
   const heroActions =
     mode === "edit" && asset ? (
-      <>
-        {canCreateActivityFromAsset && <CreateActivityButton assetId={asset.id} label="New activity" />}
-        {canDelete && (
-          <Button type="button" variant="danger" onClick={() => setDeleting(true)}>
-            Delete
+      pageEditing ? (
+        <>
+          <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
+            Cancel
           </Button>
-        )}
-      </>
+          <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </>
+      ) : (
+        <>
+          {canCreateActivityFromAsset && <CreateActivityButton assetId={asset.id} label="New activity" />}
+          {canDelete && (
+            <Button type="button" variant="danger" onClick={() => setDeleting(true)}>
+              Delete
+            </Button>
+          )}
+        </>
+      )
     ) : (
       <>
         <Button type="button" variant="outline" onClick={() => router.push(cancelHref ?? "/assets")} disabled={creating}>
@@ -315,6 +367,7 @@ export function AssetScreen({
   return (
     <Stack gap="lg">
       {createError && <Text tone="danger">{createError}</Text>}
+      {editError && <Text tone="danger">{editError}</Text>}
 
       <AssetHero
         mode={mode}
@@ -340,10 +393,14 @@ export function AssetScreen({
         onEditHeader={
           readOnly
             ? undefined
-            : () => {
-                setEquipmentEditing(true);
-                setStatusEditing(true);
-              }
+            : mode === "edit"
+              ? pageEditing
+                ? undefined
+                : () => setPageEditing(true)
+              : () => {
+                  setEquipmentEditing(true);
+                  setStatusEditing(true);
+                }
         }
       />
 
@@ -356,22 +413,24 @@ export function AssetScreen({
               asset={asset}
               assetTypes={assetTypes}
               assetSubtypes={assetSubtypes}
-              editing={equipmentEditing}
-              onEditToggle={setEquipmentEditing}
+              editing={mode === "edit" ? pageEditing : equipmentEditing}
+              onEditToggle={mode === "edit" ? undefined : setEquipmentEditing}
               readOnly={readOnly}
               loadingOptions={loadingOptions}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
             <AssetStatusWarrantySection
               mode={mode}
               draft={draft}
               asset={asset}
               assetStatuses={assetStatuses}
-              editing={statusEditing}
-              onEditToggle={setStatusEditing}
+              editing={mode === "edit" ? pageEditing : statusEditing}
+              onEditToggle={mode === "edit" ? undefined : setStatusEditing}
               readOnly={readOnly}
               loadingOptions={loadingOptions}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
           </Stack>
         }
@@ -384,11 +443,13 @@ export function AssetScreen({
               <AssetCompositeSection assetId={asset.id} assetName={draft.name || asset.name} readOnly={readOnly} />
             )}
             <AssetNotesSection
+              mode={mode}
               draft={draft}
-              editing={notesEditing}
-              onEditToggle={setNotesEditing}
+              editing={mode === "edit" ? pageEditing : notesEditing}
+              onEditToggle={mode === "edit" ? undefined : setNotesEditing}
               readOnly={readOnly}
               onSave={commitPatch}
+              onFieldChange={mode === "edit" ? updateDraft : undefined}
             />
             <AssetRecentActivities items={recentItems} viewAllHref={viewAllHref} />
             {mode === "edit" && asset && (

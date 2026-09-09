@@ -6,6 +6,7 @@ import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { ContactRecord } from "@/app/(app)/clients/contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { useRelationDialogSave } from "@/lib/relation-cards/use-relation-dialog-save";
 import type { ActivityDraft } from "./activity-draft";
 
 export interface ActivityRelationsDialogProps {
@@ -58,7 +59,9 @@ export interface ActivityRelationsDialogProps {
  * the "Asset is required for…" hint and mark the Asset field required, even
  * though Type isn't editable here anymore — `validate_activity_relations`
  * enforces that constraint regardless of which section last touched these
- * fields, so the hint has to stay accurate here too.
+ * fields, so the hint has to stay accurate here too. The validate/save/close
+ * sequence itself comes from the shared `useRelationDialogSave` (issue
+ * #130) — see that hook's own doc comment.
  */
 export function ActivityRelationsDialog({
   open,
@@ -81,8 +84,7 @@ export function ActivityRelationsDialog({
   const [contactName, setContactName] = useState(draft.contactName);
   const [contactPhone, setContactPhone] = useState(draft.contactPhone);
   const [contactEmail, setContactEmail] = useState(draft.contactEmail);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, save } = useRelationDialogSave(onSave, onOpenChange);
 
   const selectedType = activityTypes.find((item) => item.id === draft.typeId);
   const typeValue = selectedType?.value;
@@ -118,28 +120,15 @@ export function ActivityRelationsDialog({
     setContactEmail(contact.email ?? "");
   }
 
-  async function handleSave() {
-    if (!clientId && !assetId) {
-      setError("Select a client or an asset.");
-      return;
-    }
-    if (assetRequired && !assetId) {
-      setError("An asset is required for Storing or Onderhoud activities.");
-      return;
-    }
-    if (contactRequired && !contactPersonId && !(contactName && contactPhone)) {
-      setError("A contact person, or both a name and phone number, is required for Bel activiteit.");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    const result = await onSave({ clientId, assetId, contactPersonId, contactName, contactPhone, contactEmail });
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Could not save.");
-      return;
-    }
-    onOpenChange(false);
+  function handleSave() {
+    void save({ clientId, assetId, contactPersonId, contactName, contactPhone, contactEmail }, () => {
+      if (!clientId && !assetId) return "Select a client or an asset.";
+      if (assetRequired && !assetId) return "An asset is required for Storing or Onderhoud activities.";
+      if (contactRequired && !contactPersonId && !(contactName && contactPhone)) {
+        return "A contact person, or both a name and phone number, is required for Bel activiteit.";
+      }
+      return null;
+    });
   }
 
   return (

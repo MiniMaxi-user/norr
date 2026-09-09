@@ -36,6 +36,14 @@ export interface AssetEquipmentSectionProps {
   onSave: (
     patch: Pick<AssetDraft, "serialNumber" | "name" | "typeId" | "subtypeId" | "externalReference">,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** `mode: "edit"` only — every field becomes directly controlled off the
+   * shared `draft` and writes straight back through this on every change,
+   * instead of this section's own local echo state + Save button (see
+   * `asset-screen.tsx`'s own doc comment for why: one page-level pencil/Save
+   * now owns edit mode for this whole screen). */
+  onFieldChange?: (
+    patch: Partial<Pick<AssetDraft, "serialNumber" | "name" | "typeId" | "subtypeId" | "externalReference">>,
+  ) => void;
 }
 
 /**
@@ -49,7 +57,9 @@ export interface AssetEquipmentSectionProps {
  * Cancel action (there is no prior saved state to revert to); in
  * `mode: "edit"` Save persists immediately via `onSave` (`AssetScreen`'s
  * `commitPatch`) and closes back to the read card, Cancel discards the local
- * edits and closes without saving.
+ * edits and closes without saving. `mode: "edit"` no longer owns its own
+ * Save/Cancel at all — see `onFieldChange` above and `asset-screen.tsx`'s own
+ * module doc comment.
  */
 export function AssetEquipmentSection({
   mode,
@@ -62,6 +72,7 @@ export function AssetEquipmentSection({
   readOnly,
   loadingOptions,
   onSave,
+  onFieldChange,
 }: AssetEquipmentSectionProps) {
   const [serialNumber, setSerialNumber] = useState(draft.serialNumber);
   const [name, setName] = useState(draft.name);
@@ -95,22 +106,18 @@ export function AssetEquipmentSection({
   );
 
   function handleTypeChange(nextTypeId: string) {
+    if (mode === "edit") {
+      const current = assetSubtypes.find((candidate) => candidate.id === draft.subtypeId);
+      const nextSubtypeId = current?.parent_item_id === nextTypeId ? draft.subtypeId : "";
+      onFieldChange?.({ typeId: nextTypeId, subtypeId: nextSubtypeId });
+      return;
+    }
     setTypeId(nextTypeId);
     setSubtypeId((prev) => {
       if (!prev) return prev;
       const item = assetSubtypes.find((candidate) => candidate.id === prev);
       return item?.parent_item_id === nextTypeId ? prev : "";
     });
-  }
-
-  function handleCancel() {
-    setSerialNumber(draft.serialNumber);
-    setName(draft.name);
-    setTypeId(draft.typeId);
-    setSubtypeId(draft.subtypeId);
-    setExternalReference(draft.externalReference);
-    setError(null);
-    if (mode === "edit") onEditToggle?.(false);
   }
 
   async function handleSave() {
@@ -136,18 +143,17 @@ export function AssetEquipmentSection({
       icon={Boxes}
       title="Equipment"
       editing={editing}
-      onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
+      onEdit={mode === "edit" || readOnly ? undefined : () => onEditToggle?.(true)}
       editLabel="Edit equipment"
       editContent={
-        <Stack gap="md">
-          {error && <Text tone="danger">{error}</Text>}
+        mode === "edit" ? (
           <FormGrid columns={2}>
             <Stack gap="xs">
               <Label htmlFor="asset-eq-serial">Serial number</Label>
               <Input
                 id="asset-eq-serial"
-                value={serialNumber}
-                onChange={(event) => setSerialNumber(event.target.value)}
+                value={draft.serialNumber}
+                onChange={(event) => onFieldChange?.({ serialNumber: event.target.value })}
                 maxLength={200}
               />
             </Stack>
@@ -155,8 +161,8 @@ export function AssetEquipmentSection({
               <Label htmlFor="asset-eq-name">Asset ID</Label>
               <Input
                 id="asset-eq-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
+                value={draft.name}
+                onChange={(event) => onFieldChange?.({ name: event.target.value })}
                 maxLength={200}
                 placeholder="Leave blank to auto-generate, e.g. AST-00042"
               />
@@ -165,7 +171,7 @@ export function AssetEquipmentSection({
               <Label htmlFor="asset-eq-type">Type</Label>
               <Select
                 id="asset-eq-type"
-                value={typeId}
+                value={draft.typeId}
                 onChange={(event) => handleTypeChange(event.target.value)}
                 disabled={loadingOptions}
                 required
@@ -184,9 +190,9 @@ export function AssetEquipmentSection({
               <Label htmlFor="asset-eq-subtype">Sub-type</Label>
               <CascadingSelect
                 id="asset-eq-subtype"
-                value={subtypeId}
-                onChange={(event) => setSubtypeId(event.target.value)}
-                parentValue={typeId}
+                value={draft.subtypeId}
+                onChange={(event) => onFieldChange?.({ subtypeId: event.target.value })}
+                parentValue={draft.typeId}
                 options={subtypeCascadeOptions}
                 placeholder="No sub-type"
                 emptyParentPlaceholder="Select a type first…"
@@ -197,23 +203,84 @@ export function AssetEquipmentSection({
               <Label htmlFor="asset-eq-external">External reference</Label>
               <Input
                 id="asset-eq-external"
-                value={externalReference}
-                onChange={(event) => setExternalReference(event.target.value)}
+                value={draft.externalReference}
+                onChange={(event) => onFieldChange?.({ externalReference: event.target.value })}
                 maxLength={200}
               />
             </Stack>
           </FormGrid>
-          <Inline gap="sm" justify="end">
-            {mode === "edit" && (
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
-                Cancel
+        ) : (
+          <Stack gap="md">
+            {error && <Text tone="danger">{error}</Text>}
+            <FormGrid columns={2}>
+              <Stack gap="xs">
+                <Label htmlFor="asset-eq-serial">Serial number</Label>
+                <Input
+                  id="asset-eq-serial"
+                  value={serialNumber}
+                  onChange={(event) => setSerialNumber(event.target.value)}
+                  maxLength={200}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-eq-name">Asset ID</Label>
+                <Input
+                  id="asset-eq-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  maxLength={200}
+                  placeholder="Leave blank to auto-generate, e.g. AST-00042"
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-eq-type">Type</Label>
+                <Select
+                  id="asset-eq-type"
+                  value={typeId}
+                  onChange={(event) => handleTypeChange(event.target.value)}
+                  disabled={loadingOptions}
+                  required
+                >
+                  <option value="" disabled>
+                    Select a type…
+                  </option>
+                  {assetTypes.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-eq-subtype">Sub-type</Label>
+                <CascadingSelect
+                  id="asset-eq-subtype"
+                  value={subtypeId}
+                  onChange={(event) => setSubtypeId(event.target.value)}
+                  parentValue={typeId}
+                  options={subtypeCascadeOptions}
+                  placeholder="No sub-type"
+                  emptyParentPlaceholder="Select a type first…"
+                  disabled={loadingOptions}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Label htmlFor="asset-eq-external">External reference</Label>
+                <Input
+                  id="asset-eq-external"
+                  value={externalReference}
+                  onChange={(event) => setExternalReference(event.target.value)}
+                  maxLength={200}
+                />
+              </Stack>
+            </FormGrid>
+            <Inline gap="sm" justify="end">
+              <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
-            )}
-            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </Inline>
-        </Stack>
+            </Inline>
+          </Stack>
+        )
       }
     >
       <KeyValueList
