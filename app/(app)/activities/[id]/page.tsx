@@ -23,10 +23,11 @@ interface ActivityDetailPageProps {
  * (`../components/activity-screen.tsx`, `mode="edit"`) that `/activities/new`
  * renders with `mode="create"`, mirroring `app/(app)/work-orders/[id]/page.tsx`
  * exactly (issue #89's pattern, applied to Activities by issue #118). No
- * separate `/activities/[id]/edit` route — every field is inline-editable
- * directly here, through small section-scoped popups (`ActivityRelationsDialog`/
- * `ActivityStatusDialog`/the Assignment section's own dialog), same shape
- * `WorkOrderScreen` already established.
+ * separate `/activities/[id]/edit` route — every field is directly
+ * inline-editable right here (issue #133's follow-up: no read-vs-edit mode
+ * toggle, every gated field just always renders as its editable input for a
+ * writer), except the Client/Asset/Contact-person relation cards, which
+ * still edit through their own small `ActivityRelationsDialog` popup.
  *
  * Replaces the old `ActivityFormPanel` (`Dialog size="panel"`, deleted) —
  * see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section for the full

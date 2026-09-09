@@ -5,9 +5,9 @@ import type { ActivityRecord } from "../actions";
  * single-source-of-truth shape `WorkOrderDraft` (`app/(app)/work-orders/components/work-order-draft.ts`)
  * established for the "one screen, inline-editable, no separate edit route"
  * pattern (issue #89, applied to Activities by issue #118). `ActivityScreen`
- * owns this; `ActivityHero`/`ActivityRelationsDialog`/`ActivityStatusDialog`/
- * `ActivityAssignmentSection` all read from it and write back through
- * `ActivityScreen`'s own `commitPatch`.
+ * owns this; `ActivityHero`/`ActivityRelationsDialog`/`ActivityAssignmentSection`
+ * all read from it and write back through `ActivityScreen`'s own
+ * `commitPatch`/`updateDraft`.
  */
 export interface ActivityDraft {
   clientId: string;

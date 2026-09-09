@@ -6,8 +6,10 @@ import type { ActivityDraft } from "./activity-draft";
 
 export interface ActivityContactSectionProps {
   draft: Pick<ActivityDraft, "contactName" | "contactPhone" | "contactEmail">;
-  /** `mode: "create"`'s own screen always passes `true`; `mode: "edit"`
-   * passes the page's single `pageEditing` boolean (`activity-screen.tsx`). */
+  /** `activity-screen.tsx`'s `sectionEditing` — `true` for any caller who can
+   * write at all (there is no separate edit-mode toggle; every gated field
+   * is always editable for a writer, per issue #133's follow-up), `false`
+   * only for a genuinely `readOnly` viewer. */
   editing: boolean;
   /** Writes straight into the shared `draft` (`activity-screen.tsx`'s
    * `updateDraft`) — no network call from here anymore. */

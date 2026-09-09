@@ -88,39 +88,41 @@ export interface ActivityScreenProps {
  * a standalone `CreateWorkOrderCallout` card.
  *
  * *** Issue #133 *** ("Aanpassing Activity") replaced the old "every section
- * auto-saves the instant it's touched, no page-wide Save/Cancel" design with
- * `ArticleScreen`'s single-header-pencil model (`article-screen.tsx`'s own
- * module comment is the fuller reference): one `pageEditing` boolean, flipped
- * by the hero's own central pencil (`ActivityHero`'s `onEditHeader`), gates
- * Type/Description/Solution/Contact-person between a read view and an
- * editable one; every field writes straight into the shared `draft`
- * (`updateDraft`, passed down as each section's own `onFieldChange`); one
- * Save/Cancel pair in the hero's `actions` slot commits (or discards) the
- * whole accumulated `draft` in one shot.
+ * auto-saves the instant it's touched, no page-wide Save/Cancel" design: every
+ * field now writes straight into the shared `draft` (`updateDraft`, passed
+ * down as each section's own `onFieldChange`), and one Save/Cancel pair in
+ * the hero's `actions` slot commits (or discards) the whole accumulated
+ * `draft` in one shot.
  *
- * Two real differences from Article's byte-for-byte shape, both driven by
- * this story's own acceptance criteria:
- *  - Action holder is the one field that stays ALWAYS live-editable in
- *    `mode: "edit"`, independent of `pageEditing` entirely — no pencil, no
- *    dialog, no gate (`ActivityAssignmentSection`'s own doc comment). It can
- *    be reassigned without ever touching the header pencil.
- *  - The Save/Cancel pair's visibility is gated on `isDirty` (a real "did
- *    anything actually change" flag), NOT on `pageEditing` — Article shows
- *    Save the instant its pencil is clicked, before anything's touched, but
- *    Action holder changes can happen with `pageEditing` still `false`
- *    (point above), and those must ALSO surface Save. `isDirty` is set by
- *    every field-change path through `updateDraft` (including Action
- *    holder's own, whether or not `pageEditing` is on) and cleared on Cancel
- *    or a successful Save. `pageEditing` and `isDirty` are otherwise fully
- *    independent: `pageEditing` only controls which sections render as
- *    editable inputs vs. plain read text; it never gates Save/Cancel's own
- *    visibility.
+ * A same-day follow-up (still issue #133) then dropped the header-pencil/
+ * `pageEditing` toggle this originally shipped with (`ArticleScreen`'s own
+ * single-header-pencil model, still the right fit for Articles/Assets/
+ * Clients) — the product owner wants Activities to have no separate read-vs-
+ * edit mode at all: every gated field (Type/Description/Solution/Contact-
+ * person) is now simply ALWAYS rendered as its editable input for anyone who
+ * can write at all (`editing={!readOnly}` passed to each section below,
+ * replacing the old `pageEditing`-driven `sectionEditing`), and a genuinely
+ * `readOnly` viewer (no update permission whatsoever) gets the same plain
+ * read view each section already had for that case. There is no header
+ * pencil anymore (`ActivityHero`'s own `onEditHeader` was removed along with
+ * it) — Save/Cancel are the only editing-related controls left in the hero.
  *
- * The Client/Asset/Contract/Contact-person `RelationCard`s and the Status
- * badge's own pencil/dialog are UNTOUCHED by issue #133 (same "cards keep
- * their own pencil" precedent `ArticleScreen`'s module comment documents for
- * Articles/Assets/Clients) — they keep committing immediately through
- * `commitPatch` below, exactly as before.
+ * The Save/Cancel pair's visibility is gated on `isDirty` (a real "did
+ * anything actually change" flag) — set by every field-change path through
+ * `updateDraft` and cleared on Cancel or a successful Save. Action holder
+ * (and, per the same follow-up, Status too — see `ActivityAssignmentSection`'s
+ * own doc comment) live as always-editable inline controls right in that
+ * section, no different from every other field now that there's no edit-mode
+ * gate left to be an exception to.
+ *
+ * The Client/Asset/Contract/Contact-person `RelationCard`s are UNTOUCHED by
+ * issue #133 (same "cards keep their own pencil" precedent `ArticleScreen`'s
+ * module comment documents for Articles/Assets/Clients) — they keep
+ * committing immediately through `commitPatch` below, exactly as before. The
+ * Status badge's own pencil/dialog, by contrast, IS gone (moved into
+ * `ActivityAssignmentSection` as a plain draft field, no longer a card-style
+ * instant-save popup) — the hero still shows the status as a read-only badge
+ * for at-a-glance context, same as the Type badge already does.
  *
  * `mode: "create"` needs none of the above: every section there is already
  * effectively "always live" (nothing to gate before the record even exists),
@@ -162,21 +164,9 @@ export function ActivityScreen({
       : emptyDraft({ lockedClientId, lockedAssetId, initialActionHolderId }),
   );
 
-  // The ONE editing surface for Type/Description/Solution/Contact-person
-  // (see this component's own doc comment) — flipped by the hero's own
-  // central pencil (`ActivityHero`'s `onEditHeader`). `mode: "create"` has no
-  // use for this (every section there is already effectively "always live"),
-  // so it's only ever toggled in `mode: "edit"`; forced `false` regardless
-  // for a `readOnly` viewer, same "never render an edit affordance RLS would
-  // reject" convention `ArticleScreen`'s own `pageEditing` documents.
-  const [pageEditing, setPageEditing] = useState(false);
-
-  // Set by every field-change path through `updateDraft` below (including
-  // Action holder's own, whether or not `pageEditing` is on) — the Save/
-  // Cancel pair in the hero's `actions` slot renders whenever this is `true`,
-  // independent of `pageEditing` (see this component's own doc comment for
-  // why the two are deliberately separate). Cleared on Cancel and on a
-  // successful Save.
+  // Set by every field-change path through `updateDraft` below — the Save/
+  // Cancel pair in the hero's `actions` slot renders whenever this is `true`.
+  // Cleared on Cancel and on a successful Save.
   const [isDirty, setIsDirty] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -199,13 +189,13 @@ export function ActivityScreen({
   const [createError, setCreateError] = useState<string | null>(null);
 
   /** The Client/Asset/Contract/Contact-person `RelationCard`s' own small
-   * popups (`ActivityRelationsDialog`/`ActivityStatusDialog`) still call this
-   * directly, UNCHANGED by issue #133 (out of scope — see this component's
-   * own doc comment): `mode: "edit"` persists immediately (`updateActivity`)
-   * and refreshes the server-rendered data; `mode: "create"` only ever
-   * merges into local draft state. Deliberately does NOT set `isDirty` —
-   * these two popups already have their own Save/Cancel and persist (or
-   * discard) on their own, independent of the page's own Save. */
+   * `ActivityRelationsDialog` popup still calls this directly, UNCHANGED by
+   * issue #133 (out of scope — see this component's own doc comment):
+   * `mode: "edit"` persists immediately (`updateActivity`) and refreshes the
+   * server-rendered data; `mode: "create"` only ever merges into local draft
+   * state. Deliberately does NOT set `isDirty` — that popup already has its
+   * own Save/Cancel and persists (or discards) on its own, independent of
+   * the page's own Save. */
   async function commitPatch(patch: Partial<ActivityDraft>): Promise<{ ok: boolean; error?: string }> {
     if (mode === "edit" && activity) {
       const result = await updateActivity(activity.id, draftToInput(patch));
@@ -234,7 +224,6 @@ export function ActivityScreen({
     setDraft(draftFromActivity(activity));
     setEditError(null);
     setIsDirty(false);
-    setPageEditing(false);
   }
 
   async function handleEditSave() {
@@ -260,7 +249,6 @@ export function ActivityScreen({
     }
     router.refresh();
     setIsDirty(false);
-    setPageEditing(false);
   }
 
   async function handleCreate() {
@@ -324,10 +312,12 @@ export function ActivityScreen({
   const showNotes = mode === "edit" && Boolean(activity) && (!readOnly || (notes?.length ?? 0) > 0);
 
   // Drives Type/Description/Solution/Contact-person between their read and
-  // editable states — `mode: "create"` is always "editable" (nothing to
-  // gate before the record even exists, same as before issue #133);
-  // `mode: "edit"` follows the page's own `pageEditing` flag.
-  const sectionEditing = mode === "create" || pageEditing;
+  // editable states — always "editable" for anyone who can write at all
+  // (there is no separate edit-mode toggle anymore, per issue #133's
+  // follow-up: "standaard openen als Edit, read-only scherm is niet meer
+  // nodig"); a genuinely `readOnly` viewer (no update permission whatsoever)
+  // still gets each section's own plain read view.
+  const sectionEditing = !readOnly;
 
   return (
     <Stack gap="lg">
@@ -348,10 +338,8 @@ export function ActivityScreen({
         clientScoped={clientScoped}
         readOnly={readOnly}
         actions={heroActions}
-        onEditHeader={mode === "edit" && !readOnly && !pageEditing ? () => setPageEditing(true) : undefined}
         onClientChange={setScopingClientId}
         onRelationsSave={commitPatch}
-        onStatusSave={commitPatch}
       />
 
       <DetailColumns
@@ -370,6 +358,7 @@ export function ActivityScreen({
               activity={activity}
               members={members}
               canAssignOthers={canAssignOthers}
+              activityStatuses={activityStatuses}
               editing={sectionEditing}
               readOnly={readOnly}
               onFieldChange={updateDraft}

@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { Badge, FormGrid, IconButton, RecordHeroBand, RelationCard } from "@yourorg/ui";
-import { Boxes, Building2, Clock, FileText, Pencil, Phone } from "@yourorg/ui/icons";
+import { Badge, FormGrid, RecordHeroBand, RelationCard } from "@yourorg/ui";
+import { Boxes, Building2, Clock, FileText, Phone } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
@@ -16,7 +16,6 @@ import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address"
 import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import type { ActivityDraft } from "./activity-draft";
 import { ActivityRelationsDialog } from "./activity-relations-dialog";
-import { ActivityStatusDialog } from "./activity-status-dialog";
 import { useActivityContractCoverage } from "./use-activity-contract-coverage";
 
 export interface ActivityHeroProps {
@@ -41,16 +40,6 @@ export interface ActivityHeroProps {
   };
   readOnly?: boolean;
   actions?: ReactNode;
-  /** Opens every gated section on the page into its inline-edit state at
-   * once (`activity-screen.tsx`'s `pageEditing`) — omitted (along with the
-   * pencil itself) once already editing, for a `readOnly` viewer, or in
-   * `mode: "create"` (nothing to gate there, every field is already live).
-   * Mirrors `ArticleHero`'s/`AssetHero`'s identical `onEditHeader` (issue
-   * #133). Deliberately separate from the Status badge's own pencil just
-   * below it in `meta` — that one is untouched, out of scope for issue #133
-   * (same "cards/status keep their own pencil" precedent `ArticleScreen`'s
-   * own module comment documents). */
-  onEditHeader?: () => void;
   onClientChange: (clientId: string) => void;
   onRelationsSave: (
     patch: Pick<
@@ -58,7 +47,6 @@ export interface ActivityHeroProps {
       "clientId" | "assetId" | "contactPersonId" | "contactName" | "contactPhone" | "contactEmail"
     >,
   ) => Promise<{ ok: boolean; error?: string }>;
-  onStatusSave: (patch: Pick<ActivityDraft, "statusId">) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -72,28 +60,24 @@ export interface ActivityHeroProps {
  *   free-text title of their own, and Type editing lives in its own flat
  *   "Type" section below now, not a hero pencil).
  * - `meta`'s first item is a status badge PLUS a plain-text type badge
- *   together. The status badge keeps its own edit-pencil (opening
- *   `ActivityStatusDialog`, unchanged) even though the mockup's static HTML
- *   doesn't draw one — a deliberate, explicitly-approved deviation
- *   preserving existing working functionality the mockup simply didn't
- *   render a hover/interactive state for. The type badge has no pencil
- *   (Type is edited in its own section now).
+ *   together — both plain read-only badges, no pencil on either (issue #133's
+ *   follow-up removed the status badge's own edit-pencil/`ActivityStatusDialog`
+ *   popup along with the header's own central pencil: there is no edit
+ *   affordance left anywhere in this hero, only the page's Save/Cancel pair
+ *   in `actions`. Status now edits as a plain draft field in
+ *   `ActivityAssignmentSection`, right under Action holder — see that
+ *   component's own doc comment; the badge here is just at-a-glance context,
+ *   the same read-only role the Type badge already had).
  * - No stats strip — `noStats` on `RecordHeroBand` stands in for the bottom
  *   padding a stats strip would otherwise provide.
  * - `actions` is owned by the caller (`ActivityScreen`): the kebab
  *   (`ActivityDetailActions`) or the page's own Save/Cancel pair while dirty
  *   in edit mode, Cancel/Create in create mode.
- * - `onEditHeader` (issue #133) adds a second pencil into the same `meta`
- *   span, next to the status pencil — opens the page's own `pageEditing`,
- *   gating Type/Description/Solution/Contact person into their inline-edit
- *   form. `mode: "create"` never passes it (nothing to gate there).
  *
- * Still owns the two small popups (`ActivityStatusDialog`/
- * `ActivityRelationsDialog`, the latter NARROWED by issue #118 to only
+ * Still owns `ActivityRelationsDialog` (NARROWED by issue #118 to only
  * Client/Asset/Contact-person — issue #127 briefly widened it to also cover
  * Contract, but issue #128 reversed that same-day, see that component's own
- * doc comment) behind the status pencil and the relation cards' own Edit
- * buttons.
+ * doc comment) behind the relation cards' own Edit buttons.
  *
  * The Contract card is the one relation card with NO popup behind its Edit
  * button — it has none, by design (issue #128): a contract is never picked
@@ -115,13 +99,10 @@ export function ActivityHero({
   clientScoped,
   readOnly,
   actions,
-  onEditHeader,
   onClientChange,
   onRelationsSave,
-  onStatusSave,
 }: ActivityHeroProps) {
   const [relationsOpen, setRelationsOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
 
   // "Just-picked-locally vs. already-persisted" resolution — shared via
   // `resolveRelation` (issue #130); the Contract card just below is
@@ -211,24 +192,7 @@ export function ActivityHero({
       ) : (
         <Badge variant="accent">New</Badge>
       )}
-      {/* Deliberate deviation from the mockup's static HTML (issue #118):
-          it doesn't draw a pencil next to the status badge, but this was
-          working functionality worth preserving — explicitly approved, same
-          reasoning documented on this file's own module comment. */}
-      {!readOnly && (
-        <IconButton variant="ghost" aria-label="Edit status" onClick={() => setStatusOpen(true)}>
-          <Pencil />
-        </IconButton>
-      )}
       {selectedType && <Badge variant="muted">{selectedType.label}</Badge>}
-      {/* Central header edit-pencil (issue #133, point 4) — opens the page's
-          own `pageEditing` state, gating Type/Description/Solution/Contact
-          person into their inline-edit form. */}
-      {!readOnly && onEditHeader && (
-        <IconButton variant="ghost" aria-label="Edit header" onClick={onEditHeader}>
-          <Pencil />
-        </IconButton>
-      )}
     </span>,
   ];
   if (resolvedClient) {
@@ -304,16 +268,6 @@ export function ActivityHero({
           clientScoped={clientScoped}
           onClientChange={onClientChange}
           onSave={onRelationsSave}
-        />
-      )}
-
-      {statusOpen && (
-        <ActivityStatusDialog
-          open
-          onOpenChange={setStatusOpen}
-          draft={draft}
-          activityStatuses={activityStatuses}
-          onSave={onStatusSave}
         />
       )}
     </>
