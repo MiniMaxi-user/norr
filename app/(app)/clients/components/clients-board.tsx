@@ -1,9 +1,9 @@
 import { Text } from "@yourorg/ui";
-import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
 import { listClients, listPrimarySitesForClients, type ClientRecord, type SiteRecord } from "../actions";
-import { ClientsExplorer, type ClientsView } from "./clients-explorer";
+import type { ClientsView } from "./clients-hero-context";
+import { ClientsExplorer } from "./clients-explorer";
 
 export const CLIENTS_PAGE_SIZE = 25;
 
@@ -29,31 +29,30 @@ async function fetchPrimarySiteByClientId(
 
 /**
  * Async Server Component doing the actual data fetch — rendered inside a
- * `Suspense` boundary from `page.tsx` so the page shell (heading, "Add
- * client" affordance) streams in immediately while this resolves behind
+ * `Suspense` boundary from `page.tsx` so the page shell (`OverviewHeroBand`,
+ * issue #142) streams in immediately while this resolves behind
  * `ClientsSkeleton` (docs/ARCHITECTURE.md: "route-level streaming/Suspense").
  */
 export async function ClientsBoard({
   page,
-  userId,
   actor,
+  defaultView,
 }: {
   page: number;
-  userId: string;
   actor: PermissionActor;
+  /** Resolved once in `page.tsx` from the user's last-used-view preference
+   * (issue #142 — it's also needed there, synchronously, to seed
+   * `ClientsHeroProvider`) and threaded down here rather than re-read.
+   * Kanban needs the (near-)whole org client list to group into its 4
+   * status columns, not one paginated page — see `listClients`'s call
+   * below. If the user then flips the in-page `ViewToggle` to the other
+   * view without a full navigation, this fetch strategy doesn't
+   * retroactively change; same already-documented simplification
+   * `ClientsExplorer`'s own "NOTE on scope" doc comment covers for the
+   * list/kanban split in general. */
+  defaultView: ClientsView;
 }) {
   const offset = (page - 1) * CLIENTS_PAGE_SIZE;
-
-  // The view is resolved from the user's last-used-view preference BEFORE
-  // deciding how to fetch (issue #58): kanban needs the (near-)whole org
-  // client list to group into its 4 status columns, not one paginated page
-  // — see `listClients`'s call below. If the user then flips the in-page
-  // `ViewToggle` to the other view without a full navigation, this fetch
-  // strategy doesn't retroactively change; same already-documented
-  // simplification `ClientsExplorer`'s own "NOTE on scope" doc comment
-  // covers for the list/kanban split in general.
-  const lastUsedView = await preferencesStore.getLastUsedView(userId, "clients");
-  const defaultView: ClientsView = lastUsedView === "kanban" ? "kanban" : "list";
 
   const [result, accountManagersResult] = await Promise.all([
     defaultView === "kanban"
@@ -81,7 +80,6 @@ export async function ClientsBoard({
       page={page}
       pageSize={CLIENTS_PAGE_SIZE}
       canWrite={canWrite}
-      defaultView={defaultView}
       primarySiteByClientId={primarySiteByClientId}
       accountManagers={accountManagers}
     />
