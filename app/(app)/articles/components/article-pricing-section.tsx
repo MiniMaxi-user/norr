@@ -39,7 +39,7 @@ export function ArticlePricingSection({ draft, article, vatRates, editing, onFie
             <Input
               id="article-price-purchase"
               type="number"
-              step="0.01"
+              step="0.0001"
               min="0"
               value={draft.purchasePrice}
               onChange={(event) => onFieldChange({ purchasePrice: event.target.value })}
@@ -51,7 +51,7 @@ export function ArticlePricingSection({ draft, article, vatRates, editing, onFie
             <Input
               id="article-price-sale"
               type="number"
-              step="0.01"
+              step="0.0001"
               min="0"
               value={draft.salePrice}
               onChange={(event) => onFieldChange({ salePrice: event.target.value })}

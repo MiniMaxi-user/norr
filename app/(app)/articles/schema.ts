@@ -27,23 +27,27 @@ function optionalUuid(label: string) {
 }
 
 /**
- * Optional money amount with at most 2 decimal places, non-negative —
+ * Optional money amount with at most 4 decimal places, non-negative —
  * matches `articles.purchase_price`/`articles.sale_price`'s
- * `numeric(12,2)` column type and their
+ * `numeric(14,4)` column type (widened from `numeric(12,2)` by
+ * `20260913090000_articles_prices_four_decimals.sql`, issue #135) and their
  * `articles_purchase_price_non_negative`/`articles_sale_price_non_negative`
  * check constraints. Copied from `optionalPotentialValueSchema` in
  * `app/(app)/clients/schema.ts` (same shape, parameterized by field label for
- * the two distinct fields here).
+ * the two distinct fields here). `decimals` defaults to 4 rather than being
+ * hardcoded, so a future precision change is a one-line call-site edit, not a
+ * rewrite of this function.
  */
-function optionalMoneySchema(fieldLabel: string) {
+function optionalMoneySchema(fieldLabel: string, decimals = 4) {
+  const factor = 10 ** decimals;
   return z.preprocess(
     emptyToUndefined,
     z.coerce
       .number({ invalid_type_error: `${fieldLabel} must be a number.` })
       .finite(`${fieldLabel} must be a finite number.`)
       .min(0, `${fieldLabel} must be zero or more.`)
-      .refine((value) => Math.abs(value - Math.round(value * 100) / 100) < 1e-9, {
-        message: `${fieldLabel} must have at most 2 decimal places.`,
+      .refine((value) => Math.abs(value - Math.round(value * factor) / factor) < 1e-9, {
+        message: `${fieldLabel} must have at most ${decimals} decimal places.`,
       })
       .optional(),
   );
