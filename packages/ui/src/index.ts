@@ -114,6 +114,7 @@ export {
 // tsup.config.ts's top-of-file comment).
 export { Combobox, type ComboboxProps, type ComboboxOption } from "./combobox.js";
 export { Skeleton, type SkeletonProps } from "./components/skeleton";
+export { Spinner, type SpinnerProps } from "./components/spinner";
 export {
   CommandPalette,
   CommandGroup,

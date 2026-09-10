@@ -4593,3 +4593,75 @@ a.ui-relation-card-title:hover {
   letter-spacing: 0.03em;
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------- *
+ * Spinner — see components/spinner.tsx. The branded norr "N" mark (issue
+ * #140) drawing itself in a loop, in place of a generic loading spinner.
+ * Both `<path>`s set `pathLength="1"` in the component, which is what makes
+ * `stroke-dasharray: 1` / animating `stroke-dashoffset` between `1` (fully
+ * hidden — the dash sits entirely in the alternating "gap" half of the
+ * pattern) and `0` (fully shown — the dash exactly covers the path) work
+ * without knowing the mark's real geometric length.
+ * ---------------------------------------------------------------------- */
+.ui-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
+  flex-shrink: 0;
+}
+.ui-spinner-n,
+.ui-spinner-peillijn {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+/* The N draws first (0%–38% of the loop), holds fully drawn while the
+   peillijn catches up, then both erase quickly (92%–96%) and pause hidden
+   before the next loop starts — one shared keyframe list; the peillijn's
+   `animation-delay` below is what staggers it in "shortly after" the N,
+   rather than a second near-duplicate `@keyframes`. */
+.ui-spinner-n {
+  animation: ui-spinner-draw 1.8s var(--ui-ease) infinite;
+}
+.ui-spinner-peillijn {
+  animation: ui-spinner-draw 1.8s var(--ui-ease) infinite;
+  animation-delay: 0.4s;
+}
+@keyframes ui-spinner-draw {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  38% {
+    stroke-dashoffset: 0;
+  }
+  92% {
+    stroke-dashoffset: 0;
+  }
+  96% {
+    stroke-dashoffset: 1;
+  }
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+/* No handling for prefers-reduced-motion existed anywhere in this file
+   before this component (verified) — this is the first. The stroke-draw
+   loop is real spatial motion, so reduced-motion swaps it for a fully-drawn,
+   static mark with only a slow opacity pulse — no stroke movement, no
+   transforms, safe for anyone who's opted out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  .ui-spinner-n,
+  .ui-spinner-peillijn {
+    stroke-dashoffset: 0;
+    animation: ui-spinner-pulse 2.2s ease-in-out infinite;
+    animation-delay: 0s;
+  }
+}
+@keyframes ui-spinner-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

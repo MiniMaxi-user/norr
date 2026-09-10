@@ -33,6 +33,20 @@ import { defineConfig } from "tsup";
 // useEffect" — `tsc --noEmit` alone never catches this, only a real
 // `next build` does. Fixed by giving it the same dedicated-entry treatment.
 //
+// `components/nav-item-icon.tsx` (issue #140) joined this list too — it
+// calls `useLinkStatus()`, a real hook. Unlike every module above it's NOT
+// re-exported from `index.ts` (it's `NavItem`'s own internal icon-slot
+// renderer, not public API — see nav.tsx/nav-item-icon.tsx), so it doesn't
+// need the top-level-of-`src/` placement those need for index.ts's own
+// literal-specifier CJS resolution; it lives beside `nav.tsx` in
+// `src/components/` instead, and `nav.tsx` reaches it via the literal
+// specifier `"./nav-item-icon.js"`. That still needs to be listed below:
+// the ESM build's `external` match is against each importing file's own
+// literal specifier text (not a resolved path), and this named entry still
+// produces a flat sibling `dist/nav-item-icon.js` next to `dist/index.js`
+// regardless of the source nesting, which is exactly what `nav.tsx`'s
+// preserved-as-external import needs to resolve to at runtime.
+//
 // The app imports `ThemeProvider`/`Tabs` from the package's *main* entry
 // (`@yourorg/ui`), not a `./client`/`./tabs` subpath, so `index.ts`
 // re-exports them — which is the tricky part, confirmed empirically while
@@ -73,6 +87,7 @@ const clientBoundaryModules = [
   "./combobox.js",
   "./confirm-delete-dialog.js",
   "./use-escape-to-close.js",
+  "./nav-item-icon.js",
 ];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
@@ -96,6 +111,7 @@ export default defineConfig([
       combobox: "src/combobox.tsx",
       "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
       "use-escape-to-close": "src/use-escape-to-close.ts",
+      "nav-item-icon": "src/components/nav-item-icon.tsx",
     },
     format: ["esm"],
     dts: true,

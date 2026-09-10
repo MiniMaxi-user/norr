@@ -4,6 +4,7 @@ import type { Icon } from "../icons";
 import { ChevronDown, Pencil } from "../icons";
 import { Card } from "./card";
 import { IconButton } from "./button";
+import { Spinner } from "./spinner";
 
 export interface RelationCardProps {
   icon: Icon;
@@ -79,7 +80,9 @@ export function RelationCard({
         )}
       </div>
       {loading ? (
-        <span className="ui-relation-card-empty">Loading…</span>
+        <span className="ui-relation-card-empty">
+          <Spinner size={16} label="Loading" />
+        </span>
       ) : title ? (
         <div className="ui-relation-card-body">
           <span className="ui-relation-card-title">{title}</span>

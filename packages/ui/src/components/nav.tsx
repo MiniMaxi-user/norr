@@ -1,6 +1,7 @@
 import type { AnchorHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
 import { cx } from "../cx";
+import { NavItemIcon } from "./nav-item-icon.js";
 
 export interface NavListProps {
   children?: ReactNode;
@@ -32,9 +33,16 @@ export interface NavItemProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElemen
 }
 
 export function NavItem({ href, icon, disabled, active, trailing, className, children, ...rest }: NavItemProps) {
+  // `NavItemIcon` (a small "use client" leaf, see nav-item-icon.tsx) calls
+  // `useLinkStatus()` to swap this item's icon for the branded `Spinner`
+  // while ITS OWN `<Link>` navigation is pending (issue #140). That hook
+  // only works nested inside the `<Link>` it reports on — safe here even in
+  // the `disabled` branch below (no `<Link>` at all), since `useLinkStatus`
+  // falls back to Next's own idle default `{ pending: false }` outside any
+  // `Link`, rather than throwing.
   const content = (
     <>
-      {icon && <span className="ui-nav-item-icon">{icon}</span>}
+      {icon && <NavItemIcon icon={icon} />}
       <span className="ui-nav-item-label">{children}</span>
       {trailing && <span className="ui-nav-item-trailing">{trailing}</span>}
     </>
