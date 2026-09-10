@@ -122,6 +122,25 @@ const activityBaseSchema = z.object({
    * intentional value distinct from "omitted" — `undefined` still means
    * "don't touch this field", `null` now means "unassign it". */
   actionHolderId: z.string().uuid("Invalid action holder.").nullable().optional(),
+  /** FK into this org's `activity_subtypes` tree (issues #134/#138) — the
+   * single deepest leaf node committed via the 3-level cascading Subtype
+   * dropdown. Same `.nullable()` treatment as `actionHolderId` above, for the
+   * same reason: a cascading picker needs a real "clear this back to unset"
+   * affordance (e.g. picking a different top-level Activity Type should be
+   * able to reset a subtype chosen under the old one), and plain `optionalUuid`
+   * would collapse that clear into `undefined` — indistinguishable from
+   * "field not touched" — the exact issue #133 bug this schema already had to
+   * fix once for Action holder. `undefined` still means "don't touch this
+   * field", `null` means "unassign it". Cross-org and root-type-match (this
+   * subtype's root ancestor's `type_id` must equal `typeId` above) checks are
+   * the `validate_activity_relations` DB trigger's job, same trust boundary
+   * every other FK in this schema already uses — not re-validated here. */
+  activitySubtypeId: z.string().uuid("Invalid activity subtype.").nullable().optional(),
+  /** FK into this org's `solution_subtypes` tree (issues #134/#138) — same
+   * `.nullable()` shape/trust-boundary as `activitySubtypeId` above, minus any
+   * type-match concern (`solution_subtypes` is never linked to Type at any
+   * level). */
+  solutionSubtypeId: z.string().uuid("Invalid solution subtype.").nullable().optional(),
 });
 
 /**
@@ -149,3 +168,97 @@ export type ActivityCreateInput = z.infer<typeof activityCreateSchema>;
 export const activityUpdateSchema = activityBaseSchema.partial();
 
 export type ActivityUpdateInput = z.infer<typeof activityUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Activity Subtypes (issues #134/#138) — self-referential, unlimited-depth
+// tree, mirrors `articleGroupCreateSchema`/`articleGroupUpdateSchema` in
+// `app/(app)/articles/schema.ts`, plus the root-xor-parent `typeId` wrinkle
+// `activity_subtypes_root_xor_parent` enforces at the DB
+// (`supabase/migrations/20260912090000_activity_and_solution_subtypes.sql`).
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared base shape for both create and update — same split as
+ * `activityBaseSchema`/`activityCreateSchema`/`activityUpdateSchema` above:
+ * the root-xor-parent refinement only makes sense on create (see
+ * `activitySubtypeUpdateSchema`'s own comment below for why it's skipped on
+ * update), so it can't be baked into a plain `z.object` that both schemas
+ * `.partial()`/`.superRefine()` from — `.partial()` isn't available once a
+ * schema has already been wrapped by `.superRefine()` (it returns a
+ * `ZodEffects`, not a `ZodObject`).
+ */
+const activitySubtypeBaseSchema = z.object({
+  name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
+  /** Self-reference into `activity_subtypes`. Cross-org/self-reference/cycle
+   * checks are all enforced by the DB's `validate_activity_subtype_parent`
+   * trigger — not re-validated here, same trust boundary
+   * `articleGroupCreateSchema.parentGroupId`'s comment documents. */
+  parentSubtypeId: optionalUuid("Invalid parent subtype."),
+  /** FK into this org's `activity_type` reference list. Legal ONLY on a root
+   * node (`parentSubtypeId` absent) — see `activitySubtypeCreateSchema`'s
+   * `superRefine` below for the client-side mirror of
+   * `activity_subtypes_root_xor_parent`; `validate_activity_subtype_parent`
+   * additionally confirms this resolves to an actual `activity_type` item in
+   * this org, which is left entirely to the DB (same "shape only here" trust
+   * boundary every other reference-list FK in this file uses). */
+  typeId: optionalUuid("Invalid activity type."),
+  sortOrder: z.preprocess(emptyToUndefined, z.coerce.number().int().optional()),
+});
+
+/**
+ * Create: base shape plus a client-side mirror of the DB's
+ * `activity_subtypes_root_xor_parent` CHECK constraint — exactly one of
+ * `parentSubtypeId`/`typeId` must be present, never both, never neither.
+ * Same "duplicate the DB's real check for a clean field error, DB is still
+ * the backstop" pattern this module's own top comment documents for
+ * `activityCreateSchema`'s client/asset refinement.
+ */
+export const activitySubtypeCreateSchema = activitySubtypeBaseSchema.superRefine((data, ctx) => {
+  const hasParent = data.parentSubtypeId !== undefined;
+  const hasType = data.typeId !== undefined;
+  if (hasParent === hasType) {
+    const message = hasParent
+      ? "A subtype cannot have both a parent subtype and an activity type — an activity type only belongs on a root-level subtype."
+      : "Select a parent subtype, or an activity type if this is a root-level subtype.";
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["parentSubtypeId"], message });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["typeId"], message });
+  }
+});
+
+export type ActivitySubtypeCreateInput = z.infer<typeof activitySubtypeCreateSchema>;
+
+/** Every field optional for update (partial edit); still validated the same
+ * way when present. Deliberately NOT `activitySubtypeCreateSchema.partial()`
+ * (not even available — see `activitySubtypeBaseSchema`'s comment) and,
+ * unlike `activityUpdateSchema`, does NOT re-derive the root-xor-parent
+ * refinement for partial edits either: the same reasoning
+ * `activityUpdateSchema`'s own comment gives for skipping its refinement
+ * applies here too (a partial edit rarely touches both fields at once, and
+ * the DB's CHECK constraint + trigger are still the real backstop either
+ * way) — built from `activitySubtypeBaseSchema` (the plain object,
+ * pre-refinement) instead. */
+export const activitySubtypeUpdateSchema = activitySubtypeBaseSchema.partial();
+
+export type ActivitySubtypeUpdateInput = z.infer<typeof activitySubtypeUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Solution Subtypes (issues #134/#138) — structurally identical to Activity
+// Subtypes above minus the `typeId`/root-xor-parent concept entirely
+// (`solution_subtypes` is never linked to Type at any level).
+// ---------------------------------------------------------------------------
+
+export const solutionSubtypeCreateSchema = z.object({
+  name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
+  /** Self-reference into `solution_subtypes`. Same trust boundary as
+   * `activitySubtypeBaseSchema.parentSubtypeId` above — cross-org/
+   * self-reference/cycle checks are the DB's `validate_solution_subtype_parent`
+   * trigger's job. */
+  parentSubtypeId: optionalUuid("Invalid parent subtype."),
+  sortOrder: z.preprocess(emptyToUndefined, z.coerce.number().int().optional()),
+});
+
+export type SolutionSubtypeCreateInput = z.infer<typeof solutionSubtypeCreateSchema>;
+
+export const solutionSubtypeUpdateSchema = solutionSubtypeCreateSchema.partial();
+
+export type SolutionSubtypeUpdateInput = z.infer<typeof solutionSubtypeUpdateSchema>;

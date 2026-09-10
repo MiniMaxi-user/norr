@@ -100,6 +100,13 @@ export interface ActivityRecord {
   reported_at: string;
   reported_by: string | null;
   action_holder_id: string | null;
+  /** FK into `activity_subtypes` (issues #134/#138) — the single deepest
+   * leaf node committed via the 3-level cascading Subtype dropdown.
+   * Nullable — not every activity needs one. */
+  activity_subtype_id: string | null;
+  /** FK into `solution_subtypes` (issues #134/#138) — same shape as
+   * `activity_subtype_id` above. */
+  solution_subtype_id: string | null;
   created_at: string;
   updated_at: string;
   /** Embedded via `reference_list_items!activities_type_id_fkey(...)` — see
@@ -129,6 +136,20 @@ export interface ActivityRecord {
    * the (should-not-happen-in-practice) case the reporting user's own row was
    * hard-deleted out from under this activity (`on delete set null`). */
   reporter: ShallowUserRecord | null;
+  /** Embedded via `activity_subtypes(id,name)` — no `!fkey` disambiguator
+   * needed (`activities` has only one FK into `activity_subtypes`). `null`
+   * whenever `activity_subtype_id` is `null`. Just this one row's own
+   * `name`, not its full ancestor chain — the frontend already needs
+   * `listActivitySubtypes()`'s flat tree for the cascading picker itself, and
+   * can resolve this leaf's full breadcrumb path client-side from that same
+   * flat list (`app/(app)/activities/subtype-tree.ts`'s `flattenActivitySubtypes`
+   * already computes a `path` string per node), same "shallow embed, frontend
+   * resolves the rest" reasoning `client`/`asset`/`contact_person` above
+   * already use. */
+  activity_subtype: ShallowNamedRecord | null;
+  /** Embedded via `solution_subtypes(id,name)`. Same shape/reasoning as
+   * `activity_subtype` above. */
+  solution_subtype: ShallowNamedRecord | null;
 }
 
 /** Shared select shape for every query returning an `ActivityRecord`, so the
@@ -136,7 +157,7 @@ export interface ActivityRecord {
  * need in one round trip — same reasoning as `WORK_ORDER_SELECT`/
  * `ASSET_SELECT` in their respective sibling files. */
 const ACTIVITY_SELECT =
-  "*, activity_type:reference_list_items!activities_type_id_fkey(value,label,color,icon), activity_status:reference_list_items!activities_status_id_fkey(value,label,color), client:clients(id,name), asset:assets(id,name), contact_person:contacts(id,name), action_holder:users!activities_action_holder_id_fkey(id,email,full_name), reporter:users!activities_reported_by_fkey(id,email,full_name)";
+  "*, activity_type:reference_list_items!activities_type_id_fkey(value,label,color,icon), activity_status:reference_list_items!activities_status_id_fkey(value,label,color), client:clients(id,name), asset:assets(id,name), contact_person:contacts(id,name), action_holder:users!activities_action_holder_id_fkey(id,email,full_name), reporter:users!activities_reported_by_fkey(id,email,full_name), activity_subtype:activity_subtypes(id,name), solution_subtype:solution_subtypes(id,name)";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -226,6 +247,8 @@ function toActivityUpdateRow(input: ReturnType<typeof activityUpdateSchema.parse
   if (input.description !== undefined) row.description = input.description;
   if (input.solution !== undefined) row.solution = input.solution ?? null;
   if (input.actionHolderId !== undefined) row.action_holder_id = input.actionHolderId;
+  if (input.activitySubtypeId !== undefined) row.activity_subtype_id = input.activitySubtypeId ?? null;
+  if (input.solutionSubtypeId !== undefined) row.solution_subtype_id = input.solutionSubtypeId ?? null;
   return row;
 }
 
@@ -409,6 +432,8 @@ export async function createActivity(input: unknown): Promise<ActionResult<{ act
     contact_email: parsed.data.contactEmail ?? null,
     description: parsed.data.description,
     action_holder_id: actionHolderId,
+    activity_subtype_id: parsed.data.activitySubtypeId ?? null,
+    solution_subtype_id: parsed.data.solutionSubtypeId ?? null,
   };
   // status_id is intentionally omitted (not even sent as null) when not
   // provided — the derive_activity_organization_id DB trigger fills in the
