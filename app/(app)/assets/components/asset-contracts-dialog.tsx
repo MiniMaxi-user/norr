@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, Button, Combobox, Dialog, IconButton, Inline, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Combobox, Dialog, IconButton, Inline, Spinner, Stack, Text } from "@yourorg/ui";
 import { X } from "@yourorg/ui/icons";
 import {
   linkContractAsset,
@@ -109,7 +109,7 @@ export function AssetContractsDialog({
           {error && <Text tone="danger">{error}</Text>}
 
           {loading ? (
-            <Text tone="muted">Loading…</Text>
+            <Spinner size={16} label="Loading" />
           ) : coverage.length === 0 ? (
             <Text tone="muted">No contracts linked yet.</Text>
           ) : (
