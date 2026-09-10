@@ -132,7 +132,7 @@ Which migration made which matrix row real RLS (not just `can()`-only), and why 
 ## Premium UX requirements
 - Collapsible sidebar (persisted per user), command palette, optimistic mutations
 - View switcher per module: list / kanban / calendar / map (Assets, Planning)
-- Skeleton loading, not spinners; route-level streaming (Suspense)
+- Skeleton loading, shaped like the eventual content, route-level streaming (Suspense) — plus the branded `Spinner` (`packages/ui/src/components/spinner.tsx`, the norr N mark, issue #140) surfaced above every skeleton and in every `loading.tsx`, so a loading state reads as this product, not a wireframe. Originally "skeleton loading, not spinners" (an either/or); revised once issue #140 explicitly asked for the branded mark to be visible everywhere something is loading — the two aren't mutually exclusive; a shaped skeleton still avoids the layout jumping once real content streams in.
 - Design tokens and components come exclusively from `@yourorg/ui` — no ad-hoc styling in the app repo
 
 ### Relational detail pages — the standard, not a special case

@@ -1,11 +1,14 @@
-import { Card, Skeleton, Stack } from "@yourorg/ui";
+import { Card, Skeleton, Spinner, Stack } from "@yourorg/ui";
 
 /** Shaped Suspense fallback for the client detail page — mirrors the real
  * layout (client card, then a tab bar, then a table-shaped block) so the
- * skeleton doesn't jump around once real content streams in. */
+ * skeleton doesn't jump around once real content streams in. The `Spinner`
+ * above it (issue #140 follow-up, see `MainSkeleton`'s own doc comment) keeps
+ * every shaped skeleton branded, not just the plain-fallback routes. */
 export function ClientDetailSkeleton() {
   return (
     <Stack gap="lg" aria-hidden>
+      <Spinner size={20} />
       <Skeleton height="1rem" width="8rem" />
       <Card>
         <Stack gap="sm">

@@ -1,14 +1,18 @@
-import { Card, Skeleton, Stack } from "@yourorg/ui";
+import { Card, Skeleton, Spinner, Stack } from "@yourorg/ui";
 
 /**
  * Suspense fallback for `ArticlesScreen`, shaped like the eventual content
- * (docs/ARCHITECTURE.md "skeleton loading, not spinners") — a toolbar-height
- * bar plus a table-shaped placeholder, same shape `AssetsScreenSkeleton`
- * uses for its own list view.
+ * (docs/ARCHITECTURE.md "skeleton loading, plus the branded Spinner") — a
+ * toolbar-height bar plus a table-shaped placeholder, same shape
+ * `AssetsScreenSkeleton` uses for its own list view. The `Spinner` above the
+ * shimmer (issue #140 follow-up, see `MainSkeleton`'s own doc comment for
+ * the full reasoning) keeps every shaped skeleton branded, not just the
+ * plain-fallback routes.
  */
 export function ArticlesScreenSkeleton() {
   return (
     <Stack gap="md" aria-hidden>
+      <Spinner size={20} />
       <Skeleton height="2.5rem" width="100%" />
       <Card>
         <Stack gap="sm">
