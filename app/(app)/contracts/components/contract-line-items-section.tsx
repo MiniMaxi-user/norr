@@ -97,11 +97,9 @@ export function ContractLineItemsSection({
               const total = row.quantity * row.unit_price;
               return (
                 <RowCard key={row.id}>
+                  {row.is_volume && <Badge variant="accent">Volume</Badge>}
                   <div className="ui-row-main">
-                    <Inline gap="xs" align="center">
-                      {row.is_volume && <Badge variant="accent">Volume</Badge>}
-                      <Text>{row.description ?? "—"}</Text>
-                    </Inline>
+                    <Text>{row.description ?? "—"}</Text>
                     <Text tone="muted" className="ui-row-code">
                       {row.article_number}
                     </Text>
