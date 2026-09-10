@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
@@ -7,14 +8,16 @@ import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { getContract } from "@/app/(app)/contracts/actions";
 import { listOrgMembers } from "@/lib/members/actions";
-import { listTimeEntries } from "../time-entries-actions";
-import { listWorkOrderArticles } from "../work-order-articles-actions";
-import { listArticlesForSelect } from "@/app/(app)/articles/actions";
-import { getWorkOrderChecklist } from "../checklist-actions";
-import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
-import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WorkOrderScreen } from "../components/work-order-screen";
+import {
+  WorkOrderChecklistSectionSkeleton,
+  WorkOrderHoursSectionSkeleton,
+  WorkOrderMaterialSectionSkeleton,
+} from "../components/work-order-section-skeletons";
+import { WorkOrderHoursSlot } from "./work-order-hours-slot";
+import { WorkOrderMaterialSlot } from "./work-order-material-slot";
+import { WorkOrderChecklistSlot } from "./work-order-checklist-slot";
 
 export const metadata = { title: "Edit Work Order" };
 
@@ -53,13 +56,43 @@ interface WorkOrderDetailPageProps {
  * value), not just the bare id/name `workOrder.contract` embed already
  * carried.
  *
+ * *** Issue #146 ("eliminate fetch waterfall, add below-fold Suspense
+ * boundaries") *** replaced the old single 15-way `Promise.all` (which
+ * blocked the ENTIRE page — hero included — on the slowest of Hours/
+ * Material/Checklist/cost-summary data, with no `<Suspense>` anywhere) with
+ * two tiers:
+ *  1. A small `Promise.all` below of only the cheap, hero/relation-card-
+ *     critical single-row/short-list lookups (`client`/`asset`/`contract`/
+ *     `members`, plus the edit-only picker lists `clients`/`statuses`/
+ *     `priorities`) — awaited, so the hero (title, relation cards, status/
+ *     priority, and the Engineer stat tile, resolved from `members`) renders
+ *     as soon as this resolves, without waiting on anything else.
+ *  2. Three separate async Server Components (`work-order-hours-slot.tsx`/
+ *     `-material-slot.tsx`/`-checklist-slot.tsx`), each doing exactly the
+ *     fetches that section itself used to block on, each wrapped in its own
+ *     `<Suspense>` below so they stream in independently of each other and of
+ *     the hero. Because the hero's own stat strip needs the Material/
+ *     Checklist/"To invoice" figures those same three slots fetch, those
+ *     numbers are bridged back up via `WorkOrderHeroStatsProvider`
+ *     (`work-order-hero-context.tsx`) instead of being fetched twice — see
+ *     `WorkOrderScreen`'s own module doc comment for the full design
+ *     rationale.
+ *
+ * Every RBAC/feature-flag gate below is unchanged from before this issue —
+ * only WHEN each conditionally-fetched list is actually requested moved (from
+ * this file's own `Promise.all` into the relevant slot component), never
+ * whether it's requested at all.
+ *
  * `readOnly` (exactly `!canEdit` below) hides every Edit affordance across
  * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
  * never a 404, never a disabled-but-technically-interactive control RLS
  * would just reject. `WorkOrderScreen` is keyed by `workOrder.updated_at` so
  * a successful inline save (which never navigates away — see that
  * component's own doc comment) remounts it with the freshly saved values
- * instead of leaving stale local draft state behind.
+ * instead of leaving stale local draft state behind — including this page's
+ * own three `Suspense` boundaries, which briefly show their skeleton fallback
+ * again while the freshly-saved data streams back in, same as every other
+ * section already re-fetches on save via `router.refresh()`.
  *
  * Photo/e-signature capture on the checklist remains out of scope per the
  * checklists migration's own design notes (a documented follow-up, not an
@@ -111,83 +144,40 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // warning. Mirrors `getWorkOrderCostSummary`/`getUnresolvedWorkOrderTimeEntries`'s
   // own gate in `../quote-sync-actions.ts` exactly (`can(actor, "planning",
   // "read")` — an engineer never satisfies this, only `read_own` — AND
-  // `canAny(actor, "quotes", ["read"])`), used ahead of the fetches below so
-  // an engineer's page load skips both round trips entirely, same
+  // `canAny(actor, "quotes", ["read"])`), used to skip both round trips
+  // entirely (inside `work-order-hours-slot.tsx`) for an engineer, same
   // "don't fetch what can't render" precedent every other conditional fetch
   // in this file already follows.
   const canSeeCosts = quotesEnabled && can(actor, "planning", "read") && canAny(actor, "quotes", ["read"]);
 
-  const [
-    clientResult,
-    assetResult,
-    contractResult,
-    membersResult,
-    timeEntriesResult,
-    timeEntryTypesResult,
-    workOrderArticlesResult,
-    articlesForSelectResult,
-    checklistResult,
-    checklistTemplatesResult,
-    clientsResult,
-    statusesResult,
-    prioritiesResult,
-    costSummaryResult,
-    unresolvedTimeEntriesResult,
-  ] = await Promise.all([
-    getClient(workOrder.client_id),
-    workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
-    // Full contract record (issue #100) — the work order's own `contract`
-    // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
-    // (id/name only), enough for a plain link but not for the rail's "a
-    // couple of key facts" card; fetched the same "one extra round trip for
-    // the full record" way `asset`/`client` already are.
-    workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
-    listOrgMembers(),
-    listTimeEntries(workOrder.id),
-    listReferenceItems("time_entry_type"),
-    listWorkOrderArticles(workOrder.id),
-    // Only needed to populate the "which article was consumed" picker, and
-    // only a caller who can log one at all ever sees it — skip the round
-    // trip entirely for a plain read-only viewer, same "don't fetch what
-    // can't render" reasoning as `checklistTemplatesResult` below.
-    canCreateWorkOrderArticles ? listArticlesForSelect() : Promise.resolve(null),
-    canAccessChecklists ? getWorkOrderChecklist(workOrder.id) : Promise.resolve(null),
-    // Only needed to populate the "attach a checklist" template picker, and
-    // only owner/planner ever see that affordance — skip the round trip
-    // entirely for every other role.
-    canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
-    // Client/Site/Asset/Contract pickers and the Status/Priority pickers
-    // (`WorkOrderFields`, editable branch only) — skipped for a read-only
-    // viewer, same "don't fetch what can't render" reasoning as
-    // `checklistTemplatesResult` above.
-    canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
-    canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
-    canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
-    // Issue #109 — skipped entirely for an engineer (`canSeeCosts` false),
-    // same "don't fetch what can't render" reasoning as every other
-    // conditional fetch above.
-    canSeeCosts ? getWorkOrderCostSummary(workOrder.id) : Promise.resolve(null),
-    canSeeCosts ? getUnresolvedWorkOrderTimeEntries(workOrder.id) : Promise.resolve(null),
-  ]);
+  const [clientResult, assetResult, contractResult, membersResult, clientsResult, statusesResult, prioritiesResult] =
+    await Promise.all([
+      getClient(workOrder.client_id),
+      workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
+      // Full contract record (issue #100) — the work order's own `contract`
+      // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
+      // (id/name only), enough for a plain link but not for the rail's "a
+      // couple of key facts" card; fetched the same "one extra round trip for
+      // the full record" way `asset`/`client` already are.
+      workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
+      listOrgMembers(),
+      // Client/Site/Asset/Contract pickers and the Status/Priority pickers
+      // (`WorkOrderFields`, editable branch only) — skipped for a read-only
+      // viewer, same "don't fetch what can't render" reasoning as every
+      // conditional fetch below.
+      canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
+      canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
+      canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
+    ]);
 
   const client = clientResult.data?.client ?? null;
   const site = clientResult.data?.sites.find((candidate) => candidate.id === workOrder.site_id) ?? null;
   const asset = assetResult?.data?.asset ?? null;
   const contract = contractResult?.data?.contract ?? null;
   const members = membersResult.data?.members ?? [];
-  const assignedMember = members.find((member) => member.id === workOrder.assigned_to) ?? null;
-  const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
-  const timeEntryTypes = timeEntryTypesResult.data?.items ?? [];
-  const workOrderArticles = workOrderArticlesResult.data?.workOrderArticles ?? [];
-  const articlesForSelect = articlesForSelectResult?.data?.articles ?? [];
-  const checklist = checklistResult?.data?.checklist ?? null;
-  const checklistItems = checklistResult?.data?.items ?? [];
-  const checklistTemplates = checklistTemplatesResult?.data?.templates ?? [];
   const clients = clientsResult?.data?.clients ?? [];
   const statuses = statusesResult?.data?.items ?? [];
   const priorities = prioritiesResult?.data?.items ?? [];
-  const costSummary = costSummaryResult?.data ?? null;
-  const unresolvedTimeEntryCount = unresolvedTimeEntriesResult?.data?.unresolvedTimeEntryIds.length ?? 0;
 
   const canDelete = can(actor, "planning", "delete");
   // Time Entries (issue #15) share the `planning` module's own actions —
@@ -227,35 +217,56 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       site={site}
       asset={asset}
       contract={contract}
-      assignedMember={assignedMember}
       clients={clients}
       statuses={statuses}
       priorities={priorities}
       members={members}
       canDelete={canDelete}
       currentUserId={session.userId}
-      timeEntries={timeEntries}
-      timeEntryTypes={timeEntryTypes}
-      canLogTimeForOthers={canLogTimeForOthers}
-      canUpdateTimeEntriesAny={canUpdateTimeEntriesAny}
-      canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
-      workOrderArticles={workOrderArticles}
-      articlesForSelect={articlesForSelect}
-      canCreateWorkOrderArticles={canCreateWorkOrderArticles}
-      canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
-      canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
       canCreateQuote={canCreateQuote}
-      canSeeCosts={canSeeCosts}
-      costSummary={costSummary}
-      unresolvedTimeEntryCount={unresolvedTimeEntryCount}
       canAccessChecklists={canAccessChecklists}
-      checklist={checklist}
-      checklistItems={checklistItems}
-      checklistTemplates={checklistTemplates}
-      canAttachChecklist={canAttachChecklist}
-      canDetachChecklist={canDetachChecklist}
-      canUpdateChecklistAny={canUpdateChecklistAny}
-      canUpdateChecklistOwn={canUpdateChecklistOwn}
+      hoursSlot={
+        <Suspense fallback={<WorkOrderHoursSectionSkeleton />}>
+          <WorkOrderHoursSlot
+            workOrderId={workOrder.id}
+            assignedTo={workOrder.assigned_to}
+            currentUserId={session.userId}
+            members={members}
+            canLogTimeForOthers={canLogTimeForOthers}
+            canUpdateTimeEntriesAny={canUpdateTimeEntriesAny}
+            canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
+            canDelete={canDelete}
+            canSeeCosts={canSeeCosts}
+          />
+        </Suspense>
+      }
+      materialSlot={
+        <Suspense fallback={<WorkOrderMaterialSectionSkeleton />}>
+          <WorkOrderMaterialSlot
+            workOrderId={workOrder.id}
+            canCreateWorkOrderArticles={canCreateWorkOrderArticles}
+            canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
+            canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
+            canDelete={canDelete}
+            currentUserId={session.userId}
+            reportToInvoice={!canSeeCosts}
+          />
+        </Suspense>
+      }
+      checklistSlot={
+        canAccessChecklists ? (
+          <Suspense fallback={<WorkOrderChecklistSectionSkeleton />}>
+            <WorkOrderChecklistSlot
+              workOrderId={workOrder.id}
+              currentUserId={session.userId}
+              canAttachChecklist={canAttachChecklist}
+              canDetachChecklist={canDetachChecklist}
+              canUpdateChecklistAny={canUpdateChecklistAny}
+              canUpdateChecklistOwn={canUpdateChecklistOwn}
+            />
+          </Suspense>
+        ) : undefined
+      }
     />
   );
 }

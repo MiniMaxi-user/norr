@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   Breadcrumbs,
   Button,
   FormGrid,
+  Skeleton,
   Stack,
   Text,
   type BreadcrumbItem,
@@ -20,7 +20,6 @@ import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
-import { formatCurrency } from "@/lib/format/currency";
 import { formatDateTime } from "@/lib/format/date";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { WorkOrderDetailActions } from "../[id]/work-order-detail-actions";
@@ -30,6 +29,7 @@ import { WorkOrderMaterialSection } from "./work-order-material-section";
 import { WorkOrderChecklistSection } from "./work-order-checklist-section";
 import { WorkOrderAssignmentSection } from "./work-order-assignment-section";
 import { useClientScopedLists } from "./use-client-scoped-lists";
+import { WorkOrderHeroStatsProvider, useWorkOrderHeroStatsValue } from "./work-order-hero-context";
 import { draftFromWorkOrder, draftToInput, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
 import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
@@ -139,6 +139,23 @@ export interface WorkOrderScreenProps {
   canDetachChecklist?: boolean;
   canUpdateChecklistAny?: boolean;
   canUpdateChecklistOwn?: boolean;
+
+  // ---- edit-mode-only: streamed Hours/Material/Checklist (issue #146) ----
+  /** `[id]/page.tsx`'s `<Suspense><WorkOrderHoursSlot .../></Suspense>` —
+   * present in `mode: "edit"` only. When set, rendered in place of
+   * `WorkOrderHoursSection` (whose own data — `timeEntries`/`costSummary`/
+   * etc. above — the slot fetches and renders itself, streaming in
+   * independently of the hero/relation cards); the `timeEntries` etc. props
+   * above stay purely for `mode: "create"`'s always-synchronous local state.
+   * See this component's own module doc comment for the full design. */
+  hoursSlot?: ReactNode;
+  /** `[id]/page.tsx`'s `<Suspense><WorkOrderMaterialSlot .../></Suspense>` —
+   * same shape as `hoursSlot`, for `WorkOrderMaterialSection`. */
+  materialSlot?: ReactNode;
+  /** `[id]/page.tsx`'s `<Suspense><WorkOrderChecklistSlot .../></Suspense>` —
+   * same shape as `hoursSlot`, for `WorkOrderChecklistSection`. Only ever set
+   * alongside `canAccessChecklists`. */
+  checklistSlot?: ReactNode;
 }
 
 /**
@@ -174,6 +191,25 @@ export interface WorkOrderScreenProps {
  * being created just to get an id for Hours/Material/Checklist to attach to
  * — those three sections simply render their own "save the work order first"
  * empty/disabled state (see each one's own doc comment) until `mode: "edit"`.
+ *
+ * *** Issue #146 *** ("eliminate fetch waterfall, add below-fold Suspense
+ * boundaries") changed HOW `mode: "edit"` gets Hours/Material/Checklist's own
+ * data, without changing what's rendered: `[id]/page.tsx` no longer awaits a
+ * 15-way `Promise.all` before rendering this component at all — it now
+ * resolves only the hero/relation-card data up front, then passes
+ * `hoursSlot`/`materialSlot`/`checklistSlot` (each a `<Suspense>`-wrapped
+ * async Server Component that does that one section's own fetch) so the rest
+ * of the page can stream in independently while the hero (and the Engineer
+ * stat, resolved from the cheap `members` fetch) paints immediately. Those
+ * three slots also feed the hero's Material/Checklist/"To invoice" stat-strip
+ * tiles — data those tiles need but that's no longer fetched before first
+ * paint — back up through `WorkOrderHeroStatsProvider`
+ * (`work-order-hero-context.tsx`), the same "bridge state across a Suspense
+ * boundary" shape `clients-hero-context.tsx` established for Clients' kanban
+ * stats. `mode: "create"` is entirely unaffected — no slots exist there
+ * (nothing to stream; every section's data is local, always-synchronous
+ * draft state), so it keeps computing those same three tiles directly, exactly
+ * as before this issue.
  */
 export function WorkOrderScreen({
   mode,
@@ -222,6 +258,9 @@ export function WorkOrderScreen({
   canDetachChecklist,
   canUpdateChecklistAny,
   canUpdateChecklistOwn,
+  hoursSlot,
+  materialSlot,
+  checklistSlot,
 }: WorkOrderScreenProps) {
   const router = useRouter();
 
@@ -311,112 +350,6 @@ export function WorkOrderScreen({
     router.push(`/work-orders/${result.data.workOrder.id}`);
   }
 
-  const materialTotal = workOrderArticles.reduce(
-    (sum, row) => sum + row.quantity * (row.article?.sale_price ?? 0),
-    0,
-  );
-  const checklistChecked = checklistItems.filter((item) => item.is_checked).length;
-
-  const memberById = new Map(members.map((member) => [member.id, member]));
-  const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
-
-  // Issue #106 reordered/replaced the strip: "Hours" (still visible as its
-  // own section's own totals row, see `WorkOrderHoursSection`) no longer
-  // gets a KPI tile of its own here — "To invoice" now takes its old FIRST
-  // position — and the assigned engineer (previously a separate hero
-  // `assignee` block, then briefly a read-out under the Hours header) now
-  // takes "To invoice"'s old LAST position instead.
-  //
-  // *** Issue #109 *** replaces the old material-only figure (with its
-  // "Material only — see Create Quote for the full total" caveat) with the
-  // real material + travel + labor total, read straight off the auto-draft
-  // quote's own frozen `quote_line_items` (`costSummary.grandTotal` —
-  // `getWorkOrderCostSummary`, fetched by `[id]/page.tsx` only when
-  // `canSeeCosts`). No live rate re-resolution happens here anymore (that
-  // used to be the whole reason this stayed material-only — pricing an hour
-  // of logged time required the same client -> engineer -> org-default rate
-  // resolution `create-quote-actions.ts` runs, and duplicating that at
-  // render time risked silently disagreeing with the real quote total); the
-  // auto-draft's line items are already resolved and frozen at the moment
-  // each time entry/article was logged, so reading their sum here can never
-  // drift from what "Create Quote" will actually promote — hence the old
-  // caveat `hint` is simply gone for a caller who can see it.
-  //
-  // An engineer (no `canSeeCosts`) gets the exact pre-#109 fallback instead —
-  // material-only, unchanged from what they could already see — just without
-  // implying (via a hint mentioning "Create Quote", an action engineers can
-  // never reach anyway) that the figure represents anything more than
-  // material.
-  //
-  // `costSummary.hasPromotedQuote` (its own auto-draft already promoted, so
-  // THIS summary's totals are all zero by design — see that field's own doc
-  // comment in `../quote-sync-actions.ts`) is special-cased so a work order
-  // that's already been quoted shows "—"/"Already quoted" instead of a
-  // misleading "€ 0.00 to invoice".
-  const toInvoiceValue =
-    mode === "create"
-      ? "—"
-      : canSeeCosts && costSummary
-        ? costSummary.hasPromotedQuote
-          ? "—"
-          : formatCurrency(costSummary.grandTotal)
-        : formatCurrency(materialTotal);
-  // The quote backing this figure — the auto-draft while it's still tracking
-  // costs, the promoted quote once "Create Quote" has run (see
-  // `WorkOrderCostSummary.quoteId`'s own comment) — rendered as a clickable
-  // link straight to `/quotes/[id]` instead of just naming it in text, so
-  // "To invoice" is a way to actually reach the quote, not just a figure.
-  const toInvoiceQuoteLink =
-    canSeeCosts && costSummary?.quoteId ? (
-      <Link href={`/quotes/${costSummary.quoteId}`}>{costSummary.quoteName ?? "View quote"}</Link>
-    ) : null;
-  const toInvoiceHint =
-    mode === "create"
-      ? "Save the work order first"
-      : canSeeCosts && costSummary
-        ? costSummary.hasPromotedQuote
-          ? toInvoiceQuoteLink
-            ? <>Already quoted — {toInvoiceQuoteLink}</>
-            : "Already quoted — see Quotes"
-          : toInvoiceQuoteLink
-        : "Material only";
-
-  // Issue: swap "Engineer" and "To invoice"'s positions in the strip (product
-  // owner request) — Engineer now leads, To invoice takes the strip's last
-  // slot instead. Material/Checklist keep their existing middle order.
-  const stats: StatStripItem[] = [
-    {
-      label: "Engineer",
-      value: assignedMember ? memberDisplayName(assignedMember) : "Unassigned",
-      hint: assignedMember
-        ? draft.scheduledAt
-          ? formatDateTime(draft.scheduledAt, { month: "long" })
-          : "Not scheduled"
-        : "No engineer assigned",
-    },
-    {
-      label: "Material",
-      value: mode === "create" ? "—" : formatCurrency(materialTotal),
-      hint: mode === "create" ? "Save the work order first" : `${workOrderArticles.length} ${workOrderArticles.length === 1 ? "article" : "articles"}`,
-    },
-  ];
-  if (canAccessChecklists) {
-    stats.push({
-      label: "Checklist",
-      value: mode === "create" ? "—" : checklist ? `${checklistChecked} / ${checklistItems.length}` : "—",
-      progress:
-        mode === "edit" && checklist && checklistItems.length > 0
-          ? (checklistChecked / checklistItems.length) * 100
-          : undefined,
-      hint: mode === "create" ? "Save the work order first" : !checklist ? "Not attached" : undefined,
-    });
-  }
-  stats.push({
-    label: "To invoice",
-    value: toInvoiceValue,
-    hint: toInvoiceHint,
-  });
-
   const heroActions =
     mode === "edit" && workOrder ? (
       <WorkOrderDetailActions workOrder={workOrder} canDelete={Boolean(canDelete)} canCreateQuote={Boolean(canCreateQuote)} />
@@ -435,6 +368,246 @@ export function WorkOrderScreen({
         </Button>
       </>
     );
+
+  // `WorkOrderHeroStatsProvider` wraps `WorkOrderScreenBody` (a sibling
+  // function component below, NOT inlined here) because a React Context's
+  // value is only visible to a `Provider`'s descendants — the component that
+  // CREATES the `<Provider>` element can never itself read back out of it.
+  // `WorkOrderScreenBody` is where the Material/Checklist/"To invoice" tiles
+  // actually get assembled (`mode: "edit"` reads them from context, `mode:
+  // "create"` still doesn't need it at all) — see this component's own
+  // module doc comment ("Issue #146") for the full design.
+  return (
+    <WorkOrderHeroStatsProvider>
+      <WorkOrderScreenBody
+        mode={mode}
+        draft={draft}
+        workOrder={workOrder}
+        client={client}
+        site={site}
+        asset={asset}
+        contract={contract}
+        clientScoped={clientScoped}
+        clients={clients}
+        lockedClientId={lockedClientId}
+        statuses={statuses}
+        priorities={priorities}
+        readOnly={readOnly}
+        members={members}
+        currentUserId={currentUserId}
+        canDelete={canDelete}
+        canAccessChecklists={canAccessChecklists}
+        hoursSlot={hoursSlot}
+        materialSlot={materialSlot}
+        checklistSlot={checklistSlot}
+        heroActions={heroActions}
+        onTitleChange={handleTitleChange}
+        onTitleBlur={handleTitleBlur}
+        onClientChange={setScopingClientId}
+        onRelationsSave={commitPatch}
+        onStatusPrioritySave={commitPatch}
+        onAssignmentSave={commitPatch}
+        createError={createError}
+        timeEntries={timeEntries}
+        timeEntryTypes={timeEntryTypes}
+        canLogTimeForOthers={canLogTimeForOthers}
+        canUpdateTimeEntriesAny={canUpdateTimeEntriesAny}
+        canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
+        workOrderArticles={workOrderArticles}
+        articlesForSelect={articlesForSelect}
+        canCreateWorkOrderArticles={canCreateWorkOrderArticles}
+        canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
+        canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
+        canSeeCosts={canSeeCosts}
+        costSummary={costSummary}
+        unresolvedTimeEntryCount={unresolvedTimeEntryCount}
+        checklist={checklist}
+        checklistItems={checklistItems}
+        checklistTemplates={checklistTemplates}
+        canAttachChecklist={canAttachChecklist}
+        canDetachChecklist={canDetachChecklist}
+        canUpdateChecklistAny={canUpdateChecklistAny}
+        canUpdateChecklistOwn={canUpdateChecklistOwn}
+      />
+    </WorkOrderHeroStatsProvider>
+  );
+}
+
+interface WorkOrderScreenBodyProps {
+  mode: "create" | "edit";
+  draft: WorkOrderDraft;
+  workOrder?: WorkOrderRecord;
+  client: ClientRecord | null;
+  site: SiteRecord | null;
+  asset: AssetRecord | null;
+  contract: ContractRecord | null;
+  clientScoped: ReturnType<typeof useClientScopedLists>;
+  clients: ClientRecord[];
+  lockedClientId?: string;
+  statuses: ReferenceListItemRecord[];
+  priorities: ReferenceListItemRecord[];
+  readOnly?: boolean;
+  members: OrgMemberRecord[];
+  currentUserId?: string;
+  canDelete?: boolean;
+  canAccessChecklists?: boolean;
+  hoursSlot?: ReactNode;
+  materialSlot?: ReactNode;
+  checklistSlot?: ReactNode;
+  heroActions: ReactNode;
+  onTitleChange: (value: string) => void;
+  onTitleBlur: (value: string) => void;
+  onClientChange: (clientId: string) => void;
+  /** All three of these are `WorkOrderScreen`'s own `commitPatch` — same
+   * broad `Partial<WorkOrderDraft>` signature threaded through to `WorkOrderHero`'s
+   * (narrower, `Pick<...>`) and `WorkOrderAssignmentSection`'s own prop types,
+   * unchanged from before this file's issue #146 split. */
+  onRelationsSave: (patch: Partial<WorkOrderDraft>) => Promise<{ ok: boolean; error?: string }>;
+  onStatusPrioritySave: (patch: Partial<WorkOrderDraft>) => Promise<{ ok: boolean; error?: string }>;
+  onAssignmentSave: (patch: Partial<WorkOrderDraft>) => Promise<{ ok: boolean; error?: string }>;
+  createError: string | null;
+  timeEntries: TimeEntryRecord[];
+  timeEntryTypes: ReferenceListItemRecord[];
+  canLogTimeForOthers?: boolean;
+  canUpdateTimeEntriesAny?: boolean;
+  canUpdateTimeEntriesOwn?: boolean;
+  workOrderArticles: WorkOrderArticleRecord[];
+  articlesForSelect: ArticleSelectOption[];
+  canCreateWorkOrderArticles?: boolean;
+  canUpdateWorkOrderArticlesAny?: boolean;
+  canUpdateWorkOrderArticlesOwn?: boolean;
+  canSeeCosts?: boolean;
+  costSummary: WorkOrderCostSummary | null;
+  unresolvedTimeEntryCount: number;
+  checklist: WorkOrderChecklistRecord | null;
+  checklistItems: WorkOrderChecklistItemRecord[];
+  checklistTemplates: ChecklistTemplateRecord[];
+  canAttachChecklist?: boolean;
+  canDetachChecklist?: boolean;
+  canUpdateChecklistAny?: boolean;
+  canUpdateChecklistOwn?: boolean;
+}
+
+/**
+ * The actual hero + Hours/Material/Checklist/Assignment layout — split out of
+ * `WorkOrderScreen` itself purely so it can sit BELOW
+ * `WorkOrderHeroStatsProvider` in the tree and read the Material/Checklist/
+ * "To invoice" tiles back out of it via `useWorkOrderHeroStatsValue()` (issue
+ * #146) — see that component's own doc comment. `mode: "create"` doesn't
+ * touch that context at all (nothing ever reports into it — no slots exist in
+ * that mode), so its three tiles are still built the old literal-placeholder
+ * way right here.
+ */
+function WorkOrderScreenBody({
+  mode,
+  draft,
+  workOrder,
+  client,
+  site,
+  asset,
+  contract,
+  clientScoped,
+  clients,
+  lockedClientId,
+  statuses,
+  priorities,
+  readOnly,
+  members,
+  currentUserId,
+  canDelete,
+  canAccessChecklists,
+  hoursSlot,
+  materialSlot,
+  checklistSlot,
+  heroActions,
+  onTitleChange,
+  onTitleBlur,
+  onClientChange,
+  onRelationsSave,
+  onStatusPrioritySave,
+  onAssignmentSave,
+  createError,
+  timeEntries,
+  timeEntryTypes,
+  canLogTimeForOthers,
+  canUpdateTimeEntriesAny,
+  canUpdateTimeEntriesOwn,
+  workOrderArticles,
+  articlesForSelect,
+  canCreateWorkOrderArticles,
+  canUpdateWorkOrderArticlesAny,
+  canUpdateWorkOrderArticlesOwn,
+  canSeeCosts,
+  costSummary,
+  unresolvedTimeEntryCount,
+  checklist,
+  checklistItems,
+  checklistTemplates,
+  canAttachChecklist,
+  canDetachChecklist,
+  canUpdateChecklistAny,
+  canUpdateChecklistOwn,
+}: WorkOrderScreenBodyProps) {
+  const heroStats = useWorkOrderHeroStatsValue();
+
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const assignedMember = draft.assignedTo ? memberById.get(draft.assignedTo) : undefined;
+
+  // Issue #106 reordered/replaced the strip: "Hours" (still visible as its
+  // own section's own totals row, see `WorkOrderHoursSection`) no longer
+  // gets a KPI tile of its own here — "To invoice" now takes its old FIRST
+  // position — and the assigned engineer (previously a separate hero
+  // `assignee` block, then briefly a read-out under the Hours header) now
+  // takes "To invoice"'s old LAST position instead.
+  const engineerStat: StatStripItem = {
+    label: "Engineer",
+    value: assignedMember ? memberDisplayName(assignedMember) : "Unassigned",
+    hint: assignedMember
+      ? draft.scheduledAt
+        ? formatDateTime(draft.scheduledAt, { month: "long" })
+        : "Not scheduled"
+      : "No engineer assigned",
+  };
+
+  // *** Issue #146 *** `mode: "edit"`'s Material/Checklist/"To invoice"
+  // figures now come from `heroStats` (populated by whichever of
+  // `WorkOrderMaterialSlot`/`WorkOrderChecklistSlot`/`WorkOrderHoursSlot`'s
+  // own reporter has resolved, see `work-order-hero-context.tsx`) instead of
+  // being computed synchronously right here — a tile whose slot hasn't
+  // streamed in yet renders a small `Skeleton` in place of its value rather
+  // than blocking the whole hero. `mode: "create"` never populates that
+  // context (no slots exist), so it keeps the exact literal
+  // "—" / "Save the work order first" placeholders it always has.
+  let materialStat: StatStripItem;
+  let checklistStat: StatStripItem | undefined;
+  let toInvoiceStat: StatStripItem;
+
+  if (mode === "create") {
+    materialStat = { label: "Material", value: "—", hint: "Save the work order first" };
+    if (canAccessChecklists) {
+      checklistStat = { label: "Checklist", value: "—", hint: "Save the work order first" };
+    }
+    toInvoiceStat = { label: "To invoice", value: "—", hint: "Save the work order first" };
+  } else {
+    materialStat = heroStats.materialStat ?? {
+      label: "Material",
+      value: <Skeleton height="1.1rem" width="3.5rem" />,
+    };
+    if (canAccessChecklists) {
+      checklistStat = heroStats.checklistStat ?? {
+        label: "Checklist",
+        value: <Skeleton height="1.1rem" width="3.5rem" />,
+      };
+    }
+    toInvoiceStat = heroStats.toInvoiceStat ?? {
+      label: "To invoice",
+      value: <Skeleton height="1.1rem" width="3.5rem" />,
+    };
+  }
+
+  const stats: StatStripItem[] = [engineerStat, materialStat];
+  if (checklistStat) stats.push(checklistStat);
+  stats.push(toInvoiceStat);
 
   return (
     <Stack gap="lg">
@@ -456,65 +629,71 @@ export function WorkOrderScreen({
         readOnly={readOnly}
         stats={stats}
         actions={heroActions}
-        onTitleChange={handleTitleChange}
-        onTitleBlur={handleTitleBlur}
-        onClientChange={setScopingClientId}
-        onRelationsSave={commitPatch}
-        onStatusPrioritySave={commitPatch}
+        onTitleChange={onTitleChange}
+        onTitleBlur={onTitleBlur}
+        onClientChange={onClientChange}
+        onRelationsSave={onRelationsSave}
+        onStatusPrioritySave={onStatusPrioritySave}
       />
 
       <FormGrid columns={2}>
-        <WorkOrderHoursSection
-          mode={mode}
-          workOrderId={workOrder?.id}
-          timeEntries={timeEntries}
-          members={members}
-          entryTypes={timeEntryTypes}
-          assignedTo={draft.assignedTo}
-          currentUserId={currentUserId}
-          canLogTimeForOthers={Boolean(canLogTimeForOthers)}
-          canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
-          canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
-          canDelete={Boolean(canDelete)}
-          canSeeCosts={Boolean(canSeeCosts)}
-          costSummary={costSummary}
-          unresolvedTimeEntryCount={unresolvedTimeEntryCount}
-        />
-        <WorkOrderMaterialSection
-          mode={mode}
-          workOrderId={workOrder?.id}
-          workOrderArticles={workOrderArticles}
-          articles={articlesForSelect}
-          canCreate={Boolean(canCreateWorkOrderArticles)}
-          canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
-          canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
-          canDelete={Boolean(canDelete)}
-          currentUserId={currentUserId}
-        />
+        {hoursSlot ?? (
+          <WorkOrderHoursSection
+            mode={mode}
+            workOrderId={workOrder?.id}
+            timeEntries={timeEntries}
+            members={members}
+            entryTypes={timeEntryTypes}
+            assignedTo={draft.assignedTo}
+            currentUserId={currentUserId}
+            canLogTimeForOthers={Boolean(canLogTimeForOthers)}
+            canUpdateAny={Boolean(canUpdateTimeEntriesAny)}
+            canUpdateOwn={Boolean(canUpdateTimeEntriesOwn)}
+            canDelete={Boolean(canDelete)}
+            canSeeCosts={Boolean(canSeeCosts)}
+            costSummary={costSummary}
+            unresolvedTimeEntryCount={unresolvedTimeEntryCount}
+          />
+        )}
+        {materialSlot ?? (
+          <WorkOrderMaterialSection
+            mode={mode}
+            workOrderId={workOrder?.id}
+            workOrderArticles={workOrderArticles}
+            articles={articlesForSelect}
+            canCreate={Boolean(canCreateWorkOrderArticles)}
+            canUpdateAny={Boolean(canUpdateWorkOrderArticlesAny)}
+            canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
+            canDelete={Boolean(canDelete)}
+            currentUserId={currentUserId}
+          />
+        )}
       </FormGrid>
 
       {canAccessChecklists ? (
         <FormGrid columns={2}>
-          <WorkOrderChecklistSection
-            mode={mode}
-            workOrderId={workOrder?.id}
-            checklist={checklist}
-            items={checklistItems}
-            templates={checklistTemplates}
-            currentUserId={currentUserId}
-            canAccess={Boolean(canAccessChecklists)}
-            canAttach={Boolean(canAttachChecklist)}
-            canDetach={Boolean(canDetachChecklist)}
-            canUpdateAny={Boolean(canUpdateChecklistAny)}
-            canUpdateOwn={Boolean(canUpdateChecklistOwn)}
-          />
+          {checklistSlot ?? (
+            <WorkOrderChecklistSection
+              mode={mode}
+              workOrderId={workOrder?.id}
+              checklist={checklist}
+              items={checklistItems}
+              templates={checklistTemplates}
+              currentUserId={currentUserId}
+              canAccess={Boolean(canAccessChecklists)}
+              canAttach={Boolean(canAttachChecklist)}
+              canDetach={Boolean(canDetachChecklist)}
+              canUpdateAny={Boolean(canUpdateChecklistAny)}
+              canUpdateOwn={Boolean(canUpdateChecklistOwn)}
+            />
+          )}
           <WorkOrderAssignmentSection
             mode={mode}
             draft={draft}
             workOrder={workOrder}
             members={members}
             readOnly={readOnly}
-            onSave={commitPatch}
+            onSave={onAssignmentSave}
           />
         </FormGrid>
       ) : (
@@ -524,7 +703,7 @@ export function WorkOrderScreen({
           workOrder={workOrder}
           members={members}
           readOnly={readOnly}
-          onSave={commitPatch}
+          onSave={onAssignmentSave}
         />
       )}
     </Stack>
