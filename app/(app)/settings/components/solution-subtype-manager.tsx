@@ -98,13 +98,15 @@ export function SolutionSubtypeManager({ subtypes, loadError, canWrite }: Soluti
 
       {canWrite && (
         <>
-          <SolutionSubtypeFormDialog
-            open={formState.open}
-            onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
-            subtype={formState.subtype}
-            parentSubtypeId={formState.parentSubtypeId}
-            subtypes={subtypes}
-          />
+          {formState.open && (
+            <SolutionSubtypeFormDialog
+              open
+              onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
+              subtype={formState.subtype}
+              parentSubtypeId={formState.parentSubtypeId}
+              subtypes={subtypes}
+            />
+          )}
           <DeleteSolutionSubtypeDialog
             open={Boolean(deleteTarget)}
             onOpenChange={(open) => {

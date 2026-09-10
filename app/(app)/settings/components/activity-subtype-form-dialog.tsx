@@ -3,18 +3,7 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  Button,
-  Dialog,
-  FormField,
-  FormSelectField,
-  Heading,
-  Label,
-  Select,
-  Stack,
-  Text,
-  useEscapeToClose,
-} from "@yourorg/ui";
+import { Button, Dialog, Heading, Input, Label, Select, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import {
   createActivitySubtype,
   updateActivitySubtype,
@@ -51,26 +40,28 @@ export interface ActivitySubtypeFormDialogProps {
 
 /**
  * Create/edit dialog for a single `activity_subtypes` row (issues #134/#138)
- * — mirrors `ArticleGroupFormDialog`, with one real twist: the DB's
- * `activity_subtypes_root_xor_parent` CHECK requires a root node
- * (`parent_subtype_id is null`) to carry a `type_id`, and a non-root node to
- * NOT carry one. The form reflects that rule directly rather than only
- * failing server-side: the Activity Type field only renders (and is only
- * required) while the Parent picker is set to "No parent (top-level)".
+ * — with one real twist: the DB's `activity_subtypes_root_xor_parent` CHECK
+ * requires a root node (`parent_subtype_id is null`) to carry a `type_id`,
+ * and a non-root node to NOT carry one. The form reflects that rule directly
+ * rather than only failing server-side: the Activity Type field only renders
+ * (and is only required) while the Parent picker is set to "No parent
+ * (top-level)".
  *
- * That requires the Parent picker to be a CONTROLLED `<select>` (unlike
- * `ArticleGroupFormDialog`'s plain uncontrolled one) so this component can
- * read its live value on every render and decide whether to show the Type
- * field — same "a sibling field's live value changes what else renders"
- * idiom `ArticleClassificationSection`'s Group/Subgroup cascade uses (local
- * `useState`, re-seeded via a `useEffect` keyed on the open transition, since
- * this component itself never unmounts between opens — only `Dialog`'s own
- * `if (!open) return null` unmounts its form content, which is what resets
- * every OTHER, uncontrolled field's `defaultValue` for free on reopen).
- * `formData.get("parentSubtypeId")`/`formData.get("typeId")` in `action()`
- * below still read the submitted value the normal way regardless — a
- * controlled `<select name="…">` is submitted with a real `<form>` exactly
- * like an uncontrolled one.
+ * Every field is CONTROLLED (issue #136-class bugfix, same one already
+ * applied to `reference-item-form-dialog.tsx`): a plain uncontrolled
+ * (`defaultValue`-only) field gets reset by React's own `useActionState`/
+ * `<form action>` machinery after EVERY submission, success or failure — a
+ * failed save (e.g. a duplicate `value`, or this table's own root-xor-parent
+ * rejection) used to wipe the whole form back to blank the instant the error
+ * appeared. `ActivitySubtypeManager` also now only mounts this component
+ * while `formState.open` is true (was previously always-mounted, just
+ * toggling an `open` prop) — every OTHER dialog in this codebase already
+ * conditionally renders; staying mounted meant `useActionState`'s own state
+ * (error text, the `success` flag) never reset between sessions, so
+ * reopening this dialog for a brand new subtype could still show a stale
+ * error from an unrelated previous attempt. Together: every field's
+ * `useState` initializer reads straight from `subtype` — safe with no
+ * re-seed effect needed, since a fresh mount happens on every open.
  *
  * Cross-org parent / self-reference / cycle / root-type-link checks are all
  * enforced by the DB's `validate_activity_subtype_parent` trigger (see
@@ -91,17 +82,9 @@ export function ActivitySubtypeFormDialog({
   const router = useRouter();
   useEscapeToClose(open, onOpenChange);
 
-  const [parentValue, setParentValue] = useState(() => subtype?.parent_subtype_id ?? parentSubtypeId ?? "");
-
-  useEffect(() => {
-    if (!open) return;
-    setParentValue(subtype?.parent_subtype_id ?? parentSubtypeId ?? "");
-    // Only re-seed on the open transition itself — same "open re-seeds, not
-    // every keystroke" contract `ArticleClassificationSection`'s own
-    // Group/Subgroup cascade follows, since this component (unlike the
-    // uncontrolled fields around it) never unmounts between opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  const [name, setName] = useState(subtype?.name ?? "");
+  const [parentValue, setParentValue] = useState(subtype?.parent_subtype_id ?? parentSubtypeId ?? "");
+  const [typeId, setTypeId] = useState(subtype?.type_id ?? "");
 
   const isRoot = parentValue === "";
 
@@ -115,11 +98,11 @@ export function ActivitySubtypeFormDialog({
     return subtype ? flattened.filter((item) => item.id !== subtype.id) : flattened;
   }, [subtypes, subtype]);
 
-  async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
+  async function action(): Promise<FormState> {
     const input = {
-      name: formData.get("name"),
-      parentSubtypeId: formData.get("parentSubtypeId") || undefined,
-      typeId: formData.get("typeId") || undefined,
+      name,
+      parentSubtypeId: parentValue || undefined,
+      typeId: isRoot ? typeId || undefined : undefined,
     };
     const result = isEdit ? await updateActivitySubtype(subtype!.id, input) : await createActivitySubtype(input);
     if (result.error || !result.data) {
@@ -148,20 +131,26 @@ export function ActivitySubtypeFormDialog({
           <Stack gap="md">
             {state.error && <Text tone="danger">{state.error}</Text>}
 
-            <FormField
-              label="Name"
-              name="name"
-              defaultValue={subtype?.name}
-              required
-              maxLength={200}
-              errors={state.fieldErrors?.name}
-            />
+            <Stack gap="xs">
+              <Label htmlFor="activity-subtype-name">Name</Label>
+              <Input
+                id="activity-subtype-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+                maxLength={200}
+              />
+              {state.fieldErrors?.name?.map((message) => (
+                <Text key={message} tone="danger">
+                  {message}
+                </Text>
+              ))}
+            </Stack>
 
             <Stack gap="xs">
               <Label htmlFor="parentSubtypeId">Parent subtype</Label>
               <Select
                 id="parentSubtypeId"
-                name="parentSubtypeId"
                 value={parentValue}
                 onChange={(event) => setParentValue(event.target.value)}
               >
@@ -181,20 +170,27 @@ export function ActivitySubtypeFormDialog({
             </Stack>
 
             {isRoot && (
-              <FormSelectField
-                label="Activity type"
-                name="typeId"
-                defaultValue={subtype?.type_id ?? ""}
-                required
-                errors={state.fieldErrors?.typeId}
-              >
-                <option value="">Select an activity type…</option>
-                {typeItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
+              <Stack gap="xs">
+                <Label htmlFor="activity-subtype-type">Activity type</Label>
+                <Select
+                  id="activity-subtype-type"
+                  value={typeId}
+                  onChange={(event) => setTypeId(event.target.value)}
+                  required
+                >
+                  <option value="">Select an activity type…</option>
+                  {typeItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+                {state.fieldErrors?.typeId?.map((message) => (
+                  <Text key={message} tone="danger">
+                    {message}
+                  </Text>
                 ))}
-              </FormSelectField>
+              </Stack>
             )}
           </Stack>
         </Dialog.Body>

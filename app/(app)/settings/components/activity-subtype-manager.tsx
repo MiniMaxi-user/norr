@@ -101,14 +101,16 @@ export function ActivitySubtypeManager({ subtypes, typeItems, loadError, canWrit
 
       {canWrite && (
         <>
-          <ActivitySubtypeFormDialog
-            open={formState.open}
-            onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
-            subtype={formState.subtype}
-            parentSubtypeId={formState.parentSubtypeId}
-            subtypes={subtypes}
-            typeItems={typeItems}
-          />
+          {formState.open && (
+            <ActivitySubtypeFormDialog
+              open
+              onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
+              subtype={formState.subtype}
+              parentSubtypeId={formState.parentSubtypeId}
+              subtypes={subtypes}
+              typeItems={typeItems}
+            />
+          )}
           <DeleteActivitySubtypeDialog
             open={Boolean(deleteTarget)}
             onOpenChange={(open) => {
