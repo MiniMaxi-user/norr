@@ -98,11 +98,13 @@ export function ContractLineItemsSection({
               return (
                 <RowCard key={row.id}>
                   <div className="ui-row-main">
-                    <Text>{row.description ?? "—"}</Text>
+                    <Inline gap="xs" align="center">
+                      {row.is_volume && <Badge variant="accent">Volume</Badge>}
+                      <Text>{row.description ?? "—"}</Text>
+                    </Inline>
                     <Text tone="muted" className="ui-row-code">
                       {row.article_number}
                     </Text>
-                    {row.is_volume && <Badge variant="accent">Volume</Badge>}
                   </div>
                   <Text tone="muted" className="ui-row-mid ui-tabular-nums">
                     {row.quantity} × {formatCurrency(row.unit_price)}
