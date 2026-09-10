@@ -1,0 +1,67 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { ConfirmDeleteDialog, Text } from "@yourorg/ui";
+import {
+  deleteActivitySubtype,
+  getActivitySubtypeDependencyCounts,
+  type ActivitySubtypeRecord,
+} from "@/app/(app)/activities/subtypes-actions";
+
+export interface DeleteActivitySubtypeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subtype: ActivitySubtypeRecord | null;
+}
+
+/**
+ * Delete confirmation for an Activity Subtype — mirrors
+ * `DeleteArticleGroupDialog` exactly. Calls `getActivitySubtypeDependencyCounts`
+ * first (same `checkDependencies` convention `DeleteClientDialog` establishes)
+ * — child subtypes/activities do NOT cascade here (`deleteActivitySubtype`'s
+ * own doc comment: no `on delete cascade`/`set null` at the DB level either),
+ * so this warning is a hard blocker, not a cascade-preview.
+ */
+export function DeleteActivitySubtypeDialog({ open, onOpenChange, subtype }: DeleteActivitySubtypeDialogProps) {
+  const router = useRouter();
+
+  return (
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${subtype?.name ?? "subtype"}?`}
+      checkKey={subtype?.id ?? null}
+      checkingMessage="Checking child subtypes and activities…"
+      checkDependencies={async () => {
+        if (!subtype) return { message: null };
+        const result = await getActivitySubtypeDependencyCounts(subtype.id);
+        if (result.error || !result.data) {
+          return { error: result.error ?? "Could not check child subtypes and activities." };
+        }
+        const { childSubtypes, activities } = result.data;
+        if (childSubtypes > 0 || activities > 0) {
+          return {
+            message: (
+              <Text tone="danger">
+                This subtype has {childSubtypes} child subtype{childSubtypes === 1 ? "" : "s"} and {activities}{" "}
+                activit{activities === 1 ? "y" : "ies"}. Move or delete{" "}
+                {childSubtypes + activities === 1 ? "it" : "them"} first — deleting a subtype with child subtypes or
+                activities still assigned isn&rsquo;t allowed.
+              </Text>
+            ),
+          };
+        }
+        return {
+          message: <Text tone="muted">This subtype has no child subtypes or activities. This action cannot be undone.</Text>,
+        };
+      }}
+      onConfirm={async () => {
+        if (!subtype) return { error: "No subtype selected." };
+        const result = await deleteActivitySubtype(subtype.id);
+        return { error: result.error };
+      }}
+      onDeleted={() => router.refresh()}
+      confirmLabel="Delete subtype"
+    />
+  );
+}

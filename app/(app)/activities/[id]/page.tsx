@@ -10,6 +10,8 @@ import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listActivityNotes } from "../notes-actions";
 import { listActivityEvents } from "../history-actions";
+import { listActivitySubtypes } from "../subtypes-actions";
+import { listSolutionSubtypes } from "../solution-subtype-actions";
 import { ActivityScreen } from "../components/activity-screen";
 
 export const metadata = { title: "Activity" };
@@ -80,6 +82,8 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
     membersResult,
     typesResult,
     statusesResult,
+    activitySubtypesResult,
+    solutionSubtypesResult,
     clientsResult,
     workOrdersResult,
     notesResult,
@@ -90,6 +94,15 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
     listOrgMembers("activities"),
     listReferenceItems("activity_type"),
     listReferenceItems("activity_status"),
+    // Activity/Solution subtype trees (issues #134/#138) — fetched once
+    // server-side, same "fetch once, pass down" pattern every other reference
+    // list here follows, always fetched for any caller who can view the
+    // activity at all (not gated behind `canEdit`, same as Notes/Historie
+    // below — a read-only viewer's plain read view still needs these to
+    // resolve a path, though today it only shows `activity_subtype`'s own
+    // shallow `name`).
+    listActivitySubtypes(),
+    listSolutionSubtypes(),
     // Client picker — skipped for a read-only viewer, same "don't fetch
     // what can't render" reasoning `[id]/page.tsx`'s Work Orders sibling
     // already documents for its own `canEdit`-gated fetches.
@@ -108,6 +121,8 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
   const members = membersResult.data?.members ?? [];
   const activityTypes = typesResult.data?.items ?? [];
   const activityStatuses = statusesResult.data?.items ?? [];
+  const activitySubtypes = activitySubtypesResult.data?.subtypes ?? [];
+  const solutionSubtypes = solutionSubtypesResult.data?.subtypes ?? [];
   const clients = clientsResult?.data?.clients ?? [];
   const linkedWorkOrders = canViewWorkOrders ? (workOrdersResult?.data?.workOrders ?? []) : undefined;
   const notes = notesResult.data?.notes ?? [];
@@ -125,6 +140,8 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
       clients={clients}
       activityTypes={activityTypes}
       activityStatuses={activityStatuses}
+      activitySubtypes={activitySubtypes}
+      solutionSubtypes={solutionSubtypes}
       members={members}
       canAssignOthers={canAssignOthers}
       canDelete={canDelete}

@@ -31,6 +31,19 @@ export interface ActivityDraft {
    * server-side regardless of what's sent (`createActivity`/`updateActivity`
    * in `../actions.ts`). */
   actionHolderId: string;
+  /** The single deepest `activity_subtypes` node picked via the 3-level
+   * cascading `SubtypeCascadePicker` (issues #134/#138), above Description.
+   * `""` = none picked — same optional-uuid convention as every other
+   * optional-uuid draft field here. Needs the SAME `"" -> null` `draftToInput`
+   * treatment `actionHolderId` got (see that function's own doc comment) —
+   * `""` here means "the user explicitly cleared their pick" (e.g. via the
+   * cascade's own reset control, or the Activity-Type-changed auto-clear in
+   * `activity-screen.tsx`), not "this field wasn't touched". */
+  activitySubtypeId: string;
+  /** Same shape as `activitySubtypeId` above, for `solution_subtypes` — above
+   * Solution. `mode: "edit"` only in practice (Solution itself is), but the
+   * field always exists on the draft like every other field here. */
+  solutionSubtypeId: string;
 }
 
 export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
@@ -46,6 +59,8 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
     description: activity.description,
     solution: activity.solution ?? "",
     actionHolderId: activity.action_holder_id ?? "",
+    activitySubtypeId: activity.activity_subtype_id ?? "",
+    solutionSubtypeId: activity.solution_subtype_id ?? "",
   };
 }
 
@@ -77,6 +92,8 @@ export function emptyDraft(options: {
     description: "",
     solution: "",
     actionHolderId: options.initialActionHolderId ?? "",
+    activitySubtypeId: "",
+    solutionSubtypeId: "",
   };
 }
 
@@ -95,7 +112,16 @@ export function emptyDraft(options: {
  * absent from a partial patch already looks like. Converts to `null` instead,
  * which `activityBaseSchema`'s own `actionHolderId` schema now accepts as a
  * distinct value ("clear it") from `undefined` ("don't touch it") — see that
- * field's own doc comment in `../schema.ts`. */
+ * field's own doc comment in `../schema.ts`.
+ *
+ * `activitySubtypeId`/`solutionSubtypeId` (issues #134/#138) get the SAME
+ * treatment, for the same reason: `""` there means the user explicitly
+ * cleared their cascade pick (the picker's own reset control, or the
+ * Activity-Type-changed auto-clear in `activity-screen.tsx`), not "untouched"
+ * — collapsing it to `undefined` here would make exactly the same "clear my
+ * pick" action silently no-op that bit `actionHolderId`. Both schema fields
+ * are `.nullable()` for the same "`null` clears, `undefined` don't touch"
+ * reason (`../schema.ts`). */
 export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
@@ -109,5 +135,11 @@ export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unkn
   if (patch.description !== undefined) input.description = patch.description;
   if (patch.solution !== undefined) input.solution = patch.solution;
   if (patch.actionHolderId !== undefined) input.actionHolderId = patch.actionHolderId === "" ? null : patch.actionHolderId;
+  if (patch.activitySubtypeId !== undefined) {
+    input.activitySubtypeId = patch.activitySubtypeId === "" ? null : patch.activitySubtypeId;
+  }
+  if (patch.solutionSubtypeId !== undefined) {
+    input.solutionSubtypeId = patch.solutionSubtypeId === "" ? null : patch.solutionSubtypeId;
+  }
   return input;
 }

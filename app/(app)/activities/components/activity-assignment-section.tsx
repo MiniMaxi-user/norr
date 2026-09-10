@@ -5,13 +5,21 @@ import { FileText } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import type { ActivitySubtypeRecord } from "../subtypes-actions";
+import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
 import { memberDisplayName } from "@/lib/members/format";
 import { formatDateTime } from "@/lib/format/date";
 import type { ActivityDraft } from "./activity-draft";
+import { SubtypeCascadePicker } from "./subtype-cascade-picker";
+
+type AssignmentDraft = Pick<
+  ActivityDraft,
+  "description" | "solution" | "actionHolderId" | "statusId" | "activitySubtypeId" | "solutionSubtypeId"
+>;
 
 export interface ActivityAssignmentSectionProps {
   mode: "create" | "edit";
-  draft: Pick<ActivityDraft, "description" | "solution" | "actionHolderId" | "statusId">;
+  draft: AssignmentDraft;
   activity?: ActivityRecord;
   members: OrgMemberRecord[];
   /** Locks the Action holder select to the caller's own id — mirrors the old
@@ -19,6 +27,18 @@ export interface ActivityAssignmentSectionProps {
    * an engineer only ever acts as themselves). */
   canAssignOthers: boolean;
   activityStatuses: ReferenceListItemRecord[];
+  /** The org's whole flat Activity Subtype tree (issues #134/#138) — fed
+   * straight into `SubtypeCascadePicker`, `rootFilter`-scoped to `typeId`
+   * below. */
+  activitySubtypes: ActivitySubtypeRecord[];
+  /** Same shape as `activitySubtypes`, for `solution_subtypes` — no
+   * `rootFilter`, that tree is never linked to Type at any level. */
+  solutionSubtypes: SolutionSubtypeRecord[];
+  /** The activity's currently-selected Activity Type (`draft.typeId`, picked
+   * in the separate `ActivityTypeSection` above this one) — the Activity
+   * subtype cascade's own level-1 options are restricted to roots whose
+   * `type_id` matches this. */
+  typeId: string;
   /** Gates Description/Solution between a plain read `Text` and an editable
    * `Textarea`. Action holder and Status below are NOT gated by this at
    * all — see this component's own doc comment. */
@@ -30,7 +50,7 @@ export interface ActivityAssignmentSectionProps {
   /** Writes straight into the shared `draft` (`activity-screen.tsx`'s
    * `updateDraft`) on every change — no network call from here anymore,
    * persistence is deferred to the page's own Save/"Create activity". */
-  onFieldChange: (patch: Partial<Pick<ActivityDraft, "description" | "solution" | "actionHolderId" | "statusId">>) => void;
+  onFieldChange: (patch: Partial<AssignmentDraft>) => void;
 }
 
 /**
@@ -83,6 +103,9 @@ export function ActivityAssignmentSection({
   members,
   canAssignOthers,
   activityStatuses,
+  activitySubtypes,
+  solutionSubtypes,
+  typeId,
   editing,
   readOnly,
   onFieldChange,
@@ -107,6 +130,32 @@ export function ActivityAssignmentSection({
     <Stack gap="md">
       <SectionHeader icon={FileText} title="Assignment" />
 
+      {/* Activity subtype (issues #134/#138) — directly ABOVE Description, per
+          the story ("activity subtypen: staan boven invulveld"). Same
+          `editing` gate as Description itself: a genuinely `readOnly` viewer
+          sees the resolved leaf's plain `name` (the shallow embed already on
+          `ActivityRecord`, same "no stored breadcrumb path" shape every other
+          resolved-reference read view here uses), not the interactive
+          cascade. `rootFilter` restricts level 1 to roots whose `type_id`
+          matches the currently-selected Activity Type — see
+          `activity-screen.tsx`'s own Type-changed-clears-subtype effect for
+          what keeps this in sync when `typeId` itself changes. */}
+      <Stack gap="xs">
+        <Label htmlFor="activity-subtype-level-1">Activity subtype</Label>
+        {editing ? (
+          <SubtypeCascadePicker
+            idBase="activity-subtype"
+            ariaLabel="Activity subtype"
+            nodes={activitySubtypes}
+            value={draft.activitySubtypeId}
+            onChange={(nextValue) => onFieldChange({ activitySubtypeId: nextValue })}
+            rootFilter={(node) => node.type_id === typeId}
+          />
+        ) : (
+          <Text>{activity?.activity_subtype?.name ?? "No activity subtype selected."}</Text>
+        )}
+      </Stack>
+
       <Stack gap="xs">
         <Label htmlFor="activity-description">Description</Label>
         {editing ? (
@@ -123,6 +172,27 @@ export function ActivityAssignmentSection({
           <Text tone="muted">No description yet.</Text>
         )}
       </Stack>
+
+      {/* Solution subtype (issues #134/#138) — directly ABOVE Solution, same
+          "mode: edit only" gate Solution itself already has (a brand-new
+          activity has no solution to sub-classify yet), no `rootFilter`
+          (`solution_subtypes` is never linked to Type at any level). */}
+      {mode === "edit" && (
+        <Stack gap="xs">
+          <Label htmlFor="solution-subtype-level-1">Solution subtype</Label>
+          {editing ? (
+            <SubtypeCascadePicker
+              idBase="solution-subtype"
+              ariaLabel="Solution subtype"
+              nodes={solutionSubtypes}
+              value={draft.solutionSubtypeId}
+              onChange={(nextValue) => onFieldChange({ solutionSubtypeId: nextValue })}
+            />
+          ) : (
+            <Text>{activity?.solution_subtype?.name ?? "No solution subtype selected."}</Text>
+          )}
+        </Stack>
+      )}
 
       {/* Solution (issue #121) — `mode: "edit"` only, same "nothing to show
           before the record exists" gating `ActivityScreen`'s Notes/Linked

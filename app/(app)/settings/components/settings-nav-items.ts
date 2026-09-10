@@ -1,4 +1,4 @@
-import { Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
+import { Bell, Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
 import { REFERENCE_LIST_SECTIONS } from "../reference-lists/sections";
 
 /**
@@ -64,6 +64,21 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         label: findTitle("work_order_priority"),
         href: "/settings/reference-lists/work_order_priority",
       },
+    ],
+  },
+  {
+    // Issues #134/#138 — Activity Subtype / Solution Subtype trees, the
+    // Settings-configured tenant taxonomies behind Activities' own 3-level
+    // cascading pickers (see `app/(app)/activities/subtypes-actions.ts`'s
+    // module comment). `icon: Bell` matches this module's own established
+    // visual identity elsewhere in the app — the primary sidebar's
+    // "Meldingen" entry (`components/shell/nav-items.ts`) already uses `Bell`
+    // for Activities, so this group reuses it rather than picking a new icon.
+    label: "Activities",
+    icon: Bell,
+    items: [
+      { key: "activity_subtypes", label: "Activity Subtypes", href: "/settings/activity-subtypes" },
+      { key: "solution_subtypes", label: "Solution Subtypes", href: "/settings/solution-subtypes" },
     ],
   },
   {

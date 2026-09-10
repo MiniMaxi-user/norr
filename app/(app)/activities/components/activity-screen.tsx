@@ -11,6 +11,9 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ActivityNoteRecord } from "../notes-actions";
 import type { ActivityEventRecord } from "../history-actions";
+import type { ActivitySubtypeRecord } from "../subtypes-actions";
+import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
+import { findActivitySubtype, flattenActivitySubtypes, topActivitySubtypeAncestorId } from "../subtype-tree";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { ActivityDetailActions } from "../[id]/activity-detail-actions";
 import { ActivityHero } from "./activity-hero";
@@ -38,6 +41,16 @@ export interface ActivityScreenProps {
   clients: ClientRecord[];
   activityTypes: ReferenceListItemRecord[];
   activityStatuses: ReferenceListItemRecord[];
+  /** The org's whole flat Activity Subtype tree (issues #134/#138) — fetched
+   * once by `[id]/page.tsx`/`new/page.tsx`, same pattern every other
+   * reference list here follows. Threaded down to
+   * `ActivityAssignmentSection`'s own `SubtypeCascadePicker`, and used here
+   * (via `subtype-tree.ts`'s helpers) for the Type-changed-clears-subtype
+   * effect in `updateDraft` below. */
+  activitySubtypes: ActivitySubtypeRecord[];
+  /** Same shape as `activitySubtypes`, for `solution_subtypes` — never
+   * Type-scoped, so `updateDraft` below has no equivalent auto-clear for it. */
+  solutionSubtypes: SolutionSubtypeRecord[];
   members: OrgMemberRecord[];
   /** Locks the Action holder select to the caller's own id — see
    * `getActivityFormContext` in `../actions.ts`. */
@@ -141,6 +154,8 @@ export function ActivityScreen({
   clients,
   activityTypes,
   activityStatuses,
+  activitySubtypes,
+  solutionSubtypes,
   members,
   canAssignOthers,
   lockedClientId,
@@ -208,14 +223,43 @@ export function ActivityScreen({
     return { ok: true };
   }
 
+  // The org's whole flat Activity Subtype tree, pre-flattened once (issues
+  // #134/#138) — `updateDraft` below walks this to answer "does the
+  // currently-picked Activity subtype's root ancestor still match the
+  // Activity Type the user just picked".
+  const flatActivitySubtypes = useMemo(() => flattenActivitySubtypes(activitySubtypes), [activitySubtypes]);
+
   /** Every OTHER section's own field change calls this directly — a
    * local-only merge into the shared `draft`, never posted to the server
    * until `mode: "edit"`'s own page-wide Save (`handleEditSave` below) or
    * `mode: "create"`'s "Create activity" (`handleCreate` below). Always
    * marks the draft dirty, in both modes — harmless in `mode: "create"`
-   * (nothing reads `isDirty` there; Cancel/Create render unconditionally). */
+   * (nothing reads `isDirty` there; Cancel/Create render unconditionally).
+   *
+   * *** Type-changed-clears-subtype (issues #134/#138) ***: this is the one
+   * place that sees both `typeId` and `activitySubtypeId` changes together,
+   * so it's where the "Activity Type changed, so the old Activity subtype
+   * pick may no longer be valid" reset belongs — rather than leaving a stale,
+   * now-invalid subtype silently sitting in the draft until a rejected Save
+   * surfaces the DB's own root-type-match check (`activityUpdateSchema`'s
+   * `activitySubtypeId` cross-check in `../schema.ts`). Only fires when
+   * `typeId` is ACTUALLY changing (not merely present in the patch) and a
+   * subtype is currently picked; walks the picked subtype's root ancestor
+   * (`topActivitySubtypeAncestorId`) and compares ITS `typeId` (only a root
+   * ever carries one) against the newly-picked `typeId` — a mismatch clears
+   * `activitySubtypeId` back to `""` in the very same patch. */
   function updateDraft(patch: Partial<ActivityDraft>) {
-    setDraft((prev) => ({ ...prev, ...patch }));
+    setDraft((prev) => {
+      const next = { ...prev, ...patch };
+      if (patch.typeId !== undefined && patch.typeId !== prev.typeId && next.activitySubtypeId) {
+        const rootId = topActivitySubtypeAncestorId(flatActivitySubtypes, next.activitySubtypeId);
+        const root = findActivitySubtype(flatActivitySubtypes, rootId);
+        if (!root || root.typeId !== next.typeId) {
+          next.activitySubtypeId = "";
+        }
+      }
+      return next;
+    });
     setIsDirty(true);
   }
 
@@ -359,6 +403,9 @@ export function ActivityScreen({
               members={members}
               canAssignOthers={canAssignOthers}
               activityStatuses={activityStatuses}
+              activitySubtypes={activitySubtypes}
+              solutionSubtypes={solutionSubtypes}
+              typeId={draft.typeId}
               editing={sectionEditing}
               readOnly={readOnly}
               onFieldChange={updateDraft}

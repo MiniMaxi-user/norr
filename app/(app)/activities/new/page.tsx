@@ -6,6 +6,8 @@ import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { listActivitySubtypes } from "../subtypes-actions";
+import { listSolutionSubtypes } from "../solution-subtype-actions";
 import { ActivityScreen } from "../components/activity-screen";
 
 export const metadata = { title: "New activity" };
@@ -46,12 +48,17 @@ export default async function NewActivityPage({ searchParams }: NewActivityPageP
   if (!canAccessModule(actor, "activities")) notFound();
   if (!canAny(actor, "activities", ["create", "create_own"])) notFound();
 
-  const [lockedAssetResult, typesResult, statusesResult, membersResult] = await Promise.all([
-    assetId ? getAsset(assetId) : Promise.resolve(null),
-    listReferenceItems("activity_type"),
-    listReferenceItems("activity_status"),
-    listOrgMembers("activities"),
-  ]);
+  const [lockedAssetResult, typesResult, statusesResult, membersResult, activitySubtypesResult, solutionSubtypesResult] =
+    await Promise.all([
+      assetId ? getAsset(assetId) : Promise.resolve(null),
+      listReferenceItems("activity_type"),
+      listReferenceItems("activity_status"),
+      listOrgMembers("activities"),
+      // Activity/Solution subtype trees (issues #134/#138) — same "fetch
+      // once, pass down" pattern every other reference list here follows.
+      listActivitySubtypes(),
+      listSolutionSubtypes(),
+    ]);
 
   if (assetId && !lockedAssetResult?.data) notFound();
   const lockedAsset = lockedAssetResult?.data?.asset ?? null;
@@ -72,6 +79,8 @@ export default async function NewActivityPage({ searchParams }: NewActivityPageP
   const lockedClient = lockedClientResult?.data?.client ?? null;
   const activityTypes = typesResult.data?.items ?? [];
   const activityStatuses = statusesResult.data?.items ?? [];
+  const activitySubtypes = activitySubtypesResult.data?.subtypes ?? [];
+  const solutionSubtypes = solutionSubtypesResult.data?.subtypes ?? [];
   const members = membersResult.data?.members ?? [];
 
   const canAssignOthers = can(actor, "activities", "create");
@@ -95,6 +104,8 @@ export default async function NewActivityPage({ searchParams }: NewActivityPageP
       clients={clients}
       activityTypes={activityTypes}
       activityStatuses={activityStatuses}
+      activitySubtypes={activitySubtypes}
+      solutionSubtypes={solutionSubtypes}
       members={members}
       canAssignOthers={canAssignOthers}
       lockedClientId={lockedClient?.id}
