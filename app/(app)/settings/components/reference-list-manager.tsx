@@ -191,15 +191,17 @@ export function ReferenceListManager({
 
       {canWrite && (
         <>
-          <ReferenceItemFormDialog
-            open={formState.open}
-            onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
-            listKey={listKey}
-            item={formState.item}
-            parentListKey={parentListKey}
-            parentListTitle={parentListTitle}
-            parentItems={parentItems}
-          />
+          {formState.open && (
+            <ReferenceItemFormDialog
+              open
+              onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
+              listKey={listKey}
+              item={formState.item}
+              parentListKey={parentListKey}
+              parentListTitle={parentListTitle}
+              parentItems={parentItems}
+            />
+          )}
           <DeleteReferenceItemDialog
             open={Boolean(deleteTarget)}
             onOpenChange={(open) => {

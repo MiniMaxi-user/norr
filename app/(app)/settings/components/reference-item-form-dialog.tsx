@@ -49,6 +49,38 @@ export interface ReferenceItemFormDialogProps {
  * `lib/reference-lists/actions.ts`'s `validateDependentParentItem`, which
  * this dialog mirrors at the form layer: required exactly when the list is
  * dependent, absent otherwise.
+ *
+ * Two related fixes for issue #136 ("Values" — saving felt unreliable: the
+ * popup sometimes didn't close, a just-added value didn't show up, and a
+ * failed validation wiped every typed field):
+ *
+ * 1. **Every field is a CONTROLLED input.** React's own `useActionState`/
+ *    `<form action>` machinery resets every UNCONTROLLED (`defaultValue`-only)
+ *    field back to its original value after EVERY submission, success or
+ *    failure. With `label`/`value`/`description`/`isActive` all uncontrolled,
+ *    a failed validation attempt (e.g. a duplicate `value`) reset the whole
+ *    form back to blank the instant the error appeared — the user's typed
+ *    data visibly vanished alongside the red error text, even though nothing
+ *    was actually lost server-side. Controlled fields (`value={state}
+ *    onChange={...}`, same pattern `color` already used) are immune to that
+ *    native reset: React keeps rendering whatever the component's own state
+ *    says, regardless of what the browser's form-reset tried to do. Every
+ *    field's `useState` initializer reads straight from `item` — safe (no
+ *    re-seed effect needed) specifically BECAUSE of fix 2 below.
+ * 2. **`ReferenceListManager` now only mounts this component while
+ *    `formState.open` is true**, matching how every OTHER dialog in this
+ *    codebase is conditionally rendered (e.g. `{relationsOpen && (<...Dialog
+ *    open .../>)}`) — this one used to be the exception, always mounted with
+ *    `open={formState.open}` toggling a prop instead. Staying mounted across
+ *    every open/close cycle meant `useActionState`'s own internal `state`
+ *    (error text, field errors, the `success` flag the effect below watches)
+ *    NEVER reset between sessions — reopening this dialog for a brand new
+ *    value could still be showing a stale error/fieldErrors from a
+ *    completely unrelated PREVIOUS failed attempt, which is exactly the kind
+ *    of confusing "feels stuck / doesn't close / doesn't reflect what I just
+ *    did" behavior the issue described. A fresh mount on every open gives a
+ *    fresh `useActionState` (back to `initialState`) and fresh field state
+ *    for free, with zero manual reset code.
  */
 export function ReferenceItemFormDialog({
   open,
@@ -62,24 +94,21 @@ export function ReferenceItemFormDialog({
   const isEdit = Boolean(item);
   const isDependent = Boolean(parentListKey);
   const router = useRouter();
+  const [label, setLabel] = useState(item?.label ?? "");
+  const [value, setValue] = useState(item?.value ?? "");
+  const [description, setDescription] = useState(item?.description ?? "");
   const [color, setColor] = useState(item?.color ?? "");
+  const [isActive, setIsActive] = useState(item ? item.is_active : true);
+  const [parentItemId, setParentItemId] = useState(item?.parent_item_id ?? "");
 
-  useEffect(() => {
-    setColor(item?.color ?? "");
-  }, [item]);
-
-  async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
+  async function action(): Promise<FormState> {
     const input = {
-      value: formData.get("value"),
-      label: formData.get("label"),
-      description: formData.get("description") || undefined,
-      color: formData.get("color") || undefined,
-      parentItemId: isDependent ? formData.get("parentItemId") || undefined : undefined,
-      // Unlike the optional string fields above, an unchecked checkbox is
-      // simply absent from `FormData` — resolve this unconditionally to an
-      // explicit boolean, never `|| undefined`, or "uncheck Active on an
-      // existing item" would silently never persist.
-      isActive: formData.get("isActive") === "on",
+      value,
+      label,
+      description: description || undefined,
+      color: color || undefined,
+      parentItemId: isDependent ? parentItemId || undefined : undefined,
+      isActive,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -110,7 +139,13 @@ export function ReferenceItemFormDialog({
 
             <Stack gap="xs">
               <Label htmlFor="ref-item-label">Label</Label>
-              <Input id="ref-item-label" name="label" defaultValue={item?.label} required maxLength={200} />
+              <Input
+                id="ref-item-label"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                required
+                maxLength={200}
+              />
               {state.fieldErrors?.label?.map((message) => (
                 <Text key={message} tone="danger">
                   {message}
@@ -122,8 +157,8 @@ export function ReferenceItemFormDialog({
               <Label htmlFor="ref-item-description">Description</Label>
               <Textarea
                 id="ref-item-description"
-                name="description"
-                defaultValue={item?.description ?? ""}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
                 maxLength={500}
                 rows={3}
               />
@@ -137,7 +172,12 @@ export function ReferenceItemFormDialog({
             {isDependent && (
               <Stack gap="xs">
                 <Label htmlFor="ref-item-parent">{parentListTitle ?? "Parent"}</Label>
-                <Select id="ref-item-parent" name="parentItemId" defaultValue={item?.parent_item_id ?? ""} required>
+                <Select
+                  id="ref-item-parent"
+                  value={parentItemId}
+                  onChange={(event) => setParentItemId(event.target.value)}
+                  required
+                >
                   <option value="" disabled>
                     Select a {(parentListTitle ?? "parent").toLowerCase()}…
                   </option>
@@ -167,8 +207,8 @@ export function ReferenceItemFormDialog({
               <Label htmlFor="ref-item-value">Value (stable id)</Label>
               <Input
                 id="ref-item-value"
-                name="value"
-                defaultValue={item?.value}
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
                 required
                 maxLength={100}
                 placeholder="e.g. hvac"
@@ -188,7 +228,6 @@ export function ReferenceItemFormDialog({
               <Label htmlFor="ref-item-color">Color</Label>
               <Input
                 id="ref-item-color"
-                name="color"
                 value={color}
                 onChange={(event) => setColor(event.target.value)}
                 placeholder="blue, green, #22c55e…"
@@ -200,7 +239,7 @@ export function ReferenceItemFormDialog({
               </Text>
               {color && (
                 <div>
-                  <Badge color={color}>{item?.label || "Preview"}</Badge>
+                  <Badge color={color}>{label || "Preview"}</Badge>
                 </div>
               )}
               {state.fieldErrors?.color?.map((message) => (
@@ -212,7 +251,11 @@ export function ReferenceItemFormDialog({
 
             <Stack gap="xs">
               <Inline gap="sm" align="center">
-                <Checkbox id="ref-item-is-active" name="isActive" defaultChecked={item ? item.is_active : true} />
+                <Checkbox
+                  id="ref-item-is-active"
+                  checked={isActive}
+                  onChange={(event) => setIsActive(event.target.checked)}
+                />
                 <Label htmlFor="ref-item-is-active">Active</Label>
               </Inline>
               {state.fieldErrors?.isActive?.map((message) => (
