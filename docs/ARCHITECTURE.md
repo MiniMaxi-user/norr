@@ -11,7 +11,7 @@ The **Clients module is the tenant's own customer records** (their CRM) — not 
 - Next.js 15 (App Router, Server Components by default), TypeScript strict
 - Supabase: Postgres, Auth (email/password + magic link, SSO later), Storage, Row Level Security
 - Stripe: Billing (subscriptions, per-module price items), webhooks → entitlements
-- Vercel: hosting, preview deployment per PR
+- Vercel: hosting, preview deployment per PR. Function Region pinned to `fra1` (Frankfurt) in `vercel.json` — matches the Supabase project's `eu-central-1` region (confirmed via the Supabase Management API, issue #144). Before this, functions ran in Vercel's default `iad1` (US East), ~80-100ms further from every Supabase round-trip. Re-confirm both regions still match before ever recreating either project.
 - Design system: `@yourorg/ui`, an npm workspace package living in this same repo at `packages/ui` (not a separate repo/registry) — see "Design system consumption" below
 
 ## Multi-tenancy & data isolation
