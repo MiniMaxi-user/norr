@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { TenantRole } from "@/lib/rbac/permissions";
@@ -53,8 +54,21 @@ export interface CurrentSession {
  *
  * Runs under the caller's own session via `lib/supabase/server.ts` (subject
  * to RLS) — never the service-role client.
+ *
+ * Wrapped in React's `cache()` (issue #141, performance breakdown from
+ * #139): this function does a real `auth.getUser()` HTTPS round-trip to
+ * Supabase Auth (not a local JWT decode) plus a `users`/`memberships`
+ * read — with 48 direct call sites and 167 more via `requireModuleContext`,
+ * a single page render (e.g. a detail page's own parallel fetch fan-out)
+ * could re-resolve the identical session double digits of times. `cache()`
+ * de-dupes same-arguments calls (this function takes none, so every call
+ * within one request/render hits the same memo) for the lifetime of a
+ * single request only — it does NOT persist across separate requests/
+ * Server Action invocations, so this changes nothing about session
+ * freshness, expiry, or revalidation, only how many times an unchanged
+ * answer gets re-fetched within the one request that needs it.
  */
-export async function getCurrentSession(): Promise<CurrentSession | null> {
+export const getCurrentSession = cache(async (): Promise<CurrentSession | null> => {
   const supabase = await createClient();
 
   const {
@@ -116,7 +130,7 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     organization: membership?.organization ?? null,
     role: membership?.role ?? null,
   };
-}
+});
 
 /**
  * Same as `getCurrentSession`, but redirects unauthenticated requests to
