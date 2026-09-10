@@ -4563,6 +4563,22 @@ a.ui-relation-card-title:hover {
   flex: 1;
   min-width: 0;
 }
+/* Tints a tree's own ROOT card only — a top-level parent (the direct child
+   of `.ui-composition-tree` itself, never a nested one inside
+   `.ui-composition-tree-children`) reads as visually distinct from every
+   card beneath it, instead of every depth sharing the same plain `--ui-bg`
+   background (issues #134/#138 follow-up: "geef bovenste parents een
+   andere kleur dan wit" — give top-level parents a different color than
+   white). Applied by passing this class as `CompositionTree`'s own
+   `className` — scoped per caller (currently the Activity Subtype/Solution
+   Subtype settings managers), not a default `CompositionTree` look, so the
+   Asset/Article composite trees this primitive already renders elsewhere
+   are untouched. `--ui-bg-inset` is the same subtle "not the plain
+   card background" tint `.ui-row-card-dashed` already uses elsewhere in
+   this file, not a new one-off color. */
+.ui-composition-tree-root-tinted > .ui-composition-tree-node > .ui-composition-tree-card:not(.ui-composition-tree-card-current) {
+  background: var(--ui-bg-inset);
+}
 .ui-composition-tree-current-badge {
   flex-shrink: 0;
   display: inline-flex;
