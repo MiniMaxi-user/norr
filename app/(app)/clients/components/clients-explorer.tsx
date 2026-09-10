@@ -2,24 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, Card, EmptyState, Input, OverviewHeroBand, Select, Stack, Text } from "@yourorg/ui";
+import { Breadcrumbs, Button, Card, EmptyState, Input, Select, Stack, Text } from "@yourorg/ui";
 import { Users, X } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import type { ClientRecord, SiteRecord } from "../actions";
-import { CLIENT_STATUS_OPTIONS, formatPotentialValue } from "../kanban";
+import { CLIENT_STATUS_OPTIONS } from "../kanban";
+import { useClientsKanbanStats, useClientsView } from "./clients-hero-context";
 import { ClientsKanban } from "./clients-kanban";
 import { ClientsPagination } from "./clients-pagination";
 import { ClientsTable } from "./clients-table";
 import { DeleteClientDialog } from "./delete-client-dialog";
-import { ViewToggle, type ViewOption } from "./view-toggle";
-
-export type ClientsView = "list" | "kanban";
-
-const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
-  { value: "list", label: "List" },
-  { value: "kanban", label: "Kanban" },
-];
 
 /**
  * Client component owning all Clients-list interactivity: search/filter
@@ -36,7 +29,8 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * (`clients-board.tsx`) and passed down as props; a delete calls
  * `router.refresh()` (inside the dialog) to re-fetch rather than mutating
  * this component's local copy, keeping this component's own state limited to
- * pure UI state (search text, which view, which client is pending deletion).
+ * pure UI state (search text, which client is pending deletion, etc). The
+ * active view itself is NOT local state here — see below.
  *
  * NOTE on scope: as of issue #58, list and kanban no longer share the same
  * fetched dataset — `clients-board.tsx` fetches a single paginated page for
@@ -53,13 +47,18 @@ const VIEW_OPTIONS: readonly ViewOption<ClientsView>[] = [
  * (issue #116 — "Customer overview" title + `ViewToggle` + "Add client",
  * matching the same dark-fjord band already used on detail pages, see
  * `docs/ARCHITECTURE.md`'s "Overview-page header pattern") followed by a
- * plain light `Card` filter row below it. Kanban's stats (the "Klanten"/
- * "Pipeline potential" readout) render in the band's own `stats` slot;
- * kanban's filter `Card` additionally carries the Account manager/Status
- * selects — List's filter `Card` is just its own search input. Its
- * breadcrumb lives in the Topbar via `usePageHeader`, mirroring
- * `client-detail.tsx`'s pattern, and only while kanban view is active — List
- * view has never shown a breadcrumb.
+ * plain light `Card` filter row below it. As of issue #142, that band no
+ * longer renders here — it's a sibling BEFORE `page.tsx`'s `Suspense`
+ * boundary so its `h1` paints immediately instead of waiting on this
+ * component's data. Its `view` state and `actions`/`stats` slots now live in
+ * `ClientsHeroProvider` (`clients-hero-context.tsx`): this component reads
+ * the active view via `useClientsView()` instead of owning it, and reports
+ * kanban's "Klanten"/"Pipeline potential" numbers up via
+ * `useClientsKanbanStats()` once they're computed. Kanban's filter `Card`
+ * still carries the Account manager/Status selects here — List's filter
+ * `Card` is just its own search input. Its breadcrumb lives in the Topbar
+ * via `usePageHeader`, mirroring `client-detail.tsx`'s pattern, and only
+ * while kanban view is active — List view has never shown a breadcrumb.
  */
 export function ClientsExplorer({
   clients,
@@ -67,7 +66,6 @@ export function ClientsExplorer({
   page,
   pageSize,
   canWrite,
-  defaultView,
   primarySiteByClientId,
   accountManagers,
 }: {
@@ -76,7 +74,6 @@ export function ClientsExplorer({
   page: number;
   pageSize: number;
   canWrite: boolean;
-  defaultView: ClientsView;
   /** Each client's primary site (or `null` if it has none yet), keyed by
    * `client.id` — see `clients-board.tsx`'s `fetchPrimarySiteByClientId`.
    * Threaded down to both `ClientsTable` and `ClientsKanban` so every
@@ -90,7 +87,7 @@ export function ClientsExplorer({
   accountManagers: AccountManagerRecord[];
 }) {
   const router = useRouter();
-  const [view, setView] = useState<ClientsView>(defaultView);
+  const [view] = useClientsView();
   const [search, setSearch] = useState("");
   const [kanbanSearch, setKanbanSearch] = useState("");
   const [kanbanAccountManagerId, setKanbanAccountManagerId] = useState("");
@@ -134,6 +131,18 @@ export function ClientsExplorer({
     });
   }, [clients, kanbanSearch, kanbanStatus, kanbanAccountManagerId, primarySiteByClientId, accountManagerById]);
 
+  // Reported up to `ClientsHeroProvider` so the `OverviewHeroBand`'s `stats`
+  // slot (rendered above `Suspense`, in `page.tsx`) can show these once
+  // they're available — see `clients-hero-context.tsx`.
+  const kanbanStats = useMemo(
+    () => ({
+      count: kanbanFiltered.length,
+      potentialValue: kanbanFiltered.reduce((sum, client) => sum + (client.potential_value ?? 0), 0),
+    }),
+    [kanbanFiltered],
+  );
+  useClientsKanbanStats(kanbanStats);
+
   const kanbanFiltersActive = Boolean(kanbanSearch.trim() || kanbanAccountManagerId || kanbanStatus);
 
   function clearKanbanFilters() {
@@ -171,42 +180,8 @@ export function ClientsExplorer({
     );
   }
 
-  const headerActions = (
-    <>
-      <ViewToggle moduleKey="clients" value={view} options={VIEW_OPTIONS} onChange={setView} />
-      {canWrite && (
-        <Button variant="primary" onClick={() => router.push("/clients/new")}>
-          Add client
-        </Button>
-      )}
-    </>
-  );
-
   return (
     <Stack gap="lg">
-      <OverviewHeroBand
-        title="Customer overview"
-        actions={headerActions}
-        stats={
-          view === "kanban" ? (
-            <div className="ui-clients-kanban-stats">
-              <div className="ui-clients-kanban-stat">
-                <div className="ui-clients-kanban-stat-label">Klanten</div>
-                <div className="ui-clients-kanban-stat-value">{kanbanFiltered.length}</div>
-              </div>
-              <div className="ui-clients-kanban-stat">
-                <div className="ui-clients-kanban-stat-label">Pipeline potential</div>
-                <div className="ui-clients-kanban-stat-value">
-                  {formatPotentialValue(
-                    kanbanFiltered.reduce((sum, client) => sum + (client.potential_value ?? 0), 0),
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : undefined
-        }
-      />
-
       {view === "kanban" ? (
         <Card>
           <div className="ui-clients-page-filters">

@@ -41,8 +41,11 @@ export interface OverviewHeroBandProps {
  * (e.g. search/filter controls) belongs in a normal `Card` sibling rendered
  * BELOW this band instead, back inside the page's normal padding — same
  * precedent `RecordHeroBand`'s own doc comment sets for the work order
- * relation cards. See `app/(app)/clients/components/clients-explorer.tsx` for
- * the reference usage.
+ * relation cards. See `app/(app)/clients/page.tsx` for the reference usage
+ * (issue #142 — rendered as a sibling before that page's `Suspense`
+ * boundary so the title streams immediately; its data-dependent `actions`/
+ * `stats` are bridged across that boundary via
+ * `app/(app)/clients/components/clients-hero-context.tsx`).
  *
  * Fixed dark surface, not theme-toggle-aware — matches `RecordHeroBand` and
  * `.ui-sidebar`'s own permanent "ink" treatment.
