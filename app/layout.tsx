@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider, ToastProvider } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — the
@@ -40,6 +41,12 @@ export default function RootLayout({
            * a toast survives that navigation, an inline banner never could. */}
           <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>
+        {/* Real-user Core Web Vitals (LCP/CLS/INP) reporting (issue #150,
+         * performance breakdown from #139) — mounted once at the app root so
+         * it covers every route, same placement Vercel's own docs show. Data
+         * shows up under the "Speed Insights" tab of this project in the
+         * Vercel dashboard; there is nothing to read locally/in logs. */}
+        <SpeedInsights />
       </body>
     </html>
   );
