@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { readThroughReferenceDataCache, invalidateReferenceDataCache } from "@/lib/cache/reference-data";
 import { activitySubtypeCreateSchema, activitySubtypeUpdateSchema } from "./schema";
 
 /**
@@ -111,19 +112,37 @@ export async function listActivitySubtypes(): Promise<ActionResult<{ subtypes: A
   }
 
   const supabase = await createSupabaseServerClient();
-  // Explicit column projection (issue #149) — every tree consumer
-  // (`subtype-tree.ts`'s helpers, the Settings tree manager, the Activity
-  // page's 3-level cascading picker) only ever reads `id`/`parent_subtype_id`/
-  // `type_id`/`name`/`sort_order`; `organization_id`/`created_by`/
-  // `created_at`/`updated_at` are never read back from this list.
-  const { data, error } = await supabase
-    .from("activity_subtypes")
-    .select("id, parent_subtype_id, type_id, name, sort_order")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
 
-  if (error) return fail(mapDbError(error));
-  return ok({ subtypes: (data ?? []) as ActivitySubtypeRecord[] });
+  // Cached (issue #147) — keyed by org + `activity_subtypes` (one whole tree
+  // per org, no further subdivision).
+  try {
+    const subtypes = await readThroughReferenceDataCache(
+      ctx.context.organizationId,
+      "activity_subtypes",
+      async () => {
+        // Explicit column projection (issue #149) — every tree consumer
+        // (`subtype-tree.ts`'s helpers, the Settings tree manager, the
+        // Activity page's 3-level cascading picker) only ever reads `id`/
+        // `parent_subtype_id`/`type_id`/`name`/`sort_order`;
+        // `organization_id`/`created_by`/`created_at`/`updated_at` are never
+        // read back from this list.
+        const { data, error } = await supabase
+          .from("activity_subtypes")
+          .select("id, parent_subtype_id, type_id, name, sort_order")
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true });
+
+        // Thrown (not `fail(...)`-returned) — see
+        // `lib/cache/reference-data.ts`'s module comment: a thrown fetcher
+        // is never cached, so a transient DB error is never "stuck" cached.
+        if (error) throw new Error(mapDbError(error));
+        return (data ?? []) as ActivitySubtypeRecord[];
+      },
+    );
+    return ok({ subtypes });
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Something went wrong loading activity subtypes.");
+  }
 }
 
 /** Owner only (per the `settings` RBAC entry + RLS, both agree — see the
@@ -154,6 +173,7 @@ export async function createActivitySubtype(
     .single();
 
   if (error) return fail(mapDbError(error));
+  invalidateReferenceDataCache(ctx.context.organizationId, "activity_subtypes");
   return ok({ subtype: data as ActivitySubtypeRecord });
 }
 
@@ -192,6 +212,7 @@ export async function updateActivitySubtype(
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Activity subtype not found, or you do not have permission to update it.");
+  invalidateReferenceDataCache(ctx.context.organizationId, "activity_subtypes");
   return ok({ subtype: data as ActivitySubtypeRecord });
 }
 
@@ -281,5 +302,6 @@ export async function deleteActivitySubtype(id: string): Promise<ActionResult<{ 
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Activity subtype not found, or you do not have permission to delete it.");
+  invalidateReferenceDataCache(ctx.context.organizationId, "activity_subtypes");
   return ok({ deletedId: data.id as string });
 }
