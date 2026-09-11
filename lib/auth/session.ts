@@ -7,6 +7,7 @@ import type { TenantRole } from "@/lib/rbac/permissions";
 import { ensureOwnOrganizationBootstrapped } from "@/lib/auth/bootstrap";
 import { getAvatarUrl } from "@/lib/profile/avatar-url";
 import type { Locale } from "@/lib/profile/locale";
+import { withTiming } from "@/lib/perf/timing";
 
 export interface CurrentOrganization {
   id: string;
@@ -68,7 +69,11 @@ export interface CurrentSession {
  * freshness, expiry, or revalidation, only how many times an unchanged
  * answer gets re-fetched within the one request that needs it.
  */
-export const getCurrentSession = cache(async (): Promise<CurrentSession | null> => {
+export const getCurrentSession = cache(
+  async (): Promise<CurrentSession | null> => withTiming("auth:getCurrentSession", () => resolveCurrentSession()),
+);
+
+async function resolveCurrentSession(): Promise<CurrentSession | null> {
   const supabase = await createClient();
 
   const {
@@ -130,7 +135,7 @@ export const getCurrentSession = cache(async (): Promise<CurrentSession | null> 
     organization: membership?.organization ?? null,
     role: membership?.role ?? null,
   };
-});
+}
 
 /**
  * Same as `getCurrentSession`, but redirects unauthenticated requests to

@@ -3,6 +3,7 @@ import "server-only";
 import { requireSession, type CurrentSession } from "@/lib/auth/session";
 import { hasFeature, type FeatureKey } from "@/lib/rbac/features";
 import type { PermissionActor } from "@/lib/rbac/permissions";
+import { withTiming } from "@/lib/perf/timing";
 
 /**
  * Shared "top of every action" preamble (CLAUDE.md rules 2 & 3: check
@@ -34,6 +35,10 @@ export type ModuleContextResult =
   | { ok: false; error: string };
 
 export async function requireModuleContext(featureKey: FeatureKey): Promise<ModuleContextResult> {
+  return withTiming(`auth:requireModuleContext:${featureKey}`, () => resolveModuleContext(featureKey));
+}
+
+async function resolveModuleContext(featureKey: FeatureKey): Promise<ModuleContextResult> {
   const session = await requireSession();
 
   if (!session.organization) {
