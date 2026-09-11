@@ -19,6 +19,7 @@ import { ActivityDetailActions } from "../[id]/activity-detail-actions";
 import { ActivityHero } from "./activity-hero";
 import { ActivityTypeSection } from "./activity-type-section";
 import { ActivityAssignmentSection } from "./activity-assignment-section";
+import { ActivitySolutionSection } from "./activity-solution-section";
 import { ActivityNotesSection } from "./activity-notes-section";
 import { ActivityContactSection } from "./activity-contact-section";
 import { ActivityLinkedWorkOrders } from "./activity-linked-work-orders";
@@ -99,6 +100,12 @@ export interface ActivityScreenProps {
  * Assignment/Notes on the left, Contact person/Linked work orders/Historie
  * on the right — replacing the old single-column stack of just Assignment +
  * a standalone `CreateWorkOrderCallout` card.
+ *
+ * *** Issue #152 *** split Solution + Solution subtype out of Assignment
+ * into their own `ActivitySolutionSection`, rendered right below Assignment
+ * in that same left column (`mode: "edit"` only — nothing to solve on a
+ * brand-new activity), and laid each subtype picker side by side with its
+ * paired free-text field (`FormGrid`) instead of stacked above it.
  *
  * *** Issue #133 *** ("Aanpassing Activity") replaced the old "every section
  * auto-saves the instant it's touched, no page-wide Save/Cancel" design: every
@@ -404,12 +411,21 @@ export function ActivityScreen({
               canAssignOthers={canAssignOthers}
               activityStatuses={activityStatuses}
               activitySubtypes={activitySubtypes}
-              solutionSubtypes={solutionSubtypes}
               typeId={draft.typeId}
               editing={sectionEditing}
               readOnly={readOnly}
               onFieldChange={updateDraft}
             />
+
+            {mode === "edit" && (
+              <ActivitySolutionSection
+                draft={draft}
+                activity={activity}
+                solutionSubtypes={solutionSubtypes}
+                editing={sectionEditing}
+                onFieldChange={updateDraft}
+              />
+            )}
 
             {showNotes && activity && (
               <ActivityNotesSection activityId={activity.id} notes={notes ?? []} readOnly={readOnly} />
