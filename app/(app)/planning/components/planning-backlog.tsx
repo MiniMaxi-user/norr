@@ -1,7 +1,7 @@
 "use client";
 
 import type { DragEvent } from "react";
-import { Badge, Card, Inline, Stack, Text, ViewSwitcher, resolveColor, type ViewSwitcherOption } from "@yourorg/ui";
+import { Badge, Button, Card, Inline, Stack, Text, resolveColor } from "@yourorg/ui";
 import { ClipboardList, type Icon } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
@@ -19,8 +19,13 @@ export interface PlanningBacklogProps {
   onSelect: (workOrder: WorkOrderRecord) => void;
   onDragStart: (workOrder: WorkOrderRecord) => void;
   onDragEnd: () => void;
-  typeFilter: string | null;
-  onTypeFilterChange: (value: string | null) => void;
+  /** Multi-select: which `activity_type` `value`s are currently checked. An
+   * EMPTY set means "Alle" (no filter) — see `planning-screen.tsx`'s own
+   * comment on `typeFilter`'s state shape for why there's no separate "all"
+   * sentinel. */
+  typeFilter: Set<string>;
+  onToggleType: (value: string) => void;
+  onClearTypeFilter: () => void;
   /** Whether a currently-scheduled block (dragged from the grid) is being
    * dragged right now — enables this panel as a drop target and drives its
    * `onDropToBacklog` accent. `null` while nothing/a backlog card itself is
@@ -31,10 +36,12 @@ export interface PlanningBacklogProps {
 }
 
 /**
- * "Werkvoorraad" backlog panel (issue #164) — count badge, type filter
- * pills sourced from the org's own `activity_type` reference items (not
- * hardcoded to Storing/Onderhoud/Inspectie — a tenant can configure more),
- * grouped by region with an hour total per group, draggable cards with a
+ * "Werkvoorraad" backlog panel (issue #164) — count badge, a MULTI-SELECT
+ * type filter (`FilterPill` below) sourced from the org's own `activity_type`
+ * reference items (not hardcoded to Storing/Onderhoud/Inspectie — a tenant
+ * can configure more; those three are just the default-checked selection,
+ * see `planning-screen.tsx`'s `DEFAULT_TYPE_FILTER`), grouped by region with
+ * an hour total per group, draggable cards with a
  * colored left border matching the item's type color, and (if the linked
  * asset has a catalog model set) its model name — see `WorkOrderRecord.asset`'s
  * own comment. A card is also click-to-select
@@ -64,20 +71,13 @@ export function PlanningBacklog({
   onDragStart,
   onDragEnd,
   typeFilter,
-  onTypeFilterChange,
+  onToggleType,
+  onClearTypeFilter,
   draggingScheduledWorkOrder,
   onDropToBacklog,
 }: PlanningBacklogProps) {
-  const filterOptions: ViewSwitcherOption<string>[] = [
-    { value: "all", title: "Alle", label: <FilterIcon icon={ClipboardList} label="Alle" /> },
-    ...activityTypes.map((type) => ({
-      value: type.value,
-      title: type.label,
-      label: <FilterIcon icon={resolveActivityTypeIcon(type.icon)} label={type.label} />,
-    })),
-  ];
-
-  const filtered = typeFilter ? workOrders.filter((wo) => wo.work_order_type?.value === typeFilter) : workOrders;
+  const filtered =
+    typeFilter.size === 0 ? workOrders : workOrders.filter((wo) => wo.work_order_type && typeFilter.has(wo.work_order_type.value));
   const groups = groupBacklogByRegion(filtered, regions, siteRegionById);
 
   const acceptingDrop = draggingScheduledWorkOrder != null;
@@ -100,12 +100,25 @@ export function PlanningBacklog({
           <Badge variant="muted">{workOrders.length}</Badge>
         </Inline>
 
-        <ViewSwitcher
-          aria-label="Filter op type"
-          value={typeFilter ?? "all"}
-          options={filterOptions}
-          onChange={(value) => onTypeFilterChange(value === "all" ? null : value)}
-        />
+        <Inline gap="xs" wrap role="group" aria-label="Filter op type">
+          <FilterPill
+            active={typeFilter.size === 0}
+            title="Alle"
+            icon={ClipboardList}
+            colorHex={null}
+            onClick={onClearTypeFilter}
+          />
+          {activityTypes.map((type) => (
+            <FilterPill
+              key={type.value}
+              active={typeFilter.has(type.value)}
+              title={type.label}
+              icon={resolveActivityTypeIcon(type.icon)}
+              colorHex={resolveColor(type.color)}
+              onClick={() => onToggleType(type.value)}
+            />
+          ))}
+        </Inline>
 
         <div className="ui-planning-backlog-scroll">
           {groups.length === 0 ? (
@@ -147,17 +160,48 @@ export function PlanningBacklog({
   );
 }
 
-/** Icon-only filter pill content: the icon is `aria-hidden` (purely
- * decorative once the pill's accessible name comes from elsewhere) plus a
- * `.ui-visually-hidden` copy of `label` so the button still has a real
- * accessible name for screen readers — `ViewSwitcher`'s own `title` prop
- * (see `filterOptions` above) covers the sighted-mouse-user case. */
-function FilterIcon({ icon: IconComponent, label }: { icon: Icon; label: string }) {
+/** One multi-select type-filter toggle — icon-only (the icon is
+ * `aria-hidden`, purely decorative once the button's accessible name comes
+ * from the `.ui-visually-hidden` copy of `title` below), a native `title`
+ * tooltip for sighted mouse users, and a colored left edge
+ * (`.ui-planning-filter-pill`, same "resolved hex → CSS custom property"
+ * technique `BacklogCard`'s own left border already uses) so each type
+ * reads at a glance even collapsed to just its icon. `colorHex={null}`
+ * (the "Alle" pill) falls back to a neutral `--ui-border-strong` edge,
+ * deliberately never resolving to any real type's color, so "Alle" always
+ * reads as "not a specific type" rather than looking like it belongs to
+ * whichever type happens to be first. Not `ViewSwitcher`: this is a
+ * multi-select toggle group (any number of pills can be active at once,
+ * including "Alle" as its own independent "clear filter" action), not
+ * ViewSwitcher's single-selection model — see `planning-screen.tsx`'s
+ * `typeFilter`/`toggleTypeFilter`/`clearTypeFilter` for the state shape. */
+function FilterPill({
+  active,
+  title,
+  icon: IconComponent,
+  colorHex,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  icon: Icon;
+  colorHex: string | null;
+  onClick: () => void;
+}) {
   return (
-    <>
+    <Button
+      type="button"
+      variant={active ? "primary" : "outline"}
+      size="sm"
+      aria-pressed={active}
+      title={title}
+      onClick={onClick}
+      className="ui-planning-filter-pill"
+      style={{ borderLeftColor: colorHex ?? "var(--ui-border-strong)" }}
+    >
       <IconComponent aria-hidden width={16} height={16} />
-      <span className="ui-visually-hidden">{label}</span>
-    </>
+      <span className="ui-visually-hidden">{title}</span>
+    </Button>
   );
 }
 

@@ -14,6 +14,10 @@ import { formatDateParam, toOffsetIsoString } from "../date-utils";
 import type { PlanningEngineer } from "../grouping";
 import type { PlanningGroup, PlanningView } from "../types";
 
+/** The Werkvoorraad type filter's default selection (issue #164 follow-up) —
+ * `activity_type` `value`s, not labels (labels are tenant-editable text). */
+const DEFAULT_TYPE_FILTER = new Set(["onderhoud", "inspectie", "storing"]);
+
 export interface PlanningScreenProps {
   date: Date;
   view: PlanningView;
@@ -67,8 +71,29 @@ export function PlanningScreen({
 
   const [draggingWorkOrder, setDraggingWorkOrder] = useState<WorkOrderRecord | null>(null);
   const [selectedBacklogWorkOrder, setSelectedBacklogWorkOrder] = useState<WorkOrderRecord | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  // Multi-select: an EMPTY set means "Alle" (no filter, show every type,
+  // including one a tenant adds later) — never a separate "all" sentinel
+  // value. Defaults to Onderhoud/Inspectie/Storing (only the ones that
+  // actually exist for this org, in case a tenant renamed/removed one),
+  // matching the design's own 3 pill defaults — a tenant's other types
+  // (Bel activiteit, Afspraak, ...) start unselected, one click away.
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(
+    () => new Set(activityTypes.filter((type) => DEFAULT_TYPE_FILTER.has(type.value)).map((type) => type.value)),
+  );
   const [error, setError] = useState<string | null>(null);
+
+  function toggleTypeFilter(value: string) {
+    setTypeFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  }
+
+  function clearTypeFilter() {
+    setTypeFilter(new Set());
+  }
 
   function pushParams(next: { date: Date; view: PlanningView; group: PlanningGroup }) {
     const params = new URLSearchParams();
@@ -179,7 +204,8 @@ export function PlanningScreen({
           onDragStart={setDraggingWorkOrder}
           onDragEnd={() => setDraggingWorkOrder(null)}
           typeFilter={typeFilter}
-          onTypeFilterChange={setTypeFilter}
+          onToggleType={toggleTypeFilter}
+          onClearTypeFilter={clearTypeFilter}
           draggingScheduledWorkOrder={draggingWorkOrder && draggingWorkOrder.scheduled_at != null ? draggingWorkOrder : null}
           onDropToBacklog={handleDropToBacklog}
         />

@@ -1,6 +1,6 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
-import type { BadgeVariant } from "./badge";
+import { resolveColor, type BadgeVariant } from "./badge";
 
 export interface TimelineProps extends HTMLAttributes<HTMLDivElement> {
   /** Column headers — one per day/slot (e.g. `["Mon 24", "Tue 25", ...]`). */
@@ -75,28 +75,43 @@ function TimelineRow({ label, cells }: TimelineRowProps) {
   );
 }
 
-export interface TimelineBlockProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+export interface TimelineBlockProps extends Omit<HTMLAttributes<HTMLDivElement>, "title" | "color"> {
   title: ReactNode;
   /** Small secondary line under the title — a status `Badge`, a time range, … */
   meta?: ReactNode;
   /** Color, from the same tone vocabulary `Badge` uses — a left accent bar
    * plus a tinted fill, so a block's status reads at a glance across a busy
-   * board. */
+   * board. Ignored whenever `color` (below) is set. */
   variant?: BadgeVariant;
+  /** Tenant-configurable color (named swatch or hex) — same `resolveColor()`
+   * contract `SchedulerGrid.Block` already uses for the exact same kind of
+   * data (a work item's own configured type color, issue #164's Planning
+   * module), so Week view's blocks read as the SAME color as Day view's
+   * instead of a coarser fixed `variant`. Takes precedence over `variant`
+   * when it resolves to a real color; falls back to `variant`'s fixed tone
+   * otherwise (unset, unrecognized, or no color configured for that item) —
+   * every pre-existing caller (e.g. `asset-recent-activities.tsx`) that only
+   * ever passed `variant` is unaffected. */
+  color?: string | null;
   onClick?: () => void;
 }
 
 /** A single scheduled job slot within a `Timeline.Row`'s day cell. */
-function TimelineBlock({ title, meta, variant = "muted", className, onClick, ...rest }: TimelineBlockProps) {
+function TimelineBlock({ title, meta, variant = "muted", color, className, style, onClick, ...rest }: TimelineBlockProps) {
   const interactive = Boolean(onClick);
+  const hex = resolveColor(color);
+  const blockStyle: CSSProperties = hex
+    ? { ...style, backgroundColor: `${hex}22`, borderLeftColor: hex }
+    : (style ?? {});
   return (
     <div
       className={cx(
         "ui-timeline-block",
-        `ui-timeline-block-${variant}`,
+        !hex && `ui-timeline-block-${variant}`,
         interactive && "ui-timeline-block-clickable",
         className,
       )}
+      style={blockStyle}
       onClick={onClick}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}

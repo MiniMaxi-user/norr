@@ -370,6 +370,7 @@ function WeekTimeline({
                       key={wo.id}
                       title={wo.title}
                       meta={formatTimeLabel(wo.scheduled_at!)}
+                      color={wo.work_order_type?.color}
                       variant={durationBadgeVariant(wo)}
                       onClick={() => onUnschedule(wo)}
                     />
@@ -389,6 +390,12 @@ function isSameCalendarDay(iso: string, day: Date): boolean {
   return d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate();
 }
 
+/** Fallback for `Timeline.Block`'s `variant` — only ever visible when
+ * `color` (the item's actual configured type color, passed alongside this)
+ * doesn't resolve to a real color at all (unset/unrecognized), since `color`
+ * takes precedence whenever it does. Kept as a coarser tone-only fallback
+ * rather than removed, matching this function's original behavior for that
+ * edge case. */
 function durationBadgeVariant(workOrder: WorkOrderRecord): "muted" | "accent" | "success" | "danger" | "warning" {
   const color = workOrder.work_order_type?.color;
   if (color === "red") return "danger";
