@@ -2,8 +2,10 @@
 
 import type { DragEvent } from "react";
 import { Badge, Card, Inline, Stack, Text, ViewSwitcher, resolveColor, type ViewSwitcherOption } from "@yourorg/ui";
+import { ClipboardList, type Icon } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
 import { groupBacklogByRegion } from "../grouping";
 import { formatDurationHours } from "../date-utils";
 
@@ -67,8 +69,12 @@ export function PlanningBacklog({
   onDropToBacklog,
 }: PlanningBacklogProps) {
   const filterOptions: ViewSwitcherOption<string>[] = [
-    { value: "all", label: "Alle" },
-    ...activityTypes.map((type) => ({ value: type.value, label: type.label })),
+    { value: "all", title: "Alle", label: <FilterIcon icon={ClipboardList} label="Alle" /> },
+    ...activityTypes.map((type) => ({
+      value: type.value,
+      title: type.label,
+      label: <FilterIcon icon={resolveActivityTypeIcon(type.icon)} label={type.label} />,
+    })),
   ];
 
   const filtered = typeFilter ? workOrders.filter((wo) => wo.work_order_type?.value === typeFilter) : workOrders;
@@ -138,6 +144,20 @@ export function PlanningBacklog({
         </Text>
       </Stack>
     </Card>
+  );
+}
+
+/** Icon-only filter pill content: the icon is `aria-hidden` (purely
+ * decorative once the pill's accessible name comes from elsewhere) plus a
+ * `.ui-visually-hidden` copy of `label` so the button still has a real
+ * accessible name for screen readers — `ViewSwitcher`'s own `title` prop
+ * (see `filterOptions` above) covers the sighted-mouse-user case. */
+function FilterIcon({ icon: IconComponent, label }: { icon: Icon; label: string }) {
+  return (
+    <>
+      <IconComponent aria-hidden width={16} height={16} />
+      <span className="ui-visually-hidden">{label}</span>
+    </>
   );
 }
 

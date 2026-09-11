@@ -5,6 +5,12 @@ import { Button } from "./button";
 export interface ViewSwitcherOption<T extends string = string> {
   value: T;
   label: ReactNode;
+  /** Native tooltip — mainly useful when `label` is icon-only (e.g. the
+   * Planning backlog's type filter, issue #164): pass the option's real
+   * name here so a mouse/trackpad user still gets it on hover even though
+   * nothing readable renders on the button itself. Optional; every existing
+   * text-label call site simply omits it. */
+  title?: string;
 }
 
 export interface ViewSwitcherProps<T extends string = string>
@@ -63,6 +69,7 @@ export function ViewSwitcher<T extends string = string>({
           variant={option.value === value ? "primary" : "outline"}
           size="sm"
           aria-pressed={option.value === value}
+          title={option.title}
           onClick={() => onChange(option.value)}
         >
           {option.label}
