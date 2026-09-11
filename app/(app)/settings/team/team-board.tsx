@@ -1,5 +1,6 @@
 import { listTeamMembers } from "@/lib/team/actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { TeamManager } from "./components/team-manager";
 
 /**
@@ -19,9 +20,18 @@ import { TeamManager } from "./components/team-manager";
  * row's `EditTeamMemberDialog` opens; a failure here is likewise non-fatal,
  * `EditTeamMemberDialog`'s "Custom rate" section just renders with an empty
  * article list rather than blocking the whole Team screen.
+ *
+ * `listReferenceItems("region")` (issue #164, Planning module) is fetched the
+ * same "cheap, unconditional, non-fatal" way for `EditTeamMemberDialog`'s
+ * Region `<Select>` — see `TeamMemberRecord.regionId`'s own doc comment in
+ * `lib/team/actions.ts` for why every row (not just engineers) can carry one.
  */
 export async function TeamBoard({ canWrite, currentUserId }: { canWrite: boolean; currentUserId: string }) {
-  const [result, articlesResult] = await Promise.all([listTeamMembers(), listArticlesForSelect()]);
+  const [result, articlesResult, regionsResult] = await Promise.all([
+    listTeamMembers(),
+    listArticlesForSelect(),
+    listReferenceItems("region"),
+  ]);
 
   return (
     <TeamManager
@@ -31,6 +41,7 @@ export async function TeamBoard({ canWrite, currentUserId }: { canWrite: boolean
       canWrite={canWrite}
       currentUserId={currentUserId}
       articles={articlesResult.data?.articles ?? []}
+      regions={regionsResult.data?.items ?? []}
     />
   );
 }

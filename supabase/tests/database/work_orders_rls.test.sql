@@ -1,7 +1,11 @@
 -- pgTAP RLS tests for work_orders (issue #13,
 -- 20260823120000_work_orders_core.sql), extended with
 -- work_orders.source_activity_id coverage (issue #87,
--- 20260829090000_work_orders_source_activity_id.sql).
+-- 20260829090000_work_orders_source_activity_id.sql), and further extended
+-- with work_orders.type_id coverage (issue #164, Planning module,
+-- 20260915100000_work_orders_type_and_duration.sql) -- wrong list_key,
+-- cross-org, and a positive same-org case, identical in shape to the
+-- pre-existing status_id/priority_id checks.
 --
 -- Run with the Supabase CLI's local test runner (requires Docker):
 --   supabase test db
@@ -28,7 +32,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(38);
+select plan(41);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: org_a with one of each relevant role, org_b for tenant
@@ -115,6 +119,16 @@ from public.reference_list_items rli
 join public.reference_lists rl on rl.id = rli.reference_list_id
 where rl.organization_id = 'c1000000-0000-0000-0000-00000000000b'
   and rl.list_key = 'work_order_status' and rli.value = 'new';
+
+-- Capture org_b's seeded activity_type "afspraak" item id, needed later
+-- (while acting as owner_a) for the cross-org type_id hostile-insert test
+-- (issue #164, 20260915100000_work_orders_type_and_duration.sql).
+insert into pg_temp.captured_ids (key, val)
+select 'org_b_activity_type_afspraak_id', rli.id
+from public.reference_list_items rli
+join public.reference_lists rl on rl.id = rli.reference_list_id
+where rl.organization_id = 'c1000000-0000-0000-0000-00000000000b'
+  and rl.list_key = 'activity_type' and rli.value = 'afspraak';
 
 -- ---------------------------------------------------------------------------
 -- 1. owner: insert, derived columns, defaults, and every cross-field/
@@ -232,6 +246,41 @@ select throws_ok(
   'work_orders.status_id from a different organization''s work_order_status list (org_b''s) is rejected'
 ); -- 13
 
+-- work_orders.type_id (issue #164, 20260915100000_work_orders_type_and_
+-- duration.sql): identical in shape to the status_id/priority_id checks
+-- above (tests 11-13) — wrong list_key, cross-org, and a positive same-org
+-- case.
+select throws_ok(
+  $$ insert into public.work_orders (client_id, title, type_id)
+     select 'c3000000-0000-0000-0000-00000000000a', 'Wrong Type List',
+       (select rli.id from public.reference_list_items rli
+          join public.reference_lists rl on rl.id = rli.reference_list_id
+          where rl.organization_id = 'c1000000-0000-0000-0000-00000000000a'
+            and rl.list_key = 'work_order_priority' and rli.is_default) $$,
+  '23514',
+  null,
+  'work_orders.type_id must be from the activity_type list, not work_order_priority (validate_work_order_reference_items)'
+); -- 14
+
+select throws_ok(
+  $$ insert into public.work_orders (client_id, title, type_id)
+     select 'c3000000-0000-0000-0000-00000000000a', 'Cross Org Type', val
+     from pg_temp.captured_ids where key = 'org_b_activity_type_afspraak_id' $$,
+  '23514',
+  null,
+  'work_orders.type_id from a different organization''s activity_type list (org_b''s) is rejected'
+); -- 15
+
+select lives_ok(
+  $$ insert into public.work_orders (client_id, title, type_id)
+     select 'c3000000-0000-0000-0000-00000000000a', 'Valid Type Onderhoud', rli.id
+     from public.reference_list_items rli
+     join public.reference_lists rl on rl.id = rli.reference_list_id
+     where rl.organization_id = 'c1000000-0000-0000-0000-00000000000a'
+       and rl.list_key = 'activity_type' and rli.value = 'onderhoud' $$,
+  'owner_a can insert a work order with type_id set to a valid same-org activity_type item (Onderhoud)'
+); -- 16
+
 -- ---------------------------------------------------------------------------
 -- 2. planner: full CRUD, matching the RBAC matrix's planning row.
 -- ---------------------------------------------------------------------------
@@ -242,41 +291,41 @@ select lives_ok(
      values ('c6000000-0000-0000-0000-00000000000b', 'c3000000-0000-0000-0000-00000000000a', 'Replace Filter',
        'c2444444-4444-4444-4444-444444444444') $$,
   'planner_a can insert a work order (assigned to engineer_a2)'
-); -- 14
+); -- 17
 
 select lives_ok(
   $$ update public.work_orders set title = 'Fix AC Unit' where id = 'c6000000-0000-0000-0000-00000000000a' $$,
   'planner_a can update any work order in org_a, not just their own'
-); -- 15
+); -- 18
 
 select is(
   (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   'Fix AC Unit',
   'planner_a''s update took effect'
-); -- 16
+); -- 19
 
 select lives_ok(
   $$ insert into public.work_orders (id, client_id, title)
      values ('c6000000-0000-0000-0000-00000000000c', 'c3000000-0000-0000-0000-00000000000a', 'Disposable') $$,
   'planner_a can insert a disposable work order for the delete test below'
-); -- 17
+); -- 20
 
 select lives_ok(
   $$ delete from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000c' $$,
   'planner_a can delete a work order in org_a'
-); -- 18
+); -- 21
 
 select is(
   (select count(*)::int from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000c'),
   0,
   'the disposable work order is actually gone after planner_a''s delete'
-); -- 19
+); -- 22
 
 select is(
   (select count(*)::int from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   2,
   'planner_a (unlike an engineer) sees every work order in org_a, not just ones assigned to them'
-); -- 20
+); -- 23
 
 -- ---------------------------------------------------------------------------
 -- 3. engineer: SELECT/UPDATE scoped to assigned_to = auth.uid() only; no
@@ -288,13 +337,13 @@ select is(
   (select count(*)::int from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   1,
   'engineer_a only sees the one work order assigned to them (not the one assigned to engineer_a2)'
-); -- 21
+); -- 24
 
 select is(
   (select id from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   'c6000000-0000-0000-0000-00000000000a'::uuid,
   'the work order engineer_a can see is specifically the one assigned to them'
-); -- 22
+); -- 25
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title, assigned_to)
@@ -302,18 +351,18 @@ select throws_ok(
   '42501',
   null,
   'engineer_a cannot INSERT a work order, even assigned to themselves (RBAC matrix: engineer has no create action on planning)'
-); -- 23
+); -- 26
 
 select lives_ok(
   $$ update public.work_orders set notes = 'Replaced capacitor' where id = 'c6000000-0000-0000-0000-00000000000a' $$,
   'engineer_a can update their own assigned work order'
-); -- 24
+); -- 27
 
 select is(
   (select notes from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   'Replaced capacitor',
   'engineer_a''s update to their own work order took effect'
-); -- 25
+); -- 28
 
 update public.work_orders set title = 'Hijacked' where id = 'c6000000-0000-0000-0000-00000000000b';
 
@@ -321,7 +370,7 @@ select is(
   (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000b'),
   'Replace Filter',
   'engineer_a''s UPDATE on engineer_a2''s work order is silently excluded by RLS (USING); title unchanged'
-); -- 26
+); -- 29
 
 delete from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a';
 
@@ -329,7 +378,7 @@ select is(
   (select count(*)::int from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   1,
   'engineer_a''s DELETE attempt on their own assigned work order is silently excluded by RLS (engineer has no delete action); row still exists'
-); -- 27
+); -- 30
 
 select throws_ok(
   $$ update public.work_orders set assigned_to = 'c2444444-4444-4444-4444-444444444444'
@@ -337,7 +386,7 @@ select throws_ok(
   '42501',
   null,
   'engineer_a cannot reassign their own work order away from themselves (assigned_to := engineer_a2); USING passes (currently assigned to them) but WITH CHECK fails on the new row since assigned_to <> auth.uid() and they are not owner/planner'
-); -- 28
+); -- 31
 
 -- ---------------------------------------------------------------------------
 -- 4. finance / administratie: read-only, all rows (not scoped like engineer).
@@ -348,7 +397,7 @@ select is(
   (select count(*)::int from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   2,
   'finance_a can SELECT every work order in org_a (read-only, all rows, not assignment-scoped)'
-); -- 29
+); -- 32
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title)
@@ -356,7 +405,7 @@ select throws_ok(
   '42501',
   null,
   'finance_a cannot INSERT a work order (read-only)'
-); -- 30
+); -- 33
 
 update public.work_orders set title = 'Finance Hijack' where id = 'c6000000-0000-0000-0000-00000000000a';
 
@@ -364,7 +413,7 @@ select is(
   (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   'Fix AC Unit',
   'finance_a''s UPDATE is silently excluded by RLS (read-only); title unchanged'
-); -- 31
+); -- 34
 
 select pg_temp.act_as('c2666666-6666-6666-6666-666666666666');
 
@@ -372,7 +421,7 @@ select is(
   (select count(*)::int from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   2,
   'administratie_a can SELECT every work order in org_a (read-only, all rows)'
-); -- 32
+); -- 35
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title)
@@ -380,7 +429,7 @@ select throws_ok(
   '42501',
   null,
   'administratie_a cannot INSERT a work order (read-only)'
-); -- 33
+); -- 36
 
 -- ---------------------------------------------------------------------------
 -- 5. Tenant isolation: owner_b (org_b) cannot see or write org_a's work orders.
@@ -391,7 +440,7 @@ select is(
   (select count(*)::int from public.work_orders where organization_id = 'c1000000-0000-0000-0000-00000000000a'),
   0,
   'owner_b cannot SELECT org_a''s work orders'
-); -- 34
+); -- 37
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title)
@@ -399,7 +448,7 @@ select throws_ok(
   '42501',
   null,
   'owner_b cannot INSERT a work order under org_a''s client (not a member of org_a at all, so current_member_role is null)'
-); -- 35
+); -- 38
 
 -- ---------------------------------------------------------------------------
 -- 6. work_orders.source_activity_id: must belong to the same client_id as
@@ -430,7 +479,7 @@ select lives_ok(
   $$ insert into public.work_orders (client_id, title, source_activity_id)
      values ('c3000000-0000-0000-0000-00000000000a', 'Werkbon Vanuit Melding', 'c7000000-0000-0000-0000-00000000000a') $$,
   'owner_a can insert a work order under client A with source_activity_id set to the Client A activity (same client)'
-); -- 36
+); -- 39
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title, source_activity_id)
@@ -438,7 +487,7 @@ select throws_ok(
   '23514',
   null,
   'work_orders.source_activity_id from a different client (the Client A2 activity) is rejected when client_id=Client A'
-); -- 37
+); -- 40
 
 select throws_ok(
   $$ insert into public.work_orders (client_id, title, source_activity_id)
@@ -446,7 +495,7 @@ select throws_ok(
   '23503',
   null,
   'work_orders.source_activity_id pointing at a nonexistent activity is rejected (dangling reference)'
-); -- 38
+); -- 41
 
 select * from finish();
 rollback;

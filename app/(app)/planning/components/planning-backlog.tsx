@@ -1,0 +1,196 @@
+"use client";
+
+import type { DragEvent } from "react";
+import { Badge, Card, Inline, Stack, Text, ViewSwitcher, resolveColor, type ViewSwitcherOption } from "@yourorg/ui";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { groupBacklogByRegion } from "../grouping";
+import { formatDurationHours } from "../date-utils";
+
+export interface PlanningBacklogProps {
+  workOrders: WorkOrderRecord[];
+  regions: ReferenceListItemRecord[];
+  activityTypes: ReferenceListItemRecord[];
+  siteRegionById: Record<string, string | null>;
+  clientNameById: Record<string, string>;
+  selectedId: string | null;
+  onSelect: (workOrder: WorkOrderRecord) => void;
+  onDragStart: (workOrder: WorkOrderRecord) => void;
+  onDragEnd: () => void;
+  typeFilter: string | null;
+  onTypeFilterChange: (value: string | null) => void;
+  /** Whether a currently-scheduled block (dragged from the grid) is being
+   * dragged right now — enables this panel as a drop target and drives its
+   * `onDropToBacklog` accent. `null` while nothing/a backlog card itself is
+   * being dragged (dropping an already-unscheduled card back onto its own
+   * panel is a no-op, so the panel isn't a live drop target then). */
+  draggingScheduledWorkOrder: WorkOrderRecord | null;
+  onDropToBacklog: () => void;
+}
+
+/**
+ * "Werkvoorraad" backlog panel (issue #164) — count badge, type filter
+ * pills sourced from the org's own `activity_type` reference items (not
+ * hardcoded to Storing/Onderhoud/Inspectie — a tenant can configure more),
+ * grouped by region with an hour total per group, draggable cards with a
+ * colored left border matching the item's type color. A card is also
+ * click-to-select (visible `aria-pressed` state) — the non-drag accessible
+ * fallback described in the module's build plan: select a card here, then
+ * click a valid grid cell in `planning-grid.tsx` to schedule it via the
+ * same `scheduleWorkOrder` action a drop would call.
+ */
+export function PlanningBacklog({
+  workOrders,
+  regions,
+  activityTypes,
+  siteRegionById,
+  clientNameById,
+  selectedId,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+  typeFilter,
+  onTypeFilterChange,
+  draggingScheduledWorkOrder,
+  onDropToBacklog,
+}: PlanningBacklogProps) {
+  const filterOptions: ViewSwitcherOption<string>[] = [
+    { value: "all", label: "Alle" },
+    ...activityTypes.map((type) => ({ value: type.value, label: type.label })),
+  ];
+
+  const filtered = typeFilter ? workOrders.filter((wo) => wo.work_order_type?.value === typeFilter) : workOrders;
+  const groups = groupBacklogByRegion(filtered, regions, siteRegionById);
+
+  const acceptingDrop = draggingScheduledWorkOrder != null;
+
+  return (
+    <Card
+      className={acceptingDrop ? "ui-planning-backlog ui-planning-backlog-drop-target" : "ui-planning-backlog"}
+      onDragOver={(event) => {
+        if (acceptingDrop) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!acceptingDrop) return;
+        event.preventDefault();
+        onDropToBacklog();
+      }}
+    >
+      <Stack gap="md">
+        <Inline justify="between" align="center">
+          <Text className="ui-planning-backlog-title">Werkvoorraad</Text>
+          <Badge variant="muted">{workOrders.length}</Badge>
+        </Inline>
+
+        <ViewSwitcher
+          aria-label="Filter op type"
+          value={typeFilter ?? "all"}
+          options={filterOptions}
+          onChange={(value) => onTypeFilterChange(value === "all" ? null : value)}
+        />
+
+        {groups.length === 0 ? (
+          <Text tone="muted">Geen openstaande items.</Text>
+        ) : (
+          <Stack gap="md">
+            {groups.map((group) => (
+              <Stack gap="sm" key={group.key}>
+                <Inline justify="between" align="center">
+                  <Text className="ui-planning-backlog-group-label">{group.label.toUpperCase()}</Text>
+                  <Text tone="muted" className="ui-planning-backlog-group-total">
+                    {formatDurationHours(group.totalMinutes)}
+                  </Text>
+                </Inline>
+                <Stack gap="sm">
+                  {group.workOrders.map((workOrder) => (
+                    <BacklogCard
+                      key={workOrder.id}
+                      workOrder={workOrder}
+                      clientName={clientNameById[workOrder.client_id] ?? "Onbekende klant"}
+                      selected={selectedId === workOrder.id}
+                      onSelect={() => onSelect(workOrder)}
+                      onDragStart={() => onDragStart(workOrder)}
+                      onDragEnd={onDragEnd}
+                    />
+                  ))}
+                </Stack>
+              </Stack>
+            ))}
+          </Stack>
+        )}
+
+        <Text tone="muted" className="ui-planning-backlog-hint">
+          Sleep een item naar een monteur. Klik een gepland blok om het terug te zetten.
+        </Text>
+      </Stack>
+    </Card>
+  );
+}
+
+function BacklogCard({
+  workOrder,
+  clientName,
+  selected,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+}: {
+  workOrder: WorkOrderRecord;
+  clientName: string;
+  selected: boolean;
+  onSelect: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const schedulable = workOrder.duration_minutes != null;
+  const hex = resolveColor(workOrder.work_order_type?.color);
+
+  function handleDragStart(event: DragEvent<HTMLElement>) {
+    if (!schedulable) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.setData("text/plain", workOrder.id);
+    event.dataTransfer.effectAllowed = "move";
+    onDragStart();
+  }
+
+  return (
+    <article
+      className="ui-planning-backlog-card"
+      style={{ borderLeftColor: hex ?? "var(--ui-border-strong)" }}
+      draggable={schedulable}
+      onDragStart={handleDragStart}
+      onDragEnd={onDragEnd}
+      onClick={schedulable ? onSelect : undefined}
+      role="button"
+      tabIndex={schedulable ? 0 : -1}
+      aria-pressed={selected}
+      aria-disabled={!schedulable || undefined}
+      onKeyDown={(event) => {
+        if (schedulable && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      data-selected={selected || undefined}
+    >
+      <Inline justify="between" align="start" gap="sm">
+        <Text className="ui-planning-backlog-card-title">{workOrder.title}</Text>
+        {workOrder.work_order_type && <Badge color={workOrder.work_order_type.color}>{workOrder.work_order_type.label}</Badge>}
+      </Inline>
+      <Text tone="muted" className="ui-planning-backlog-card-meta">
+        {clientName}
+      </Text>
+      <Inline justify="end">
+        {schedulable ? (
+          <Badge variant="muted">{formatDurationHours(workOrder.duration_minutes!)}</Badge>
+        ) : (
+          <Text tone="danger" className="ui-planning-backlog-card-meta">
+            Geen duur ingesteld
+          </Text>
+        )}
+      </Inline>
+    </article>
+  );
+}

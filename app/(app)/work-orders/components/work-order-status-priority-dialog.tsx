@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Dialog, Label, Select, Stack, Text } from "@yourorg/ui";
+import { Button, Dialog, Input, Label, Select, Stack, Text } from "@yourorg/ui";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderDraft } from "./work-order-draft";
 
@@ -11,7 +11,14 @@ export interface WorkOrderStatusPriorityDialogProps {
   draft: WorkOrderDraft;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
-  onSave: (patch: Pick<WorkOrderDraft, "statusId" | "priorityId">) => Promise<{ ok: boolean; error?: string }>;
+  /** The org's `activity_type` reference items (issue #164, Planning module)
+   * — same list Activities' own type picker reads, reused rather than a
+   * separate `work_order_type` list (see `../schema.ts`'s
+   * `workOrderCreateSchema.typeId` doc comment). */
+  types: ReferenceListItemRecord[];
+  onSave: (
+    patch: Pick<WorkOrderDraft, "statusId" | "priorityId" | "typeId" | "durationMinutes">,
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -19,6 +26,13 @@ export interface WorkOrderStatusPriorityDialogProps {
  * the Status/Priority half of the old "Status & Priority" `Card`, ported
  * here as its own quick-edit popup so changing them doesn't require opening
  * the bigger Assignment popup too.
+ *
+ * Issue #164 (Planning module) folded the new `typeId`/`durationMinutes`
+ * fields into this same popup rather than a separate one: both are, like
+ * Status/Priority, small denormalized fields on the work order row itself
+ * (not a relation needing its own cascade), and both auto-fill from the
+ * source activity at creation but stay independently editable here — same
+ * shape as Status auto-filling to the org's default when omitted.
  */
 export function WorkOrderStatusPriorityDialog({
   open,
@@ -26,10 +40,13 @@ export function WorkOrderStatusPriorityDialog({
   draft,
   statuses,
   priorities,
+  types,
   onSave,
 }: WorkOrderStatusPriorityDialogProps) {
   const [statusId, setStatusId] = useState(draft.statusId);
   const [priorityId, setPriorityId] = useState(draft.priorityId);
+  const [typeId, setTypeId] = useState(draft.typeId);
+  const [durationMinutes, setDurationMinutes] = useState(draft.durationMinutes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +55,7 @@ export function WorkOrderStatusPriorityDialog({
   async function handleSave() {
     setError(null);
     setSaving(true);
-    const result = await onSave({ statusId, priorityId });
+    const result = await onSave({ statusId, priorityId, typeId, durationMinutes });
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");
@@ -78,6 +95,29 @@ export function WorkOrderStatusPriorityDialog({
                 </option>
               ))}
             </Select>
+          </Stack>
+          <Stack gap="sm">
+            <Label htmlFor="wo-type">Type</Label>
+            <Select id="wo-type" value={typeId} onChange={(event) => setTypeId(event.target.value)}>
+              <option value="">No type</option>
+              {types.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </Select>
+          </Stack>
+          <Stack gap="sm">
+            <Label htmlFor="wo-duration">Duration (minutes)</Label>
+            <Input
+              id="wo-duration"
+              type="number"
+              min={0}
+              step={1}
+              value={durationMinutes}
+              onChange={(event) => setDurationMinutes(event.target.value)}
+              placeholder="e.g. 60"
+            />
           </Stack>
         </Stack>
       </Dialog.Body>

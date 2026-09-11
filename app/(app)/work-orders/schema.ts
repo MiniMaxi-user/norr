@@ -83,6 +83,32 @@ export const workOrderCreateSchema = z.object({
   priorityId: optionalUuid("Invalid priority."),
   scheduledAt: optionalIsoDateTime("Expected a valid scheduled date/time."),
   completedAt: optionalIsoDateTime("Expected a valid completed date/time."),
+  /** FK into this org's `activity_type` reference list (issue #164, Planning
+   * module) — reused, not a separate `work_order_type` list; see
+   * `supabase/migrations/20260915100000_work_orders_type_and_duration.sql`'s
+   * design note 1. Nullable; when omitted on create, the
+   * `derive_work_order_organization_id` DB trigger fills it in from the
+   * linked `sourceActivityId`'s own type when one is set, same "server
+   * trigger fills a sensible default, not re-validated cross-field here"
+   * trust boundary as `statusId`. */
+  typeId: optionalUuid("Invalid type."),
+  /** The scheduler block length in minutes (issue #164, Planning module) —
+   * nullable, `>= 0` when set (mirrors the DB's
+   * `work_orders_duration_minutes_non_negative` CHECK). When omitted on
+   * create and a `typeId` is known (supplied or auto-filled from the source
+   * activity), the same DB trigger fills it in from that type's own
+   * `default_duration_minutes` (issue #165). Not required at the schema
+   * layer — `scheduleWorkOrder` (`./planning-actions.ts`) is what actually
+   * requires a duration before a work order can be dragged onto the
+   * scheduler grid. */
+  durationMinutes: z.preprocess(
+    emptyToUndefined,
+    z.coerce
+      .number()
+      .int()
+      .nonnegative("Duration must be zero or a positive number of minutes.")
+      .optional(),
+  ),
 });
 
 export type WorkOrderCreateInput = z.infer<typeof workOrderCreateSchema>;

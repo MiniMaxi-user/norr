@@ -11,8 +11,10 @@ import {
   Settings,
   ShieldCheck,
   Bell,
+  Clock,
 } from "@yourorg/ui/icons";
 import { hasFeature, type FeatureKey, type FeatureOrganization } from "@/lib/rbac/features";
+import { can, type Action, type Module, type PermissionActor } from "@/lib/rbac/permissions";
 
 /**
  * Single source of truth for primary nav entries, shared by the sidebar
@@ -35,6 +37,24 @@ export interface NavItem {
   href: string;
   icon: ComponentType;
   group: string;
+  /**
+   * Extra RBAC gate beyond entitlement (`hasFeature`) — every other item
+   * below only needs the org to be entitled to `moduleKey`; ANY role with
+   * some access still sees the entry (existing "Soon"-badge disabled
+   * treatment when not yet entitled). A route can also be genuinely
+   * role-restricted rather than just permission-scoped once inside it —
+   * e.g. the Planning scheduler board (issue #164) is owner/planner only,
+   * while the sibling Work Orders entry shares the exact same `planning`
+   * moduleKey/entitlement but stays visible to every role. When set,
+   * `resolveNavItems` requires `can(actor, requiredPermission.module,
+   * requiredPermission.action)` for the item to be included in the
+   * resolved list AT ALL (not merely disabled) — matching this app's
+   * "a module/view that isn't entitled must not render" convention
+   * (CLAUDE.md rule 3), applied here to a role gate instead of a tenant
+   * entitlement gate. Omitted (undefined) for every other item, which
+   * keeps their existing hasFeature()-only resolution unchanged.
+   */
+  requiredPermission?: { module: Module; action: Action };
 }
 
 export interface ResolvedNavItem extends NavItem {
@@ -56,6 +76,24 @@ export const NAV_ITEMS: NavItem[] = [
   // dedicated package/tag icon, and `Boxes` is the only box-shaped icon
   // offered — reusing it here rather than inventing a new icon name.
   { moduleKey: "articles", label: "Articles", href: "/articles", icon: Boxes, group: "Operations" },
+  // Planning (issue #164) — the drag-and-drop dispatcher/scheduler board,
+  // the fuller multi-view Planning/Dispatch board `moduleKey: "planning"`'s
+  // own comment (below, on the Work Orders entry) anticipated as follow-on
+  // work. Shares the exact same `planning` moduleKey/FeatureKey/RBAC module
+  // as Work Orders (both are already reserved for this build — see
+  // `lib/rbac/permissions.ts`/`lib/rbac/features.ts`), but is owner/planner
+  // ONLY in practice: `requiredPermission` requires the FULL `update` action
+  // (not `update_own`, which an engineer also holds on this module for their
+  // own assigned work) so an engineer never sees this entry at all, while
+  // still seeing the Work Orders entry right below for their own assignments.
+  {
+    moduleKey: "planning",
+    label: "Planning",
+    href: "/planning",
+    icon: Clock,
+    group: "Operations",
+    requiredPermission: { module: "planning", action: "update" },
+  },
   // Route is `/work-orders` (the Work Order entity, issue #13) rather than
   // `/planning` — the fuller multi-view (list/kanban/calendar/map,
   // drag-and-drop) Planning/Dispatch board named in docs/ROADMAP.md is
@@ -108,16 +146,31 @@ export const NAV_ITEMS: NavItem[] = [
  * needs to work for. That one item is special-cased below to resolve
  * `enabled` from `isPlatformAdmin` instead of `hasFeature`; every other
  * item's resolution is unchanged.
+ *
+ * `actor` (issue #164) drives the second, independent `requiredPermission`
+ * gate on `NavItem` — unlike `enabled` (disabled-with-a-"Soon"-badge for a
+ * not-yet-entitled module), an item whose `requiredPermission` check fails
+ * is dropped from the returned array ENTIRELY, not merely marked disabled:
+ * per CLAUDE.md rule 3, a role-restricted view "must not render, not just
+ * be disabled." `actor` is optional (undefined) only for callers that
+ * genuinely have no actor to check yet; every item with a
+ * `requiredPermission` is excluded whenever `actor` is absent, same as an
+ * unresolvable permission check.
  */
 export async function resolveNavItems(
   organization: FeatureOrganization | null,
   isPlatformAdmin = false,
+  actor?: PermissionActor,
 ): Promise<ResolvedNavItem[]> {
-  return Promise.all(
+  const resolved = await Promise.all(
     NAV_ITEMS.map(async (item) => ({
       ...item,
       enabled:
         item.moduleKey === "platform" ? isPlatformAdmin : await hasFeature(organization, item.moduleKey),
     })),
   );
+  return resolved.filter((item) => {
+    if (!item.requiredPermission) return true;
+    return actor ? can(actor, item.requiredPermission.module, item.requiredPermission.action) : false;
+  });
 }

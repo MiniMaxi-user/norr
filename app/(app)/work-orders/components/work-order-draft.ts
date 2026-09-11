@@ -23,6 +23,16 @@ export interface WorkOrderDraft {
   scheduledAt: string;
   statusId: string;
   priorityId: string;
+  /** FK into the org's `activity_type` reference list (issue #164, Planning
+   * module) — see `../schema.ts`'s `workOrderCreateSchema.typeId` doc comment
+   * for why this reuses that list rather than a new `work_order_type` one.
+   * `""` when unset, same "empty string means unset" convention every other
+   * optional FK field on this draft already uses. */
+  typeId: string;
+  /** The scheduler block length in minutes (issue #164) — `""` when unset (a
+   * text `<Input type="number">`'s own empty-string state), converted to a
+   * number (or left unset) by `draftToInput` below. */
+  durationMinutes: string;
 }
 
 export function draftFromWorkOrder(workOrder: WorkOrderRecord): WorkOrderDraft {
@@ -38,6 +48,8 @@ export function draftFromWorkOrder(workOrder: WorkOrderRecord): WorkOrderDraft {
     scheduledAt: workOrder.scheduled_at ?? "",
     statusId: workOrder.status_id,
     priorityId: workOrder.priority_id ?? "",
+    typeId: workOrder.type_id ?? "",
+    durationMinutes: workOrder.duration_minutes != null ? String(workOrder.duration_minutes) : "",
   };
 }
 
@@ -78,6 +90,8 @@ export function emptyDraft(options: {
     scheduledAt: "",
     statusId: "",
     priorityId: "",
+    typeId: "",
+    durationMinutes: "",
   };
 }
 
@@ -98,5 +112,9 @@ export function draftToInput(patch: Partial<WorkOrderDraft>): Record<string, unk
   if (patch.scheduledAt !== undefined) input.scheduledAt = patch.scheduledAt || undefined;
   if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
   if (patch.priorityId !== undefined) input.priorityId = patch.priorityId || undefined;
+  if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
+  if (patch.durationMinutes !== undefined) {
+    input.durationMinutes = patch.durationMinutes.trim() === "" ? undefined : Number(patch.durationMinutes);
+  }
   return input;
 }

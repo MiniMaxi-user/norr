@@ -101,13 +101,17 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   if (!canAccessModule(actor, "planning")) notFound();
   if (!can(actor, "planning", "create")) notFound();
 
-  const [clientsResult, lockedClientResult, activityResult, statusesResult, prioritiesResult, membersResult] =
+  const [clientsResult, lockedClientResult, activityResult, statusesResult, prioritiesResult, typesResult, membersResult] =
     await Promise.all([
       clientId ? Promise.resolve(null) : listClients({ limit: 200 }),
       clientId ? getClient(clientId) : Promise.resolve(null),
       activityId ? getActivity(activityId) : Promise.resolve(null),
       listReferenceItems("work_order_status"),
       listReferenceItems("work_order_priority"),
+      // Issue #164 (Planning module) — reuses the `activity_type` list rather
+      // than a separate `work_order_type` one, see `../schema.ts`'s
+      // `workOrderCreateSchema.typeId` doc comment.
+      listReferenceItems("activity_type"),
       listOrgMembers(),
     ]);
 
@@ -120,6 +124,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   const sourceActivityId = activity?.id;
   const statuses = statusesResult.data?.items ?? [];
   const priorities = prioritiesResult.data?.items ?? [];
+  const types = typesResult.data?.items ?? [];
   const members = membersResult.data?.members ?? [];
 
   // Issue #106, Task 1 — an activity has no `site_id` of its own; when it has
@@ -189,6 +194,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       sourceActivityId={sourceActivityId}
       statuses={statuses}
       priorities={priorities}
+      types={types}
       members={members}
       cancelHref={cancelHref}
     />

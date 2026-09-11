@@ -35,8 +35,12 @@ export function AppSidebar({
           const Icon = item.icon;
           const showGroupLabel = item.group !== lastGroup;
           lastGroup = item.group;
+          // `href`, not `moduleKey` (issue #164): Planning and Work Orders
+          // now share `moduleKey: "planning"` — see `nav-items.ts`'s
+          // `requiredPermission` comment — so `href` is the only field
+          // still guaranteed unique per nav entry.
           return (
-            <Fragment key={item.moduleKey}>
+            <Fragment key={item.href}>
               {showGroupLabel && <NavGroupLabel>{item.group}</NavGroupLabel>}
               <ActiveNavItem
                 href={item.href}

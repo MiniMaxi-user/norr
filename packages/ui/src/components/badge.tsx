@@ -37,7 +37,17 @@ function normalizeHex(hex: string): string | null {
   return `#${value}`;
 }
 
-function resolveColor(color: string | null | undefined): string | null {
+/**
+ * Resolves a tenant-configurable color (a named swatch or a raw hex code) to
+ * a real CSS color value, or `null` when unset/unrecognized. Exported
+ * (issue #164, Planning module) for consumers that need the raw hex itself
+ * — not a rendered `Badge` — e.g. a scheduler card's colored left border or
+ * a scheduled block's tinted background (`SchedulerGrid.Block` in
+ * `./scheduler-grid.tsx`, and the Planning backlog's own draggable cards at
+ * the app layer). `Badge` itself keeps using this internally for its own
+ * tinted-pill look.
+ */
+export function resolveColor(color: string | null | undefined): string | null {
   if (!color) return null;
   const trimmed = color.trim();
   if (trimmed.startsWith("#")) return normalizeHex(trimmed);

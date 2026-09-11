@@ -36,6 +36,9 @@ export interface WorkOrderHeroProps {
   lockedClientId?: string;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
+  /** Issue #164 — the org's `activity_type` reference items, for the Type
+   * `<Select>` folded into `WorkOrderStatusPriorityDialog`. */
+  types: ReferenceListItemRecord[];
   readOnly?: boolean;
   /** Hours/Material/Checklist KPI tiles — computed by `WorkOrderScreen` from
    * the data it already fetched/holds, kept out of this component so it
@@ -51,7 +54,7 @@ export interface WorkOrderHeroProps {
     patch: Pick<WorkOrderDraft, "clientId" | "siteId" | "assetId" | "contractId">,
   ) => Promise<{ ok: boolean; error?: string }>;
   onStatusPrioritySave: (
-    patch: Pick<WorkOrderDraft, "statusId" | "priorityId">,
+    patch: Pick<WorkOrderDraft, "statusId" | "priorityId" | "typeId" | "durationMinutes">,
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -108,6 +111,7 @@ export function WorkOrderHero({
   lockedClientId,
   statuses,
   priorities,
+  types,
   readOnly,
   stats,
   actions,
@@ -220,6 +224,7 @@ export function WorkOrderHero({
           draft={draft}
           statuses={statuses}
           priorities={priorities}
+          types={types}
           onSave={onStatusPrioritySave}
         />
       )}

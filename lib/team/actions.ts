@@ -114,6 +114,17 @@ export interface TeamMemberRecord {
    * for `role === "engineer"` rows — `updateTeamMemberRateSettings` rejects
    * writes to any other role. */
   rateSettings: RateOverrideRecord;
+  /** Nullable FK into this org's `region` reference list (issue #164,
+   * Planning module) — the geographic region this member (typically an
+   * engineer) is assigned to, for grouping the scheduler board's "Per regio"
+   * view. Present on every member row regardless of role, same "column
+   * exists on all of `memberships`, only meaningfully edited for engineers"
+   * shape as `rateSettings` above, though `updateTeamMemberRegion` below does
+   * NOT restrict writes to `role === "engineer"` the way
+   * `updateTeamMemberRateSettings` does — an owner/planner having a region
+   * too (e.g. for their own dispatch grouping) isn't harmful, just usually
+   * unused. */
+  regionId: string | null;
 }
 
 export interface PendingTeamInviteRecord {
@@ -136,6 +147,9 @@ interface MembershipWithUserRow {
   work_article_id: string | null;
   travel_sale_price: number | null;
   work_sale_price: number | null;
+  /** Issue #164, Planning module — see `TeamMemberRecord.regionId`'s own
+   * comment above. */
+  region_id: string | null;
   user: {
     id: string;
     email: string;
@@ -177,7 +191,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
     supabase
       .from("memberships")
       .select(
-        "created_at, role, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)",
+        "created_at, role, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, region_id, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)",
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -203,6 +217,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       avatarUrl: getAvatarUrl(row.user.avatar_path, row.user.avatar_updated_at),
       createdAt: row.created_at,
       isPlatformAdmin: row.user.is_platform_admin,
+      regionId: row.region_id,
       rateSettings: fromRateOverrideRow({
         has_custom_rate: row.has_custom_rate,
         travel_article_id: row.travel_article_id,
@@ -711,4 +726,80 @@ export async function updateTeamMemberRateSettings(
   if (!updated) return fail("Could not update this teammate's rate settings.");
 
   return ok({ userId: idResult.data, ...fromRateOverrideRow(updated) });
+}
+
+// ---------------------------------------------------------------------------
+// Region (issue #164, Planning module) — an engineer's (or any member's, see
+// `TeamMemberRecord.regionId`'s own comment) geographic region assignment,
+// used by the scheduler board's "Per regio" grouping. Storage:
+// `memberships.region_id`, added by `supabase/migrations/20260915090000_
+// region_reference_list.sql` alongside the new `region` reference list;
+// validated server-side (belongs to this org, `list_key = 'region'`) by that
+// migration's `validate_region_reference_item` trigger — not re-validated
+// here, same trust boundary `workOrderCreateSchema.statusId`'s comment
+// documents in `app/(app)/work-orders/schema.ts` for reference-list-backed
+// columns generally.
+// ---------------------------------------------------------------------------
+
+export interface UpdateTeamMemberRegionResult {
+  userId: string;
+  regionId: string | null;
+}
+
+/**
+ * Owner-only. Sets/clears a teammate's `region_id`. Runs under the caller's
+ * OWN session client — `memberships_update_owner` RLS already allows an
+ * owner to update any membership row in their own org (see this file's
+ * header comment) — but still independently re-verifies the target is a
+ * member of the caller's own org first, same shape as
+ * `updateTeamMemberRateSettings` above (minus that function's
+ * engineer-only role restriction — see `TeamMemberRecord.regionId`'s own
+ * comment for why this action doesn't have an equivalent restriction).
+ */
+export async function updateTeamMemberRegion(
+  userId: string,
+  regionId: string | null,
+): Promise<ActionResult<UpdateTeamMemberRegionResult>> {
+  const idResult = uuidSchema.safeParse(userId);
+  if (!idResult.success) return fail("Invalid user id.");
+
+  if (regionId !== null) {
+    const regionIdResult = uuidSchema.safeParse(regionId);
+    if (!regionIdResult.success) {
+      return fail("Please fix the highlighted fields.", { regionId: ["Invalid region."] });
+    }
+  }
+
+  const ctx = await requireModuleContext("settings");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId } = ctx.context;
+
+  if (!can(actor, "settings", "update")) {
+    return fail("Only the organization owner can change a teammate's region.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("memberships")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("user_id", idResult.data)
+    .maybeSingle<{ id: string }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("This person is not a member of your organization.");
+
+  const { data: updated, error: updateError } = await supabase
+    .from("memberships")
+    .update({ region_id: regionId })
+    .eq("id", target.id)
+    .eq("organization_id", organizationId)
+    .select("user_id, region_id")
+    .maybeSingle();
+
+  if (updateError) return fail(mapDbError(updateError));
+  if (!updated) return fail("Could not update this teammate's region.");
+
+  return ok({ userId: updated.user_id, regionId: updated.region_id });
 }
