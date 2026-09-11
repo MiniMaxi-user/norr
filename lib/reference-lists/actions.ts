@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { readThroughReferenceDataCache, invalidateReferenceDataCache } from "@/lib/cache/reference-data";
 import { listKeySchema, referenceItemCreateSchema, referenceItemUpdateSchema } from "./schema";
 
 /**
@@ -286,26 +287,53 @@ export async function listReferenceItems(
   if (!listResult.ok) return fail(listResult.error);
   if (!listResult.found) return ok({ items: [], parentListKey: null });
 
-  // Explicit column projection (issue #149) — every consumer across every
-  // picklist-backed dropdown/badge/tree (asset type/status/subtype/brand,
-  // activity type, the Settings `reference-list-manager.tsx` table, etc.)
-  // reads `value`/`label`/`color`/`icon`/`sort_order`/`is_default`/
-  // `parent_item_id`/`description`/`is_active`. Excludes `reference_list_id`/
-  // `organization_id`/`created_by`/`created_at`/`updated_at` — none of those
-  // are read back from this list.
-  let query = supabase
-    .from("reference_list_items")
-    .select("id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active")
-    .eq("reference_list_id", listResult.id);
-  if (options.parentItemId !== undefined) {
-    query = query.eq("parent_item_id", options.parentItemId);
+  // Cached (issue #147) — keyed by org + `reference_list_items` + this
+  // list's own `list_key`, since every consumer's `parentItemId` filter (see
+  // below) is applied in-memory against the SAME cached full-list read
+  // rather than being baked into the cache key itself: a cascading picker's
+  // filtered read and an unfiltered read of the same list are the same
+  // underlying rows, so caching them once (not once per distinct
+  // `parentItemId`) is both correct and strictly more cache-efficient.
+  let items: ReferenceListItemRecord[];
+  try {
+    items = await readThroughReferenceDataCache(
+      ctx.context.organizationId,
+      "reference_list_items",
+      async () => {
+        // Explicit column projection (issue #149) — every consumer across
+        // every picklist-backed dropdown/badge/tree (asset type/status/
+        // subtype/brand, activity type, the Settings
+        // `reference-list-manager.tsx` table, etc.) reads `value`/`label`/
+        // `color`/`icon`/`sort_order`/`is_default`/`parent_item_id`/
+        // `description`/`is_active`. Excludes `reference_list_id`/
+        // `organization_id`/`created_by`/`created_at`/`updated_at` — none of
+        // those are read back from this list.
+        const { data, error } = await supabase
+          .from("reference_list_items")
+          .select("id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active")
+          .eq("reference_list_id", listResult.id)
+          .order("sort_order", { ascending: true });
+
+        // Thrown (not `fail(...)`-returned) on purpose — see
+        // `lib/cache/reference-data.ts`'s module comment: a thrown fetcher is
+        // never cached, so a transient DB error never gets "stuck" cached
+        // until the next unrelated mutation invalidates it.
+        if (error) throw new Error(mapDbError(error));
+        return (data ?? []) as ReferenceListItemRecord[];
+      },
+      listKeyResult.data,
+    );
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Something went wrong loading this picklist.");
   }
 
-  const { data, error } = await query.order("sort_order", { ascending: true });
+  const filteredItems =
+    options.parentItemId !== undefined
+      ? items.filter((item) => item.parent_item_id === options.parentItemId)
+      : items;
 
-  if (error) return fail(mapDbError(error));
   return ok({
-    items: (data ?? []) as ReferenceListItemRecord[],
+    items: filteredItems,
     parentListKey: listResult.parentListKey,
   });
 }
@@ -405,6 +433,7 @@ export async function createReferenceItem(
     .single();
 
   if (error) return fail(mapDbError(error));
+  invalidateReferenceDataCache(ctx.context.organizationId, "reference_list_items", listKeyResult.data);
   return ok({ item: data as ReferenceListItemRecord });
 }
 
@@ -464,16 +493,27 @@ export async function updateReferenceItem(
     return fail("No changes provided.");
   }
 
+  // `list_key` joined in alongside `*` purely to know which cache tag to
+  // invalidate below (an update never changes which list an item belongs to
+  // — `reference_list_id` is not updatable, see this function's own doc
+  // comment — so this is always the item's one and only list either way).
   const { data, error } = await supabase
     .from("reference_list_items")
     .update(row)
     .eq("id", idResult.data)
-    .select("*")
+    .select("*, reference_list:reference_lists(list_key)")
     .maybeSingle();
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Picklist value not found, or you do not have permission to edit it.");
-  return ok({ item: data as ReferenceListItemRecord });
+
+  const { reference_list, ...itemRow } = data as ReferenceListItemRecord & {
+    reference_list: { list_key: string } | null;
+  };
+  if (reference_list?.list_key) {
+    invalidateReferenceDataCache(ctx.context.organizationId, "reference_list_items", reference_list.list_key);
+  }
+  return ok({ item: itemRow as ReferenceListItemRecord });
 }
 
 /**
@@ -498,14 +538,21 @@ export async function deleteReferenceItem(id: string): Promise<ActionResult<{ de
   }
 
   const supabase = await createSupabaseServerClient();
+  // `list_key` joined in alongside `id` purely to know which cache tag to
+  // invalidate below, same reasoning as `updateReferenceItem`'s own join.
   const { data, error } = await supabase
     .from("reference_list_items")
     .delete()
     .eq("id", idResult.data)
-    .select("id")
+    .select("id, reference_list:reference_lists(list_key)")
     .maybeSingle();
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Picklist value not found, or you do not have permission to delete it.");
+
+  const listKey = (data.reference_list as unknown as { list_key: string } | null)?.list_key;
+  if (listKey) {
+    invalidateReferenceDataCache(ctx.context.organizationId, "reference_list_items", listKey);
+  }
   return ok({ deletedId: data.id as string });
 }

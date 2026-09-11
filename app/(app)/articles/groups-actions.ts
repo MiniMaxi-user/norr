@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { readThroughReferenceDataCache, invalidateReferenceDataCache } from "@/lib/cache/reference-data";
 import { articleGroupCreateSchema, articleGroupUpdateSchema } from "./schema";
 
 /**
@@ -85,19 +86,38 @@ export async function listArticleGroups(): Promise<ActionResult<{ groups: Articl
   }
 
   const supabase = await createSupabaseServerClient();
-  // Explicit column projection (issue #149) — every tree consumer
-  // (`group-tree.ts`'s helpers, the Settings tree manager, the article
-  // form's Group/Subgroup cascade) only ever reads `id`/`parent_group_id`/
-  // `name`/`sort_order`; `organization_id`/`created_by`/`created_at`/
-  // `updated_at` are never read back from this list.
-  const { data, error } = await supabase
-    .from("article_groups")
-    .select("id, parent_group_id, name, sort_order")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
 
-  if (error) return fail(mapDbError(error));
-  return ok({ groups: (data ?? []) as ArticleGroupRecord[] });
+  // Cached (issue #147) — keyed by org + `article_groups` (one whole tree
+  // per org, no further subdivision, unlike `reference_list_items`'s
+  // per-`list_key` caching).
+  try {
+    const groups = await readThroughReferenceDataCache(
+      ctx.context.organizationId,
+      "article_groups",
+      async () => {
+        // Explicit column projection (issue #149) — every tree consumer
+        // (`group-tree.ts`'s helpers, the Settings tree manager, the article
+        // form's Group/Subgroup cascade) only ever reads `id`/
+        // `parent_group_id`/`name`/`sort_order`; `organization_id`/
+        // `created_by`/`created_at`/`updated_at` are never read back from
+        // this list.
+        const { data, error } = await supabase
+          .from("article_groups")
+          .select("id, parent_group_id, name, sort_order")
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true });
+
+        // Thrown (not `fail(...)`-returned) — see
+        // `lib/cache/reference-data.ts`'s module comment: a thrown fetcher
+        // is never cached, so a transient DB error is never "stuck" cached.
+        if (error) throw new Error(mapDbError(error));
+        return (data ?? []) as ArticleGroupRecord[];
+      },
+    );
+    return ok({ groups });
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Something went wrong loading article groups.");
+  }
 }
 
 /** Owner/administratie only (per the `articles` RBAC entry + RLS, both agree
@@ -125,6 +145,7 @@ export async function createArticleGroup(input: unknown): Promise<ActionResult<{
     .single();
 
   if (error) return fail(mapDbError(error));
+  invalidateReferenceDataCache(ctx.context.organizationId, "article_groups");
   return ok({ group: data as ArticleGroupRecord });
 }
 
@@ -163,6 +184,7 @@ export async function updateArticleGroup(
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Article group not found, or you do not have permission to update it.");
+  invalidateReferenceDataCache(ctx.context.organizationId, "article_groups");
   return ok({ group: data as ArticleGroupRecord });
 }
 
@@ -246,5 +268,6 @@ export async function deleteArticleGroup(id: string): Promise<ActionResult<{ del
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Article group not found, or you do not have permission to delete it.");
+  invalidateReferenceDataCache(ctx.context.organizationId, "article_groups");
   return ok({ deletedId: data.id as string });
 }
