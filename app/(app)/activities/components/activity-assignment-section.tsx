@@ -1,12 +1,11 @@
 "use client";
 
-import { Avatar, Badge, Inline, KeyValueList, type KeyValueListItem, Label, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { Avatar, Badge, FormGrid, Inline, KeyValueList, type KeyValueListItem, Label, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ActivitySubtypeRecord } from "../subtypes-actions";
-import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
 import { memberDisplayName } from "@/lib/members/format";
 import { formatDateTime } from "@/lib/format/date";
 import type { ActivityDraft } from "./activity-draft";
@@ -14,7 +13,7 @@ import { SubtypeCascadePicker } from "./subtype-cascade-picker";
 
 type AssignmentDraft = Pick<
   ActivityDraft,
-  "description" | "solution" | "actionHolderId" | "statusId" | "activitySubtypeId" | "solutionSubtypeId"
+  "description" | "actionHolderId" | "statusId" | "activitySubtypeId"
 >;
 
 export interface ActivityAssignmentSectionProps {
@@ -31,9 +30,6 @@ export interface ActivityAssignmentSectionProps {
    * straight into `SubtypeCascadePicker`, `rootFilter`-scoped to `typeId`
    * below. */
   activitySubtypes: ActivitySubtypeRecord[];
-  /** Same shape as `activitySubtypes`, for `solution_subtypes` — no
-   * `rootFilter`, that tree is never linked to Type at any level. */
-  solutionSubtypes: SolutionSubtypeRecord[];
   /** The activity's currently-selected Activity Type (`draft.typeId`, picked
    * in the separate `ActivityTypeSection` above this one) — the Activity
    * subtype cascade's own level-1 options are restricted to roots whose
@@ -83,18 +79,22 @@ export interface ActivityAssignmentSectionProps {
  * read-out for both, for the same reason no edit affordance renders for them
  * anywhere on this screen.
  *
- * Description/Solution are the two fields still gated by `editing` — a plain
- * read `Text` when not editing (a genuinely `readOnly` viewer only, per
- * `activity-screen.tsx`'s own `sectionEditing = !readOnly`: there is no
- * separate edit-mode toggle for a caller who CAN write, per the product
- * owner's "standaard openen als Edit, read-only scherm is niet meer nodig"),
- * an editable `Textarea` bound straight to the shared `draft` via
- * `onFieldChange` otherwise — no local echo state or blur-commit dance (that
- * machinery only existed to dodge a stale-draft-at-submit-time bug back when
- * every keystroke saved immediately; a controlled input bound directly to
- * `draft` is never stale). Solution stays `mode: "edit"` only (issue #121) —
- * a solution is written up once the melding has been worked, never at the
- * moment it's first reported.
+ * Description is gated by `editing` — a plain read `Text` when not editing (a
+ * genuinely `readOnly` viewer only, per `activity-screen.tsx`'s own
+ * `sectionEditing = !readOnly`: there is no separate edit-mode toggle for a
+ * caller who CAN write, per the product owner's "standaard openen als Edit,
+ * read-only scherm is niet meer nodig"), an editable `Textarea` bound
+ * straight to the shared `draft` via `onFieldChange` otherwise — no local
+ * echo state or blur-commit dance (that machinery only existed to dodge a
+ * stale-draft-at-submit-time bug back when every keystroke saved immediately;
+ * a controlled input bound directly to `draft` is never stale).
+ *
+ * Issue #152's follow-up laid Activity subtype and Description side by side
+ * in a `FormGrid` (label above each field, same as before, just no longer
+ * stacked as two full-width rows) and moved Solution + Solution subtype out
+ * into their own sibling section — see `activity-solution-section.tsx` — so
+ * the "what happened" half (Type/Assignment) and the "how it was resolved"
+ * half read as two visually distinct groups instead of one long list.
  */
 export function ActivityAssignmentSection({
   mode,
@@ -104,7 +104,6 @@ export function ActivityAssignmentSection({
   canAssignOthers,
   activityStatuses,
   activitySubtypes,
-  solutionSubtypes,
   typeId,
   editing,
   readOnly,
@@ -130,9 +129,9 @@ export function ActivityAssignmentSection({
     <Stack gap="md">
       <SectionHeader icon={FileText} title="Assignment" />
 
-      {/* Activity subtype (issues #134/#138) — directly ABOVE Description, per
-          the story ("activity subtypen: staan boven invulveld"). Same
-          `editing` gate as Description itself: a genuinely `readOnly` viewer
+      {/* Activity subtype + Description side by side (issue #152 — "activity
+          subtypen: links van invulveld"; previously stacked one above the
+          other). Same `editing` gate on both: a genuinely `readOnly` viewer
           sees the resolved leaf's plain `name` (the shallow embed already on
           `ActivityRecord`, same "no stored breadcrumb path" shape every other
           resolved-reference read view here uses), not the interactive
@@ -140,83 +139,40 @@ export function ActivityAssignmentSection({
           matches the currently-selected Activity Type — see
           `activity-screen.tsx`'s own Type-changed-clears-subtype effect for
           what keeps this in sync when `typeId` itself changes. */}
-      <Stack gap="xs">
-        <Label htmlFor="activity-subtype-level-1">Activity subtype</Label>
-        {editing ? (
-          <SubtypeCascadePicker
-            idBase="activity-subtype"
-            ariaLabel="Activity subtype"
-            nodes={activitySubtypes}
-            value={draft.activitySubtypeId}
-            onChange={(nextValue) => onFieldChange({ activitySubtypeId: nextValue })}
-            rootFilter={(node) => node.type_id === typeId}
-          />
-        ) : (
-          <Text>{activity?.activity_subtype?.name ?? "No activity subtype selected."}</Text>
-        )}
-      </Stack>
-
-      <Stack gap="xs">
-        <Label htmlFor="activity-description">Description</Label>
-        {editing ? (
-          <Textarea
-            id="activity-description"
-            aria-label="Description"
-            rows={2}
-            value={draft.description}
-            onChange={(event) => onFieldChange({ description: event.target.value })}
-          />
-        ) : draft.description ? (
-          <Text>{draft.description}</Text>
-        ) : (
-          <Text tone="muted">No description yet.</Text>
-        )}
-      </Stack>
-
-      {/* Solution subtype (issues #134/#138) — directly ABOVE Solution, same
-          "mode: edit only" gate Solution itself already has (a brand-new
-          activity has no solution to sub-classify yet), no `rootFilter`
-          (`solution_subtypes` is never linked to Type at any level). */}
-      {mode === "edit" && (
+      <FormGrid columns={2}>
         <Stack gap="xs">
-          <Label htmlFor="solution-subtype-level-1">Solution subtype</Label>
+          <Label htmlFor="activity-subtype-level-1">Activity subtype</Label>
           {editing ? (
             <SubtypeCascadePicker
-              idBase="solution-subtype"
-              ariaLabel="Solution subtype"
-              nodes={solutionSubtypes}
-              value={draft.solutionSubtypeId}
-              onChange={(nextValue) => onFieldChange({ solutionSubtypeId: nextValue })}
+              idBase="activity-subtype"
+              ariaLabel="Activity subtype"
+              nodes={activitySubtypes}
+              value={draft.activitySubtypeId}
+              onChange={(nextValue) => onFieldChange({ activitySubtypeId: nextValue })}
+              rootFilter={(node) => node.type_id === typeId}
             />
           ) : (
-            <Text>{activity?.solution_subtype?.name ?? "No solution subtype selected."}</Text>
+            <Text>{activity?.activity_subtype?.name ?? "No activity subtype selected."}</Text>
           )}
         </Stack>
-      )}
 
-      {/* Solution (issue #121) — `mode: "edit"` only, same "nothing to show
-          before the record exists" gating `ActivityScreen`'s Notes/Linked
-          work orders/Historie sections already use: a solution is written up
-          once the melding has been worked, never at the moment it's first
-          reported. */}
-      {mode === "edit" && (
         <Stack gap="xs">
-          <Label htmlFor="activity-solution">Solution</Label>
+          <Label htmlFor="activity-description">Description</Label>
           {editing ? (
             <Textarea
-              id="activity-solution"
-              aria-label="Solution"
+              id="activity-description"
+              aria-label="Description"
               rows={2}
-              value={draft.solution}
-              onChange={(event) => onFieldChange({ solution: event.target.value })}
+              value={draft.description}
+              onChange={(event) => onFieldChange({ description: event.target.value })}
             />
-          ) : draft.solution ? (
-            <Text>{draft.solution}</Text>
+          ) : draft.description ? (
+            <Text>{draft.description}</Text>
           ) : (
-            <Text tone="muted">No solution yet.</Text>
+            <Text tone="muted">No description yet.</Text>
           )}
         </Stack>
-      )}
+      </FormGrid>
 
       {/* Action holder — always a live control, independent of `editing`
           (see this component's own doc comment). */}
@@ -246,8 +202,8 @@ export function ActivityAssignmentSection({
 
       {/* Status — `mode: "edit"` only (a brand-new activity has no status
           to edit yet; the DB fills in the org's default on insert, same
-          "nothing to show before the record exists" gating Solution above
-          uses). Always a live control, independent of `editing`, same
+          "nothing to show before the record exists" gating the Solution
+          section uses). Always a live control, independent of `editing`, same
           treatment as Action holder just above (see this component's own
           doc comment) — moved here from the hero's own status-badge pencil
           (now deleted). */}
