@@ -48,9 +48,14 @@ export async function listAccountManagers(): Promise<ActionResult<{ accountManag
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — every consumer (Settings'
+  // manager table, the Clients kanban card's Account Manager row, the
+  // Client Pipeline section's picker) only ever reads `id`/`first_name`/
+  // `last_name`; `organization_id`/`created_by`/`created_at`/`updated_at`
+  // are never read back from this list.
   const { data, error } = await supabase
     .from("account_managers")
-    .select("*")
+    .select("id, first_name, last_name")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 

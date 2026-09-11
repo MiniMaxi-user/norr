@@ -85,9 +85,14 @@ export async function listArticleGroups(): Promise<ActionResult<{ groups: Articl
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — every tree consumer
+  // (`group-tree.ts`'s helpers, the Settings tree manager, the article
+  // form's Group/Subgroup cascade) only ever reads `id`/`parent_group_id`/
+  // `name`/`sort_order`; `organization_id`/`created_by`/`created_at`/
+  // `updated_at` are never read back from this list.
   const { data, error } = await supabase
     .from("article_groups")
-    .select("*")
+    .select("id, parent_group_id, name, sort_order")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 

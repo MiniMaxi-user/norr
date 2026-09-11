@@ -286,7 +286,17 @@ export async function listReferenceItems(
   if (!listResult.ok) return fail(listResult.error);
   if (!listResult.found) return ok({ items: [], parentListKey: null });
 
-  let query = supabase.from("reference_list_items").select("*").eq("reference_list_id", listResult.id);
+  // Explicit column projection (issue #149) — every consumer across every
+  // picklist-backed dropdown/badge/tree (asset type/status/subtype/brand,
+  // activity type, the Settings `reference-list-manager.tsx` table, etc.)
+  // reads `value`/`label`/`color`/`icon`/`sort_order`/`is_default`/
+  // `parent_item_id`/`description`/`is_active`. Excludes `reference_list_id`/
+  // `organization_id`/`created_by`/`created_at`/`updated_at` — none of those
+  // are read back from this list.
+  let query = supabase
+    .from("reference_list_items")
+    .select("id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active")
+    .eq("reference_list_id", listResult.id);
   if (options.parentItemId !== undefined) {
     query = query.eq("parent_item_id", options.parentItemId);
   }
