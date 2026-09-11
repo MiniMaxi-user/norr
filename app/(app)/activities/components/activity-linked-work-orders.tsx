@@ -1,11 +1,13 @@
 "use client";
 
+import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, Button, EmptyState, RowCard, SectionHeader, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, EmptyState, RowCard, SectionHeader, Stack, Text, toast } from "@yourorg/ui";
 import { ClipboardList } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { createWorkOrderFromActivity } from "../create-work-order-actions";
 import { formatDateTime } from "@/lib/format/date";
 
 export interface ActivityLinkedWorkOrdersProps {
@@ -28,9 +30,14 @@ export interface ActivityLinkedWorkOrdersProps {
  *
  * The header's own "+ Work order" button (issue #118) REPLACES the old
  * standalone `CreateWorkOrderCallout` card that used to sit right below the
- * hero — same exact navigation (`clientId`/`assetId`/`activityId` query
- * params into `/work-orders/new`), just moved here per the design handoff
- * ("dit is de enige plek waar een werkorder wordt aangemaakt").
+ * hero, per the design handoff ("dit is de enige plek waar een werkorder
+ * wordt aangemaakt"). Issue #152 changed what clicking it does: it used to
+ * navigate to `/work-orders/new?clientId=...&assetId=...&activityId=...`,
+ * which sometimes immediately redirected on to the new work order's own
+ * detail page. Now it calls `createWorkOrderFromActivity`
+ * (`../create-work-order-actions.ts`) directly and stays put — the new row
+ * just appears in the list below, and the caller decides for themselves,
+ * via that row's own Open/Plan buttons, what to do with it next.
  *
  * `WorkOrderRecord` has no human-readable order number/code column (see
  * `history-actions.ts`'s own `ShallowWorkOrderRecord` doc comment) — the
@@ -40,18 +47,27 @@ export interface ActivityLinkedWorkOrdersProps {
  */
 export function ActivityLinkedWorkOrders({ activity, workOrders, canCreateWorkOrder }: ActivityLinkedWorkOrdersProps) {
   const router = useRouter();
+  const [isCreating, startCreating] = useTransition();
 
   function handleCreateWorkOrder() {
-    const params = new URLSearchParams();
-    params.set("clientId", activity.client_id);
-    if (activity.asset_id) params.set("assetId", activity.asset_id);
-    params.set("activityId", activity.id);
-    router.push(`/work-orders/new?${params.toString()}`);
+    startCreating(async () => {
+      const result = await createWorkOrderFromActivity(activity.id);
+      if (!result.data) {
+        toast({
+          tone: "danger",
+          title: "Could not create a work order",
+          description: result.error ?? "Something went wrong.",
+        });
+        return;
+      }
+      toast({ tone: "success", title: "Work order created", description: result.data.workOrder.title });
+      router.refresh();
+    });
   }
 
   const addButton = canCreateWorkOrder && (
-    <Button type="button" variant="primary" size="sm" onClick={handleCreateWorkOrder}>
-      + Work order
+    <Button type="button" variant="primary" size="sm" onClick={handleCreateWorkOrder} disabled={isCreating}>
+      {isCreating ? "Creating…" : "+ Work order"}
     </Button>
   );
 
