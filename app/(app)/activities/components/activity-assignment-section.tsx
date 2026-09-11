@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, Badge, FormGrid, Inline, KeyValueList, type KeyValueListItem, Label, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { Avatar, Badge, Card, FormGrid, Inline, KeyValueList, type KeyValueListItem, Label, SectionHeader, Select, Stack, Text, Textarea } from "@yourorg/ui";
 import { FileText } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
@@ -95,6 +95,13 @@ export interface ActivityAssignmentSectionProps {
  * into their own sibling section — see `activity-solution-section.tsx` — so
  * the "what happened" half (Type/Assignment) and the "how it was resolved"
  * half read as two visually distinct groups instead of one long list.
+ *
+ * A second issue #152 follow-up wrapped every field below the header in a
+ * plain `Card` (the header itself stays OUTSIDE it, same "`SectionHeader`,
+ * then a `Card` beneath it" shape `EditableSection`/`ContractNotesSection`
+ * already use elsewhere) and paired Action holder with Status in their own
+ * `FormGrid` row, so the two live-select fields read as one group instead of
+ * two stacked full-width rows.
  */
 export function ActivityAssignmentSection({
   mode,
@@ -129,108 +136,113 @@ export function ActivityAssignmentSection({
     <Stack gap="md">
       <SectionHeader icon={FileText} title="Assignment" />
 
-      {/* Activity subtype + Description side by side (issue #152 — "activity
-          subtypen: links van invulveld"; previously stacked one above the
-          other). Same `editing` gate on both: a genuinely `readOnly` viewer
-          sees the resolved leaf's plain `name` (the shallow embed already on
-          `ActivityRecord`, same "no stored breadcrumb path" shape every other
-          resolved-reference read view here uses), not the interactive
-          cascade. `rootFilter` restricts level 1 to roots whose `type_id`
-          matches the currently-selected Activity Type — see
-          `activity-screen.tsx`'s own Type-changed-clears-subtype effect for
-          what keeps this in sync when `typeId` itself changes. */}
-      <FormGrid columns={2}>
-        <Stack gap="xs">
-          <Label htmlFor="activity-subtype-level-1">Activity subtype</Label>
-          {editing ? (
-            <SubtypeCascadePicker
-              idBase="activity-subtype"
-              ariaLabel="Activity subtype"
-              nodes={activitySubtypes}
-              value={draft.activitySubtypeId}
-              onChange={(nextValue) => onFieldChange({ activitySubtypeId: nextValue })}
-              rootFilter={(node) => node.type_id === typeId}
-            />
-          ) : (
-            <Text>{activity?.activity_subtype?.name ?? "No activity subtype selected."}</Text>
-          )}
+      <Card>
+        <Stack gap="md">
+          {/* Activity subtype + Description side by side (issue #152 —
+              "activity subtypen: links van invulveld"; previously stacked one
+              above the other). Same `editing` gate on both: a genuinely
+              `readOnly` viewer sees the resolved leaf's plain `name` (the
+              shallow embed already on `ActivityRecord`, same "no stored
+              breadcrumb path" shape every other resolved-reference read view
+              here uses), not the interactive cascade. `rootFilter` restricts
+              level 1 to roots whose `type_id` matches the currently-selected
+              Activity Type — see `activity-screen.tsx`'s own
+              Type-changed-clears-subtype effect for what keeps this in sync
+              when `typeId` itself changes. */}
+          <FormGrid columns={2}>
+            <Stack gap="xs">
+              <Label htmlFor="activity-subtype-level-1">Activity subtype</Label>
+              {editing ? (
+                <SubtypeCascadePicker
+                  idBase="activity-subtype"
+                  ariaLabel="Activity subtype"
+                  nodes={activitySubtypes}
+                  value={draft.activitySubtypeId}
+                  onChange={(nextValue) => onFieldChange({ activitySubtypeId: nextValue })}
+                  rootFilter={(node) => node.type_id === typeId}
+                />
+              ) : (
+                <Text>{activity?.activity_subtype?.name ?? "No activity subtype selected."}</Text>
+              )}
+            </Stack>
+
+            <Stack gap="xs">
+              <Label htmlFor="activity-description">Description</Label>
+              {editing ? (
+                <Textarea
+                  id="activity-description"
+                  aria-label="Description"
+                  rows={2}
+                  value={draft.description}
+                  onChange={(event) => onFieldChange({ description: event.target.value })}
+                />
+              ) : draft.description ? (
+                <Text>{draft.description}</Text>
+              ) : (
+                <Text tone="muted">No description yet.</Text>
+              )}
+            </Stack>
+          </FormGrid>
+
+          {/* Action holder + Status side by side (issue #152's follow-up) —
+              both always live controls, independent of `editing` (see this
+              component's own doc comment). Status is `mode: "edit"` only (a
+              brand-new activity has no status to edit yet; the DB fills in
+              the org's default on insert), so `FormGrid` gets a single child
+              in `mode: "create"` — Action holder simply sits in the first
+              column with nothing beside it. */}
+          <FormGrid columns={2}>
+            <Stack gap="xs">
+              <Label htmlFor="activity-action-holder">Action holder</Label>
+              {canAssignOthers && !readOnly ? (
+                <Select
+                  id="activity-action-holder"
+                  value={draft.actionHolderId}
+                  onChange={(event) => onFieldChange({ actionHolderId: event.target.value })}
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {memberDisplayName(member)}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Inline gap="sm" align="center">
+                  <Avatar name={actionHolderName} size="sm" />
+                  <Text className="ui-row-title">{actionHolderName}</Text>
+                  {!canAssignOthers && !readOnly && <Text tone="muted">(Always assigned to you)</Text>}
+                </Inline>
+              )}
+            </Stack>
+
+            {mode === "edit" && (
+              <Stack gap="xs">
+                <Label htmlFor="activity-status">Status</Label>
+                {!readOnly ? (
+                  <Select
+                    id="activity-status"
+                    value={draft.statusId}
+                    onChange={(event) => onFieldChange({ statusId: event.target.value })}
+                  >
+                    {activityStatuses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Badge color={activityStatuses.find((item) => item.id === draft.statusId)?.color} variant="muted">
+                    {activityStatuses.find((item) => item.id === draft.statusId)?.label ?? "—"}
+                  </Badge>
+                )}
+              </Stack>
+            )}
+          </FormGrid>
+
+          {items.length > 0 && <KeyValueList items={items} />}
         </Stack>
-
-        <Stack gap="xs">
-          <Label htmlFor="activity-description">Description</Label>
-          {editing ? (
-            <Textarea
-              id="activity-description"
-              aria-label="Description"
-              rows={2}
-              value={draft.description}
-              onChange={(event) => onFieldChange({ description: event.target.value })}
-            />
-          ) : draft.description ? (
-            <Text>{draft.description}</Text>
-          ) : (
-            <Text tone="muted">No description yet.</Text>
-          )}
-        </Stack>
-      </FormGrid>
-
-      {/* Action holder — always a live control, independent of `editing`
-          (see this component's own doc comment). */}
-      <Stack gap="xs">
-        <Label htmlFor="activity-action-holder">Action holder</Label>
-        {canAssignOthers && !readOnly ? (
-          <Select
-            id="activity-action-holder"
-            value={draft.actionHolderId}
-            onChange={(event) => onFieldChange({ actionHolderId: event.target.value })}
-          >
-            <option value="">Unassigned</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {memberDisplayName(member)}
-              </option>
-            ))}
-          </Select>
-        ) : (
-          <Inline gap="sm" align="center">
-            <Avatar name={actionHolderName} size="sm" />
-            <Text className="ui-row-title">{actionHolderName}</Text>
-            {!canAssignOthers && !readOnly && <Text tone="muted">(Always assigned to you)</Text>}
-          </Inline>
-        )}
-      </Stack>
-
-      {/* Status — `mode: "edit"` only (a brand-new activity has no status
-          to edit yet; the DB fills in the org's default on insert, same
-          "nothing to show before the record exists" gating the Solution
-          section uses). Always a live control, independent of `editing`, same
-          treatment as Action holder just above (see this component's own
-          doc comment) — moved here from the hero's own status-badge pencil
-          (now deleted). */}
-      {mode === "edit" && (
-        <Stack gap="xs">
-          <Label htmlFor="activity-status">Status</Label>
-          {!readOnly ? (
-            <Select
-              id="activity-status"
-              value={draft.statusId}
-              onChange={(event) => onFieldChange({ statusId: event.target.value })}
-            >
-              {activityStatuses.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Badge color={activityStatuses.find((item) => item.id === draft.statusId)?.color} variant="muted">
-              {activityStatuses.find((item) => item.id === draft.statusId)?.label ?? "—"}
-            </Badge>
-          )}
-        </Stack>
-      )}
-
-      {items.length > 0 && <KeyValueList items={items} />}
+      </Card>
     </Stack>
   );
 }

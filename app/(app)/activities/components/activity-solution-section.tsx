@@ -1,6 +1,6 @@
 "use client";
 
-import { FormGrid, Label, SectionHeader, Stack, Text, Textarea } from "@yourorg/ui";
+import { Card, FormGrid, Label, SectionHeader, Stack, Text, Textarea } from "@yourorg/ui";
 import { ShieldCheck } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
@@ -38,7 +38,9 @@ export interface ActivitySolutionSectionProps {
  * Solution subtype sits to the LEFT of Solution in a `FormGrid`, same
  * side-by-side treatment issue #152 gave Activity subtype/Description in
  * `ActivityAssignmentSection`, replacing the old stacked-above layout both
- * subtype pickers used to share.
+ * subtype pickers used to share. A second issue #152 follow-up wrapped both
+ * fields in a plain `Card` beneath the (still-outside-the-card) header, same
+ * shape `ActivityAssignmentSection` uses for its own fields.
  */
 export function ActivitySolutionSection({
   draft,
@@ -51,39 +53,41 @@ export function ActivitySolutionSection({
     <Stack gap="md">
       <SectionHeader icon={ShieldCheck} title="Solution" />
 
-      <FormGrid columns={2}>
-        <Stack gap="xs">
-          <Label htmlFor="solution-subtype-level-1">Solution subtype</Label>
-          {editing ? (
-            <SubtypeCascadePicker
-              idBase="solution-subtype"
-              ariaLabel="Solution subtype"
-              nodes={solutionSubtypes}
-              value={draft.solutionSubtypeId}
-              onChange={(nextValue) => onFieldChange({ solutionSubtypeId: nextValue })}
-            />
-          ) : (
-            <Text>{activity?.solution_subtype?.name ?? "No solution subtype selected."}</Text>
-          )}
-        </Stack>
+      <Card>
+        <FormGrid columns={2}>
+          <Stack gap="xs">
+            <Label htmlFor="solution-subtype-level-1">Solution subtype</Label>
+            {editing ? (
+              <SubtypeCascadePicker
+                idBase="solution-subtype"
+                ariaLabel="Solution subtype"
+                nodes={solutionSubtypes}
+                value={draft.solutionSubtypeId}
+                onChange={(nextValue) => onFieldChange({ solutionSubtypeId: nextValue })}
+              />
+            ) : (
+              <Text>{activity?.solution_subtype?.name ?? "No solution subtype selected."}</Text>
+            )}
+          </Stack>
 
-        <Stack gap="xs">
-          <Label htmlFor="activity-solution">Solution</Label>
-          {editing ? (
-            <Textarea
-              id="activity-solution"
-              aria-label="Solution"
-              rows={2}
-              value={draft.solution}
-              onChange={(event) => onFieldChange({ solution: event.target.value })}
-            />
-          ) : draft.solution ? (
-            <Text>{draft.solution}</Text>
-          ) : (
-            <Text tone="muted">No solution yet.</Text>
-          )}
-        </Stack>
-      </FormGrid>
+          <Stack gap="xs">
+            <Label htmlFor="activity-solution">Solution</Label>
+            {editing ? (
+              <Textarea
+                id="activity-solution"
+                aria-label="Solution"
+                rows={2}
+                value={draft.solution}
+                onChange={(event) => onFieldChange({ solution: event.target.value })}
+              />
+            ) : draft.solution ? (
+              <Text>{draft.solution}</Text>
+            ) : (
+              <Text tone="muted">No solution yet.</Text>
+            )}
+          </Stack>
+        </FormGrid>
+      </Card>
     </Stack>
   );
 }

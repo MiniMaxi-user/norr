@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Combobox, FormGrid } from "@yourorg/ui";
+import { Combobox, Stack } from "@yourorg/ui";
 
 /**
  * The minimal shape both `ActivitySubtypeRecord` (`../subtypes-actions.ts`)
@@ -92,13 +92,16 @@ function deriveLevels<T extends SubtypeCascadeNode>(nodes: T[], value: string): 
 
 /**
  * Shared 3-level cascading picker (issues #134/#138) — used once for Activity
- * subtype (above Description, `rootFilter`-scoped to the current Activity
- * Type) and once for Solution subtype (above Solution, no `rootFilter`), both
- * in `activity-assignment-section.tsx`. 3 `Combobox`es side by side
- * (`FormGrid columns={3}`), left = roots, middle = the selected root's
- * children, right = the selected middle node's children — same search-dropdown
- * primitive `article-classification-section.tsx`'s Group/Subgroup pair uses,
- * extended one level deeper.
+ * subtype (`activity-assignment-section.tsx`, `rootFilter`-scoped to the
+ * current Activity Type) and once for Solution subtype
+ * (`activity-solution-section.tsx`, no `rootFilter`). 3 `Combobox`es stacked
+ * one below the other (issue #152's follow-up — they used to sit side by
+ * side in a `FormGrid columns={3}`, which read as cramped once the whole
+ * picker itself was squeezed into one half of an outer 2-column row next to
+ * its paired Description/Solution field): top = roots, middle = the selected
+ * root's children, bottom = the selected middle node's children — same
+ * search-dropdown primitive `article-classification-section.tsx`'s
+ * Group/Subgroup pair uses, extended one level deeper.
  *
  * Committing behavior mirrors that Group/Subgroup pair exactly, extended to 3
  * levels: picking ANY level immediately commits `onChange` with that level's
@@ -170,7 +173,7 @@ export function SubtypeCascadePicker<T extends SubtypeCascadeNode>({
   }
 
   return (
-    <FormGrid columns={3}>
+    <Stack gap="xs">
       <Combobox
         id={`${idBase}-level-1`}
         aria-label={`${ariaLabel} — level 1`}
@@ -204,6 +207,6 @@ export function SubtypeCascadePicker<T extends SubtypeCascadeNode>({
         clearable
         emptyMessage="No sub-options under this selection."
       />
-    </FormGrid>
+    </Stack>
   );
 }
