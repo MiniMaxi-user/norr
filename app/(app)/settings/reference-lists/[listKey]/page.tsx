@@ -74,6 +74,7 @@ export default async function ReferenceListLeafPage({ params }: ReferenceListLea
         parentListKey={parentListKey}
         parentListTitle={parentListTitle}
         parentItems={parentItems}
+        showDefaultDuration={section.showDefaultDuration}
       />
     </Stack>
   );

@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listActivitySubtypes } from "@/app/(app)/activities/subtypes-actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { ActivityTypesPanel } from "../components/activity-types-panel";
 import { ActivitySubtypeManager } from "../components/activity-subtype-manager";
 
 export const metadata = { title: "Activity Subtypes" };
@@ -20,6 +21,13 @@ export const metadata = { title: "Activity Subtypes" };
  * `administratie`-also-writes exception is specific to the Articles module).
  * `activity_subtypes`' RLS is owner-only writes with zero can()-vs-RLS gap
  * against `settings` — see `subtypes-actions.ts`'s own module comment.
+ *
+ * Also renders `ActivityTypesPanel` above the subtype tree (issue #165) —
+ * Activity Type previously had no place of its own to be managed ("er is nu
+ * geen plek voor" for the type, only for the subtypes) even though it's
+ * already a generic `reference_list_items`-backed list under the hood. Reuses
+ * the exact same `typeResult` fetch this page already made for the subtype
+ * form's Activity Type picker — no extra query.
  */
 export default async function ActivitySubtypesPage() {
   const session = await getCurrentSession();
@@ -33,6 +41,11 @@ export default async function ActivitySubtypesPage() {
       <OverviewHeroBand
         title="Activity Subtypes"
         subtitle="Hierarchical, unlimited-depth subtypes for Activities — each top-level subtype is tied to an Activity Type."
+      />
+      <ActivityTypesPanel
+        items={typeResult.data?.items ?? []}
+        loadError={typeResult.error}
+        canWrite={canWrite}
       />
       <ActivitySubtypeManager
         subtypes={subtypesResult.data?.subtypes ?? []}

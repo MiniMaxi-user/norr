@@ -92,6 +92,24 @@ export const referenceItemParentIdSchema = z.preprocess(
   z.string().uuid("Invalid parent item id.").optional(),
 );
 
+/** Generic optional per-item attribute, same footing as `color`/`icon`/
+ * `description` — minutes-based, matches `reference_list_items
+ * .default_duration_minutes`'s `>= 0` CHECK (see
+ * `supabase/migrations/20260914090000_reference_list_items_default_duration_minutes.sql`).
+ * Currently only surfaced in the UI for lists that opt in via
+ * `REFERENCE_LIST_SECTIONS`' `showDefaultDuration` flag (today: `activity_type`,
+ * issue #165) — validated here regardless of `listKey` since the column
+ * itself is generic, same as `color` is. */
+export const referenceItemDefaultDurationMinutesSchema = z.preprocess(
+  emptyToUndefined,
+  z.coerce
+    .number()
+    .int("Default duration must be a whole number of minutes.")
+    .min(0, "Default duration cannot be negative.")
+    .max(100000, "Default duration is too long.")
+    .optional(),
+);
+
 export const referenceItemCreateSchema = z.object({
   value: referenceItemValueSchema,
   label: z.string().trim().min(1, "Label is required.").max(200, "Label is too long."),
@@ -100,6 +118,7 @@ export const referenceItemCreateSchema = z.object({
   parentItemId: referenceItemParentIdSchema,
   description: z.preprocess(emptyToUndefined, z.string().trim().max(500).optional()),
   isActive: z.boolean().optional(),
+  defaultDurationMinutes: referenceItemDefaultDurationMinutesSchema,
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;

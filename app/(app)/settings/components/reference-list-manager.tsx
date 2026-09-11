@@ -38,6 +38,11 @@ export interface ReferenceListManagerProps {
    * `items`' `parent_item_id` to a label, and for populating the create/edit
    * dialog's parent picker. Empty when `parentListKey` is `null`. */
   parentItems: ReferenceListItemRecord[];
+  /** Opts this list into the "Default duration (minutes)" column/field
+   * (issue #165) — see `REFERENCE_LIST_SECTIONS`' own `showDefaultDuration`
+   * doc comment for why this is per-list rather than shown for every list.
+   * Defaults to `false`. */
+  showDefaultDuration?: boolean;
 }
 
 /**
@@ -56,6 +61,7 @@ export function ReferenceListManager({
   parentListKey,
   parentListTitle,
   parentItems,
+  showDefaultDuration = false,
 }: ReferenceListManagerProps) {
   const router = useRouter();
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
@@ -122,6 +128,7 @@ export function ReferenceListManager({
               <Table.HeaderCell>Color</Table.HeaderCell>
               <Table.HeaderCell>Label</Table.HeaderCell>
               <Table.HeaderCell>Value</Table.HeaderCell>
+              {showDefaultDuration && <Table.HeaderCell align="center">Default duration</Table.HeaderCell>}
               <Table.HeaderCell align="center">Default</Table.HeaderCell>
               <Table.HeaderCell align="center">Active</Table.HeaderCell>
               {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
@@ -167,6 +174,13 @@ export function ReferenceListManager({
                 <Table.Cell>
                   <Text tone="muted">{item.value}</Text>
                 </Table.Cell>
+                {showDefaultDuration && (
+                  <Table.Cell align="center">
+                    <Text tone="muted">
+                      {item.default_duration_minutes != null ? `${item.default_duration_minutes} min` : "—"}
+                    </Text>
+                  </Table.Cell>
+                )}
                 <Table.Cell align="center">
                   {item.is_default ? <Badge variant="accent">Default</Badge> : <Text tone="muted">—</Text>}
                 </Table.Cell>
@@ -200,6 +214,7 @@ export function ReferenceListManager({
               parentListKey={parentListKey}
               parentListTitle={parentListTitle}
               parentItems={parentItems}
+              showDefaultDuration={showDefaultDuration}
             />
           )}
           <DeleteReferenceItemDialog

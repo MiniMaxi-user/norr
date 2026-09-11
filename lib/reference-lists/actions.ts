@@ -85,6 +85,13 @@ export interface ReferenceListItemRecord {
    * to `true` at the DB level; reusable by any tenant reference list, same
    * as `color`/`icon` already are. */
   is_active: boolean;
+  /** Generic optional per-item duration slot, minutes-based (added by
+   * `supabase/migrations/20260914090000_reference_list_items_default_duration_minutes.sql`)
+   * — reusable by any tenant reference list, same as `color`/`icon`/
+   * `description` already are. `null` when unset. Only surfaced in the UI for
+   * lists that opt in (today: `activity_type`, issue #165) — see
+   * `REFERENCE_LIST_SECTIONS`' `showDefaultDuration` flag. */
+  default_duration_minutes: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -310,7 +317,9 @@ export async function listReferenceItems(
         // those are read back from this list.
         const { data, error } = await supabase
           .from("reference_list_items")
-          .select("id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active")
+          .select(
+            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes",
+          )
           .eq("reference_list_id", listResult.id)
           .order("sort_order", { ascending: true });
 
@@ -422,6 +431,7 @@ export async function createReferenceItem(
     color: parsed.data.color ?? null,
     parent_item_id: parsed.data.parentItemId ?? null,
     description: parsed.data.description ?? null,
+    default_duration_minutes: parsed.data.defaultDurationMinutes ?? null,
   };
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
@@ -467,6 +477,9 @@ export async function updateReferenceItem(
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (parsed.data.description !== undefined) row.description = parsed.data.description ?? null;
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
+  if (parsed.data.defaultDurationMinutes !== undefined) {
+    row.default_duration_minutes = parsed.data.defaultDurationMinutes ?? null;
+  }
 
   const supabase = await createSupabaseServerClient();
 

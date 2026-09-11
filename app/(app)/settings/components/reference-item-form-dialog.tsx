@@ -38,6 +38,10 @@ export interface ReferenceItemFormDialogProps {
   /** Every item of the parent list, to populate the picker. Empty when
    * `parentListKey` is `null`. */
   parentItems: ReferenceListItemRecord[];
+  /** Shows the "Default duration (minutes)" field (issue #165) — mirrors
+   * `ReferenceListManager`'s own prop of the same name, threaded straight
+   * through. Defaults to `false`. */
+  showDefaultDuration?: boolean;
 }
 
 /**
@@ -90,6 +94,7 @@ export function ReferenceItemFormDialog({
   parentListKey,
   parentListTitle,
   parentItems,
+  showDefaultDuration = false,
 }: ReferenceItemFormDialogProps) {
   const isEdit = Boolean(item);
   const isDependent = Boolean(parentListKey);
@@ -100,6 +105,9 @@ export function ReferenceItemFormDialog({
   const [color, setColor] = useState(item?.color ?? "");
   const [isActive, setIsActive] = useState(item ? item.is_active : true);
   const [parentItemId, setParentItemId] = useState(item?.parent_item_id ?? "");
+  const [defaultDurationMinutes, setDefaultDurationMinutes] = useState(
+    item?.default_duration_minutes != null ? String(item.default_duration_minutes) : "",
+  );
 
   async function action(): Promise<FormState> {
     const input = {
@@ -109,6 +117,7 @@ export function ReferenceItemFormDialog({
       color: color || undefined,
       parentItemId: isDependent ? parentItemId || undefined : undefined,
       isActive,
+      defaultDurationMinutes: showDefaultDuration ? defaultDurationMinutes || undefined : undefined,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -248,6 +257,29 @@ export function ReferenceItemFormDialog({
                 </Text>
               ))}
             </Stack>
+
+            {showDefaultDuration && (
+              <Stack gap="xs">
+                <Label htmlFor="ref-item-default-duration">Default duration (minutes)</Label>
+                <Input
+                  id="ref-item-default-duration"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={defaultDurationMinutes}
+                  onChange={(event) => setDefaultDurationMinutes(event.target.value)}
+                  placeholder="e.g. 60"
+                />
+                <Text tone="muted">
+                  Optional. Used later to size work items for this type in Planning.
+                </Text>
+                {state.fieldErrors?.defaultDurationMinutes?.map((message) => (
+                  <Text key={message} tone="danger">
+                    {message}
+                  </Text>
+                ))}
+              </Stack>
+            )}
 
             <Stack gap="xs">
               <Inline gap="sm" align="center">
