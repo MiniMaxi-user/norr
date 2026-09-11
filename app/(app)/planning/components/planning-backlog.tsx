@@ -101,20 +101,13 @@ export function PlanningBacklog({
         </Inline>
 
         <Inline gap="xs" wrap role="group" aria-label="Filter op type">
-          <FilterPill
-            active={typeFilter.size === 0}
-            title="Alle"
-            icon={ClipboardList}
-            colorHex={null}
-            onClick={onClearTypeFilter}
-          />
+          <FilterPill active={typeFilter.size === 0} title="Alle" icon={ClipboardList} onClick={onClearTypeFilter} />
           {activityTypes.map((type) => (
             <FilterPill
               key={type.value}
               active={typeFilter.has(type.value)}
               title={type.label}
               icon={resolveActivityTypeIcon(type.icon)}
-              colorHex={resolveColor(type.color)}
               onClick={() => onToggleType(type.value)}
             />
           ))}
@@ -162,43 +155,27 @@ export function PlanningBacklog({
 
 /** One multi-select type-filter toggle — icon-only (the icon is
  * `aria-hidden`, purely decorative once the button's accessible name comes
- * from the `.ui-visually-hidden` copy of `title` below), a native `title`
- * tooltip for sighted mouse users, and a colored left edge
- * (`.ui-planning-filter-pill`, same "resolved hex → CSS custom property"
- * technique `BacklogCard`'s own left border already uses) so each type
- * reads at a glance even collapsed to just its icon. `colorHex={null}`
- * (the "Alle" pill) falls back to a neutral `--ui-border-strong` edge,
- * deliberately never resolving to any real type's color, so "Alle" always
- * reads as "not a specific type" rather than looking like it belongs to
- * whichever type happens to be first. Not `ViewSwitcher`: this is a
- * multi-select toggle group (any number of pills can be active at once,
- * including "Alle" as its own independent "clear filter" action), not
- * ViewSwitcher's single-selection model — see `planning-screen.tsx`'s
+ * from the `.ui-visually-hidden` copy of `title` below) with a native
+ * `title` tooltip for sighted mouse users; the icon itself plus the
+ * pressed/unpressed `Button` variant is enough to read each pill, so no
+ * extra color accent. Not `ViewSwitcher`: this is a multi-select toggle
+ * group (any number of pills can be active at once, including "Alle" as
+ * its own independent "clear filter" action), not ViewSwitcher's
+ * single-selection model — see `planning-screen.tsx`'s
  * `typeFilter`/`toggleTypeFilter`/`clearTypeFilter` for the state shape. */
 function FilterPill({
   active,
   title,
   icon: IconComponent,
-  colorHex,
   onClick,
 }: {
   active: boolean;
   title: string;
   icon: Icon;
-  colorHex: string | null;
   onClick: () => void;
 }) {
   return (
-    <Button
-      type="button"
-      variant={active ? "primary" : "outline"}
-      size="sm"
-      aria-pressed={active}
-      title={title}
-      onClick={onClick}
-      className="ui-planning-filter-pill"
-      style={{ borderLeftColor: colorHex ?? "var(--ui-border-strong)" }}
-    >
+    <Button type="button" variant={active ? "primary" : "outline"} size="sm" aria-pressed={active} title={title} onClick={onClick}>
       <IconComponent aria-hidden width={16} height={16} />
       <span className="ui-visually-hidden">{title}</span>
     </Button>

@@ -3603,14 +3603,6 @@ select.ui-client-card-status-select {
   font-weight: 650;
   font-size: var(--ui-text-md);
 }
-/* Multi-select type filter pill (see `FilterPill` in planning-backlog.tsx)
-   — widens the left border so the per-type `borderLeftColor` inline style
-   actually reads as a color accent, same "border-left-width: 3px" treatment
-   `.ui-planning-backlog-card` already gives its own left border. */
-.ui-planning-filter-pill {
-  border-left-width: 3px;
-  padding-left: 0.5rem;
-}
 .ui-planning-backlog-group-label {
   font-size: var(--ui-text-xs);
   font-weight: 650;
