@@ -1,31 +1,11 @@
 import { Text } from "@yourorg/ui";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
-import { listClients, listPrimarySitesForClients, type ClientRecord, type SiteRecord } from "../actions";
+import { listClients } from "../actions";
 import type { ClientsView } from "./clients-hero-context";
 import { ClientsExplorer } from "./clients-explorer";
 
 export const CLIENTS_PAGE_SIZE = 25;
-
-/**
- * "Adressen zijn zichtbaar op de klantenkaart" / "Primary adres is zichtbaar
- * in alle standaardoverzichten" (issue #41 redo): every standard client
- * overview (table, kanban) needs each client's primary site's address. One
- * bulk `listPrimarySitesForClients` call (issue #75) instead of a
- * `listSites` call per client — the Kanban view's `listClients({ limit:
- * 200 })` used to mean up to 200 separate round-trips here.
- */
-async function fetchPrimarySiteByClientId(
-  clients: ClientRecord[],
-): Promise<Record<string, SiteRecord | null>> {
-  const result = await listPrimarySitesForClients(clients.map((client) => client.id));
-  const sitesByClientId = result.data?.sitesByClientId ?? {};
-  const map: Record<string, SiteRecord | null> = {};
-  for (const client of clients) {
-    map[client.id] = sitesByClientId[client.id] ?? null;
-  }
-  return map;
-}
 
 /**
  * Async Server Component doing the actual data fetch — rendered inside a
@@ -54,10 +34,20 @@ export async function ClientsBoard({
 }) {
   const offset = (page - 1) * CLIENTS_PAGE_SIZE;
 
+  // "Adressen zijn zichtbaar op de klantenkaart" / "Primary adres is
+  // zichtbaar in alle standaardoverzichten" (issue #41 redo): every standard
+  // client overview (table, kanban) needs each client's primary site's
+  // address. As of issue #148, that's folded into this same `listClients`
+  // call via `includePrimarySite` (a single PostgREST embed over the
+  // genuine `sites.client_id` FK) rather than a follow-up
+  // `listPrimarySitesForClients` round-trip once `clients` resolves — see
+  // that option's doc comment in `../actions.ts`. `listAccountManagers()`
+  // has no dependency on either the view or the client list, so it starts
+  // in the same `Promise.all` rather than after.
   const [result, accountManagersResult] = await Promise.all([
     defaultView === "kanban"
-      ? listClients({ limit: 200 })
-      : listClients({ limit: CLIENTS_PAGE_SIZE, offset }),
+      ? listClients({ limit: 200, includePrimarySite: true })
+      : listClients({ limit: CLIENTS_PAGE_SIZE, offset, includePrimarySite: true }),
     // Fetched once here (any view), threaded down to `ClientsExplorer` and
     // on into `ClientsKanban` (each card's Account Manager row) — same
     // "fetch once server-side, pass down" convention `contactRoles` already
@@ -70,7 +60,7 @@ export async function ClientsBoard({
   }
 
   const canWrite = can(actor, "clients", "create");
-  const primarySiteByClientId = await fetchPrimarySiteByClientId(result.data.clients);
+  const primarySiteByClientId = result.data.primarySiteByClientId ?? {};
   const accountManagers = accountManagersResult.data?.accountManagers ?? [];
 
   return (

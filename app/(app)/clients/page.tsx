@@ -38,8 +38,11 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  const { page: pageParam } = await searchParams;
-  const session = await requireSession();
+  // `searchParams` and `requireSession()` don't depend on each other's
+  // result (issue #148) — started together rather than one after the other.
+  // `getLastUsedView` genuinely can't join them: it needs `session.userId`,
+  // so it stays sequential after `session` resolves.
+  const [{ page: pageParam }, session] = await Promise.all([searchParams, requireSession()]);
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
   const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 

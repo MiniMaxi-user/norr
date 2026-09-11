@@ -324,11 +324,32 @@ function mapSiteDbError(error: { code?: string; message: string }): string {
 export interface ListClientsOptions {
   limit?: number;
   offset?: number;
+  /**
+   * Issue #148: when true, folds each returned client's primary site into
+   * this same query (a single PostgREST embed over the genuine
+   * `sites.client_id` FK, filtered to `is_primary = true`) instead of the
+   * board doing a separate bulk `listPrimarySitesForClients` round-trip
+   * after this one resolves. Left `false` (default) for every other caller
+   * of `listClients` (the assets/work-orders/activities/contracts/quotes
+   * "pick a client" pickers/relation-cards) so they don't pay for a join
+   * they never read — see the column-projection comment below for why this
+   * function is shared and stays lean by default.
+   */
+  includePrimarySite?: boolean;
 }
+
+/** Row shape only used internally when `includePrimarySite` is set — the
+ * embedded `sites` relation is a has-many from `clients`' side, but the
+ * `is_primary = true` filter plus `sites_one_primary_per_client_idx` (at
+ * most one primary per client) means it never carries more than one
+ * element. Peeled off into `primarySiteByClientId` before the rows are cast
+ * to plain `ClientRecord`s below — `ClientRecord` itself never carries a
+ * `sites` field. */
+type ClientRowWithPrimarySite = ClientRecord & { sites: SiteRecord[] };
 
 export async function listClients(
   options: ListClientsOptions = {},
-): Promise<ActionResult<{ clients: ClientRecord[]; count: number }>> {
+): Promise<ActionResult<{ clients: ClientRecord[]; count: number; primarySiteByClientId?: Record<string, SiteRecord | null> }>> {
   const ctx = await requireModuleContext("clients");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -357,17 +378,48 @@ export async function listClients(
   // nothing downstream reads it back), `represents_organization_id`/
   // `client_since`/the rate-override columns/`created_by`/`updated_at`
   // (detail-page-only, via `getClient`/`updateClientRateSettings`).
+  if (!options.includePrimarySite) {
+    const { data, error, count } = await supabase
+      .from("clients")
+      .select(
+        "id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at",
+        { count: "exact" },
+      )
+      .order("name", { ascending: true })
+      .range(offset, offset + limit - 1);
+
+    if (error) return fail(mapDbError(error));
+    return ok({ clients: (data ?? []) as ClientRecord[], count: count ?? 0 });
+  }
+
+  // Embedding on `sites` (the genuine `sites.client_id -> clients.id` FK, no
+  // migration needed) with a filter on the embedded resource, NOT
+  // `sites!inner(...)`: PostgREST's default (left) embed filters only
+  // restrict which child rows appear in the nested array, they never drop a
+  // parent `clients` row that has no matching site — see PostgREST's
+  // "Filtering through embedded resources" docs. That matters here: a client
+  // with zero sites (or none marked primary yet) must still come back with
+  // an empty `sites: []`, not be excluded from the page/count.
   const { data, error, count } = await supabase
     .from("clients")
     .select(
-      "id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at",
+      "id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at, sites(id, client_id, city, country, phone)",
       { count: "exact" },
     )
+    .eq("sites.is_primary", true)
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
 
   if (error) return fail(mapDbError(error));
-  return ok({ clients: (data ?? []) as ClientRecord[], count: count ?? 0 });
+
+  const primarySiteByClientId: Record<string, SiteRecord | null> = {};
+  const clients: ClientRecord[] = [];
+  for (const row of (data ?? []) as unknown as ClientRowWithPrimarySite[]) {
+    const { sites, ...clientRow } = row;
+    clients.push(clientRow);
+    primarySiteByClientId[clientRow.id] = sites?.[0] ?? null;
+  }
+  return ok({ clients, count: count ?? 0, primarySiteByClientId });
 }
 
 export async function getClient(
@@ -751,6 +803,13 @@ export async function listSites(clientId: string): Promise<ActionResult<{ sites:
  * at most one row per requested client — no further grouping/dedup needed
  * beyond keying the result by `client_id`. Same RLS/permission boundary as
  * `listSites` (select: any org member).
+ *
+ * As of issue #148, `clients-board.tsx` no longer calls this: it folds the
+ * same primary-site lookup into `listClients({ includePrimarySite: true })`
+ * directly (one query instead of two sequential round-trips). Left in place
+ * as a standalone bulk helper for any other caller that has a client-id set
+ * without already going through `listClients` — e.g. a future view that
+ * needs primary sites for a list of ids it already has from elsewhere.
  */
 export async function listPrimarySitesForClients(
   clientIds: string[],
