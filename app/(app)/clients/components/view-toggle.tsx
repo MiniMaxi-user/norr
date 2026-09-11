@@ -1,13 +1,10 @@
 "use client";
 
 import { useTransition } from "react";
-import { Button } from "@yourorg/ui";
+import { ViewSwitcher, type ViewSwitcherOption } from "@yourorg/ui";
 import { setLastUsedView } from "@/lib/preferences/actions";
 
-export interface ViewOption<T extends string = string> {
-  value: T;
-  label: string;
-}
+export type ViewOption<T extends string = string> = ViewSwitcherOption<T>;
 
 /**
  * Generic list/kanban(/calendar/map) view switcher (docs/ARCHITECTURE.md
@@ -20,14 +17,11 @@ export interface ViewOption<T extends string = string> {
  * round trip, and the next full page load already remembers the choice
  * (read server-side via `preferencesStore.getLastUsedView`).
  *
- * There is nothing Clients-specific about this component — it's scoped
- * under `app/(app)/clients` only because of this task's file boundaries.
- * This is the "shared view-switcher pattern" docs/ARCHITECTURE.md calls
- * for; the next module that needs list/kanban/calendar/map switching
- * (Assets, Planning) should reuse this exact component rather than
- * re-implement view toggling — ideally after it's promoted to
- * `components/shell/` (flagged in the handoff, not done here since that
- * directory is outside this task's scope).
+ * The actual pill-group rendering now lives in `@yourorg/ui`'s
+ * `ViewSwitcher` (promoted alongside Assets' `assets-view-switcher.tsx`,
+ * which had the near-identical copy this file used to carry) — this file
+ * only keeps the `moduleKey`/`setLastUsedView` persistence wiring that's
+ * still genuinely per-call-site.
  */
 export function ViewToggle<T extends string>({
   moduleKey,
@@ -50,20 +44,5 @@ export function ViewToggle<T extends string>({
     });
   }
 
-  return (
-    <span role="group" aria-label="Switch view">
-      {options.map((option) => (
-        <Button
-          key={option.value}
-          type="button"
-          variant={option.value === value ? "primary" : "outline"}
-          size="sm"
-          aria-pressed={option.value === value}
-          onClick={() => select(option.value)}
-        >
-          {option.label}
-        </Button>
-      ))}
-    </span>
-  );
+  return <ViewSwitcher aria-label="Switch view" value={value} options={options} onChange={select} />;
 }

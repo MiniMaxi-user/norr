@@ -150,6 +150,15 @@ export interface SiteRecord {
    * migration `20260826130000_sites_phone.sql`. */
   phone: string | null;
   notes: string | null;
+  /** Nullable FK into this org's `region` reference list (issue #164,
+   * Planning module) — see migration `20260915090000_region_reference_list.sql`.
+   * Only populated by queries that actually project it (today:
+   * `listSitesForClientIds`, for the Planning backlog/scheduler board's
+   * region grouping) — every other function in this file keeps its existing
+   * explicit column projection unchanged, so this reads back `undefined` at
+   * runtime there despite the non-optional type, same loose-typing tradeoff
+   * this file's explicit-projection convention already accepts elsewhere. */
+  region_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -864,13 +873,16 @@ export async function listSitesForClientIds(clientIds: string[]): Promise<Action
   if (clientIds.length === 0) return ok({ sites: [] });
 
   const supabase = await createSupabaseServerClient();
-  // Explicit column projection (issue #149) — this function's only consumer
-  // is the Assets map view's pin-building (`assets-screen.tsx`'s
-  // `buildMapPins`), which reads `id`/`latitude`/`longitude` for the pin plus
-  // `address_line1`/`city` (via `formatSiteAddressShort`) for the pin label.
+  // Explicit column projection (issue #149) — two consumers now: the Assets
+  // map view's pin-building (`assets-screen.tsx`'s `buildMapPins`, which
+  // reads `id`/`latitude`/`longitude` for the pin plus `address_line1`/`city`
+  // via `formatSiteAddressShort` for the pin label), and (issue #164,
+  // Planning module) the scheduler board's `site_id -> region_id` lookup for
+  // grouping backlog/scheduled work orders by region — `region_id` added to
+  // this projection for that second consumer.
   const { data, error } = await supabase
     .from("sites")
-    .select("id, address_line1, city, latitude, longitude")
+    .select("id, address_line1, city, latitude, longitude, region_id")
     .in("client_id", clientIds);
 
   if (error) return fail(mapDbError(error));

@@ -28,6 +28,7 @@ import {
 } from "@/lib/team/actions";
 import { TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { EditTeamMemberDialog } from "./edit-team-member-dialog";
 import { InviteTeamMemberDialog } from "./invite-team-member-dialog";
 import { RemoveTeamMemberDialog } from "./remove-team-member-dialog";
@@ -56,6 +57,11 @@ export interface TeamManagerProps {
    * rate" section — same "fetch once, pass down" convention `accountManagers`
    * follows for the Clients module. */
   articles: ArticleSelectOption[];
+  /** `listReferenceItems("region")`'s result (issue #164, Planning module),
+   * fetched once by `team-board.tsx` and threaded down to
+   * `EditTeamMemberDialog`'s Region `<Select>` — same "fetch once, pass down"
+   * convention `articles` above follows. */
+  regions: ReferenceListItemRecord[];
 }
 
 interface RevealedLink {
@@ -100,6 +106,7 @@ export function TeamManager({
   canWrite,
   currentUserId,
   articles,
+  regions,
 }: TeamManagerProps) {
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
@@ -321,9 +328,10 @@ export function TeamManager({
             }}
             member={editTarget}
             articles={articles}
-            onSaved={(userId, fullName, rateSettings) => {
+            regions={regions}
+            onSaved={(userId, fullName, rateSettings, regionId) => {
               setMembers((prev) =>
-                prev.map((m) => (m.userId === userId ? { ...m, fullName, rateSettings } : m)),
+                prev.map((m) => (m.userId === userId ? { ...m, fullName, rateSettings, regionId } : m)),
               );
               setEditTarget(null);
             }}

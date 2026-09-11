@@ -2,14 +2,14 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@yourorg/ui";
+import { ViewSwitcher, type ViewSwitcherOption } from "@yourorg/ui";
 import { setLastUsedView } from "@/lib/preferences/actions";
 
 export type AssetsView = "list" | "map";
 
-const VIEWS: Array<{ key: AssetsView; label: string }> = [
-  { key: "list", label: "List" },
-  { key: "map", label: "Map" },
+const VIEWS: readonly ViewSwitcherOption<AssetsView>[] = [
+  { value: "list", label: "List" },
+  { value: "map", label: "Map" },
 ];
 
 /**
@@ -23,14 +23,10 @@ const VIEWS: Array<{ key: AssetsView; label: string }> = [
  * the URL (`?view=`) so it's shareable/bookmarkable and survives a
  * filter change without extra plumbing.
  *
- * NOTE for whoever builds the next module view-switcher (Planning, or a
- * later Clients kanban/calendar view): this component is intentionally
- * generic in shape but lives under `app/(app)/assets/**` per this task's
- * scope boundary. Consider promoting it (or an equivalent) into
- * `@yourorg/ui` or a cross-module `components/` location once a second
- * module needs the same switcher, instead of copy-pasting it — flagged
- * here rather than done in this pass since that's outside this task's file
- * scope.
+ * The actual pill-group rendering now lives in `@yourorg/ui`'s
+ * `ViewSwitcher` (promoted alongside Clients' `view-toggle.tsx`, which had
+ * the near-identical copy this file used to carry) — this file only keeps
+ * the Assets-specific URL/`setLastUsedView` wiring.
  */
 export function AssetsViewSwitcher({ view }: { view: AssetsView }) {
   const router = useRouter();
@@ -49,20 +45,5 @@ export function AssetsViewSwitcher({ view }: { view: AssetsView }) {
     });
   }
 
-  return (
-    <div role="group" aria-label="Change view">
-      {VIEWS.map((v) => (
-        <Button
-          key={v.key}
-          type="button"
-          variant={view === v.key ? "primary" : "outline"}
-          size="sm"
-          aria-pressed={view === v.key}
-          onClick={() => selectView(v.key)}
-        >
-          {v.label}
-        </Button>
-      ))}
-    </div>
-  );
+  return <ViewSwitcher aria-label="Change view" value={view} options={VIEWS} onChange={selectView} />;
 }

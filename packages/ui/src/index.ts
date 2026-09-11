@@ -32,7 +32,7 @@ export {
   type NavItemProps,
   type NavGroupLabelProps,
 } from "./components/nav";
-export { Badge, type BadgeProps, type BadgeVariant } from "./components/badge";
+export { Badge, resolveColor, type BadgeProps, type BadgeVariant } from "./components/badge";
 export { Logo, type LogoProps, Logomark, type LogomarkProps } from "./components/logo";
 export { NordicScene, type NordicSceneProps } from "./components/nordic-scene";
 export { BackLink, type BackLinkProps } from "./components/back-link";
@@ -145,6 +145,11 @@ export { useEscapeToClose } from "./use-escape-to-close.js";
 // above (see tsup.config.ts's top-of-file comment).
 export { ConfirmDeleteDialog, type ConfirmDeleteDialogProps } from "./confirm-delete-dialog.js";
 export { Board, type BoardProps, type BoardColumnProps, type BoardCardProps } from "./components/board";
+export {
+  ViewSwitcher,
+  type ViewSwitcherProps,
+  type ViewSwitcherOption,
+} from "./components/view-switcher";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state";
 export {
   LinkedRecordsTable,
@@ -179,6 +184,13 @@ export { KeyValueList, type KeyValueListProps, type KeyValueListItem } from "./c
 export { Callout, type CalloutProps } from "./components/callout";
 export { EditableSection, type EditableSectionProps } from "./components/editable-section";
 export { Timeline, type TimelineProps, type TimelineRowProps, type TimelineBlockProps } from "./components/timeline";
+export {
+  SchedulerGrid,
+  type SchedulerGridProps,
+  type SchedulerGridRowProps,
+  type SchedulerGridCellProps,
+  type SchedulerGridBlockProps,
+} from "./components/scheduler-grid";
 export { CompositionTree, type CompositionTreeProps } from "./components/composition-tree";
 export {
   MapSurface,

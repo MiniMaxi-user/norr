@@ -2,9 +2,15 @@
 
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
-import { Button, Dialog, Heading, Input, Label, Separator, Stack, Text, useEscapeToClose } from "@yourorg/ui";
-import { updateTeamMemberProfile, updateTeamMemberRateSettings, type TeamMemberRecord } from "@/lib/team/actions";
+import { Button, Dialog, Heading, Input, Label, Select, Separator, Stack, Text, useEscapeToClose } from "@yourorg/ui";
+import {
+  updateTeamMemberProfile,
+  updateTeamMemberRateSettings,
+  updateTeamMemberRegion,
+  type TeamMemberRecord,
+} from "@/lib/team/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { RateSettingsSection } from "@/lib/rate-overrides/rate-settings-section";
 import type { RateOverrideRecord } from "@/lib/rate-overrides/schema";
 
@@ -14,6 +20,7 @@ interface FormState {
   success?: boolean;
   fullName?: string;
   rateSettings?: RateOverrideRecord;
+  regionId?: string | null;
 }
 
 const initialState: FormState = {};
@@ -28,12 +35,18 @@ export interface EditTeamMemberDialogProps {
    * as `accountManagers` is for the Clients module, so it's ready the moment
    * any engineer row is opened. */
   articles: ArticleSelectOption[];
+  /** `listReferenceItems("region")`'s result (issue #164, Planning module),
+   * fetched once by `team-board.tsx` and threaded down — for the Region
+   * `<Select>` below, rendered for EVERY member row (not just engineers), see
+   * this component's own doc comment. */
+  regions: ReferenceListItemRecord[];
   /** Called once every save this dialog performed succeeds, with the fields
    * `TeamManager` needs to patch its local member list without a full
    * `router.refresh()`. `rateSettings` is always the member's current (saved)
    * settings — unchanged from `member.rateSettings` for a non-engineer row,
-   * which never renders (or submits) the rate section at all. */
-  onSaved: (userId: string, fullName: string, rateSettings: RateOverrideRecord) => void;
+   * which never renders (or submits) the rate section at all. `regionId` is
+   * always the member's current (saved) region. */
+  onSaved: (userId: string, fullName: string, rateSettings: RateOverrideRecord, regionId: string | null) => void;
 }
 
 /**
@@ -66,7 +79,7 @@ export interface EditTeamMemberDialogProps {
  * name change already persisted, and resubmitting simply re-saves the same
  * name again (harmless) before retrying the rate save.
  */
-export function EditTeamMemberDialog({ open, onOpenChange, member, articles, onSaved }: EditTeamMemberDialogProps) {
+export function EditTeamMemberDialog({ open, onOpenChange, member, articles, regions, onSaved }: EditTeamMemberDialogProps) {
   useEscapeToClose(open, onOpenChange);
   const isEngineer = member?.role === "engineer";
 
@@ -79,8 +92,24 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, onS
       return { error: profileResult.error ?? "Could not save this name.", fieldErrors: profileResult.fieldErrors };
     }
 
+    const regionValue = String(formData.get("regionId") ?? "");
+    const regionId = regionValue === "" ? null : regionValue;
+    const regionResult = await updateTeamMemberRegion(member.userId, regionId);
+    if (regionResult.error) {
+      return {
+        error: regionResult.error,
+        fullName: profileResult.data.fullName,
+        rateSettings: member.rateSettings,
+      };
+    }
+
     if (!isEngineer) {
-      return { success: true, fullName: profileResult.data.fullName, rateSettings: member.rateSettings };
+      return {
+        success: true,
+        fullName: profileResult.data.fullName,
+        rateSettings: member.rateSettings,
+        regionId: regionResult.data?.regionId ?? regionId,
+      };
     }
 
     // A `<Checkbox>` only appears in `FormData` at all when checked — see
@@ -95,10 +124,16 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, onS
         error: rateResult.error ?? "Could not save rate settings.",
         fieldErrors: rateResult.fieldErrors,
         fullName: profileResult.data.fullName,
+        regionId: regionResult.data?.regionId ?? regionId,
       };
     }
 
-    return { success: true, fullName: profileResult.data.fullName, rateSettings: rateResult.data };
+    return {
+      success: true,
+      fullName: profileResult.data.fullName,
+      rateSettings: rateResult.data,
+      regionId: regionResult.data?.regionId ?? regionId,
+    };
   }
 
   const [state, formAction] = useActionState(action, initialState);
@@ -106,7 +141,12 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, onS
   useEffect(() => {
     if (state.success && member) {
       onOpenChange(false);
-      onSaved(member.userId, state.fullName ?? "", state.rateSettings ?? member.rateSettings);
+      onSaved(
+        member.userId,
+        state.fullName ?? "",
+        state.rateSettings ?? member.rateSettings,
+        state.regionId !== undefined ? state.regionId : (member.regionId ?? null),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
@@ -131,6 +171,23 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, onS
                 maxLength={200}
               />
               {state.fieldErrors?.fullName?.map((message) => (
+                <Text key={message} tone="danger">
+                  {message}
+                </Text>
+              ))}
+            </Stack>
+
+            <Stack gap="xs">
+              <Label htmlFor="edit-team-member-region">Region</Label>
+              <Select id="edit-team-member-region" name="regionId" defaultValue={member?.regionId ?? ""}>
+                <option value="">No region</option>
+                {regions.map((region) => (
+                  <option key={region.id} value={region.id}>
+                    {region.label}
+                  </option>
+                ))}
+              </Select>
+              {state.fieldErrors?.regionId?.map((message) => (
                 <Text key={message} tone="danger">
                   {message}
                 </Text>

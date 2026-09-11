@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar, Button, IconButton, Tooltip } from "@yourorg/ui";
 import { PanelLeftClose, PanelLeftOpen } from "@yourorg/ui/icons";
 import { setSidebarCollapsed } from "@/lib/preferences/actions";
+
+/** Routes that auto-collapse the sidebar locally (issue #164, Planning
+ * module) — the scheduler board needs the extra horizontal room, but this
+ * is NOT the user's real persisted preference, just a per-route default.
+ * `startsWith` so any future `/planning/...` sub-route collapses too. */
+function shouldAutoCollapse(pathname: string | null): boolean {
+  return pathname?.startsWith("/planning") ?? false;
+}
 
 interface SidebarShellProps {
   defaultCollapsed: boolean;
@@ -32,6 +41,20 @@ interface SidebarShellProps {
 export function SidebarShell({ defaultCollapsed, header, children, footer }: SidebarShellProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [, startTransition] = useTransition();
+  const pathname = usePathname();
+
+  // Local-only auto-collapse on `/planning` (issue #164) — deliberately
+  // plain `setCollapsed`, NEVER `setSidebarCollapsed` (the persisting Server
+  // Action): this is a per-route default, not the user's real preference.
+  // Keyed on `pathname` (not `collapsed`) so it fires exactly once per route
+  // change, not on every toggle while already on `/planning` — the manual
+  // footer toggle below still works normally on this route (a user can
+  // expand it back, and that flip persists via `toggle()` exactly like on
+  // any other route). Leaving `/planning` restores the real
+  // `defaultCollapsed` preference.
+  useEffect(() => {
+    setCollapsed(shouldAutoCollapse(pathname) ? true : defaultCollapsed);
+  }, [pathname, defaultCollapsed]);
 
   function toggle() {
     const next = !collapsed;

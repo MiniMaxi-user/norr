@@ -84,6 +84,12 @@ export interface WorkOrderScreenProps {
   sourceActivityId?: string;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
+  /** Issue #164 (Planning module) — the org's `activity_type` reference
+   * items, for the Type `<Select>` folded into
+   * `WorkOrderStatusPriorityDialog`. Reused from the same list Activities'
+   * own type picker reads (see `../schema.ts`'s `workOrderCreateSchema.typeId`
+   * doc comment). */
+  types: ReferenceListItemRecord[];
   members: OrgMemberRecord[];
   cancelHref?: string;
 
@@ -232,6 +238,7 @@ export function WorkOrderScreen({
   sourceActivityId,
   statuses,
   priorities,
+  types,
   members,
   cancelHref,
   canDelete,
@@ -392,6 +399,7 @@ export function WorkOrderScreen({
         lockedClientId={lockedClientId}
         statuses={statuses}
         priorities={priorities}
+        types={types}
         readOnly={readOnly}
         members={members}
         currentUserId={currentUserId}
@@ -446,6 +454,7 @@ interface WorkOrderScreenBodyProps {
   lockedClientId?: string;
   statuses: ReferenceListItemRecord[];
   priorities: ReferenceListItemRecord[];
+  types: ReferenceListItemRecord[];
   readOnly?: boolean;
   members: OrgMemberRecord[];
   currentUserId?: string;
@@ -511,6 +520,7 @@ function WorkOrderScreenBody({
   lockedClientId,
   statuses,
   priorities,
+  types,
   readOnly,
   members,
   currentUserId,
@@ -626,6 +636,7 @@ function WorkOrderScreenBody({
         lockedClientId={lockedClientId}
         statuses={statuses}
         priorities={priorities}
+        types={types}
         readOnly={readOnly}
         stats={stats}
         actions={heroActions}

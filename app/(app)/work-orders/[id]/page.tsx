@@ -155,27 +155,39 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // is the hero/relation-card-critical fetch tier issue #146's own doc
   // comment above describes; a before/after number here is exactly what lets
   // later stories (e.g. #147's select("*") projections) prove they helped.
-  const [clientResult, assetResult, contractResult, membersResult, clientsResult, statusesResult, prioritiesResult] =
-    await withTiming("work-order-detail:fetch", () =>
-      Promise.all([
-        getClient(workOrder.client_id),
-        workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
-        // Full contract record (issue #100) — the work order's own `contract`
-        // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
-        // (id/name only), enough for a plain link but not for the rail's "a
-        // couple of key facts" card; fetched the same "one extra round trip for
-        // the full record" way `asset`/`client` already are.
-        workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
-        listOrgMembers(),
-        // Client/Site/Asset/Contract pickers and the Status/Priority pickers
-        // (`WorkOrderFields`, editable branch only) — skipped for a read-only
-        // viewer, same "don't fetch what can't render" reasoning as every
-        // conditional fetch below.
-        canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
-        canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
-        canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
-      ]),
-    );
+  const [
+    clientResult,
+    assetResult,
+    contractResult,
+    membersResult,
+    clientsResult,
+    statusesResult,
+    prioritiesResult,
+    typesResult,
+  ] = await withTiming("work-order-detail:fetch", () =>
+    Promise.all([
+      getClient(workOrder.client_id),
+      workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
+      // Full contract record (issue #100) — the work order's own `contract`
+      // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
+      // (id/name only), enough for a plain link but not for the rail's "a
+      // couple of key facts" card; fetched the same "one extra round trip for
+      // the full record" way `asset`/`client` already are.
+      workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
+      listOrgMembers(),
+      // Client/Site/Asset/Contract pickers and the Status/Priority/Type
+      // pickers (`WorkOrderFields`, editable branch only) — skipped for a
+      // read-only viewer, same "don't fetch what can't render" reasoning as
+      // every conditional fetch below.
+      canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
+      canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
+      canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
+      // Issue #164 (Planning module) — reuses the `activity_type` list rather
+      // than a separate `work_order_type` one, see `../schema.ts`'s
+      // `workOrderCreateSchema.typeId` doc comment.
+      canEdit ? listReferenceItems("activity_type") : Promise.resolve(null),
+    ]),
+  );
 
   const client = clientResult.data?.client ?? null;
   const site = clientResult.data?.sites.find((candidate) => candidate.id === workOrder.site_id) ?? null;
@@ -185,6 +197,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const clients = clientsResult?.data?.clients ?? [];
   const statuses = statusesResult?.data?.items ?? [];
   const priorities = prioritiesResult?.data?.items ?? [];
+  const types = typesResult?.data?.items ?? [];
 
   const canDelete = can(actor, "planning", "delete");
   // Time Entries (issue #15) share the `planning` module's own actions —
@@ -227,6 +240,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       clients={clients}
       statuses={statuses}
       priorities={priorities}
+      types={types}
       members={members}
       canDelete={canDelete}
       currentUserId={session.userId}

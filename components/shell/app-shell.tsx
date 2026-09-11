@@ -5,6 +5,7 @@ import { Topbar } from "./topbar";
 import { resolveNavItems } from "./nav-items";
 import type { FeatureOrganization } from "@/lib/rbac/features";
 import type { CurrentSession } from "@/lib/auth/session";
+import type { PermissionActor } from "@/lib/rbac/permissions";
 
 interface AppShellProps {
   defaultSidebarCollapsed: boolean;
@@ -50,7 +51,8 @@ export async function AppShell({
   title,
   children,
 }: AppShellProps) {
-  const navItems = await resolveNavItems(organization, isPlatformAdmin);
+  const actor: PermissionActor = { role: user.role, isPlatformAdmin };
+  const navItems = await resolveNavItems(organization, isPlatformAdmin, actor);
 
   return (
     <AppLayout

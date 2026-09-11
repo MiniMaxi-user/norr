@@ -87,6 +87,17 @@ export interface WorkOrderRecord {
   notes: string | null;
   status_id: string;
   priority_id: string | null;
+  /** FK into this org's `activity_type` reference list (issue #164, Planning
+   * module) — see `workOrderCreateSchema.typeId`'s comment in `./schema.ts`
+   * for why it reuses that list rather than a new `work_order_type` one.
+   * Nullable; drives the scheduler block's color on the Planning board. */
+  type_id: string | null;
+  /** The scheduler block length in minutes (issue #164, Planning module).
+   * Nullable — a work order with no duration can't be scheduled onto the
+   * Planning grid (`scheduleWorkOrder` in `./planning-actions.ts` rejects
+   * that attempt with a clean message) but is otherwise a perfectly normal
+   * work order. */
+  duration_minutes: number | null;
   scheduled_at: string | null;
   completed_at: string | null;
   created_by: string | null;
@@ -101,11 +112,26 @@ export interface WorkOrderRecord {
   /** Embedded via `reference_list_items!work_orders_priority_id_fkey(...)`.
    * `null` whenever `priority_id` is `null` (no priority set). */
   work_order_priority: ResolvedReferenceItem | null;
+  /** Embedded via `reference_list_items!work_orders_type_id_fkey(...)`
+   * (issue #164, Planning module) — same unnamed-FK default-naming
+   * reasoning as `work_order_status`/`work_order_priority` above. `null`
+   * whenever `type_id` is `null` (no type set). */
+  work_order_type: ResolvedReferenceItem | null;
   /** Embedded via `contracts(id, name)` (issue #33) — a plain FK embed (not
    * `reference_list_items`, so no `!fkey` disambiguator is needed: `contract_id`
    * is the only FK from `work_orders` into `contracts`). `null` whenever
    * `contract_id` is `null` (no contract linked). */
   contract: { id: string; name: string } | null;
+  /** Embedded via `assets!work_orders_asset_id_fkey(...)`, with a nested
+   * `asset_model:asset_models!assets_model_id_fkey(...)` embed — same
+   * two-level pattern `ASSET_SELECT` in `app/(app)/assets/actions.ts` already
+   * uses for the same relationship. `null` whenever `asset_id` is `null`, or
+   * `asset.asset_model` specifically whenever `assets.model_id` is unset (an
+   * asset isn't required to have a catalog model). The old free-text
+   * `assets.model` column was dropped in
+   * `20260826170000_assets_external_reference_brand_model.sql` in favor of
+   * `model_id` — there is no fallback to read anymore. */
+  asset: { id: string; name: string; asset_model: { name: string } | null } | null;
 }
 
 /** Shared select shape for every query returning a `WorkOrderRecord`, so the
@@ -114,9 +140,15 @@ export interface WorkOrderRecord {
  * row per column — same reasoning as `ASSET_SELECT` in
  * `app/(app)/assets/actions.ts`. */
 const WORK_ORDER_SELECT =
-  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), contract:contracts(id, name)";
+  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name), asset:assets!work_orders_asset_id_fkey(id, name, asset_model:asset_models!assets_model_id_fkey(name))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
+/** Same shape as `optionalIsoDateTime` in `./schema.ts` (offset-aware ISO
+ * 8601) — used to validate `listWorkOrders`' `scheduledFrom`/`scheduledTo`
+ * filters, which aren't run through a Zod object schema themselves (they're
+ * plain `ListWorkOrdersOptions` fields, same as the uuid filters validated
+ * via `uuidSchema` in the loop below). */
+const isoDateTimeSchema = z.string().datetime({ offset: true, message: "Invalid date/time." });
 
 function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.parse>) {
   const row: Record<string, unknown> = {
@@ -132,12 +164,20 @@ function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.par
     priority_id: input.priorityId ?? null,
     scheduled_at: input.scheduledAt ?? null,
     completed_at: input.completedAt ?? null,
+    // duration_minutes follows the plain "set if provided" path, same as
+    // notes/priority_id above — unlike status_id/type_id below, an explicit
+    // `null` here doesn't defeat any DB-trigger default-fill logic of its
+    // own (see workOrderCreateSchema.durationMinutes' comment in ./schema.ts).
+    duration_minutes: input.durationMinutes ?? null,
   };
-  // status_id is intentionally omitted (not even sent as null) when not
-  // provided — the `derive_work_order_organization_id` DB trigger fills in
-  // the organization's default `work_order_status` item on insert. Same
-  // reasoning/comment as `toAssetInsertRow` in app/(app)/assets/actions.ts.
+  // status_id/type_id are intentionally omitted (not even sent as null) when
+  // not provided — the `derive_work_order_organization_id` DB trigger fills
+  // in the organization's default `work_order_status` item, and (issue #164,
+  // Planning module) type_id from the linked source_activity_id's own type,
+  // on insert. Same reasoning/comment as `toAssetInsertRow` in
+  // app/(app)/assets/actions.ts.
   if (input.statusId !== undefined) row.status_id = input.statusId;
+  if (input.typeId !== undefined) row.type_id = input.typeId;
   return row;
 }
 
@@ -153,6 +193,8 @@ function toWorkOrderUpdateRow(input: ReturnType<typeof workOrderUpdateSchema.par
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.priorityId !== undefined) row.priority_id = input.priorityId ?? null;
+  if (input.typeId !== undefined) row.type_id = input.typeId ?? null;
+  if (input.durationMinutes !== undefined) row.duration_minutes = input.durationMinutes ?? null;
   if (input.scheduledAt !== undefined) row.scheduled_at = input.scheduledAt ?? null;
   if (input.completedAt !== undefined) row.completed_at = input.completedAt ?? null;
   return row;
@@ -169,6 +211,22 @@ export interface ListWorkOrdersOptions {
    * orders. Used by the Activity detail page's own "Linked work orders"
    * section (issue #118), `../activities/[id]/page.tsx`. */
   sourceActivityId?: string;
+  /** Filters to work orders scheduled on/after this ISO datetime (inclusive
+   * lower bound, `.gte("scheduled_at", ...)`) — issue #164, Planning module.
+   * Paired with `scheduledTo` for a half-open `[from, to)` range covering the
+   * scheduler board's visible day/week; combinable with `unscheduled` in
+   * principle (mutually exclusive results — see that field's own comment)
+   * but the Planning page calls `listWorkOrders` twice rather than combining
+   * them in one call. */
+  scheduledFrom?: string;
+  /** Filters to work orders scheduled strictly before this ISO datetime
+   * (exclusive upper bound, `.lt("scheduled_at", ...)`) — see
+   * `scheduledFrom` above. */
+  scheduledTo?: string;
+  /** When true, filters to work orders with `scheduled_at is null` (issue
+   * #164, Planning module's "Werkvoorraad"/backlog panel — items not yet
+   * placed on the scheduler grid). */
+  unscheduled?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -179,7 +237,13 @@ export interface ListWorkOrdersOptions {
  * comment above). Supports filtering by `clientId`/`siteId`/`assetId`/
  * `statusId`/`assignedTo`/`sourceActivityId` (all optional, combinable) for
  * the list/kanban/calendar views per docs/ARCHITECTURE.md's Planning view
- * switcher, plus the Activity detail page's own linked-work-orders relation.
+ * switcher, plus the Activity detail page's own linked-work-orders relation,
+ * plus (issue #164, Planning module) `scheduledFrom`/`scheduledTo`/
+ * `unscheduled` for the drag-and-drop scheduler board — there is
+ * deliberately no dedicated `listPlanningBoard` action; the Planning page
+ * calls this function twice (`unscheduled: true` for the backlog,
+ * `scheduledFrom`/`scheduledTo` for the visible grid range) and does its own
+ * region/type grouping client-side over the already-fetched rows.
  *
  * Default order: soonest-scheduled first (nulls last), then most-recently
  * created — a reasonable default "what's next" queue order; the frontend's
@@ -198,6 +262,14 @@ export async function listWorkOrders(
     ["source activity id filter", options.sourceActivityId],
   ] as const) {
     if (value !== undefined && !uuidSchema.safeParse(value).success) {
+      return fail(`Invalid ${label}.`);
+    }
+  }
+  for (const [label, value] of [
+    ["scheduled-from filter", options.scheduledFrom],
+    ["scheduled-to filter", options.scheduledTo],
+  ] as const) {
+    if (value !== undefined && !isoDateTimeSchema.safeParse(value).success) {
       return fail(`Invalid ${label}.`);
     }
   }
@@ -220,6 +292,9 @@ export async function listWorkOrders(
   if (options.statusId) query = query.eq("status_id", options.statusId);
   if (options.assignedTo) query = query.eq("assigned_to", options.assignedTo);
   if (options.sourceActivityId) query = query.eq("source_activity_id", options.sourceActivityId);
+  if (options.scheduledFrom) query = query.gte("scheduled_at", options.scheduledFrom);
+  if (options.scheduledTo) query = query.lt("scheduled_at", options.scheduledTo);
+  if (options.unscheduled) query = query.is("scheduled_at", null);
   query = query
     .order("scheduled_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })

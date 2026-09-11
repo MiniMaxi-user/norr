@@ -996,6 +996,20 @@ html.dark .ui-topbar .ui-command-overlay {
   transform: translateY(1px);
 }
 
+/* ---------------------------------------------------------------------- *
+ * ViewSwitcher — see components/view-switcher.tsx. Deliberately no gap:
+ * the individual `Button`s (already `inline-flex` with their own
+ * border/radius) sit flush against each other, matching the pill-group
+ * look of the two call sites this was promoted from (Assets' List/Map,
+ * Clients' List/Kanban). `align-items: center` + `inline-flex` just keeps
+ * the row robust to being dropped into any flex toolbar — it does not
+ * change how the two call sites already rendered.
+ * ---------------------------------------------------------------------- */
+.ui-view-switcher {
+  display: inline-flex;
+  align-items: center;
+}
+
 .ui-kbd {
   font-family: var(--ui-font-sans);
   font-size: var(--ui-text-xs);
@@ -3346,6 +3360,331 @@ select.ui-client-card-status-select {
 .ui-timeline-block-clickable:focus-visible {
   filter: brightness(0.97);
   box-shadow: var(--ui-shadow-sm);
+}
+
+/* ---------------------------------------------------------------------- *
+ * SchedulerGrid — see components/scheduler-grid.tsx. Half-hour-precision
+ * day-by-resource dispatch board (Planning module Day view). Same flat
+ * CSS-Grid-with-implicit-auto-flow technique as `.ui-timeline` above,
+ * generalized so a block can span more than one column track — column count
+ * driven by the `--ui-scheduler-grid-slots` custom property
+ * `SchedulerGrid` sets inline from `columnLabels.length * slotsPerLabel`.
+ * ---------------------------------------------------------------------- */
+.ui-scheduler-grid {
+  display: grid;
+  grid-template-columns: 200px repeat(var(--ui-scheduler-grid-slots, 20), minmax(48px, 1fr));
+  min-width: max-content;
+}
+.ui-scheduler-grid-header-cell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.625rem 0.5rem;
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  color: var(--ui-muted);
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-border);
+  border-left: 1px solid var(--ui-border);
+}
+.ui-scheduler-grid-corner {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  border-left: none;
+}
+.ui-scheduler-grid-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  font-size: var(--ui-text-base);
+  font-weight: 550;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  border-top: 1px solid var(--ui-border);
+  border-right: 1px solid var(--ui-border);
+}
+.ui-scheduler-grid-cell {
+  min-height: 2.75rem;
+  border-top: 1px solid var(--ui-border);
+  border-left: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  transition: background var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-scheduler-grid-cell[role="button"] {
+  cursor: pointer;
+}
+.ui-scheduler-grid-cell-disabled {
+  cursor: not-allowed;
+  background: var(--ui-surface-2);
+}
+.ui-scheduler-grid-cell-valid {
+  background: var(--ui-success-tint);
+  box-shadow: inset 0 0 0 1px var(--ui-success);
+}
+.ui-scheduler-grid-cell-invalid {
+  background: var(--ui-danger-tint);
+  box-shadow: inset 0 0 0 1px var(--ui-danger);
+}
+.ui-scheduler-grid-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.6rem;
+  border-top: 1px solid var(--ui-border);
+  border-left: 3px solid var(--ui-border-strong);
+  background: var(--ui-surface-2);
+  font-size: var(--ui-text-sm);
+  overflow: hidden;
+}
+.ui-scheduler-grid-block-title {
+  font-weight: 600;
+  color: var(--ui-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-scheduler-grid-block-meta {
+  font-size: var(--ui-text-xs);
+  color: var(--ui-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-scheduler-grid-block-clickable {
+  cursor: pointer;
+  transition: filter var(--ui-duration-fast) var(--ui-ease), box-shadow var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-scheduler-grid-block-clickable:hover,
+.ui-scheduler-grid-block-clickable:focus-visible {
+  filter: brightness(0.97);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Planning module layout (issue #164) — a single-use, app-level two-column
+ * wrapper (fixed-width "Werkvoorraad" backlog rail + flexible scheduler
+ * grid main area, per docs/designinstructieskanweg/planning.png), not a
+ * full `@yourorg/ui` component of its own: unlike `SchedulerGrid`/`Timeline`
+ * above (genuinely reusable data-rendering primitives), this specific
+ * column arrangement is only ever used by
+ * `app/(app)/planning/components/planning-screen.tsx` and its own loading
+ * skeleton. Kept here (token-driven, centrally reviewable) rather than as
+ * ad-hoc CSS in the app package, per this repo's "missing tokens/components
+ * go into packages/ui, don't fork one-off styled markup in the app" rule —
+ * just without the ceremony of a dedicated component wrapper for a single
+ * call site.
+ *
+ * `.ui-planning-page` (the page's own root `Stack`) fills the full height
+ * `.ui-app-layout-content` gives it (`height: 100%`), so `.ui-planning-topbar`
+ * (fixed natural height) and `.ui-planning-layout` (`flex: 1; min-height: 0`)
+ * split that space instead of both growing past the viewport and leaving
+ * `.ui-app-layout-content` itself to scroll as one unit. `align-items:
+ * stretch` (not `start`) so both grid columns take the row's full height,
+ * letting `.ui-planning-backlog`/`.ui-planning-grid-area` each bound and
+ * scroll independently — see those rules below, and
+ * `planning-backlog.tsx`'s own doc comment for the shared "pinned
+ * header/footer, scrollable middle" technique (same one `.ui-dialog-body`
+ * already established).
+ * ---------------------------------------------------------------------- */
+.ui-planning-page {
+  height: 100%;
+  min-height: 0;
+}
+.ui-planning-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  align-items: stretch;
+  gap: var(--ui-space-lg);
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 900px) {
+  .ui-planning-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The dark control bar itself — same `--ui-*` re-pointing trick
+   `.ui-overview-hero-band` already established (see that rule above) for a
+   full-bleed dark "ink" surface, just with compact toolbar padding instead
+   of a hero's large title block, since this bar holds date-nav controls and
+   view toggles, not a page heading. Full-bleed via the same negative-margin
+   trick `.ui-record-hero-band`/`.ui-settings-landing-band` use to cancel
+   `.ui-app-layout-content`'s own `--ui-page-inset-x/y` padding — flush to
+   the sidebar on the left, the app Topbar above, and the viewport edge on
+   the right (no rounded top corners, same reasoning those two give). */
+.ui-planning-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ui-space-md);
+  padding: 0.875rem 1.25rem;
+  background: var(--ui-brand-fjord);
+  margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x)) 0;
+  width: calc(100% + 2 * var(--ui-page-inset-x));
+  flex-shrink: 0;
+
+  --ui-bg: var(--ui-brand-fjord);
+  --ui-fg: var(--ui-brand-snow);
+  --ui-fg-secondary: rgba(223, 228, 224, 0.85);
+  --ui-muted: rgba(223, 228, 224, 0.68);
+  --ui-border: rgba(223, 228, 224, 0.25);
+  --ui-surface-2: rgba(223, 228, 224, 0.14);
+  color: var(--ui-fg);
+}
+.ui-planning-topbar-left,
+.ui-planning-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+.ui-planning-topbar-date {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.ui-planning-topbar-hours {
+  white-space: nowrap;
+}
+.ui-planning-topbar-label {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-muted);
+}
+/* Same transparent-on-dark treatment as `.ui-overview-hero-band-actions
+   .ui-button-outline`/`.ui-record-hero-band-actions .ui-button-outline`. */
+.ui-planning-topbar .ui-button-outline {
+  background: transparent;
+}
+.ui-planning-topbar .ui-button-outline:hover {
+  background: rgba(223, 228, 224, 0.1);
+}
+.ui-planning-topbar .ui-icon-button-ghost:hover {
+  background: rgba(223, 228, 224, 0.1);
+}
+
+/* Werkvoorraad backlog panel (see planning-backlog.tsx). `.ui-planning-backlog`
+   is the `Card` itself: a flex column filling the full height
+   `.ui-planning-layout` gives its grid cell, so `.ui-planning-backlog-stack`
+   (the `Card`'s own content `Stack`) can in turn stretch to fill it and let
+   `.ui-planning-backlog-scroll` (just the grouped card list) be the one part
+   that actually scrolls — title/count, the type filter, and the footer hint
+   all stay fixed in place around it. */
+.ui-planning-backlog {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ui-planning-backlog-stack {
+  flex: 1;
+  min-height: 0;
+}
+.ui-planning-backlog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ui-planning-backlog-drop-target {
+  box-shadow: inset 0 0 0 2px var(--ui-success);
+  background: var(--ui-success-tint);
+}
+.ui-planning-backlog-title {
+  font-weight: 650;
+  font-size: var(--ui-text-md);
+}
+.ui-planning-backlog-group-label {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  color: var(--ui-muted);
+}
+.ui-planning-backlog-group-total {
+  font-size: var(--ui-text-xs);
+  font-weight: 650;
+}
+.ui-planning-backlog-hint {
+  font-size: var(--ui-text-xs);
+  padding-top: var(--ui-space-sm);
+  border-top: 1px solid var(--ui-border);
+}
+.ui-planning-backlog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border: 1px solid var(--ui-border);
+  border-left-width: 3px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-bg);
+  padding: 0.625rem 0.75rem;
+  cursor: grab;
+  text-align: left;
+  transition: box-shadow var(--ui-duration-fast) var(--ui-ease), transform var(--ui-duration-fast) var(--ui-ease),
+    border-color var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-planning-backlog-card:hover {
+  box-shadow: var(--ui-shadow-sm);
+  transform: translateY(-1px);
+}
+.ui-planning-backlog-card:active {
+  cursor: grabbing;
+}
+.ui-planning-backlog-card[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ui-planning-backlog-card[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+  border-color: var(--ui-accent-tint-border);
+}
+.ui-planning-backlog-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+}
+.ui-planning-backlog-card-title {
+  font-weight: 600;
+}
+.ui-planning-backlog-card-meta {
+  font-size: var(--ui-text-xs);
+}
+
+/* Main scheduler area — one Card per region section (see
+   planning-grid.tsx). `.ui-planning-grid-area` (the region-section `Stack`
+   itself) fills `.ui-planning-layout`'s stretched second column and scrolls
+   vertically on its own — independent of `.ui-planning-backlog-scroll` — for
+   however many region sections there are; `.ui-planning-grid-scroll` (below)
+   is the separate PER-ROW horizontal scroll for a wide half-hour grid. */
+.ui-planning-grid-area {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ui-planning-section-title {
+  font-weight: 650;
+  font-size: var(--ui-text-md);
+}
+.ui-planning-section-subtitle {
+  font-size: var(--ui-text-sm);
+}
+.ui-planning-region-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-accent-strong);
+}
+.ui-planning-grid-scroll {
+  overflow-x: auto;
 }
 
 /* ---------------------------------------------------------------------- *

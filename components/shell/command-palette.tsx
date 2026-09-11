@@ -90,8 +90,12 @@ export function CommandPalette({ navItems }: { navItems: CommandPaletteNavItem[]
       <UiCommandPalette open={open} onOpenChange={setOpen} placeholder="Type a command or search…">
         <CommandGroup heading="Navigate">
           {enabledNavItems.map((item) => (
+            // `href`, not `moduleKey` — Planning and Work Orders now share
+            // `moduleKey: "planning"` (issue #164, see `nav-items.ts`'s
+            // `requiredPermission` comment), so `href` is the only field
+            // still guaranteed unique per nav entry.
             <CommandItem
-              key={item.moduleKey}
+              key={item.href}
               onSelect={() => runAndClose(() => router.push(item.href))}
             >
               {item.icon}
