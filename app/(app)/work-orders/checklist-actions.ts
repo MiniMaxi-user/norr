@@ -119,9 +119,15 @@ export async function getWorkOrderChecklist(
   if (error) return fail(mapDbError(error));
   if (!checklist) return ok({ checklist: null, items: [] });
 
+  // Explicit column projection (issue #149) — `WorkOrderChecklistSection`
+  // (the only consumer) reads `id`/`label`/`is_required`/`sort_order`/
+  // `is_checked`/`checked_at`/`notes`; `work_order_checklist_id`/
+  // `template_item_id`/`organization_id`/`assigned_to`/`checked_by`/
+  // `created_by`/`created_at`/`updated_at` are never read back from this
+  // list.
   const { data: items, error: itemsError } = await supabase
     .from("work_order_checklist_items")
-    .select("*")
+    .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
     .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
     .order("sort_order", { ascending: true });
 
@@ -172,9 +178,12 @@ export async function attachChecklistTemplate(
 
   if (error) return fail(mapChecklistDbError(error));
 
+  // Same explicit column projection as `getWorkOrderChecklist` above (issue
+  // #149) — this is the freshly-instantiated items list returned right after
+  // attaching a template, read by the same `WorkOrderChecklistSection`.
   const { data: items, error: itemsError } = await supabase
     .from("work_order_checklist_items")
-    .select("*")
+    .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
     .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
     .order("sort_order", { ascending: true });
 

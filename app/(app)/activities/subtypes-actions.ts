@@ -111,9 +111,14 @@ export async function listActivitySubtypes(): Promise<ActionResult<{ subtypes: A
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — every tree consumer
+  // (`subtype-tree.ts`'s helpers, the Settings tree manager, the Activity
+  // page's 3-level cascading picker) only ever reads `id`/`parent_subtype_id`/
+  // `type_id`/`name`/`sort_order`; `organization_id`/`created_by`/
+  // `created_at`/`updated_at` are never read back from this list.
   const { data, error } = await supabase
     .from("activity_subtypes")
-    .select("*")
+    .select("id, parent_subtype_id, type_id, name, sort_order")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 

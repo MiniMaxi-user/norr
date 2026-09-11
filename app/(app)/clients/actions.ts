@@ -340,9 +340,29 @@ export async function listClients(
   const offset = clampOffset(options.offset);
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — this feeds the Clients List
+  // table AND Kanban board (`clients-board.tsx`) directly, PLUS every other
+  // module's "pick a client" dropdown/relation-card fallback that reuses this
+  // same call (assets/work-orders/activities/contracts/quotes — see those
+  // modules' own relation-cards/relation-fields components). The set below is
+  // the exhaustive union of every field any of those consumers actually
+  // reads: List/Kanban read `name`/`status`/`potential_value`/
+  // `account_manager_id`/`logo_path`/`logo_updated_at`/`won_at`/`created_at`;
+  // the relation-cards' hover-expand panel (KvK/VAT/IBAN/Notes) also reads
+  // `kvk_number`/`vat_number`/`iban`/`notes` off a candidate straight from
+  // this same array (see `lib/relation-cards/resolve-relation.ts`'s "same
+  // select(\"*\")-shaped queries" doc comment — candidates and the
+  // `getClient` fallback must stay field-compatible for those cards).
+  // Deliberately excludes `organization_id` (RLS already scopes this query;
+  // nothing downstream reads it back), `represents_organization_id`/
+  // `client_since`/the rate-override columns/`created_by`/`updated_at`
+  // (detail-page-only, via `getClient`/`updateClientRateSettings`).
   const { data, error, count } = await supabase
     .from("clients")
-    .select("*", { count: "exact" })
+    .select(
+      "id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at",
+      { count: "exact" },
+    )
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
 
@@ -697,9 +717,21 @@ export async function listSites(clientId: string): Promise<ActionResult<{ sites:
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — shared across every
+  // client-scoped "sites" picker/relation-card consumer (quote/work-order/
+  // activity forms' Site `<select>`, `WorkOrderRelationCards`'/
+  // `AssetRelationCards`'/`activity-hero.tsx`'s hover-expand facts, which read
+  // `phone`/`is_visit_address`/`is_invoice_address`/`is_delivery_address`/
+  // `is_primary` plus the full address via `formatSiteAddress`). Excludes
+  // `client_id` (already scoped by the `clientId` argument, never read back),
+  // `visit_contact_id`/`invoice_contact_id`/`delivery_contact_id`/`notes`/
+  // `geocoded_at`/`created_by`/`created_at`/`updated_at` (none of this
+  // function's consumers read those).
   const { data, error } = await supabase
     .from("sites")
-    .select("*")
+    .select(
+      "id, address_line1, address_line2, postal_code, city, country, phone, is_visit_address, is_invoice_address, is_delivery_address, is_primary",
+    )
     .eq("client_id", idResult.data)
     // See `getClient`'s equivalent query above for why `address_line1`, not
     // `name` (dropped, issue #42).
@@ -734,9 +766,14 @@ export async function listPrimarySitesForClients(
   if (clientIds.length === 0) return ok({ sitesByClientId });
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — `client_id` is required (this
+  // function's own grouping below keys the result by it), and `city`/
+  // `country`/`phone` are all `ClientsTable`/`ClientsKanban` render (see
+  // those components' own primary-site usage) — nothing else on this row is
+  // read by any consumer of this bulk helper.
   const { data, error } = await supabase
     .from("sites")
-    .select("*")
+    .select("id, client_id, city, country, phone")
     .in("client_id", clientIds)
     .eq("is_primary", true);
 
@@ -768,7 +805,14 @@ export async function listSitesForClientIds(clientIds: string[]): Promise<Action
   if (clientIds.length === 0) return ok({ sites: [] });
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("sites").select("*").in("client_id", clientIds);
+  // Explicit column projection (issue #149) — this function's only consumer
+  // is the Assets map view's pin-building (`assets-screen.tsx`'s
+  // `buildMapPins`), which reads `id`/`latitude`/`longitude` for the pin plus
+  // `address_line1`/`city` (via `formatSiteAddressShort`) for the pin label.
+  const { data, error } = await supabase
+    .from("sites")
+    .select("id, address_line1, city, latitude, longitude")
+    .in("client_id", clientIds);
 
   if (error) return fail(mapDbError(error));
   return ok({ sites: (data ?? []) as SiteRecord[] });

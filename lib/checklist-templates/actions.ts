@@ -80,9 +80,14 @@ export async function listChecklistTemplates(): Promise<
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — every consumer of this list
+  // (the Settings management screen's own rows, the work order "attach
+  // checklist template" dropdown) only ever reads `id`/`name`;
+  // `organization_id`/`created_by`/`created_at`/`updated_at` are never read
+  // back from this list.
   const { data, error } = await supabase
     .from("checklist_templates")
-    .select("*")
+    .select("id, name")
     .order("name", { ascending: true });
 
   if (error) return fail(mapDbError(error));
@@ -153,9 +158,14 @@ export async function listChecklistTemplateItemsForTemplates(
   if (templateIds.length === 0) return ok({ itemsByTemplateId });
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — the Settings board's items
+  // table (`checklist-template-items-manager.tsx`) only reads
+  // `id`/`checklist_template_id`/`label`/`is_required`/`sort_order` (the
+  // latter for its up/down reorder swap); `organization_id`/`created_by`/
+  // `created_at`/`updated_at` are never read back from this list.
   const { data, error } = await supabase
     .from("checklist_template_items")
-    .select("*")
+    .select("id, checklist_template_id, label, is_required, sort_order")
     .in("checklist_template_id", templateIds)
     .order("sort_order", { ascending: true });
 

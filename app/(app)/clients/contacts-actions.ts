@@ -113,9 +113,16 @@ export async function listContacts(clientId: string): Promise<ActionResult<{ con
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — every consumer (the client
+  // detail page's Contacts/Access panels, the site form's contact pickers,
+  // the contact edit dialog's prefill) reads `id`/`name`/`role_item_id`/
+  // `email`/`phone`/`is_primary`/`notes`/`created_at` (the latter for
+  // `site-form-dialog.tsx`'s "most recently added" fallback). Excludes
+  // `client_id` (already scoped by the `clientId` argument, never read
+  // back), `organization_id`/`created_by`/`updated_at`.
   const { data, error } = await supabase
     .from("contacts")
-    .select("*")
+    .select("id, name, role_item_id, email, phone, is_primary, notes, created_at")
     .eq("client_id", idResult.data)
     .order("is_primary", { ascending: false })
     .order("name", { ascending: true });

@@ -775,9 +775,15 @@ export async function listContractLineItems(
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — `ContractLineItemsSection` (the
+  // only consumer) reads `id`/`article_id`/`article_number`/`description`/
+  // `quantity`/`unit_price`/`purchase_price`/`is_volume`; `contract_id`/
+  // `organization_id`/`sort_order` (ordering only, never displayed)/
+  // `created_by`/`created_at`/`updated_at` are never read back from this
+  // list.
   const { data, error } = await supabase
     .from("contract_line_items")
-    .select("*")
+    .select("id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume")
     .eq("contract_id", idResult.data)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -941,9 +947,13 @@ export async function listContractArticleGroupRules(
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — `ContractArticleCoverageSection`
+  // (the only consumer) reads `id`/`article_group_id`/`is_excluded`;
+  // `contract_id`/`organization_id`/`created_by`/`created_at` are never read
+  // back from this list.
   const { data, error } = await supabase
     .from("contract_article_group_rules")
-    .select("*")
+    .select("id, article_group_id, is_excluded")
     .eq("contract_id", idResult.data)
     .order("created_at", { ascending: true });
 
@@ -1065,9 +1075,12 @@ export async function listContractArticleRules(
   }
 
   const supabase = await createSupabaseServerClient();
+  // Explicit column projection (issue #149) — same reasoning as
+  // `listContractArticleGroupRules` above, against `article_id` instead of
+  // `article_group_id`.
   const { data, error } = await supabase
     .from("contract_article_rules")
-    .select("*")
+    .select("id, article_id, is_excluded")
     .eq("contract_id", idResult.data)
     .order("created_at", { ascending: true });
 
