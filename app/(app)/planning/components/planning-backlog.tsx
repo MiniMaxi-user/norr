@@ -34,9 +34,8 @@ export interface PlanningBacklogProps {
  * hardcoded to Storing/Onderhoud/Inspectie — a tenant can configure more),
  * grouped by region with an hour total per group, draggable cards with a
  * colored left border matching the item's type color, and (if the linked
- * asset has one) its model — `asset_model.name` (the structured catalog
- * entry) preferred over the legacy free-text `asset.model`, see
- * `WorkOrderRecord.asset`'s own comment. A card is also click-to-select
+ * asset has a catalog model set) its model name — see `WorkOrderRecord.asset`'s
+ * own comment. A card is also click-to-select
  * (visible `aria-pressed` state) — the non-drag accessible fallback
  * described in the module's build plan: select a card here, then click a
  * valid grid cell in `planning-grid.tsx` to schedule it via the same
@@ -159,7 +158,7 @@ function BacklogCard({
 }) {
   const schedulable = workOrder.duration_minutes != null;
   const hex = resolveColor(workOrder.work_order_type?.color);
-  const assetModel = workOrder.asset?.asset_model?.name ?? workOrder.asset?.model ?? null;
+  const assetModel = workOrder.asset?.asset_model?.name ?? null;
 
   function handleDragStart(event: DragEvent<HTMLElement>) {
     if (!schedulable) {

@@ -17,7 +17,7 @@ import { updateWorkOrder, type WorkOrderRecord } from "./actions";
  * shape" precedent `TIME_ENTRY_SELECT` already sets in
  * `./time-entries-actions.ts`. */
 const WORK_ORDER_SELECT =
-  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name), asset:assets!work_orders_asset_id_fkey(id, name, model, asset_model:asset_models!assets_model_id_fkey(name))";
+  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name), asset:assets!work_orders_asset_id_fkey(id, name, asset_model:asset_models!assets_model_id_fkey(name))";
 
 /**
  * Server Actions backing the Planning module's drag-and-drop scheduler board
