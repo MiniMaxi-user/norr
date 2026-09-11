@@ -3480,12 +3480,30 @@ select.ui-client-card-status-select {
  * go into packages/ui, don't fork one-off styled markup in the app" rule —
  * just without the ceremony of a dedicated component wrapper for a single
  * call site.
+ *
+ * `.ui-planning-page` (the page's own root `Stack`) fills the full height
+ * `.ui-app-layout-content` gives it (`height: 100%`), so `.ui-planning-topbar`
+ * (fixed natural height) and `.ui-planning-layout` (`flex: 1; min-height: 0`)
+ * split that space instead of both growing past the viewport and leaving
+ * `.ui-app-layout-content` itself to scroll as one unit. `align-items:
+ * stretch` (not `start`) so both grid columns take the row's full height,
+ * letting `.ui-planning-backlog`/`.ui-planning-grid-area` each bound and
+ * scroll independently — see those rules below, and
+ * `planning-backlog.tsx`'s own doc comment for the shared "pinned
+ * header/footer, scrollable middle" technique (same one `.ui-dialog-body`
+ * already established).
  * ---------------------------------------------------------------------- */
+.ui-planning-page {
+  height: 100%;
+  min-height: 0;
+}
 .ui-planning-layout {
   display: grid;
   grid-template-columns: minmax(280px, 340px) 1fr;
-  align-items: start;
+  align-items: stretch;
   gap: var(--ui-space-lg);
+  flex: 1;
+  min-height: 0;
 }
 @media (max-width: 900px) {
   .ui-planning-layout {
@@ -3497,7 +3515,11 @@ select.ui-client-card-status-select {
    `.ui-overview-hero-band` already established (see that rule above) for a
    full-bleed dark "ink" surface, just with compact toolbar padding instead
    of a hero's large title block, since this bar holds date-nav controls and
-   view toggles, not a page heading. */
+   view toggles, not a page heading. Full-bleed via the same negative-margin
+   trick `.ui-record-hero-band`/`.ui-settings-landing-band` use to cancel
+   `.ui-app-layout-content`'s own `--ui-page-inset-x/y` padding — flush to
+   the sidebar on the left, the app Topbar above, and the viewport edge on
+   the right (no rounded top corners, same reasoning those two give). */
 .ui-planning-topbar {
   display: flex;
   align-items: center;
@@ -3505,8 +3527,10 @@ select.ui-client-card-status-select {
   flex-wrap: wrap;
   gap: var(--ui-space-md);
   padding: 0.875rem 1.25rem;
-  border-radius: var(--ui-radius-lg);
   background: var(--ui-brand-fjord);
+  margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x)) 0;
+  width: calc(100% + 2 * var(--ui-page-inset-x));
+  flex-shrink: 0;
 
   --ui-bg: var(--ui-brand-fjord);
   --ui-fg: var(--ui-brand-snow);
@@ -3549,7 +3573,28 @@ select.ui-client-card-status-select {
   background: rgba(223, 228, 224, 0.1);
 }
 
-/* Werkvoorraad backlog panel (see planning-backlog.tsx). */
+/* Werkvoorraad backlog panel (see planning-backlog.tsx). `.ui-planning-backlog`
+   is the `Card` itself: a flex column filling the full height
+   `.ui-planning-layout` gives its grid cell, so `.ui-planning-backlog-stack`
+   (the `Card`'s own content `Stack`) can in turn stretch to fill it and let
+   `.ui-planning-backlog-scroll` (just the grouped card list) be the one part
+   that actually scrolls — title/count, the type filter, and the footer hint
+   all stay fixed in place around it. */
+.ui-planning-backlog {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ui-planning-backlog-stack {
+  flex: 1;
+  min-height: 0;
+}
+.ui-planning-backlog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .ui-planning-backlog-drop-target {
   box-shadow: inset 0 0 0 2px var(--ui-success);
   background: var(--ui-success-tint);
@@ -3614,7 +3659,16 @@ select.ui-client-card-status-select {
 }
 
 /* Main scheduler area — one Card per region section (see
-   planning-grid.tsx). */
+   planning-grid.tsx). `.ui-planning-grid-area` (the region-section `Stack`
+   itself) fills `.ui-planning-layout`'s stretched second column and scrolls
+   vertically on its own — independent of `.ui-planning-backlog-scroll` — for
+   however many region sections there are; `.ui-planning-grid-scroll` (below)
+   is the separate PER-ROW horizontal scroll for a wide half-hour grid. */
+.ui-planning-grid-area {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
 .ui-planning-section-title {
   font-weight: 650;
   font-size: var(--ui-text-md);

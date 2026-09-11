@@ -64,7 +64,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
     "region";
 
   return (
-    <Stack gap="lg">
+    <Stack gap="lg" className="ui-planning-page">
       <Suspense key={`${formatDateParam(date)}:${view}:${group}`} fallback={<PlanningBoardSkeleton view={view} />}>
         <PlanningBoard date={date} view={view} group={group} />
       </Suspense>

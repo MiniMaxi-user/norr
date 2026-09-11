@@ -49,6 +49,10 @@ interface HoverKey {
  * real drag/drop + click-to-select scheduling) or the simplified `Timeline`
  * (Week view — a compact per-day block list, no half-hour precision, no
  * drag-and-drop scheduling per the confirmed decision).
+ *
+ * `.ui-planning-grid-area` gives this its own `overflow-y: auto` scroll,
+ * independent of `PlanningBacklog`'s — see that component's own doc comment
+ * for the shared layout technique both panels use.
  */
 export function PlanningGrid({
   view,
@@ -76,7 +80,7 @@ export function PlanningGrid({
   }
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" className="ui-planning-grid-area">
       {sections.map((section) => (
         <Card key={section.key} className="ui-planning-section">
           <Stack gap="md">

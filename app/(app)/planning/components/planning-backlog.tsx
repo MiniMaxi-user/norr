@@ -33,11 +33,24 @@ export interface PlanningBacklogProps {
  * pills sourced from the org's own `activity_type` reference items (not
  * hardcoded to Storing/Onderhoud/Inspectie — a tenant can configure more),
  * grouped by region with an hour total per group, draggable cards with a
- * colored left border matching the item's type color. A card is also
- * click-to-select (visible `aria-pressed` state) — the non-drag accessible
- * fallback described in the module's build plan: select a card here, then
- * click a valid grid cell in `planning-grid.tsx` to schedule it via the
- * same `scheduleWorkOrder` action a drop would call.
+ * colored left border matching the item's type color, and (if the linked
+ * asset has one) its model — `asset_model.name` (the structured catalog
+ * entry) preferred over the legacy free-text `asset.model`, see
+ * `WorkOrderRecord.asset`'s own comment. A card is also click-to-select
+ * (visible `aria-pressed` state) — the non-drag accessible fallback
+ * described in the module's build plan: select a card here, then click a
+ * valid grid cell in `planning-grid.tsx` to schedule it via the same
+ * `scheduleWorkOrder` action a drop would call.
+ *
+ * Header (title/count), the type filter, and the footer hint stay fixed;
+ * only the grouped card list (`.ui-planning-backlog-scroll`) scrolls, and
+ * independently of `PlanningGrid`'s own scroll — both panels are given a
+ * fixed height by `.ui-planning-layout` (itself filling the remaining space
+ * below the full-bleed topbar, see `.ui-planning-page`/`.ui-planning-topbar`
+ * in `packages/ui/src/styles.css`), same "pinned header/footer, `flex: 1` +
+ * `min-height: 0` + `overflow-y: auto` body" technique `.ui-dialog-body`
+ * already establishes (see that rule's own doc comment for why the
+ * `min-height: 0` is the actual fix).
  */
 export function PlanningBacklog({
   workOrders,
@@ -76,7 +89,7 @@ export function PlanningBacklog({
         onDropToBacklog();
       }}
     >
-      <Stack gap="md">
+      <Stack gap="md" className="ui-planning-backlog-stack">
         <Inline justify="between" align="center">
           <Text className="ui-planning-backlog-title">Werkvoorraad</Text>
           <Badge variant="muted">{workOrders.length}</Badge>
@@ -89,35 +102,37 @@ export function PlanningBacklog({
           onChange={(value) => onTypeFilterChange(value === "all" ? null : value)}
         />
 
-        {groups.length === 0 ? (
-          <Text tone="muted">Geen openstaande items.</Text>
-        ) : (
-          <Stack gap="md">
-            {groups.map((group) => (
-              <Stack gap="sm" key={group.key}>
-                <Inline justify="between" align="center">
-                  <Text className="ui-planning-backlog-group-label">{group.label.toUpperCase()}</Text>
-                  <Text tone="muted" className="ui-planning-backlog-group-total">
-                    {formatDurationHours(group.totalMinutes)}
-                  </Text>
-                </Inline>
-                <Stack gap="sm">
-                  {group.workOrders.map((workOrder) => (
-                    <BacklogCard
-                      key={workOrder.id}
-                      workOrder={workOrder}
-                      clientName={clientNameById[workOrder.client_id] ?? "Onbekende klant"}
-                      selected={selectedId === workOrder.id}
-                      onSelect={() => onSelect(workOrder)}
-                      onDragStart={() => onDragStart(workOrder)}
-                      onDragEnd={onDragEnd}
-                    />
-                  ))}
+        <div className="ui-planning-backlog-scroll">
+          {groups.length === 0 ? (
+            <Text tone="muted">Geen openstaande items.</Text>
+          ) : (
+            <Stack gap="md">
+              {groups.map((group) => (
+                <Stack gap="sm" key={group.key}>
+                  <Inline justify="between" align="center">
+                    <Text className="ui-planning-backlog-group-label">{group.label.toUpperCase()}</Text>
+                    <Text tone="muted" className="ui-planning-backlog-group-total">
+                      {formatDurationHours(group.totalMinutes)}
+                    </Text>
+                  </Inline>
+                  <Stack gap="sm">
+                    {group.workOrders.map((workOrder) => (
+                      <BacklogCard
+                        key={workOrder.id}
+                        workOrder={workOrder}
+                        clientName={clientNameById[workOrder.client_id] ?? "Onbekende klant"}
+                        selected={selectedId === workOrder.id}
+                        onSelect={() => onSelect(workOrder)}
+                        onDragStart={() => onDragStart(workOrder)}
+                        onDragEnd={onDragEnd}
+                      />
+                    ))}
+                  </Stack>
                 </Stack>
-              </Stack>
-            ))}
-          </Stack>
-        )}
+              ))}
+            </Stack>
+          )}
+        </div>
 
         <Text tone="muted" className="ui-planning-backlog-hint">
           Sleep een item naar een monteur. Klik een gepland blok om het terug te zetten.
@@ -144,6 +159,7 @@ function BacklogCard({
 }) {
   const schedulable = workOrder.duration_minutes != null;
   const hex = resolveColor(workOrder.work_order_type?.color);
+  const assetModel = workOrder.asset?.asset_model?.name ?? workOrder.asset?.model ?? null;
 
   function handleDragStart(event: DragEvent<HTMLElement>) {
     if (!schedulable) {
@@ -181,6 +197,7 @@ function BacklogCard({
       </Inline>
       <Text tone="muted" className="ui-planning-backlog-card-meta">
         {clientName}
+        {assetModel ? ` · ${assetModel}` : ""}
       </Text>
       <Inline justify="end">
         {schedulable ? (

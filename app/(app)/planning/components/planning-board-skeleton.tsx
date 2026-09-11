@@ -11,8 +11,10 @@ import type { PlanningView } from "../types";
 export function PlanningBoardSkeleton({ view }: { view: PlanningView }) {
   return (
     <Stack gap="md" aria-hidden>
-      <Skeleton height="4rem" width="100%" />
-      <Spinner size={20} />
+      <div className="ui-planning-topbar">
+        <Skeleton height="1.5rem" width="12rem" />
+        <Spinner size={20} />
+      </div>
       <div className="ui-planning-layout">
         <Card>
           <Stack gap="sm">

@@ -122,6 +122,17 @@ export interface WorkOrderRecord {
    * is the only FK from `work_orders` into `contracts`). `null` whenever
    * `contract_id` is `null` (no contract linked). */
   contract: { id: string; name: string } | null;
+  /** Embedded via `assets!work_orders_asset_id_fkey(...)`, with a nested
+   * `asset_model:asset_models!assets_model_id_fkey(...)` embed — same
+   * two-level pattern `ASSET_SELECT` in `app/(app)/assets/actions.ts` already
+   * uses for the same relationship. `null` whenever `asset_id` is `null`.
+   * `asset.model` is the legacy free-text field
+   * (`supabase/migrations/20260822190000_clients_sites_assets.sql`);
+   * `asset.asset_model` is the newer structured catalog entry
+   * (`20260826160000_asset_brand_and_models.sql`) — an asset may have either,
+   * both, or neither populated, so the Planning backlog card (issue #164)
+   * prefers `asset_model.name` and falls back to the free-text `model`. */
+  asset: { id: string; name: string; model: string | null; asset_model: { name: string } | null } | null;
 }
 
 /** Shared select shape for every query returning a `WorkOrderRecord`, so the
@@ -130,7 +141,7 @@ export interface WorkOrderRecord {
  * row per column — same reasoning as `ASSET_SELECT` in
  * `app/(app)/assets/actions.ts`. */
 const WORK_ORDER_SELECT =
-  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name)";
+  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name), asset:assets!work_orders_asset_id_fkey(id, name, model, asset_model:asset_models!assets_model_id_fkey(name))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 /** Same shape as `optionalIsoDateTime` in `./schema.ts` (offset-aware ISO
