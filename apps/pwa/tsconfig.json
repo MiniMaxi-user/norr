@@ -30,8 +30,6 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "packages",
-    "apps"
+    "node_modules"
   ]
 }

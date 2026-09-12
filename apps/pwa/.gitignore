@@ -1,0 +1,4 @@
+# Root .gitignore's "/.next/" and "/out/" entries are anchored to the repo
+# root and don't match this nested app's build output.
+.next/
+out/

@@ -6,16 +6,17 @@
     "node": ">=20"
   },
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "predev": "npm run build -w @yourorg/ui",
+    "predev": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
     "dev": "next dev",
-    "prebuild": "npm run build -w @yourorg/ui",
+    "prebuild": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "pretypecheck": "npm run typecheck -w @yourorg/ui && npm run build -w @yourorg/ui",
+    "pretypecheck": "npm run typecheck -w @yourorg/ui && npm run build -w @yourorg/ui && npm run typecheck -w @yourorg/rbac && npm run build -w @yourorg/rbac",
     "typecheck": "tsc --noEmit",
     "test": "echo \"no test runner configured yet (tracked separately) \" && exit 0"
   },
@@ -24,6 +25,7 @@
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "@vercel/speed-insights": "^2.0.0",
+    "@yourorg/rbac": "*",
     "@yourorg/ui": "*",
     "leaflet": "^1.9.4",
     "next": "^15.5.23",
