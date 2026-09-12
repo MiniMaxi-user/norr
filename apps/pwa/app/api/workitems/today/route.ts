@@ -31,13 +31,21 @@ interface TodayWorkOrderRow {
   title: string;
   scheduled_at: string | null;
   client: { id: string; name: string } | null;
-  site: { id: string; name: string; address_line1: string | null; city: string | null } | null;
+  // `sites` has no `name` column (dropped by
+  // supabase/migrations/20260825120000_sites_drop_name.sql, after the
+  // original core migration this select was first written against) — a
+  // site is identified by its address only. Selecting `sites.name` made
+  // the whole query fail with a Postgres "column does not exist" error,
+  // which this route's own catch-all mapped to a generic 500 — silently
+  // presented in the UI as "offline"/no data instead of a real error (bug
+  // report: an engineer's actual today-work-orders never showed up).
+  site: { id: string; address_line1: string | null; city: string | null } | null;
   work_order_status: ResolvedReferenceItem | null;
   work_order_type: ResolvedReferenceItem | null;
 }
 
 const TODAY_WORK_ORDER_SELECT =
-  "id, title, scheduled_at, client:clients(id,name), site:sites(id,name,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color)";
+  "id, title, scheduled_at, client:clients(id,name), site:sites(id,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color)";
 
 export async function GET() {
   const session = await getCurrentEngineerSession();
@@ -75,7 +83,6 @@ export async function GET() {
       site: row.site
         ? {
             id: row.site.id,
-            name: row.site.name,
             addressLine1: row.site.address_line1,
             city: row.site.city,
           }

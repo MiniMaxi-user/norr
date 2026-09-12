@@ -31,7 +31,6 @@ export interface CachedWorkItemParty {
 
 export interface CachedWorkItemSite {
   id: string;
-  name: string;
   addressLine1: string | null;
   city: string | null;
 }

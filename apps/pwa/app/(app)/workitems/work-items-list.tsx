@@ -39,10 +39,8 @@ function formatSyncedAt(iso: string): string {
 
 function locationLabel(site: CachedWorkItem["site"]): string | null {
   if (!site) return null;
-  const parts = [site.name, [site.addressLine1, site.city].filter(Boolean).join(", ")].filter(
-    (part): part is string => Boolean(part),
-  );
-  return parts.length > 0 ? parts.join(" · ") : null;
+  const parts = [site.addressLine1, site.city].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 /**
