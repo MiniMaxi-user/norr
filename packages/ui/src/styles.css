@@ -2310,6 +2310,49 @@ select.ui-client-card-status-select {
    as if the <form> wrapper weren't there for LAYOUT purposes — while still
    being a real <form> for submission purposes (display:contents doesn't
    change DOM structure or form semantics, only box generation). */
+/* Bottom-anchored sheet (issue #170, Norr field PWA) — same
+   escape-the-centered-overlay trick `.ui-dialog-panel` uses (`position:
+   fixed` takes it out of `.ui-dialog-overlay`'s flex centering), just
+   anchored to the bottom edge instead of the right one, with rounded top
+   corners and a slide-up entrance. `max-height: 78vh` (not a fixed height
+   like the panels) since a sheet's real content — a short profile menu vs.
+   a long catalog list — varies a lot more than a full-height edge panel's
+   does; keeps the same column-flexbox scroll-fix chain as every other
+   `Dialog` size (`.ui-dialog-body`'s `flex:1; min-height:0; overflow-y:
+   auto`) so a catalog long enough to overflow still scrolls correctly. */
+.ui-dialog-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-height: 78vh;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-xl) var(--ui-radius-xl) 0 0;
+  animation: ui-sheet-in var(--ui-duration-base) var(--ui-ease);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@keyframes ui-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+/* Small drag-handle bar a call site composes as the first child inside a
+   `size="sheet"` dialog — see `Dialog`'s own doc comment. Purely
+   decorative (no drag gesture wired up), but establishes the same visual
+   affordance every native bottom sheet uses. */
+.ui-dialog-sheet-handle {
+  width: 2.5rem;
+  height: 4px;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-border);
+  margin: 0.375rem auto 1rem;
+  flex-shrink: 0;
+}
+
 .ui-dialog > form {
   display: contents;
 }
@@ -5016,4 +5059,185 @@ a.ui-relation-card-title:hover {
   50% {
     opacity: 0.45;
   }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Bottom bar — Norr field PWA primary nav (issue #170,
+ * `docs/designinstructieskanweg/Norr mobile app design/IMPLEMENTATION.md`
+ * §3). Two zones: Zone A ("Today", fixed 86px width, always visible, styled
+ * as the one "default destination" item — a visible border/fill even when
+ * inactive is the point, so it never reads as just another tab) and Zone B
+ * (context items — the app only ever RENDERS this zone when a work order is
+ * open, never a disabled placeholder; see `apps/pwa/app/(app)/_nav/
+ * bottom-bar.tsx`, which owns that conditional). Zone B is a horizontally
+ * scrollable, snap-aligned row so future sections (Checklist, Signatures)
+ * can be appended without existing targets shrinking.
+ *
+ * Colors are the literal values from §3's spec table — most already equal
+ * this file's own dark-theme tokens 1:1 (`#1a2e36` = `--ui-surface`,
+ * `#2f4952` = `--ui-border`, `#93a29c` = `--ui-muted`, the accent trio =
+ * `--ui-accent`/`--ui-accent-tint`), used via `var(...)` below rather than
+ * re-typed as hex. The two values with no existing token
+ * (`rgba(15,29,35,.94)` — `--ui-bg-inset` at 94% opacity, for the
+ * blurred bar background; `#22333b`, the zone divider, close to but
+ * distinct from `--ui-surface-hover`) stay literal, same precedent as
+ * `.ui-toolbar-bg`'s own per-theme rgba above.
+ * ---------------------------------------------------------------------- */
+.ui-bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  gap: 0.625rem;
+  padding: 8px 12px calc(24px + env(safe-area-inset-bottom));
+  background: rgba(15, 29, 35, 0.94);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid #22333b;
+}
+.ui-bottom-bar-today {
+  flex: 0 0 auto;
+  width: 86px;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-muted);
+  font-size: var(--ui-text-xs);
+  text-decoration: none;
+  transition:
+    border-color var(--ui-duration-fast) var(--ui-ease),
+    color var(--ui-duration-fast) var(--ui-ease),
+    background var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-bottom-bar-today-active {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent);
+}
+.ui-bottom-bar-context {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  border-left: 1px solid #22333b;
+  padding-left: 0.625rem;
+}
+.ui-bottom-bar-context::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.ui-bottom-bar-item {
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 56px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0 0.5rem;
+  color: var(--ui-muted);
+  font-size: var(--ui-text-xs);
+  text-decoration: none;
+}
+.ui-bottom-bar-item-indicator {
+  width: 22px;
+  height: 3px;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-border);
+}
+.ui-bottom-bar-item-active {
+  color: var(--ui-accent);
+}
+.ui-bottom-bar-item-active .ui-bottom-bar-item-indicator {
+  background: var(--ui-accent);
+}
+.ui-bottom-bar-hint {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid #22333b;
+  padding-left: 0.625rem;
+}
+/* Scroll containers behind the fixed bar need this so their last row never
+   falls under it — see IMPLEMENTATION.md §3's "104px" note. Applied by the
+   app at the top-level scroll root (`app/(app)/layout.tsx`), not per-page,
+   same "one shared pattern, not reinvented per module" rule as everything
+   else in this section. */
+.ui-bottom-bar-scroll-spacer {
+  padding-bottom: 104px;
+}
+/* Shared page-content padding for every screen under the field PWA's
+   `(app)` route group (issue #170) — this app has no sidebar/topbar chrome
+   to already provide side margins the way the root app's `AppLayout` does,
+   so without this every page's content sat flush against the viewport
+   edges (an accidental gap from issue #169, which shipped before there was
+   any nav chrome to reason about it against). One shared class, applied at
+   the layout level, rather than each page hand-rolling its own padding. */
+.ui-pwa-page-content {
+  padding: calc(1rem + env(safe-area-inset-top)) 1rem 1rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* Horizontally-scrollable pill row with a hidden scrollbar — Today's status
+   filters (issue #170, IMPLEMENTATION.md §6: "pills van 44px hoog,
+   horizontaal scrollbaar met verborgen scrollbar") and any future filter row
+   that wants the same shape. Deliberately generic (`ui-pill-filter-*`, not
+   `ui-today-*`-scoped) — a shared pattern, not a one-off. */
+.ui-pill-filter-row {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ui-pill-filter-row::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.ui-pill-filter {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--ui-radius-full);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-muted);
+  font-size: var(--ui-text-sm);
+  white-space: nowrap;
+}
+.ui-pill-filter-active {
+  border-color: var(--ui-accent-tint-border);
+  background: var(--ui-accent-tint);
+  color: var(--ui-accent);
+}
+
+/* Signature canvas — Sign off section (issue #170, IMPLEMENTATION.md §4).
+   `touch-action: none` (set inline by the component itself, alongside this
+   class, since it's a behavioral, not visual, property) is what lets a
+   finger-drag draw on the canvas instead of scrolling the page underneath
+   it. */
+.ui-signature-pad {
+  width: 100%;
+  height: 160px;
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg-inset);
+  display: block;
 }

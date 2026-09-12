@@ -2,7 +2,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cx } from "../cx";
 
-export type DialogSize = "sm" | "lg" | "panel" | "panel-lg";
+export type DialogSize = "sm" | "lg" | "panel" | "panel-lg" | "sheet";
 
 export interface DialogProps {
   open: boolean;
@@ -53,6 +53,24 @@ export interface DialogProps {
  * default panel width (e.g. Articles, issue #98) without widening every
  * other panel in the app. Prefer `"panel"` unless a specific form's own
  * field count/layout genuinely needs the extra room.
+ *
+ * `size="sheet"` (issue #170, Norr field PWA) is a different edge entirely —
+ * a bottom-anchored sheet (`position: fixed; inset: auto 0 0 0`, same
+ * escape-the-centered-overlay trick as `"panel"`/`"panel-lg"` above, just on
+ * the opposite edge) with rounded top corners, that slides up instead of in
+ * from the side. This is the mobile pattern for a small, secondary action
+ * reached from a single screen (profile menu, "add article" catalog) — not a
+ * replacement for `"panel"`, which is still the right shape for a full
+ * record-editing form. Compose a `<div className="ui-dialog-sheet-handle" />`
+ * as the first child of `Dialog.Header`/`Dialog.Body` for the small drag-
+ * handle bar the design calls for — deliberately not built into `Dialog`
+ * itself, same "call site composes it" precedent as Escape-handling/close
+ * buttons above.
+ *
+ * Note: even sub-entity, small-secondary-record content composed inside a
+ * `size="sheet"` still uses the same `Dialog.Header`/`Dialog.Body`/
+ * `Dialog.Footer` scroll-fix chain as every other size — see the file's own
+ * doc comment above.
  *
  * Portaled to `document.body` (issue #101) — every real call site renders
  * its trigger `Button` and this `Dialog` as siblings in one fragment (e.g.

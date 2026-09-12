@@ -17,7 +17,7 @@ import type { TenantRole } from "@yourorg/rbac";
  *    since every user signing in is pre-existing with an established
  *    membership.
  *  - No `next` redirect target — there is exactly one place to land after a
- *    successful login: `/workitems`.
+ *    successful login: `/today`.
  *  - An additional role gate on top of root's deactivated-org check: this
  *    app is engineer-only. See `logInAction` below for the exact ordering
  *    and copy.
@@ -92,7 +92,7 @@ export async function logInAction(
     return { error: "Deze app is alleen voor monteurs. Log in op de norr-webapp." };
   }
 
-  redirect("/workitems");
+  redirect("/today");
 }
 
 /** Logout. Called directly as a `<form action={logOutAction}>`. */

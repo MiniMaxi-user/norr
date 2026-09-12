@@ -42,10 +42,18 @@ interface TodayWorkOrderRow {
   site: { id: string; address_line1: string | null; city: string | null } | null;
   work_order_status: ResolvedReferenceItem | null;
   work_order_type: ResolvedReferenceItem | null;
+  // Added for issue #170's Today screen (IMPLEMENTATION.md §6): the
+  // "Urgent" tag/status-pill treatment reads off the work order's
+  // *priority* (`urgent`, a `work_order_priority` reference-list value —
+  // see supabase/migrations/20260823120000_work_orders_core.sql's seed),
+  // not its status — the real `work_order_status` list has no "Urgent"
+  // value at all (New -> Scheduled -> En Route -> In Progress -> Completed
+  // -> Invoiced).
+  work_order_priority: ResolvedReferenceItem | null;
 }
 
 const TODAY_WORK_ORDER_SELECT =
-  "id, title, scheduled_at, client:clients(id,name), site:sites(id,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color)";
+  "id, title, scheduled_at, client:clients(id,name), site:sites(id,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color)";
 
 export async function GET() {
   const session = await getCurrentEngineerSession();
@@ -88,9 +96,10 @@ export async function GET() {
           }
         : null,
       status: row.work_order_status
-        ? { label: row.work_order_status.label, color: row.work_order_status.color }
+        ? { label: row.work_order_status.label, color: row.work_order_status.color, value: row.work_order_status.value }
         : null,
       type: row.work_order_type ? { label: row.work_order_type.label, color: row.work_order_type.color } : null,
+      isUrgent: row.work_order_priority?.value === "urgent",
     })),
     syncedAt: new Date().toISOString(),
   });
