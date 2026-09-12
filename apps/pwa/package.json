@@ -6,10 +6,13 @@
     "node": ">=20"
   },
   "scripts": {
+    "predev": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
     "dev": "next dev",
+    "prebuild": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "pretypecheck": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
