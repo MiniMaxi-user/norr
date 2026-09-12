@@ -453,6 +453,24 @@ export async function removeLocalArticle(id: number): Promise<void> {
   await db.localArticles.delete(id);
 }
 
+/** Adjusts a local article row's `quantity` by `delta` (the tap-to-reveal
+ * +/- stepper on the Articles tab — same local-only scope as `removeLocalArticle`
+ * above, never called for a server-synced row). A decrement that would take
+ * `quantity` to 0 or below removes the row entirely instead of leaving a
+ * zero-quantity line. */
+export async function updateLocalArticleQuantity(id: number, delta: number): Promise<void> {
+  await db.transaction("rw", db.localArticles, async () => {
+    const existing = await db.localArticles.get(id);
+    if (!existing) return;
+    const quantity = existing.quantity + delta;
+    if (quantity <= 0) {
+      await db.localArticles.delete(id);
+      return;
+    }
+    await db.localArticles.update(id, { quantity });
+  });
+}
+
 /** Photos taken for `workOrderId`, not yet synced anywhere. */
 export async function getLocalPhotos(workOrderId: string, currentUserId: string): Promise<LocalPhoto[]> {
   await ensureCacheBelongsTo(currentUserId);

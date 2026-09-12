@@ -5194,6 +5194,15 @@ a.ui-relation-card-title:hover {
   margin: 0 auto;
 }
 
+/* Norr wordmark, top-left of every screen (product feedback, 2026-09-12) —
+   mounted once by `app/(app)/layout.tsx` ahead of `{children}`, inside
+   `.ui-pwa-page-content` so it shares that class's side margins/safe-area
+   inset instead of needing its own. */
+.ui-pwa-logo-row {
+  display: flex;
+  margin-bottom: 1.25rem;
+}
+
 /* Horizontally-scrollable pill row with a hidden scrollbar — Today's status
    filters (issue #170, IMPLEMENTATION.md §6: "pills van 44px hoog,
    horizontaal scrollbaar met verborgen scrollbar") and any future filter row

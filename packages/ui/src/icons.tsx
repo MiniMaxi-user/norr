@@ -160,6 +160,8 @@ export const Plus = createIcon("Plus", (
   </>
 ));
 
+export const Minus = createIcon("Minus", <line x1={4} y1={12} x2={20} y2={12} />);
+
 export const Pencil = createIcon("Pencil", (
   <>
     <path d="M4 16.5V20h3.5L18.4 9.1a1.5 1.5 0 0 0 0-2.1l-1.4-1.4a1.5 1.5 0 0 0-2.1 0z" />

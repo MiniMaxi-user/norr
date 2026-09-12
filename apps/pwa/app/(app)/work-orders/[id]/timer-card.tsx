@@ -12,11 +12,15 @@ import { formatClockDigits, formatClockHoursMinutes, type ClockSummary } from "@
  * handed and calls back on a tap, same "dumb view, smart state" split as
  * every other section here.
  *
- * `Card tone="accent"` for the running state reuses the design system's own
- * existing accent-card treatment (`ui-card-accent` in styles.css) rather
- * than a bespoke background — that CSS already renders the exact
- * "`#c79a3e` fill, `#1f3540`-equivalent (`--ui-accent-fg`) text" look
- * IMPLEMENTATION.md §4 calls for.
+ * Running state: `--ui-accent-fg` (`#1f3540`, dark navy) is only readable
+ * against a SOLID accent fill — that's the combination IMPLEMENTATION.md §4
+ * specs ("kaart in accent `#c79a3e` met tekst `#1f3540`"). `Card
+ * tone="accent"` doesn't give that: `.ui-card-accent` fills with
+ * `--ui-accent-tint`, a ~16–20% translucent wash meant for chips/CTA cards
+ * sitting on a neutral surface, not a running-state indicator — the dark
+ * navy text on that pale wash was unreadable (bug report, 2026-09-12). So
+ * this card overrides the background/border directly with the solid
+ * `--ui-accent` token instead of using `tone`.
  */
 export function TimerCard({
   summary,
@@ -38,6 +42,14 @@ export function TimerCard({
         : "Timer paused · total today";
   const labelColor = running ? "var(--ui-accent-fg)" : "var(--ui-muted-subtle)";
   const bodyColor = running ? "var(--ui-accent-fg)" : undefined;
+  // The idle button of the pair (e.g. "Start work" while travel is
+  // running) sits on the now-solid-gold card once anything is running — a
+  // solid-gold `"primary"` button would blend straight into it, so it
+  // drops to `"outline"` whenever the card itself is in its accent state.
+  // Idle with nothing running at all keeps `"primary"` (gold on the neutral
+  // card) for both buttons — "Start travel" included, matching "Start
+  // work"'s existing default.
+  const idleVariant = running ? "outline" : "primary";
 
   return (
     <div
@@ -50,7 +62,7 @@ export function TimerCard({
         background: "var(--ui-page-bg)",
       }}
     >
-      <Card tone={running ? "accent" : "default"}>
+      <Card style={running ? { background: "var(--ui-accent)", borderColor: "var(--ui-accent)" } : undefined}>
         <Inline justify="between" align="start" gap="md" wrap>
           <Stack gap="xs">
             <Text
@@ -81,14 +93,14 @@ export function TimerCard({
 
           <Stack gap="xs">
             <Button
-              variant={summary.runningKind === "travel" ? "danger" : "outline"}
+              variant={summary.runningKind === "travel" ? "danger" : idleVariant}
               onClick={onToggleTravel}
               style={{ minHeight: 44 }}
             >
               {summary.runningKind === "travel" ? "Stop travel" : "Start travel"}
             </Button>
             <Button
-              variant={summary.runningKind === "work" ? "danger" : "primary"}
+              variant={summary.runningKind === "work" ? "danger" : idleVariant}
               onClick={onToggleWork}
               style={{ minHeight: 44 }}
             >

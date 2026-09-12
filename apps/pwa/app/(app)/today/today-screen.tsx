@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, Callout, Card, EmptyState, Heading, Input, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
+import { Badge, Callout, Card, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
 import type { BadgeVariant } from "@yourorg/ui";
-import { AlertTriangle, Building2, Check, ClipboardList, Clock, Search } from "@yourorg/ui/icons";
+import { AlertTriangle, Building2, Check, ClipboardList, Clock } from "@yourorg/ui/icons";
 import {
   getCachedWorkItems,
   getLastSyncedAt,
@@ -13,7 +13,7 @@ import {
   type CachedWorkItem,
 } from "@/lib/offline/db";
 import { formatClockHoursMinutes, getClockSummaryForOrder, getRunningWorkOrderId } from "@/lib/time/clocks";
-import { deriveTodayWorkItems, selectNowItem, type TodayFlowStatus, type TodayWorkItem } from "./derive";
+import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
 import { initialsOf, ProfileSheet } from "./profile-sheet";
 import { PullToRefresh } from "./pull-to-refresh";
 
@@ -21,13 +21,6 @@ interface TodayWorkItemsResponse {
   items: CachedWorkItem[];
   syncedAt: string;
 }
-
-const STATUS_FILTERS: { value: TodayFlowStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "planned", label: "Planned" },
-  { value: "in_progress", label: "In progress" },
-  { value: "signed", label: "Signed" },
-];
 
 /** `"HH:mm"` — reimplementation of the root app's own one-liner
  * (`app/(app)/planning/date-utils.ts`'s `formatTimeLabel`); apps/pwa can't
@@ -68,24 +61,11 @@ function statusPresentation(item: TodayWorkItem): { label: string; variant: Badg
   return { label: "Planned", variant: "muted" };
 }
 
-/** Matches the Today screen's search box against title, client name, and
- * site address/city (IMPLEMENTATION.md §6 also lists "ordernummer" — the
- * real schema has no separate human-readable order number distinct from the
- * work order's own `id`/`title`, see `lib/work-orders/types.ts`, so that
- * part of the spec has nothing additional to match against here; a raw UUID
- * isn't something anyone would type into a search box). */
-function matchesQuery(item: CachedWorkItem, query: string): boolean {
-  if (!query) return true;
-  const haystack = [item.title, item.client?.name, item.site?.addressLine1, item.site?.city]
-    .filter((part): part is string => Boolean(part))
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.toLowerCase());
-}
-
 /**
- * The Today overview (issue #170, IMPLEMENTATION.md §6) — search, status
- * filters, a "Now" card, and the "Later today" list. Supersedes issue
+ * The Today overview (issue #170, IMPLEMENTATION.md §6) — a "Now" card and a
+ * "Later today" list (product feedback, 2026-09-12 removed the search box
+ * and status-filter row IMPLEMENTATION.md §6 originally specced — the
+ * product owner decided against them for this screen). Supersedes issue
  * #169's plain flat list (still the same underlying fetch/cache/offline
  * reconciliation this file inherits, see the three states documented
  * below) with the full designed screen: local-only state (a running clock,
@@ -126,8 +106,6 @@ export function TodayScreen({
   const [signedWorkOrderIds, setSignedWorkOrderIds] = useState<ReadonlySet<string>>(new Set());
   const [signedTotals, setSignedTotals] = useState<Record<string, number>>({});
 
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<TodayFlowStatus | "all">("all");
   const [profileOpen, setProfileOpen] = useState(false);
 
   const refreshLocalState = useCallback(async () => {
@@ -213,12 +191,10 @@ export function TodayScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `signedTotals` is read, not a dependency: this effect only ever ADDS missing entries, re-running it because it changed would just recompute the same values.
   }, [todayItems, currentUserId]);
 
-  const laterItems = useMemo(() => {
-    const withoutNow = todayItems.filter((item) => item.id !== nowItem?.id);
-    return withoutNow
-      .filter((item) => matchesQuery(item, query))
-      .filter((item) => statusFilter === "all" || item.flowStatus === statusFilter);
-  }, [todayItems, nowItem, query, statusFilter]);
+  const laterItems = useMemo(
+    () => todayItems.filter((item) => item.id !== nowItem?.id),
+    [todayItems, nowItem],
+  );
 
   if (loading) {
     return (
@@ -261,44 +237,6 @@ export function TodayScreen({
             {initialsOf(fullName, email)}
           </button>
         </Inline>
-
-        <div style={{ position: "relative" }}>
-          <Search
-            aria-hidden
-            width={16}
-            height={16}
-            style={{
-              position: "absolute",
-              left: "0.875rem",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--ui-muted-subtle)",
-              pointerEvents: "none",
-            }}
-          />
-          <Input
-            aria-label="Search work orders"
-            placeholder="Search title, client, address…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            style={{ paddingLeft: "2.25rem", minHeight: 44 }}
-          />
-        </div>
-
-        <div className="ui-pill-filter-row" role="group" aria-label="Filter by status">
-          {STATUS_FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              type="button"
-              onClick={() => setStatusFilter(filter.value)}
-              className={
-                statusFilter === filter.value ? "ui-pill-filter ui-pill-filter-active" : "ui-pill-filter"
-              }
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
 
         <PullToRefresh onRefresh={sync}>
           <Stack gap="md">
@@ -348,7 +286,7 @@ export function TodayScreen({
                     Later today
                   </Text>
                   {laterItems.length === 0 ? (
-                    <Text tone="muted">No other work orders match.</Text>
+                    <Text tone="muted">Nothing else scheduled today.</Text>
                   ) : (
                     <Stack gap="sm">
                       {laterItems.map((item) => (
