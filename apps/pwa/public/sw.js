@@ -1,16 +1,17 @@
-// Service worker for the Norr Monteur PWA app-shell (issue #169). Minimal,
-// hand-rolled caching (no Workbox) — just enough for the logged-in
-// /workitems route (and /login) to still open when the device has no
-// network, after at least one earlier successful online visit.
+// Service worker for the Norr Monteur PWA app-shell (issue #169, route
+// renamed /workitems -> /today by issue #170). Minimal, hand-rolled caching
+// (no Workbox) — just enough for the logged-in /today route (and /login) to
+// still open when the device has no network, after at least one earlier
+// successful online visit.
 //
 // Two caches:
-// - SHELL_CACHE — navigation HTML for /login and /workitems. Populated
+// - SHELL_CACHE — navigation HTML for /login and /today. Populated
 //   best-effort at `install` time and kept fresh on every successful
 //   network navigation afterwards (network-first below, see the `fetch`
 //   handler) — so whatever's served offline is always whatever last loaded
 //   successfully online, never a stale install-time-only snapshot. This is
 //   deliberately network-first (not cache-first) specifically to avoid
-//   ever serving a stale /login or /workitems HTML that could reflect an
+//   ever serving a stale /login or /today HTML that could reflect an
 //   old session's data indefinitely.
 // - STATIC_CACHE — /_next/static/... assets. These are content-hashed (a
 //   new deploy ships new filenames), so cache-first is safe: once cached,
@@ -23,17 +24,17 @@
 // here would risk serving stale JSON indefinitely; this worker's only job
 // is "can the page shell load at all without network," never the data
 // itself.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
-const SHELL_URLS = ["/login", "/workitems"];
+const SHELL_URLS = ["/login", "/today"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
       // Best-effort — an install-time fetch of these can fail (no network
-      // yet, or /workitems redirecting an unauthenticated request to
+      // yet, or /today redirecting an unauthenticated request to
       // /login) and must never fail the install itself.
       await Promise.all(
         SHELL_URLS.map((url) =>
@@ -88,7 +89,7 @@ self.addEventListener("fetch", (event) => {
           // Last resort: whichever shell page IS cached, so the app at
           // least opens to something instead of the browser's own
           // offline error page.
-          return (await cache.match("/workitems")) ?? (await cache.match("/login")) ?? Response.error();
+          return (await cache.match("/today")) ?? (await cache.match("/login")) ?? Response.error();
         }
       })(),
     );

@@ -10,7 +10,7 @@ const REFRESHING_INDICATOR_HEIGHT = 48;
 
 export interface PullToRefreshProps {
   /** Same fetch-and-save-to-Dexie flow the initial mount load uses
-   * (`work-items-list.tsx`'s `sync`) — a released pull-past-threshold just
+   * (`today-screen.tsx`'s `sync`) — a released pull-past-threshold just
    * re-triggers it. */
   onRefresh: () => Promise<void>;
   children: ReactNode;
