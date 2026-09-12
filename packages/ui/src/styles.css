@@ -251,6 +251,20 @@ html {
 html.dark {
   color-scheme: dark;
 }
+/* The field PWA opts out of the desktop app's density reduction above
+   (product feedback, 2026-09-12: "overall font bigger in the PWA") — that
+   90% exists for the desktop app's sidebar-driven density, which doesn't
+   apply here, and this app is read one-handed/outdoors rather than dense on
+   a monitor. Since every `--ui-text-*`/`--ui-space-*`/`--ui-radius-*` token
+   is `rem`-based (see the comment above), bumping `html`'s own font-size
+   back up scales type, spacing, and radii together, same mechanism, just a
+   different multiplier. Applied via a class (not a media query) on the
+   PWA's own `<html>` (`apps/pwa/app/layout.tsx`) since this is a
+   per-app choice, not a viewport-size one — the desktop app never renders
+   this class, so its own density is unaffected. */
+html.ui-pwa-html {
+  font-size: 112.5%;
+}
 
 body {
   margin: 0;
@@ -5192,6 +5206,20 @@ a.ui-relation-card-title:hover {
   padding: calc(1rem + env(safe-area-inset-top)) 1rem 1rem;
   max-width: 720px;
   margin: 0 auto;
+  /* Bug report, 2026-09-13: an unbroken long string (a URL, serial number,
+     long email — e.g. Work's Description or Sign off's Engineer row) could
+     force this container wider than the viewport and make vertical touch-
+     scroll feel stuck. Every layout primitive here (`Stack`/`Inline`) is
+     `display: flex`, and a flex item's default intrinsic minimum width is
+     its content's UNBROKEN width — `overflow-wrap: break-word` alone
+     doesn't change that automatic minimum, only `anywhere` does (it's the
+     one value the spec has affect intrinsic sizing, not just line-breaking
+     after the box is already sized), so that's the one that actually stops
+     a long word from blowing out a flex row. Inherited from here down
+     (`overflow-wrap` is an inherited property), so every Text/Card/
+     KeyValueList row in the PWA gets it for free without touching each one
+     individually. */
+  overflow-wrap: anywhere;
 }
 
 /* Norr wordmark, top-left of every screen (product feedback, 2026-09-12) —
