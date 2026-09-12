@@ -376,3 +376,13 @@ export const Network = createIcon("Network", (
     <path d="M5.5 16.75V13a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v3.75" />
   </>
 ));
+
+// PWA pull-to-refresh indicator (issue #169) — standard two-arrow refresh
+// glyph. Also generically useful anywhere else a manual "sync again" action
+// needs an icon (not PWA-specific itself, only its first caller is).
+export const RefreshCw = createIcon("RefreshCw", (
+  <>
+    <path d="M20 11a8 8 0 0 0-14.5-4.5M4 4v4.5h4.5" />
+    <path d="M4 13a8 8 0 0 0 14.5 4.5M20 20v-4.5h-4.5" />
+  </>
+));

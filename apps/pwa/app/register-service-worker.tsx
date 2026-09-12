@@ -2,9 +2,11 @@
 
 import { useEffect } from "react";
 
-/** Registers the PWA service worker (public/sw.js) on mount. Real offline
- * caching is a later story — for now this just makes the app installable
- * (see public/sw.js's own top-of-file comment). */
+/** Registers the PWA service worker (public/sw.js) on mount. As of issue
+ * #169, public/sw.js does real app-shell caching (network-first
+ * navigations, cache-first static assets) — see its own top-of-file
+ * comment for the full strategy. This component itself is unchanged: just
+ * registration, no caching logic lives here. */
 export function RegisterServiceWorker() {
   useEffect(() => {
     if ("serviceWorker" in navigator) {

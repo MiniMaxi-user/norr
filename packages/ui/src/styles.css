@@ -2088,6 +2088,19 @@ select.ui-client-card-status-select {
   }
 }
 
+/* Generic "spinning icon" utility (issue #169's pull-to-refresh indicator
+   is the first caller — a `RefreshCw` icon spun while a manual sync is
+   in-flight) — kept generic/reusable rather than named after that one
+   call site, same as `.ui-skeleton` above. */
+.ui-icon-spin {
+  animation: ui-icon-spin 0.9s linear infinite;
+}
+@keyframes ui-icon-spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---------------------------------------------------------------------- *
  * Command palette
  * ---------------------------------------------------------------------- */
