@@ -20,7 +20,12 @@ import { createClient } from "@/lib/supabase/server";
  *    is the FIRST and ONLY time this data reaches the server (nothing was
  *    synced earlier), so there's no partial-sync/dedupe state to reconcile.
  * 2. Sets `status_id` to the caller's own organization's `work_order_status`
- *    "completed" reference item and stamps `completed_at`.
+ *    "completed" reference item, stamps `completed_at`, and writes
+ *    `work_orders.solution` (product feedback, 2026-09-13: the desktop
+ *    webapp had nowhere to see how a job was actually resolved) from the
+ *    Sign off tab's free-text field — same "first and only sync" reasoning
+ *    as the periods/articles above, so this plainly overwrites the column
+ *    rather than merging.
  *
  * Same session -> `canAny()` -> RLS-scoped-query pattern as every other
  * route in this app. `time_entries_insert_scoped`/`work_order_articles_
@@ -62,7 +67,16 @@ interface FinishArticleInput {
 interface FinishRequestBody {
   periods?: FinishPeriodInput[];
   articles?: FinishArticleInput[];
+  /** Free-text resolution written on the Sign off tab — `work_orders.solution`.
+   * Optional, same as a signature: finishing with nothing written is valid. */
+  solution?: string;
 }
+
+/** Matches `activities.solution`'s app-layer cap
+ * (`app/(app)/activities/schema.ts`'s `optionalText(5000)`) — same free-text
+ * shape, same ceiling, so the two stay consistent even though they're
+ * different columns. */
+const SOLUTION_MAX_LENGTH = 5000;
 
 function isFinishPeriodInput(value: unknown): value is FinishPeriodInput {
   if (!value || typeof value !== "object") return false;
@@ -113,6 +127,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const periods = Array.isArray(body.periods) ? body.periods.filter(isFinishPeriodInput) : [];
   const articles = Array.isArray(body.articles) ? body.articles.filter(isFinishArticleInput) : [];
+  const trimmedSolution = typeof body.solution === "string" ? body.solution.trim() : "";
+  const solution = trimmedSolution ? trimmedSolution.slice(0, SOLUTION_MAX_LENGTH) : null;
 
   const supabase = await createClient();
 
@@ -242,7 +258,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { error: updateError } = await supabase
     .from("work_orders")
-    .update({ status_id: completedItem.id, completed_at: new Date().toISOString() })
+    .update({ status_id: completedItem.id, completed_at: new Date().toISOString(), solution })
     .eq("id", id);
 
   if (updateError) {

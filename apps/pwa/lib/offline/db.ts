@@ -131,6 +131,12 @@ export interface LocalSignOff {
   signedAt: number;
   /** `canvas.toDataURL()` PNG of the signature. */
   signatureDataUrl: string;
+  /** Free-text resolution, synced to `work_orders.solution` on Finish
+   * (product feedback, 2026-09-13) — kept alongside the signature so a
+   * failed offline Finish attempt (periods/articles stay local, see
+   * `work-order-detail.tsx`'s `handleFinish`) re-shows this as a draft on
+   * reopen, same as the signature already does via `initialDataUrl`. */
+  solution: string | null;
 }
 
 /** An article added from the "Add article" catalog sheet, not yet synced to

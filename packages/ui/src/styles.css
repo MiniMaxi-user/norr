@@ -237,6 +237,18 @@ html.dark,
   box-sizing: border-box;
 }
 
+:root {
+  /* The PWA bottom bar's true rendered height (`.ui-bottom-bar` below: 8px
+     top padding + its 56px-min-height row + 24px bottom padding +
+     `env(safe-area-inset-bottom)`), kept as one shared value so
+     `.ui-bottom-bar-scroll-spacer` — a DOM sibling of the bar, not a
+     descendant, so it can't just read a property scoped to `.ui-bottom-bar`
+     itself — can reuse it instead of an independent magic-number guess that
+     can drift out of sync (bug report, 2026-09-13: a device with a real
+     safe-area inset had a taller bar than the spacer accounted for, hiding
+     the last bit of scrollable content underneath it). */
+  --ui-bottom-bar-h: calc(8px + 56px + 24px + env(safe-area-inset-bottom));
+}
 html {
   color-scheme: light;
   /* Global density: every `--ui-text-*`/`--ui-space-*`/`--ui-radius-*` token
@@ -5127,6 +5139,7 @@ a.ui-relation-card-title:hover {
   color: var(--ui-muted);
   font-size: var(--ui-text-xs);
   text-decoration: none;
+  white-space: nowrap;
   transition:
     border-color var(--ui-duration-fast) var(--ui-ease),
     color var(--ui-duration-fast) var(--ui-ease),
@@ -5167,6 +5180,7 @@ a.ui-relation-card-title:hover {
   color: var(--ui-muted);
   font-size: var(--ui-text-xs);
   text-decoration: none;
+  white-space: nowrap;
 }
 .ui-bottom-bar-item-indicator {
   width: 22px;
@@ -5193,7 +5207,7 @@ a.ui-relation-card-title:hover {
    same "one shared pattern, not reinvented per module" rule as everything
    else in this section. */
 .ui-bottom-bar-scroll-spacer {
-  padding-bottom: 104px;
+  padding-bottom: calc(var(--ui-bottom-bar-h) + 16px);
 }
 /* Shared page-content padding for every screen under the field PWA's
    `(app)` route group (issue #170) — this app has no sidebar/topbar chrome

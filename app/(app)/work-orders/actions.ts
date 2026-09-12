@@ -84,6 +84,14 @@ export interface WorkOrderRecord {
   assigned_to: string | null;
   title: string;
   description: string | null;
+  /** Free-text write-up of how the job was resolved (issue #170 PWA sign-off)
+   * — set by the field-engineer PWA's `POST /api/work-orders/[id]/finish`
+   * when an engineer finishes the work order, same shape/precedent as
+   * `activities.solution`. Read-only in the desktop app: surfaced on
+   * `WorkOrderAssignmentSection` but intentionally absent from
+   * `WorkOrderAssignmentDialog`/`workOrderUpdateSchema` — desktop users don't
+   * edit it here. */
+  solution: string | null;
   notes: string | null;
   status_id: string;
   priority_id: string | null;

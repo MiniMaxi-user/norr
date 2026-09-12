@@ -190,11 +190,17 @@ export function WorkOrderDetailScreen({
    * their local tables, nothing is lost) so nothing silently vanishes.
    */
   const handleFinish = useCallback(
-    async (signatureDataUrl: string | null) => {
+    async (signatureDataUrl: string | null, solution: string | null) => {
       const timestamp = Date.now();
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
-      if (signatureDataUrl) {
-        await saveLocalSignOff({ workOrderId, userId: currentUserId, signedAt: timestamp, signatureDataUrl });
+      if (signatureDataUrl || solution) {
+        await saveLocalSignOff({
+          workOrderId,
+          userId: currentUserId,
+          signedAt: timestamp,
+          signatureDataUrl: signatureDataUrl ?? "",
+          solution,
+        });
       }
       // Re-read after finishWorkOrderClock above so the just-closed
       // running period is included (`endedAt` is no longer null) — the
@@ -211,6 +217,7 @@ export function WorkOrderDetailScreen({
             .filter((period) => period.endedAt !== null)
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: finalArticles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
+          solution,
         }),
       });
       if (!response.ok) {

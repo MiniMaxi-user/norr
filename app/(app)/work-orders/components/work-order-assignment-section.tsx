@@ -147,6 +147,23 @@ export function WorkOrderAssignmentSection({
         <Text tone="muted">No description yet.</Text>
       )}
 
+      {/* Read-only — written by the field-engineer PWA's sign-off flow
+          (`POST /api/work-orders/[id]/finish`) when a work order is finished,
+          never editable from here (not part of `WorkOrderAssignmentDialog`).
+          Only shown once the work order exists (`mode === "edit"`); a
+          brand-new work order has no solution to write up yet. Same label
+          wording/empty-state copy as Activities' own `ActivitySolutionSection`. */}
+      {mode === "edit" && (
+        <Stack gap="xs">
+          <Label>Solution</Label>
+          {workOrder?.solution ? (
+            <Text>{workOrder.solution}</Text>
+          ) : (
+            <Text tone="muted">No solution yet.</Text>
+          )}
+        </Stack>
+      )}
+
       {draft.notes && <Callout icon={AlertTriangle}>{draft.notes}</Callout>}
 
       <KeyValueList items={assignmentItems} />

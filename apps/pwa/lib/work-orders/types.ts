@@ -51,6 +51,12 @@ export interface WorkOrderDetail {
   id: string;
   title: string;
   description: string | null;
+  /** Free-text record of how this work order was resolved
+   * (`work_orders.solution`) — parallel to `activities.solution`, but this
+   * is the work-order-level equivalent since not every work order has a
+   * `source_activity_id` to fall back to. Written by the engineer on the
+   * PWA's Sign off tab, synced to the server on Finish. */
+  solution: string | null;
   scheduledAt: string | null;
   status: WorkOrderDetailReference | null;
   priority: WorkOrderDetailReference | null;
