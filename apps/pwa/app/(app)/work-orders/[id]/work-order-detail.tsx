@@ -146,12 +146,30 @@ export function WorkOrderDetailScreen({
     [workOrderId, currentUserId, refreshPeriods],
   );
 
+  /**
+   * Finish workitem (product feedback, 2026-09-12 — supersedes the
+   * original "Finish work order"/"Send work receipt" two-label design):
+   * closes this order's running clock and records the local sign-off
+   * locally, then marks the work order `completed` server-side (`POST
+   * /api/work-orders/[id]/finish` — a real Supabase write, unlike every
+   * other #170 mutation, which stays local-only per that issue's scope
+   * boundary; finishing a job is the one action that has to be visible
+   * elsewhere in the app, e.g. the desktop planner's board). Only
+   * navigates back to Today once that server call actually succeeds — on
+   * failure (most likely offline), the error propagates to
+   * `SignOffSection`, which shows it and leaves the engineer on this
+   * screen so nothing silently vanishes.
+   */
   const handleFinish = useCallback(
     async (signatureDataUrl: string | null) => {
       const timestamp = Date.now();
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
       if (signatureDataUrl) {
         await saveLocalSignOff({ workOrderId, userId: currentUserId, signedAt: timestamp, signatureDataUrl });
+      }
+      const response = await fetch(`/api/work-orders/${workOrderId}/finish`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Couldn't mark this work order as completed. Check your connection and try again.");
       }
       router.push("/today");
     },

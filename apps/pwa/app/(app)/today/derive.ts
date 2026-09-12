@@ -4,22 +4,20 @@
  * clock, a local sign-off) into the Today screen's simplified
  * Planned/In progress/Signed bucket (issue #170, IMPLEMENTATION.md §6).
  *
- * The real `work_order_status` reference list has no "Signed" value at all
- * (New -> Scheduled -> En Route -> In Progress -> Completed -> Invoiced —
- * see `/api/workitems/today`'s own doc comment) — "Signed" only exists
- * client-side, from this device's own local sign-off record, since signing
- * off a work receipt stays local-only in this story (see
- * `lib/offline/db.ts`'s top doc comment on the #170 tables' scope
- * boundary). So the mapping here is a deliberate simplification, not a 1:1
- * status mirror:
- * - "signed" — this device has a local sign-off for the order, regardless
- *   of its real server-side status.
+ * "Signed" here means "finished" — the Today screen's one terminal
+ * bucket, entered either way a work order can be finished:
+ * - this device has a local sign-off for it (`lib/offline/db.ts`'s
+ *   `signoffs` table — still local-only, see that file's top doc
+ *   comment), or
+ * - its real server-side `work_order_status` is `completed`/`invoiced`
+ *   (product feedback, 2026-09-12: "Finish workitem" now actually writes
+ *   this via `POST /api/work-orders/[id]/finish`, so a finished order is
+ *   "Signed" here even freshly synced on a device that never opened it —
+ *   e.g. finished on a different device, or by a desktop user).
+ *
  * - "in_progress" — a clock is running on it right now (on THIS device), or
  *   its real status is `in_progress`.
- * - "planned" — everything else (`new`/`scheduled`/`en_route`, and also
- *   `completed`/`invoiced` — a same-day work order that's already fully
- *   wrapped up server-side has no distinct Today-screen treatment of its
- *   own here, it just falls back to the neutral bucket).
+ * - "planned" — everything else (`new`/`scheduled`/`en_route`).
  */
 import type { CachedWorkItem } from "@/lib/offline/db";
 
@@ -31,12 +29,16 @@ export interface TodayWorkItem extends CachedWorkItem {
   isRunning: boolean;
 }
 
+const FINISHED_STATUS_VALUES = new Set(["completed", "invoiced"]);
+
 export function deriveTodayFlowStatus(
   item: CachedWorkItem,
   runningWorkOrderId: string | null,
   signedWorkOrderIds: ReadonlySet<string>,
 ): TodayFlowStatus {
-  if (signedWorkOrderIds.has(item.id)) return "signed";
+  if (signedWorkOrderIds.has(item.id) || (item.status?.value && FINISHED_STATUS_VALUES.has(item.status.value))) {
+    return "signed";
+  }
   if (item.id === runningWorkOrderId || item.status?.value === "in_progress") return "in_progress";
   return "planned";
 }

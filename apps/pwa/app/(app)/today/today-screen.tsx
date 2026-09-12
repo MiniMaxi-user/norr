@@ -394,9 +394,8 @@ function TodayWorkItemCard({
   const status = statusPresentation(item);
   const signed = item.flowStatus === "signed";
 
-  return (
-    <Link href={`/work-orders/${item.id}`} style={{ display: "block", opacity: signed ? 0.55 : 1 }}>
-      <Card interactive tone={emphasized && item.isRunning ? "accent" : "default"}>
+  const card = (
+      <Card interactive={!signed} tone={emphasized && item.isRunning ? "accent" : "default"}>
         <Stack gap="sm">
           <Inline justify="between" align="start" gap="sm">
             <Text>{item.title}</Text>
@@ -436,6 +435,23 @@ function TodayWorkItemCard({
           </Inline>
         </Stack>
       </Card>
+  );
+
+  // Finished work orders stay visible in the list (so the day still reads
+  // as complete) but are no longer clickable — product feedback,
+  // 2026-09-12: reopening a work order that's already been finished (and,
+  // now, marked `completed` server-side) has nothing left to do.
+  if (signed) {
+    return (
+      <div aria-disabled="true" style={{ opacity: 0.55 }}>
+        {card}
+      </div>
+    );
+  }
+
+  return (
+    <Link href={`/work-orders/${item.id}`} style={{ display: "block" }}>
+      {card}
     </Link>
   );
 }

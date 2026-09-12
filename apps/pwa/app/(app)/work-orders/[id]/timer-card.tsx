@@ -81,18 +81,18 @@ export function TimerCard({
 
           <Stack gap="xs">
             <Button
-              variant={summary.runningKind === "work" ? "danger" : "primary"}
-              onClick={onToggleWork}
-              style={{ minHeight: 44 }}
-            >
-              {summary.runningKind === "work" ? "Stop work" : "Start work"}
-            </Button>
-            <Button
               variant={summary.runningKind === "travel" ? "danger" : "outline"}
               onClick={onToggleTravel}
               style={{ minHeight: 44 }}
             >
               {summary.runningKind === "travel" ? "Stop travel" : "Start travel"}
+            </Button>
+            <Button
+              variant={summary.runningKind === "work" ? "danger" : "primary"}
+              onClick={onToggleWork}
+              style={{ minHeight: 44 }}
+            >
+              {summary.runningKind === "work" ? "Stop work" : "Start work"}
             </Button>
           </Stack>
         </Inline>

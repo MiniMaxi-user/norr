@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Button, Card, KeyValueList, Stack, Text } from "@yourorg/ui";
+import { Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
+import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
 import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
@@ -9,17 +10,21 @@ import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
 /**
  * The "Sign off" tab (issue #170, IMPLEMENTATION.md §4) — a summary
  * (hours/articles/engineer), the signature canvas, `Clear`, and one
- * primary action whose label/style change with whether a signature has
- * been drawn yet: `"Finish work order"` (default/outline) while the canvas
- * is empty, `"Send work receipt"` (accent) once it isn't. Both are the SAME
- * action underneath — closing this order's running clock and, when a
- * signature exists, recording the local sign-off — the copy just tells the
- * engineer which of those two things is about to happen. This mapping
- * isn't spelled out any more explicitly than that one sentence in
- * IMPLEMENTATION.md §4, so it's a deliberate reading of an otherwise
- * slightly underspecified point: a job with no signature can still be
- * "finished" (clock closed, back to Today), it just isn't a signed-off
- * receipt.
+ * primary action: `Finish workitem`. Closes this order's running clock,
+ * records the local sign-off (when a signature was drawn), and marks the
+ * work order `completed` server-side (`POST /api/work-orders/[id]/finish`)
+ * before returning to Today — see `work-order-detail.tsx`'s `handleFinish`
+ * for the full sequence. A signature is optional, not required to finish.
+ *
+ * Product feedback (2026-09-12) simplified this from the original
+ * two-label design (`"Finish work order"` while unsigned, `"Send work
+ * receipt"` once signed, same action either way) to one constant label —
+ * finishing now always does the same real thing (mark the order completed,
+ * go back to Today), so the label no longer needs to describe which of two
+ * things is about to happen. The signed/not-signed state still gets a
+ * plain-text line below the canvas (not folded into the button anymore) —
+ * a non-canvas-only signal that a signature exists, for anyone who can't
+ * see the canvas itself.
  */
 export function SignOffSection({
   summary,
@@ -37,12 +42,16 @@ export function SignOffSection({
   const padRef = useRef<SignaturePadHandle>(null);
   const [hasSignature, setHasSignature] = useState(Boolean(existingSignOff));
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handlePrimaryAction() {
     setSubmitting(true);
+    setError(null);
     try {
       const dataUrl = padRef.current?.toDataUrl() ?? null;
       await onFinish(dataUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't finish this work order.");
     } finally {
       setSubmitting(false);
     }
@@ -69,19 +78,18 @@ export function SignOffSection({
           initialDataUrl={existingSignOff?.signatureDataUrl ?? null}
           onHasSignatureChange={setHasSignature}
         />
-        <Button variant="ghost" onClick={() => padRef.current?.clear()} style={{ minHeight: 44, alignSelf: "flex-start" }}>
-          Clear
-        </Button>
+        <Inline justify="between" align="center">
+          <Text tone="muted">{hasSignature ? "Signature added" : "No signature yet"}</Text>
+          <Button variant="ghost" onClick={() => padRef.current?.clear()} style={{ minHeight: 44 }}>
+            Clear
+          </Button>
+        </Inline>
       </Stack>
 
-      <Button
-        variant={hasSignature ? "primary" : "outline"}
-        fullWidth
-        disabled={submitting}
-        onClick={() => void handlePrimaryAction()}
-        style={{ minHeight: 44 }}
-      >
-        {submitting ? "Saving…" : hasSignature ? "Send work receipt" : "Finish work order"}
+      {error && <Callout icon={AlertTriangle}>{error}</Callout>}
+
+      <Button variant="primary" fullWidth disabled={submitting} onClick={() => void handlePrimaryAction()} style={{ minHeight: 44 }}>
+        {submitting ? "Finishing…" : "Finish workitem"}
       </Button>
     </Stack>
   );

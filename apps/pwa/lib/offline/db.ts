@@ -164,15 +164,36 @@ class WorkItemsDatabase extends Dexie {
       meta: "key",
     });
     // Issue #170 — the local timer/outbox tables. `[userId+endedAt]` on
-    // `clockPeriods` is what `lib/time/clocks.ts` queries to find "every
-    // currently-running period for this engineer, across every work order"
-    // in one indexed lookup (`endedAt` is `null` while running) — the whole
-    // "max one order runs at a time" rule depends on being able to find and
-    // close those cheaply before starting a new one.
+    // `clockPeriods` was meant to be what `lib/time/clocks.ts` queries to
+    // find "every currently-running period for this engineer, across every
+    // work order" in one indexed lookup (`endedAt` is `null` while
+    // running) — superseded by version(3) below, see that comment for why
+    // this compound index can never actually be queried for `endedAt:
+    // null`.
     this.version(2).stores({
       workitems: "id",
       meta: "key",
       clockPeriods: "++id, workOrderId, [userId+endedAt], [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId",
+    });
+    // v3: IndexedDB excludes a record from a compound index entirely when
+    // ANY one of its key-path values is `null` (per spec, `null`/
+    // `undefined` are not valid IDB keys) — and `endedAt` IS `null` on
+    // exactly the row this whole timer depends on finding: the currently-
+    // running period. That made `getOpenClockPeriods`'s
+    // `.where({ userId, endedAt: null })` build an invalid `[userId,
+    // null]` key range and throw a `DataError` on every call — so
+    // Start/Stop silently did nothing; the running clock could never be
+    // found (or, therefore, closed before starting a new one). Fixed by
+    // indexing `userId` alone and filtering `endedAt === null` in JS (see
+    // `getOpenClockPeriods` below) instead of relying on a compound index
+    // that structurally cannot represent "endedAt is null".
+    this.version(3).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
       signoffs: "workOrderId, userId",
       localArticles: "++id, [workOrderId+articleId]",
       localPhotos: "++id, workOrderId",
@@ -282,7 +303,11 @@ export async function getLastSyncedAt(currentUserId: string): Promise<string | n
  * that invariant itself. */
 export async function getOpenClockPeriods(currentUserId: string): Promise<ClockPeriod[]> {
   await ensureCacheBelongsTo(currentUserId);
-  return db.clockPeriods.where({ userId: currentUserId, endedAt: null }).toArray();
+  // Not `.where({ userId, endedAt: null })` — see the `version(3)` comment
+  // in this file's constructor on why querying a compound index for a
+  // `null` component throws instead of matching.
+  const rows = await db.clockPeriods.where({ userId: currentUserId }).toArray();
+  return rows.filter((row) => row.endedAt === null);
 }
 
 /** Every period (open or closed) logged against `workOrderId` by
