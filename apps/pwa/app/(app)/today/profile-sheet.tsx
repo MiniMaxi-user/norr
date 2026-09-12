@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Dialog, Inline, Stack, Text } from "@yourorg/ui";
-import { LogOut } from "@yourorg/ui/icons";
+import { Button, Dialog, Inline, Label, RadioGroup, RadioGroupItem, Stack, Text, useTheme } from "@yourorg/ui";
+import { LogOut, Moon, Sun } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
 
@@ -49,6 +49,13 @@ const APP_VERSION = "0.1.0";
  * never reach the server in this story. Recomputed the moment the sheet
  * opens (not kept continuously ticking) — a rough weekly total, not a
  * second live timer.
+ *
+ * Also renders `AppearanceSection` (product feedback, 2026-09-12) — a
+ * Light/Dark theme choice, same `@yourorg/ui` `ThemeProvider`/`useTheme`
+ * (localStorage `norr-ui-theme`) the desktop app's own profile panel
+ * already uses (`app/(app)/profile/profile-panel.tsx`'s own
+ * `AppearanceSection`), just defaulting to dark here (`app/layout.tsx`)
+ * instead of that app's `"system"`.
  */
 export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserId, isOnline }: ProfileSheetProps) {
   const [weekMinutes, setWeekMinutes] = useState<number | null>(null);
@@ -147,6 +154,8 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
             <SheetRow label="Version" value={APP_VERSION} muted last />
           </div>
 
+          <AppearanceSection />
+
           <Button variant="danger" fullWidth disabled={loggingOut} onClick={() => void handleLogOut()}>
             <Inline gap="xs" align="center" justify="center">
               <LogOut aria-hidden width={17} height={17} />
@@ -156,6 +165,43 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
         </Stack>
       </Dialog.Body>
     </Dialog>
+  );
+}
+
+/** Light/Dark theme choice (product feedback, 2026-09-12) — mirrors the
+ * desktop app's own `AppearanceSection`
+ * (`app/(app)/profile/profile-panel.tsx`) almost exactly, minus a
+ * "System" option: this app has no visible System radio there either
+ * (its `ThemeProvider` supports it, the UI just never exposes it), and
+ * `app/layout.tsx` already defaults this app to dark rather than
+ * resolving a system preference on first load. */
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--ui-border)",
+        borderRadius: "var(--ui-radius-lg)",
+        padding: "0.875rem 1rem",
+      }}
+    >
+      <Inline gap="xs" align="center" style={{ marginBottom: "0.625rem" }}>
+        {isDark ? <Moon aria-hidden width={16} height={16} /> : <Sun aria-hidden width={16} height={16} />}
+        <Text tone="muted">Appearance</Text>
+      </Inline>
+      <RadioGroup>
+        <Stack gap="xs">
+          <Label>
+            <RadioGroupItem name="theme" checked={!isDark} onChange={() => setTheme("light")} /> Light
+          </Label>
+          <Label>
+            <RadioGroupItem name="theme" checked={isDark} onChange={() => setTheme("dark")} /> Dark
+          </Label>
+        </Stack>
+      </RadioGroup>
+    </div>
   );
 }
 

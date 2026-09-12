@@ -14,9 +14,14 @@
  * read-only, see issue #169's "out of scope" notes), so every successful
  * sync does a full bulk replace of `workitems` rather than a merge/diff.
  *
- * Issue #170 tables (the local side of the timer/outbox — see that issue's
- * "Notes / out of scope": no `POST /api/sync/outbox` yet, this is purely
- * local persistence a later story flushes):
+ * Issue #170 tables (the local side of the timer/outbox during a job —
+ * see that issue's "Notes / out of scope": no generic
+ * `POST /api/sync/outbox` processor. Product feedback, 2026-09-12,
+ * added a real, specific flush instead: finishing a work order
+ * (`POST /api/work-orders/[id]/finish`) now posts these periods/articles
+ * to the server's own `time_entries`/`work_order_articles` as part of
+ * marking it `completed` — see that route's doc comment. Until finish,
+ * everything below stays purely local):
  * - `clockPeriods` — one row per travel/work period, `{kind, startedAt,
  *   endedAt}` per work order (`endedAt: null` while running). A sequence of
  *   periods, not a summed duration, per IMPLEMENTATION.md §5 — the running
@@ -33,12 +38,22 @@
  *   `/api/work-orders/[id]`) — that read path stays real/Supabase-backed,
  *   this is only the not-yet-synced additions made from this device.
  * - `localPhotos` — photos taken from the Photos tab, stored as `Blob`s.
- *   Local-only, same reasoning.
+ *   Local-only — this story never posts photos anywhere, unlike periods/
+ *   articles above.
+ * - `workOrderDetails` — a read-through cache of `/api/work-orders/[id]`'s
+ *   response, one row per work order this device has successfully
+ *   fetched at least once. Product feedback, 2026-09-12: opening a work
+ *   order while offline previously always failed (this story originally
+ *   scoped the detail read as real/online-only, see
+ *   `work-order-detail.tsx`'s own doc comment) — now it falls back to
+ *   this cache the same way the Today list already falls back to
+ *   `workitems` when `/api/workitems/today` fails.
  *
- * All four issue #170 tables are scoped to the current engineer exactly like
+ * All issue #170 tables are scoped to the current engineer exactly like
  * `workitems`/`meta` already are — see `ensureCacheBelongsTo`.
  */
 import Dexie, { type Table } from "dexie";
+import type { WorkOrderDetailResponse } from "@/lib/work-orders/types";
 
 export interface CachedWorkItemReference {
   label: string;
@@ -144,6 +159,17 @@ export interface LocalPhoto {
   blob: Blob;
 }
 
+/** A read-through cache of one `/api/work-orders/[id]` response (product
+ * feedback, 2026-09-12) — see this file's own top doc comment on why. */
+export interface CachedWorkOrderDetail {
+  workOrderId: string;
+  userId: string;
+  detail: WorkOrderDetailResponse;
+  /** Epoch ms — shown as this screen's own "last synced" notice while
+   * offline, same idea as the Today list's `lastSyncedAt`. */
+  cachedAt: number;
+}
+
 const LAST_SYNCED_AT_KEY = "lastSyncedAt";
 /** Which engineer's data is currently cached (see the user-scoping note
  * below) — not shown in the UI, purely a guard. */
@@ -156,6 +182,7 @@ class WorkItemsDatabase extends Dexie {
   signoffs!: Table<LocalSignOff, string>;
   localArticles!: Table<LocalArticle, number>;
   localPhotos!: Table<LocalPhoto, number>;
+  workOrderDetails!: Table<CachedWorkOrderDetail, string>;
 
   constructor() {
     super("norr-pwa");
@@ -198,6 +225,17 @@ class WorkItemsDatabase extends Dexie {
       localArticles: "++id, [workOrderId+articleId]",
       localPhotos: "++id, workOrderId",
     });
+    // v4 — the work-order-detail read-through cache (product feedback,
+    // 2026-09-12), keyed by workOrderId like signoffs above.
+    this.version(4).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId",
+      workOrderDetails: "workOrderId, userId",
+    });
   }
 }
 
@@ -219,17 +257,19 @@ const db = new WorkItemsDatabase();
  * `currentUserId`: if the cache belongs to a different user (or no user has
  * synced yet), it's wiped before use rather than ever handed back.
  *
- * Issue #170 widened the wipe to the four new local-outbox tables too — a
+ * Issue #170 widened the wipe to the local-outbox tables too — a
  * handed-down device must not show Engineer B a *running timer*, a signed
- * work receipt, or pending articles/photos that actually belong to Engineer
- * A's still-open job. Same reasoning, same mechanism, just more tables.
+ * work receipt, pending articles/photos that actually belong to Engineer
+ * A's still-open job, or (product feedback, 2026-09-12) a *cached work
+ * order detail* Engineer A had open. Same reasoning, same mechanism, just
+ * more tables.
  */
 async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
   const row = await db.meta.get(USER_ID_KEY);
   if (row?.value === currentUserId) return;
   await db.transaction(
     "rw",
-    [db.workitems, db.meta, db.clockPeriods, db.signoffs, db.localArticles, db.localPhotos],
+    [db.workitems, db.meta, db.clockPeriods, db.signoffs, db.localArticles, db.localPhotos, db.workOrderDetails],
     async () => {
       await db.workitems.clear();
       await db.meta.delete(LAST_SYNCED_AT_KEY);
@@ -237,6 +277,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.signoffs.clear();
       await db.localArticles.clear();
       await db.localPhotos.clear();
+      await db.workOrderDetails.clear();
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -422,4 +463,63 @@ export async function getLocalPhotos(workOrderId: string, currentUserId: string)
 /** Stores a newly-taken photo locally. */
 export async function addLocalPhoto(photo: Omit<LocalPhoto, "id">): Promise<void> {
   await db.localPhotos.add(photo);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Work-order-detail read-through cache (product feedback, 2026-09-12) — see
+ * this file's own top doc comment on `workOrderDetails`.
+ * ------------------------------------------------------------------------ */
+
+/** Caches `/api/work-orders/[id]`'s response for `workOrderId`, scoped to
+ * `currentUserId` — overwrites whatever was cached before (this is a
+ * point-in-time snapshot, not something merged/diffed). */
+export async function saveWorkOrderDetail(
+  workOrderId: string,
+  detail: WorkOrderDetailResponse,
+  currentUserId: string,
+): Promise<void> {
+  await db.workOrderDetails.put({ workOrderId, userId: currentUserId, detail, cachedAt: Date.now() });
+}
+
+/** The cached `/api/work-orders/[id]` response for `workOrderId`, or `null`
+ * if this device has never successfully fetched it (or the cache belongs
+ * to a different user — see `ensureCacheBelongsTo`). */
+export async function getCachedWorkOrderDetail(
+  workOrderId: string,
+  currentUserId: string,
+): Promise<CachedWorkOrderDetail | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.workOrderDetails.get(workOrderId);
+  return row && row.userId === currentUserId ? row : null;
+}
+
+/**
+ * Deletes every locally-logged period/article for `workOrderId` belonging
+ * to `currentUserId` — called right after a successful `POST
+ * /api/work-orders/[id]/finish` (product feedback fix, 2026-09-13). Without
+ * this, `handleFinish` re-sending this device's FULL period/article
+ * history on any later call for the same order (a retried tap, or
+ * re-opening an already-finished order and tapping Finish again) would
+ * re-insert everything a second time into the server's `time_entries`/
+ * `work_order_articles` — a materially bigger version of the "partial
+ * failure between two inserts" risk that route's own doc comment already
+ * accepts (QA finding, 2026-09-13). `finishWorkOrderClock`
+ * (`lib/time/clocks.ts`) only closes the running period; it was never this
+ * file's job to also decide when synced data is safe to delete, so that
+ * decision (and this call) lives at the call site instead.
+ */
+export async function clearSyncedWorkOrderData(workOrderId: string, currentUserId: string): Promise<void> {
+  await db.transaction("rw", db.clockPeriods, db.localArticles, async () => {
+    const periods = await db.clockPeriods.where({ workOrderId }).toArray();
+    const periodIds = periods
+      .filter((period) => period.userId === currentUserId && period.id !== undefined)
+      .map((period) => period.id as number);
+    if (periodIds.length > 0) await db.clockPeriods.bulkDelete(periodIds);
+
+    const articles = await db.localArticles.where({ workOrderId }).toArray();
+    const articleIds = articles
+      .filter((article) => article.userId === currentUserId && article.id !== undefined)
+      .map((article) => article.id as number);
+    if (articleIds.length > 0) await db.localArticles.bulkDelete(articleIds);
+  });
 }

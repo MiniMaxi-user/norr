@@ -5073,15 +5073,16 @@ a.ui-relation-card-title:hover {
  * scrollable, snap-aligned row so future sections (Checklist, Signatures)
  * can be appended without existing targets shrinking.
  *
- * Colors are the literal values from §3's spec table — most already equal
- * this file's own dark-theme tokens 1:1 (`#1a2e36` = `--ui-surface`,
- * `#2f4952` = `--ui-border`, `#93a29c` = `--ui-muted`, the accent trio =
- * `--ui-accent`/`--ui-accent-tint`), used via `var(...)` below rather than
- * re-typed as hex. The two values with no existing token
- * (`rgba(15,29,35,.94)` — `--ui-bg-inset` at 94% opacity, for the
- * blurred bar background; `#22333b`, the zone divider, close to but
- * distinct from `--ui-surface-hover`) stay literal, same precedent as
- * `.ui-toolbar-bg`'s own per-theme rgba above.
+ * Colors are the literal values from §3's spec table — all resolved to
+ * this file's own tokens rather than re-typed as hex (`#1a2e36` =
+ * `--ui-surface`, `#2f4952` = `--ui-border`, `#93a29c` = `--ui-muted`,
+ * the accent trio = `--ui-accent`/`--ui-accent-tint`). The blurred bar
+ * background and the two zone-divider borders use `--ui-toolbar-bg`/
+ * `--ui-border` (fixed 2026-09-13: an earlier pass left these as literal
+ * `rgba(15,29,35,.94)`/`#22333b`, which meant switching this app to
+ * light theme left its primary nav bar stuck dark — every other token
+ * this section uses already had light-mode values, these two just
+ * weren't routed through a variable at all).
  * ---------------------------------------------------------------------- */
 .ui-bottom-bar {
   position: fixed;
@@ -5093,9 +5094,9 @@ a.ui-relation-card-title:hover {
   align-items: stretch;
   gap: 0.625rem;
   padding: 8px 12px calc(24px + env(safe-area-inset-bottom));
-  background: rgba(15, 29, 35, 0.94);
+  background: var(--ui-toolbar-bg);
   backdrop-filter: blur(14px);
-  border-top: 1px solid #22333b;
+  border-top: 1px solid var(--ui-border);
 }
 .ui-bottom-bar-today {
   flex: 0 0 auto;
@@ -5131,7 +5132,7 @@ a.ui-relation-card-title:hover {
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  border-left: 1px solid #22333b;
+  border-left: 1px solid var(--ui-border);
   padding-left: 0.625rem;
 }
 .ui-bottom-bar-context::-webkit-scrollbar {
@@ -5169,7 +5170,7 @@ a.ui-relation-card-title:hover {
   flex: 1;
   display: flex;
   align-items: center;
-  border-left: 1px solid #22333b;
+  border-left: 1px solid var(--ui-border);
   padding-left: 0.625rem;
 }
 /* Scroll containers behind the fixed bar need this so their last row never

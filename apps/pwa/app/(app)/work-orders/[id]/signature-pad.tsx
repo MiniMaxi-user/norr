@@ -50,7 +50,6 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(fu
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(ratio, ratio);
-    ctx.strokeStyle = "#dfe4e0";
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -78,6 +77,18 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(fu
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
     lastPointRef.current = pointFromEvent(event);
+    // Resolved fresh per stroke (not once at mount, fixed 2026-09-13):
+    // this used to be hardcoded to `#dfe4e0` (Snö), which is illegible
+    // against this pad's light-mode background (`--ui-bg-inset` resolves
+    // to a near-white gray there) now that the app can switch themes
+    // (`app/layout.tsx`'s `ThemeProvider`) — `--ui-fg` already resolves to
+    // the correct readable ink color in both themes, same token every
+    // surrounding text element uses.
+    const ctx = event.currentTarget.getContext("2d");
+    if (ctx) {
+      const fg = getComputedStyle(event.currentTarget).getPropertyValue("--ui-fg").trim();
+      ctx.strokeStyle = fg || "#dfe4e0";
+    }
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {

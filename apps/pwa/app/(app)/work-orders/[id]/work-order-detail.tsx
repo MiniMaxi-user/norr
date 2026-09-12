@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Badge, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
+import { Badge, Callout, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import {
+  clearSyncedWorkOrderData,
+  getCachedWorkOrderDetail,
   getClockPeriodsForOrder,
   getLocalArticles,
   getLocalPhotos,
   getLocalSignOff,
   saveLocalSignOff,
+  saveWorkOrderDetail,
   type ClockPeriod,
   type LocalArticle,
   type LocalPhoto,
@@ -47,14 +50,19 @@ function formatTimeLabel(iso: string): string {
  * `page.tsx`'s own doc comment on why that's a client-side read rather than
  * a prop from the server page).
  *
- * Deliberately does NOT fall back to an offline-cached copy of the detail
- * itself the way `today-screen.tsx` does for the day's list — issue #170's
- * scope is explicit that the real/server-backed half of this story is
- * read-only and simple (see `/api/work-orders/[id]`'s own doc comment); a
- * full offline-detail cache is a bigger, separate feature this story never
- * asked for. What DOES have to work with zero network — starting/stopping
- * the timer, adding articles/photos, signing off — is all local-only
- * (`lib/offline/db.ts`), and none of that depends on this fetch succeeding.
+ * Product feedback (2026-09-12) added an offline-read fallback for the
+ * detail fetch itself, same shape as `today-screen.tsx`'s own fallback
+ * for the day's list: a successful fetch caches the response
+ * (`lib/offline/db.ts`'s `workOrderDetails`); a failed one falls back to
+ * that cache (with a "couldn't refresh" notice) instead of the bare
+ * error state this screen originally showed for every offline open —
+ * opening a work order you've already looked at today has to work
+ * without a network the same way the Today list already does. A work
+ * order that's never been opened on this device still can't be opened
+ * offline — there's nothing to fall back to. What already worked with
+ * zero network regardless — starting/stopping the timer, adding
+ * articles/photos, signing off — is all local-only (`lib/offline/db.ts`),
+ * and none of that depends on this fetch succeeding.
  */
 export function WorkOrderDetailScreen({
   workOrderId,
@@ -71,6 +79,7 @@ export function WorkOrderDetailScreen({
 
   const [detail, setDetail] = useState<WorkOrderDetailResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailOffline, setDetailOffline] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [periods, setPeriods] = useState<ClockPeriod[]>([]);
@@ -108,12 +117,28 @@ export function WorkOrderDetailScreen({
           throw new Error(response.status === 404 ? "Work order not found." : "Failed to load work order.");
         }
         const data = (await response.json()) as WorkOrderDetailResponse;
+        await saveWorkOrderDetail(workOrderId, data, currentUserId);
         if (!cancelled) {
           setDetail(data);
           setDetailError(null);
+          setDetailOffline(false);
         }
       } catch (error) {
-        if (!cancelled) setDetailError(error instanceof Error ? error.message : "Failed to load work order.");
+        // Any failure (offline, or a real server error) falls back to
+        // whatever this device cached the last time this order loaded
+        // successfully — never a bare error screen when there's a cache to
+        // show instead, same "never a bare error screen" reasoning as the
+        // Today list's own sync (`today-screen.tsx`).
+        const cached = await getCachedWorkOrderDetail(workOrderId, currentUserId);
+        if (!cancelled) {
+          if (cached) {
+            setDetail(cached.detail);
+            setDetailError(null);
+            setDetailOffline(true);
+          } else {
+            setDetailError(error instanceof Error ? error.message : "Failed to load work order.");
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -149,16 +174,20 @@ export function WorkOrderDetailScreen({
   /**
    * Finish workitem (product feedback, 2026-09-12 — supersedes the
    * original "Finish work order"/"Send work receipt" two-label design):
-   * closes this order's running clock and records the local sign-off
-   * locally, then marks the work order `completed` server-side (`POST
-   * /api/work-orders/[id]/finish` — a real Supabase write, unlike every
-   * other #170 mutation, which stays local-only per that issue's scope
-   * boundary; finishing a job is the one action that has to be visible
-   * elsewhere in the app, e.g. the desktop planner's board). Only
-   * navigates back to Today once that server call actually succeeds — on
-   * failure (most likely offline), the error propagates to
-   * `SignOffSection`, which shows it and leaves the engineer on this
-   * screen so nothing silently vanishes.
+   * closes this order's running clock, records the local sign-off
+   * locally, and — unlike every other #170 mutation, which stays local-
+   * only per that issue's scope boundary — flushes this order's logged
+   * periods and locally-added articles to the server as real
+   * `time_entries`/`work_order_articles` rows and marks the work order
+   * `completed` (`POST /api/work-orders/[id]/finish`). Finishing is the
+   * one action that has to be visible elsewhere in the app (e.g. the
+   * desktop planner's board showing the hours/articles this job actually
+   * took), so it's also the one moment this story does a real sync
+   * instead of staying purely local. Only navigates back to Today once
+   * that server call actually succeeds — on failure (most likely
+   * offline), the error propagates to `SignOffSection`, which shows it
+   * and leaves the engineer on this screen (periods/articles stay in
+   * their local tables, nothing is lost) so nothing silently vanishes.
    */
   const handleFinish = useCallback(
     async (signatureDataUrl: string | null) => {
@@ -167,10 +196,30 @@ export function WorkOrderDetailScreen({
       if (signatureDataUrl) {
         await saveLocalSignOff({ workOrderId, userId: currentUserId, signedAt: timestamp, signatureDataUrl });
       }
-      const response = await fetch(`/api/work-orders/${workOrderId}/finish`, { method: "POST" });
+      // Re-read after finishWorkOrderClock above so the just-closed
+      // running period is included (`endedAt` is no longer null) — the
+      // server route only accepts closed periods.
+      const [finalPeriods, finalArticles] = await Promise.all([
+        getClockPeriodsForOrder(workOrderId, currentUserId),
+        getLocalArticles(workOrderId, currentUserId),
+      ]);
+      const response = await fetch(`/api/work-orders/${workOrderId}/finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periods: finalPeriods
+            .filter((period) => period.endedAt !== null)
+            .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
+          articles: finalArticles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
+        }),
+      });
       if (!response.ok) {
         throw new Error("Couldn't mark this work order as completed. Check your connection and try again.");
       }
+      // The server now has these periods/articles for good — clear the
+      // local copies so a later re-tap/reopen can't resend (and
+      // double-insert) them (QA finding, 2026-09-13).
+      await clearSyncedWorkOrderData(workOrderId, currentUserId);
       router.push("/today");
     },
     [workOrderId, currentUserId, router],
@@ -204,6 +253,10 @@ export function WorkOrderDetailScreen({
 
   return (
     <Stack gap="md">
+      {detailOffline && (
+        <Callout icon={AlertTriangle}>{"Showing the last synced copy of this work order — couldn't refresh."}</Callout>
+      )}
+
       <Inline gap="sm" align="center" wrap>
         {workOrder.status && <Badge color={workOrder.status.color}>{workOrder.status.label}</Badge>}
         <Text tone="muted">{workOrder.scheduledAt ? formatTimeLabel(workOrder.scheduledAt) : "No time scheduled"}</Text>
