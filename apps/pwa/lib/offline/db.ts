@@ -74,6 +74,7 @@
  */
 import Dexie, { type Table } from "dexie";
 import type { CatalogArticle, WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { MyStockItem } from "@/lib/inventory/types";
 
 export interface CachedWorkItemReference {
   label: string;
@@ -234,7 +235,23 @@ export interface CachedCatalogArticle extends CatalogArticle {
   userId: string;
 }
 
+/** A read-through cache of one `/api/inventory/my-stock` row (issue #182) —
+ * the PWA "Voorraad" profile view's offline cache, same idea as `catalog`
+ * above (bulk-replaced on every successful sync, never merged — see
+ * `saveMyStock`). `userId` (not present on the API's own `MyStockItem`
+ * shape) is added purely for `ensureCacheBelongsTo`'s scoping, same reason
+ * `CachedCatalogArticle` adds it. */
+export interface CachedMyStockItem extends MyStockItem {
+  userId: string;
+}
+
 const LAST_SYNCED_AT_KEY = "lastSyncedAt";
+/** Last-successful-sync timestamp for the `myStock` table (issue #182) —
+ * a separate `meta` key from `LAST_SYNCED_AT_KEY` above since this is a
+ * different sync entirely (own warehouse stock, not today's work items),
+ * mirroring the `workitems`+`meta` pair's own "meta stores the sync
+ * timestamp" convention rather than a third table. */
+const MY_STOCK_LAST_SYNCED_AT_KEY = "myStockLastSyncedAt";
 /** Which engineer's data is currently cached (see the user-scoping note
  * below) — not shown in the UI, purely a guard. */
 const USER_ID_KEY = "userId";
@@ -249,6 +266,7 @@ class WorkItemsDatabase extends Dexie {
   workOrderDetails!: Table<CachedWorkOrderDetail, string>;
   detailDrafts!: Table<LocalDetailDraft, string>;
   catalog!: Table<CachedCatalogArticle, string>;
+  myStock!: Table<CachedMyStockItem, string>;
 
   constructor() {
     super("norr-pwa");
@@ -332,6 +350,25 @@ class WorkItemsDatabase extends Dexie {
       detailDrafts: "workOrderId, userId",
       catalog: "id, userId",
     });
+    // v7 — issue #182's `myStock` table (the PWA "Voorraad" profile view's
+    // offline cache, see `CachedMyStockItem`'s own doc comment). Indexed on
+    // `userId` (the `ensureCacheBelongsTo`/scoped-read pattern every other
+    // per-engineer table here uses) and `articleId` (looked up by
+    // `decrementLocalMyStockQuantity` when a local article is added/
+    // increased on a work order's Articles tab, issue #182's optimistic
+    // local-decrement AC).
+    this.version(7).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+      catalog: "id, userId",
+      myStock: "id, userId, articleId",
+    });
   }
 }
 
@@ -359,6 +396,11 @@ const db = new WorkItemsDatabase();
  * A's still-open job, or (product feedback, 2026-09-12) a *cached work
  * order detail* Engineer A had open. Same reasoning, same mechanism, just
  * more tables.
+ *
+ * Issue #182 widens it once more: `myStock` (a per-engineer warehouse
+ * cache — showing Engineer B Engineer A's own stock quantities on a shared
+ * device would be exactly the same class of leak) and its own
+ * `MY_STOCK_LAST_SYNCED_AT_KEY` meta row are wiped here too, same mechanism.
  */
 async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
   const row = await db.meta.get(USER_ID_KEY);
@@ -375,6 +417,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       db.workOrderDetails,
       db.detailDrafts,
       db.catalog,
+      db.myStock,
     ],
     async () => {
       await db.workitems.clear();
@@ -386,6 +429,8 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.workOrderDetails.clear();
       await db.detailDrafts.clear();
       await db.catalog.clear();
+      await db.myStock.clear();
+      await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -599,7 +644,9 @@ export async function getLocalArticles(
 /** Adds one of `articleId` to `workOrderId`'s local (not-yet-synced) article
  * list — a second tap on the same catalog item increments the existing
  * row's `quantity` instead of inserting a duplicate (matches the catalog
- * sheet's own "tap again for a second" copy). */
+ * sheet's own "tap again for a second" copy). Also optimistically
+ * decrements this engineer's cached `myStock` quantity for `articleId` by 1
+ * (issue #182) — see `decrementLocalMyStockQuantity`'s own doc comment. */
 export async function addLocalArticle(input: {
   workOrderId: string;
   userId: string;
@@ -607,23 +654,24 @@ export async function addLocalArticle(input: {
   articleNumber: string;
   description: string;
 }): Promise<void> {
-  await db.transaction("rw", db.localArticles, async () => {
+  await db.transaction("rw", db.localArticles, db.myStock, async () => {
     const existing = await db.localArticles
       .where({ workOrderId: input.workOrderId })
       .filter((row) => row.userId === input.userId && row.articleId === input.articleId)
       .first();
     if (existing?.id !== undefined) {
       await db.localArticles.update(existing.id, { quantity: existing.quantity + 1 });
-      return;
+    } else {
+      await db.localArticles.add({
+        workOrderId: input.workOrderId,
+        userId: input.userId,
+        articleId: input.articleId,
+        articleNumber: input.articleNumber,
+        description: input.description,
+        quantity: 1,
+      });
     }
-    await db.localArticles.add({
-      workOrderId: input.workOrderId,
-      userId: input.userId,
-      articleId: input.articleId,
-      articleNumber: input.articleNumber,
-      description: input.description,
-      quantity: 1,
-    });
+    await decrementLocalMyStockQuantity(input.articleId, input.userId, 1);
   });
 }
 
@@ -640,17 +688,24 @@ export async function removeLocalArticle(id: number): Promise<void> {
  * +/- stepper on the Articles tab — same local-only scope as `removeLocalArticle`
  * above, never called for a server-synced row). A decrement that would take
  * `quantity` to 0 or below removes the row entirely instead of leaving a
- * zero-quantity line. */
+ * zero-quantity line. A positive `delta` (more of this article consumed)
+ * also optimistically decrements this engineer's cached `myStock` quantity
+ * by the same amount (issue #182) — a negative `delta` never restores it,
+ * see `decrementLocalMyStockQuantity`'s own doc comment on why that's an
+ * accepted simplification. */
 export async function updateLocalArticleQuantity(id: number, delta: number): Promise<void> {
-  await db.transaction("rw", db.localArticles, async () => {
+  await db.transaction("rw", db.localArticles, db.myStock, async () => {
     const existing = await db.localArticles.get(id);
     if (!existing) return;
     const quantity = existing.quantity + delta;
     if (quantity <= 0) {
       await db.localArticles.delete(id);
-      return;
+    } else {
+      await db.localArticles.update(id, { quantity });
     }
-    await db.localArticles.update(id, { quantity });
+    if (delta > 0) {
+      await decrementLocalMyStockQuantity(existing.articleId, existing.userId, delta);
+    }
   });
 }
 
@@ -719,6 +774,79 @@ export async function getCachedCatalog(currentUserId: string): Promise<CatalogAr
   await ensureCacheBelongsTo(currentUserId);
   const rows = await db.catalog.where({ userId: currentUserId }).toArray();
   return rows.map(({ id, articleNumber, description }) => ({ id, articleNumber, description }));
+}
+
+/* ------------------------------------------------------------------------ *
+ * Issue #182 — the engineer's own warehouse-stock read-through cache (the
+ * PWA "Voorraad" profile view). Same "full replace on every successful
+ * sync, no incremental merge" reasoning as `saveWorkItems`/`saveCatalog`
+ * above (web/server is always the source of truth per that issue's own
+ * AC — a manual sync is a full overwrite, never a merge).
+ * ------------------------------------------------------------------------ */
+
+/** Bulk-replaces the cached "my stock" list with `stock` and records
+ * `syncedAt` as this device's last-successful-sync timestamp for it. */
+export async function saveMyStock(stock: MyStockItem[], syncedAt: string, currentUserId: string): Promise<void> {
+  await db.transaction("rw", db.myStock, db.meta, async () => {
+    await db.myStock.clear();
+    if (stock.length > 0) {
+      await db.myStock.bulkAdd(stock.map((item) => ({ ...item, userId: currentUserId })));
+    }
+    await db.meta.put({ key: MY_STOCK_LAST_SYNCED_AT_KEY, value: syncedAt });
+  });
+}
+
+/** The cached "my stock" list for `currentUserId`, or `[]` if this device
+ * has never successfully synced one (or the cache belongs to a different
+ * user — see `ensureCacheBelongsTo`). Includes quantity-0 rows (never
+ * filtered here, same as the API itself — see `MyStockItem`'s own doc
+ * comment). */
+export async function getCachedMyStock(currentUserId: string): Promise<MyStockItem[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.myStock.where({ userId: currentUserId }).toArray();
+  return rows.map(({ id, articleId, articleNumber, description, unit, quantity, minThreshold, lastCountedAt }) => ({
+    id,
+    articleId,
+    articleNumber,
+    description,
+    unit,
+    quantity,
+    minThreshold,
+    lastCountedAt,
+  }));
+}
+
+/** The last successful "my stock" sync's timestamp for `currentUserId`, or
+ * `null` if this device has never synced it yet. */
+export async function getMyStockLastSyncedAt(currentUserId: string): Promise<string | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.meta.get(MY_STOCK_LAST_SYNCED_AT_KEY);
+  return row?.value ?? null;
+}
+
+/** Optimistically decrements every cached `myStock` row for `articleId`
+ * belonging to `userId` by `amount` (issue #182: "Bij verbruiken van de
+ * artikelen op het artikel scherm wordt deze voorraad in pwa gelijk
+ * bijgewerkt") — called from `addLocalArticle`/`updateLocalArticleQuantity`
+ * below whenever a local article entry is added or its quantity is
+ * increased on a work order's Articles tab. Purely local/optimistic, NOT
+ * authoritative (the server's own trigger is, at Finish time — see this
+ * route's own doc comments) and deliberately has no inverse: removing a
+ * locally-added article, or decreasing its quantity, never restores this
+ * number. That's an accepted simplification (issue #182's own notes) — a
+ * full manual sync (`saveMyStock` above) is the documented reset path.
+ * Clamped at 0 (never goes negative) purely for a sane display value; a
+ * no-op if nothing is cached for this article yet (e.g. no prior sync). */
+export async function decrementLocalMyStockQuantity(
+  articleId: string,
+  userId: string,
+  amount: number,
+): Promise<void> {
+  if (amount <= 0) return;
+  const rows = await db.myStock.where({ articleId }).filter((row) => row.userId === userId).toArray();
+  await Promise.all(
+    rows.map((row) => db.myStock.update(row.id, { quantity: Math.max(0, row.quantity - amount) })),
+  );
 }
 
 /**

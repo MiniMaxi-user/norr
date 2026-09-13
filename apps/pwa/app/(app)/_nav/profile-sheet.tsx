@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Button, Dialog, Inline, Label, RadioGroup, RadioGroupItem, Stack, Text, useTheme } from "@yourorg/ui";
-import { LogOut, Moon, Sun } from "@yourorg/ui/icons";
+import { ChevronRight, LogOut, Moon, Sun } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
+import { VoorraadSheet } from "./voorraad-sheet";
 
 export interface ProfileSheetProps {
   open: boolean;
@@ -69,6 +70,11 @@ const APP_VERSION = "0.1.0";
 export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserId, isOnline }: ProfileSheetProps) {
   const [weekMinutes, setWeekMinutes] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  // Issue #182's "Voorraad" (stock) drill-in — this sheet closes itself the
+  // moment it's opened (see the row's own `onClick` below) rather than
+  // stacking two `size="sheet"` dialogs at once, since no existing Profile
+  // sub-view in this app does that.
+  const [voorraadOpen, setVoorraadOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -115,65 +121,76 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
-      <Dialog.Body>
-        <div className="ui-dialog-sheet-handle" />
-        <Stack gap="md">
-          <Inline gap="sm" align="center">
-            <span
-              aria-hidden
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
+        <Dialog.Body>
+          <div className="ui-dialog-sheet-handle" />
+          <Stack gap="md">
+            <Inline gap="sm" align="center">
+              <span
+                aria-hidden
+                style={{
+                  width: "3.375rem",
+                  height: "3.375rem",
+                  borderRadius: "var(--ui-radius-full)",
+                  background: "var(--ui-surface-hover)",
+                  border: "1px solid var(--ui-border)",
+                  color: "var(--ui-fg)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 600,
+                  fontSize: "var(--ui-text-lg)",
+                  flexShrink: 0,
+                }}
+              >
+                {initialsOf(fullName, email)}
+              </span>
+              <Stack gap="xs">
+                <Text style={{ fontFamily: "var(--ui-font-serif)", fontSize: "var(--ui-text-xl)" }}>
+                  {fullName || email}
+                </Text>
+                <Text tone="muted">Service engineer · Norr</Text>
+              </Stack>
+            </Inline>
+
+            <div
               style={{
-                width: "3.375rem",
-                height: "3.375rem",
-                borderRadius: "var(--ui-radius-full)",
-                background: "var(--ui-surface-hover)",
                 border: "1px solid var(--ui-border)",
-                color: "var(--ui-fg)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 600,
-                fontSize: "var(--ui-text-lg)",
-                flexShrink: 0,
+                borderRadius: "var(--ui-radius-lg)",
+                overflow: "hidden",
               }}
             >
-              {initialsOf(fullName, email)}
-            </span>
-            <Stack gap="xs">
-              <Text style={{ fontFamily: "var(--ui-font-serif)", fontSize: "var(--ui-text-xl)" }}>
-                {fullName || email}
-              </Text>
-              <Text tone="muted">Service engineer · Norr</Text>
-            </Stack>
-          </Inline>
+              <SheetRow label="This week" value={weekMinutes === null ? "…" : formatWeekMinutes(weekMinutes)} />
+              <SheetNavRow
+                label="Voorraad"
+                onClick={() => {
+                  onOpenChange(false);
+                  setVoorraadOpen(true);
+                }}
+              />
+              <SheetRow
+                label="Offline data"
+                value={isOnline ? "Synced" : "Not synced"}
+                valueTone={isOnline ? "success" : "danger"}
+              />
+              <SheetRow label="Version" value={APP_VERSION} muted last />
+            </div>
 
-          <div
-            style={{
-              border: "1px solid var(--ui-border)",
-              borderRadius: "var(--ui-radius-lg)",
-              overflow: "hidden",
-            }}
-          >
-            <SheetRow label="This week" value={weekMinutes === null ? "…" : formatWeekMinutes(weekMinutes)} />
-            <SheetRow
-              label="Offline data"
-              value={isOnline ? "Synced" : "Not synced"}
-              valueTone={isOnline ? "success" : "danger"}
-            />
-            <SheetRow label="Version" value={APP_VERSION} muted last />
-          </div>
+            <AppearanceSection />
 
-          <AppearanceSection />
+            <Button variant="danger" fullWidth disabled={loggingOut} onClick={() => void handleLogOut()}>
+              <Inline gap="xs" align="center" justify="center">
+                <LogOut aria-hidden width={17} height={17} />
+                {loggingOut ? "Logging out…" : "Log out"}
+              </Inline>
+            </Button>
+          </Stack>
+        </Dialog.Body>
+      </Dialog>
 
-          <Button variant="danger" fullWidth disabled={loggingOut} onClick={() => void handleLogOut()}>
-            <Inline gap="xs" align="center" justify="center">
-              <LogOut aria-hidden width={17} height={17} />
-              {loggingOut ? "Logging out…" : "Log out"}
-            </Inline>
-          </Button>
-        </Stack>
-      </Dialog.Body>
-    </Dialog>
+      <VoorraadSheet open={voorraadOpen} onOpenChange={setVoorraadOpen} currentUserId={currentUserId} />
+    </>
   );
 }
 
@@ -252,5 +269,44 @@ function SheetRow({
         {value}
       </Text>
     </Inline>
+  );
+}
+
+/** Same visual row shape as `SheetRow` above, but a tappable drill-in into a
+ * dedicated sub-view (issue #182's "Voorraad" row) rather than a plain
+ * label/value display — a chevron replaces the value, matching the "this
+ * row navigates somewhere" convention. */
+function SheetNavRow({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        // Reset only the specific UA button chrome this row doesn't want —
+        // NOT `all: unset`, which would also wipe the `box-shadow` the
+        // sheet-wide `:focus-visible` rule (packages/ui/src/styles.css)
+        // relies on to draw the keyboard focus ring. Leaving `outline` and
+        // `box-shadow` untouched here lets that global rule cascade through
+        // normally.
+        appearance: "none",
+        background: "none",
+        border: "none",
+        margin: 0,
+        font: "inherit",
+        color: "inherit",
+        textAlign: "left",
+        boxSizing: "border-box",
+        display: "flex",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0.875rem 1rem",
+        borderBottom: "1px solid var(--ui-surface-hover)",
+        cursor: "pointer",
+      }}
+    >
+      <Text>{label}</Text>
+      <ChevronRight aria-hidden width={16} height={16} style={{ color: "var(--ui-muted-subtle)" }} />
+    </button>
   );
 }
