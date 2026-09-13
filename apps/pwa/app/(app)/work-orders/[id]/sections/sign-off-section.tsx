@@ -1,11 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
 import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
+
+/** How often the drawn-so-far signature is pushed up to `work-order-
+ * detail.tsx`'s lifted `signatureDraft` state (product feedback,
+ * 2026-09-13) — frequent enough that switching tabs mid-signature never
+ * loses more than a stroke or two, infrequent enough that it's a cheap
+ * `canvas.toDataURL()` poll, not a re-render on every pointer-move. */
+const SIGNATURE_AUTOSAVE_MS = 500;
 
 /**
  * The "Sign off" tab (issue #170, IMPLEMENTATION.md §4) — a summary
@@ -29,24 +36,46 @@ import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
  * "Solution" (product feedback, 2026-09-13) moved to the Work tab, under
  * Description — this section no longer owns it, only reads it via
  * `onFinish`'s closure over `work-order-detail.tsx`'s lifted state.
+ *
+ * The signature itself is autosaved the same lifted-state way (product
+ * feedback, 2026-09-13 — it used to vanish on switching tabs away from Sign
+ * and back, since `SignaturePad`'s canvas unmounts with this section): every
+ * `SIGNATURE_AUTOSAVE_MS`, a fresh `toDataUrl()` snapshot goes up to
+ * `signatureDraft`/`onSignatureDraftChange`, and `initialDataUrl` below
+ * reads it straight back — so a remount picks up wherever the last snapshot
+ * left off, not a blank canvas.
  */
 export function SignOffSection({
   summary,
   articleCount,
   engineerName,
   existingSignOff,
+  signatureDraft,
+  onSignatureDraftChange,
   onFinish,
 }: {
   summary: ClockSummary;
   articleCount: number;
   engineerName: string;
   existingSignOff: LocalSignOff | null;
+  signatureDraft: string | null;
+  onSignatureDraftChange: (dataUrl: string | null) => void;
   onFinish: (signatureDataUrl: string | null) => void | Promise<void>;
 }) {
   const padRef = useRef<SignaturePadHandle>(null);
-  const [hasSignature, setHasSignature] = useState(Boolean(existingSignOff));
+  const [hasSignature, setHasSignature] = useState(Boolean(existingSignOff || signatureDraft));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      onSignatureDraftChange(padRef.current?.toDataUrl() ?? null);
+    }, SIGNATURE_AUTOSAVE_MS);
+    return () => clearInterval(interval);
+    // `onSignatureDraftChange` is `work-order-detail.tsx`'s `setSignatureDraft`
+    // — stable across renders, so this interval is set up once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handlePrimaryAction() {
     setSubmitting(true);
@@ -79,12 +108,19 @@ export function SignOffSection({
         <Text tone="muted">Signature</Text>
         <SignaturePad
           ref={padRef}
-          initialDataUrl={existingSignOff?.signatureDataUrl ?? null}
+          initialDataUrl={signatureDraft ?? existingSignOff?.signatureDataUrl ?? null}
           onHasSignatureChange={setHasSignature}
         />
         <Inline justify="between" align="center">
           <Text tone="muted">{hasSignature ? "Signature added" : "No signature yet"}</Text>
-          <Button variant="ghost" onClick={() => padRef.current?.clear()} style={{ minHeight: 44 }}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              padRef.current?.clear();
+              onSignatureDraftChange(null);
+            }}
+            style={{ minHeight: 44 }}
+          >
             Clear
           </Button>
         </Inline>

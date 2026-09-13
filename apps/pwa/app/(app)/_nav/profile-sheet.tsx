@@ -12,14 +12,16 @@ export interface ProfileSheetProps {
   fullName: string | null;
   email: string;
   currentUserId: string;
-  /** Whether the last `/api/workitems/today` sync succeeded — reused as
-   * this sheet's "Offline data" row (IMPLEMENTATION.md §6: "sync-status"),
-   * same source of truth `today-screen.tsx` already tracks for its own
-   * sync line. */
+  /** Drives this sheet's "Offline data" row (IMPLEMENTATION.md §6:
+   * "sync-status"). Now sourced from `Topbar`'s own `navigator.onLine`
+   * listener (product feedback, 2026-09-13) rather than Today's last
+   * `/api/workitems/today` sync result — this sheet is reachable from
+   * every screen now, not just Today, so it needs a source of truth that
+   * doesn't depend on that one screen's own fetch. */
   isOnline: boolean;
 }
 
-/** Exported so the profile button trigger (`today-screen.tsx`) renders the
+/** Exported so the profile button trigger (`_nav/topbar.tsx`) renders the
  * exact same initials this sheet's own avatar does, rather than a second,
  * possibly-drifting reimplementation. */
 export function initialsOf(name: string | null, email: string): string {
@@ -41,6 +43,13 @@ const APP_VERSION = "0.1.0";
  * NOT in the bottom bar, per the same section). A `Dialog size="sheet"`
  * (packages/ui, added for this issue) rather than a centered dialog.
  *
+ * Moved into `_nav/` alongside `BottomBar` (product feedback, 2026-09-13 —
+ * the profile avatar that opens this now lives in the always-visible
+ * `Topbar`, not just the Today screen) — this file itself didn't need to
+ * change, only where it lives, since `Topbar` needs the exact same
+ * `initialsOf`/`ProfileSheet` pair `today-screen.tsx` used to own.
+ *
+
  * "Hours this week" combines `/api/engineer/hours-this-week`'s real,
  * server-side sum of this engineer's own CLOSED `time_entries` with
  * whatever this device has locally clocked (open or closed

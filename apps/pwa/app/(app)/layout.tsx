@@ -1,41 +1,38 @@
 import type { ReactNode } from "react";
-import { Logo } from "@yourorg/ui";
 import { requireEngineerSession } from "@/lib/auth/session";
 import { BottomBar } from "./_nav/bottom-bar";
+import { Topbar } from "./_nav/topbar";
 
 /**
  * Protected route group for the monteur-app (issue #168). Gates every route
  * under it on `requireEngineerSession()` — signed-out or non-`engineer`
  * roles are redirected to `/login` there.
  *
- * Issue #170 adds the app's only nav chrome: `BottomBar`, mounted once here
- * so both `/today` and `/work-orders/[id]` share the exact same instance
+ * Issue #170 adds the app's nav chrome: `BottomBar`, plus `Topbar` (product
+ * feedback, 2026-09-13 — logo + profile avatar must be visible on every
+ * screen, not just Today, where the avatar used to live). Both mounted once
+ * here so every route under this layout shares the exact same instances
  * (IMPLEMENTATION.md §3 — "don't reinvent the pattern per module"/per page).
  * `.ui-pwa-shell` (bug report, 2026-09-13) is a whole-viewport flex column —
- * `BottomBar` claims its own row at the bottom, `.ui-pwa-page-content` gets
- * everything above it and scrolls within that bound, so a page's content
- * always stops above the bar instead of running behind it. `.ui-pwa-page-
- * content` is also this app's one shared page-padding class (see
- * styles.css) since there's no sidebar/topbar chrome to already provide
- * side margins.
+ * `Topbar` and `BottomBar` each claim their own row, top and bottom,
+ * `.ui-pwa-page-content` gets everything in between and scrolls within that
+ * bound, so a page's content always stays between the two bars instead of
+ * running behind either one. `.ui-pwa-page-content` is also this app's one
+ * shared page-padding class (see styles.css) since there's no sidebar
+ * chrome to already provide side margins.
  *
- * `Logo` (product feedback, 2026-09-12: "Norr logo always top left in the
- * app, with the name") is mounted once here too, same "shared chrome, not
- * per-page" reasoning as `BottomBar` — it already renders the full wordmark
- * WITH the name by default (it only collapses to the bare icon inside the
- * desktop sidebar's `.ui-sidebar-collapsed`, which doesn't exist in this
- * app), so no separate icon-only variant is needed here.
+ * `requireEngineerSession()`'s return value (previously discarded) now
+ * feeds `Topbar`'s avatar/profile-sheet — the same `fullName`/`email`/
+ * `userId` shape `today/page.tsx` and `work-orders/[id]/page.tsx` already
+ * re-read via the `cache()`-wrapped `getCurrentEngineerSession()` for their
+ * own screens, so this is a free reuse, not a second round-trip.
  */
 export default async function AppRouteLayout({ children }: { children: ReactNode }) {
-  await requireEngineerSession();
+  const session = await requireEngineerSession();
   return (
     <div className="ui-pwa-shell">
-      <div className="ui-pwa-page-content">
-        <div className="ui-pwa-logo-row">
-          <Logo />
-        </div>
-        {children}
-      </div>
+      <Topbar fullName={session.fullName} email={session.email} currentUserId={session.userId} />
+      <div className="ui-pwa-page-content">{children}</div>
       <BottomBar />
     </div>
   );

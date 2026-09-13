@@ -20,7 +20,6 @@ import {
   type ClockSummary,
 } from "@/lib/time/clocks";
 import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
-import { initialsOf, ProfileSheet } from "./profile-sheet";
 import { PullToRefresh } from "./pull-to-refresh";
 
 interface TodayWorkItemsResponse {
@@ -102,15 +101,7 @@ function statusPresentation(item: TodayWorkItem): { label: string; variant: Badg
  * `currentUserId` scopes the offline cache (`lib/offline/db.ts`) to the
  * signed-in engineer — see that file's `ensureCacheBelongsTo` doc comment.
  */
-export function TodayScreen({
-  currentUserId,
-  fullName,
-  email,
-}: {
-  currentUserId: string;
-  fullName: string | null;
-  email: string;
-}) {
+export function TodayScreen({ currentUserId }: { currentUserId: string }) {
   const [items, setItems] = useState<CachedWorkItem[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
@@ -124,8 +115,6 @@ export function TodayScreen({
   const [runningWorkOrderId, setRunningWorkOrderId] = useState<string | null>(null);
   const [signedWorkOrderIds, setSignedWorkOrderIds] = useState<ReadonlySet<string>>(new Set());
   const [signedTotals, setSignedTotals] = useState<Record<string, number>>({});
-
-  const [profileOpen, setProfileOpen] = useState(false);
 
   const refreshLocalState = useCallback(async () => {
     const [running, signed] = await Promise.all([
@@ -254,88 +243,44 @@ export function TodayScreen({
   }
 
   return (
-    <>
-      <Stack gap="md">
-        <Inline justify="between" align="start">
-          <Stack gap="xs">
-            <Text
-              style={{
-                fontSize: "11px",
-                letterSpacing: "0.13em",
-                textTransform: "uppercase",
-                color: "var(--ui-muted-subtle)",
-              }}
-            >
-              {formatTodayDateLabel(new Date())}
-            </Text>
-            <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)", margin: 0 }}>
-              Today&apos;s work
-            </Heading>
-          </Stack>
-          <button
-            type="button"
-            aria-label="Open profile"
-            onClick={() => setProfileOpen(true)}
-            style={{
-              width: "2.75rem",
-              height: "2.75rem",
-              flexShrink: 0,
-              borderRadius: "var(--ui-radius-full)",
-              background: "var(--ui-surface)",
-              border: "1px solid var(--ui-border)",
-              color: "var(--ui-fg)",
-              fontWeight: 600,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >
-            {initialsOf(fullName, email)}
-          </button>
-        </Inline>
+    <Stack gap="md">
+      <Stack gap="xs">
+        <Text
+          style={{
+            fontSize: "11px",
+            letterSpacing: "0.13em",
+            textTransform: "uppercase",
+            color: "var(--ui-muted-subtle)",
+          }}
+        >
+          {formatTodayDateLabel(new Date())}
+        </Text>
+        <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)", margin: 0 }}>
+          Today&apos;s work
+        </Heading>
+      </Stack>
 
-        <PullToRefresh onRefresh={sync}>
-          <Stack gap="md">
-            {syncFailed && (
-              <Callout icon={AlertTriangle}>
-                {lastSyncedAt
-                  ? `Couldn't refresh — last synced ${formatSyncedTime(lastSyncedAt)}.`
-                  : "No connection, and nothing synced yet on this device."}
-              </Callout>
-            )}
+      <PullToRefresh onRefresh={sync}>
+        <Stack gap="md">
+          {syncFailed && (
+            <Callout icon={AlertTriangle}>
+              {lastSyncedAt
+                ? `Couldn't refresh — last synced ${formatSyncedTime(lastSyncedAt)}.`
+                : "No connection, and nothing synced yet on this device."}
+            </Callout>
+          )}
 
-            {todayItems.length === 0 ? (
-              !syncFailed && (
-                <EmptyState
-                  icon={<ClipboardList />}
-                  heading="No work orders scheduled for today."
-                  text="As soon as work orders are planned for today, they'll show up here."
-                />
-              )
-            ) : (
-              <>
-                {nowItem && (
-                  <Stack gap="sm">
-                    <Text
-                      style={{
-                        fontSize: "11px",
-                        letterSpacing: "0.13em",
-                        textTransform: "uppercase",
-                        color: "var(--ui-muted-subtle)",
-                      }}
-                    >
-                      Now
-                    </Text>
-                    <TodayWorkItemCard
-                      item={nowItem}
-                      totalMs={signedTotals[nowItem.id]}
-                      runningSummary={runningSummary}
-                      emphasized
-                    />
-                  </Stack>
-                )}
-
+          {todayItems.length === 0 ? (
+            !syncFailed && (
+              <EmptyState
+                icon={<ClipboardList />}
+                heading="No work orders scheduled for today."
+                text="As soon as work orders are planned for today, they'll show up here."
+              />
+            )
+          ) : (
+            <>
+              {nowItem && (
                 <Stack gap="sm">
                   <Text
                     style={{
@@ -345,39 +290,49 @@ export function TodayScreen({
                       color: "var(--ui-muted-subtle)",
                     }}
                   >
-                    Later today
+                    Now
                   </Text>
-                  {laterItems.length === 0 ? (
-                    <Text tone="muted">Nothing else scheduled today.</Text>
-                  ) : (
-                    <Stack gap="sm">
-                      {laterItems.map((item) => (
-                        <TodayWorkItemCard key={item.id} item={item} totalMs={signedTotals[item.id]} />
-                      ))}
-                    </Stack>
-                  )}
+                  <TodayWorkItemCard
+                    item={nowItem}
+                    totalMs={signedTotals[nowItem.id]}
+                    runningSummary={runningSummary}
+                    emphasized
+                  />
                 </Stack>
-              </>
-            )}
+              )}
 
-            <Inline justify="center">
-              <Text tone="muted">
-                {lastSyncedAt ? `Synced ${formatSyncedTime(lastSyncedAt)}` : "Not synced yet"} · pull to refresh
-              </Text>
-            </Inline>
-          </Stack>
-        </PullToRefresh>
-      </Stack>
+              <Stack gap="sm">
+                <Text
+                  style={{
+                    fontSize: "11px",
+                    letterSpacing: "0.13em",
+                    textTransform: "uppercase",
+                    color: "var(--ui-muted-subtle)",
+                  }}
+                >
+                  Later today
+                </Text>
+                {laterItems.length === 0 ? (
+                  <Text tone="muted">Nothing else scheduled today.</Text>
+                ) : (
+                  <Stack gap="sm">
+                    {laterItems.map((item) => (
+                      <TodayWorkItemCard key={item.id} item={item} totalMs={signedTotals[item.id]} />
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
+            </>
+          )}
 
-      <ProfileSheet
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        fullName={fullName}
-        email={email}
-        currentUserId={currentUserId}
-        isOnline={!syncFailed}
-      />
-    </>
+          <Inline justify="center">
+            <Text tone="muted">
+              {lastSyncedAt ? `Synced ${formatSyncedTime(lastSyncedAt)}` : "Not synced yet"} · pull to refresh
+            </Text>
+          </Inline>
+        </Stack>
+      </PullToRefresh>
+    </Stack>
   );
 }
 

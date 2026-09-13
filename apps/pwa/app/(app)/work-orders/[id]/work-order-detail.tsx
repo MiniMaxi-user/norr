@@ -91,6 +91,14 @@ export function WorkOrderDetailScreen({
   // between sections instead of being local state a Sign-tab-only component
   // would lose the moment the engineer taps away.
   const [solution, setSolution] = useState("");
+  // Same lift, for the same reason (product feedback, 2026-09-13: the
+  // signature drawn on the canvas was lost every time the engineer switched
+  // away from the Sign tab and back, since `SignaturePad`'s canvas unmounts
+  // with it). `SignOffSection` pushes a fresh `toDataUrl()` snapshot up here
+  // every 500ms while mounted; `SignaturePad` reads it back as its
+  // `initialDataUrl` on remount, so a tab switch mid-signature loses at most
+  // the last half-second of drawing instead of the whole thing.
+  const [signatureDraft, setSignatureDraft] = useState<string | null>(null);
 
   // `now` only ticks while a period on THIS order is actually running
   // (IMPLEMENTATION.md §5: "de interval hoeft alleen te tikken als er
@@ -156,6 +164,7 @@ export function WorkOrderDetailScreen({
       if (!cancelled) {
         setSignOff(row);
         if (row?.solution) setSolution(row.solution);
+        if (row?.signatureDataUrl) setSignatureDraft(row.signatureDataUrl);
       }
     });
     return () => {
@@ -324,6 +333,8 @@ export function WorkOrderDetailScreen({
           articleCount={detail.articles.length + localArticles.length}
           engineerName={engineerName}
           existingSignOff={signOff}
+          signatureDraft={signatureDraft}
+          onSignatureDraftChange={setSignatureDraft}
           onFinish={handleFinish}
         />
       )}
