@@ -100,7 +100,10 @@ export function BottomBar() {
               <span
                 className="ui-bottom-bar-track-line"
                 aria-hidden
-                style={{ background: buildTrackGradient(activeIndex, WORK_ORDER_SECTIONS.length) }}
+                style={{
+                  background: buildTrackGradient(activeIndex, WORK_ORDER_SECTIONS.length),
+                  width: `calc((${WORK_ORDER_SECTIONS.length - 1}) * var(--ui-bottom-bar-track-item-w))`,
+                }}
               />
               {WORK_ORDER_SECTIONS.map((section, index) => {
                 const Icon = section.icon;

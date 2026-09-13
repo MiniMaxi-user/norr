@@ -5165,22 +5165,30 @@ a.ui-relation-card-title:hover {
   height: 0;
 }
 .ui-bottom-bar-track {
+  --ui-bottom-bar-track-item-w: 74px;
   position: relative;
   display: flex;
   padding-top: 2px;
 }
+/* Spans exactly from the first circle's center to the last circle's center
+   — `width` (not a `right` inset) so it can't over- or under-shoot depending
+   on how a browser happens to size an unconstrained flex box inside an
+   `overflow-x: auto` ancestor (observed drifting short of the last step in
+   some engines): the component sets `width` inline to
+   `calc((n - 1) * var(--ui-bottom-bar-track-item-w))`, n = step count, which
+   only depends on this fixed item-width var, never on the track's own
+   measured box width. */
 .ui-bottom-bar-track-line {
   position: absolute;
   top: 23px;
-  left: 37px;
-  right: 37px;
+  left: calc(var(--ui-bottom-bar-track-item-w) / 2);
   height: 2px;
   z-index: 0;
 }
 .ui-bottom-bar-track-item {
   position: relative;
   z-index: 1;
-  flex: 0 0 74px;
+  flex: 0 0 var(--ui-bottom-bar-track-item-w);
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
