@@ -11,9 +11,11 @@ import { BottomBar } from "./_nav/bottom-bar";
  * Issue #170 adds the app's only nav chrome: `BottomBar`, mounted once here
  * so both `/today` and `/work-orders/[id]` share the exact same instance
  * (IMPLEMENTATION.md §3 — "don't reinvent the pattern per module"/per page).
- * `.ui-bottom-bar-scroll-spacer` reserves the ~104px the fixed bar occupies
- * (§3) so the last row of any page's content never falls underneath it;
- * `.ui-pwa-page-content` is this app's one shared page-padding class (see
+ * `.ui-pwa-shell` (bug report, 2026-09-13) is a whole-viewport flex column —
+ * `BottomBar` claims its own row at the bottom, `.ui-pwa-page-content` gets
+ * everything above it and scrolls within that bound, so a page's content
+ * always stops above the bar instead of running behind it. `.ui-pwa-page-
+ * content` is also this app's one shared page-padding class (see
  * styles.css) since there's no sidebar/topbar chrome to already provide
  * side margins.
  *
@@ -27,14 +29,14 @@ import { BottomBar } from "./_nav/bottom-bar";
 export default async function AppRouteLayout({ children }: { children: ReactNode }) {
   await requireEngineerSession();
   return (
-    <>
-      <div className="ui-pwa-page-content ui-bottom-bar-scroll-spacer">
+    <div className="ui-pwa-shell">
+      <div className="ui-pwa-page-content">
         <div className="ui-pwa-logo-row">
           <Logo />
         </div>
         {children}
       </div>
       <BottomBar />
-    </>
+    </div>
   );
 }

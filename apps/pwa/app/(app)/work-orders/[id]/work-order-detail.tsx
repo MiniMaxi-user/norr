@@ -86,6 +86,11 @@ export function WorkOrderDetailScreen({
   const [localArticles, setLocalArticles] = useState<LocalArticle[]>([]);
   const [localPhotos, setLocalPhotos] = useState<LocalPhoto[]>([]);
   const [signOff, setSignOff] = useState<LocalSignOff | null>(null);
+  // Lifted out of `SignOffSection` (product feedback, 2026-09-13 — "Solution"
+  // now lives on the Work tab, under Description) so it survives switching
+  // between sections instead of being local state a Sign-tab-only component
+  // would lose the moment the engineer taps away.
+  const [solution, setSolution] = useState("");
 
   // `now` only ticks while a period on THIS order is actually running
   // (IMPLEMENTATION.md §5: "de interval hoeft alleen te tikken als er
@@ -148,7 +153,10 @@ export function WorkOrderDetailScreen({
     void refreshArticles();
     void refreshPhotos();
     void getLocalSignOff(workOrderId, currentUserId).then((row) => {
-      if (!cancelled) setSignOff(row);
+      if (!cancelled) {
+        setSignOff(row);
+        if (row?.solution) setSolution(row.solution);
+      }
     });
     return () => {
       cancelled = true;
@@ -190,16 +198,17 @@ export function WorkOrderDetailScreen({
    * their local tables, nothing is lost) so nothing silently vanishes.
    */
   const handleFinish = useCallback(
-    async (signatureDataUrl: string | null, solution: string | null) => {
+    async (signatureDataUrl: string | null) => {
       const timestamp = Date.now();
+      const trimmedSolution = solution.trim() ? solution.trim() : null;
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
-      if (signatureDataUrl || solution) {
+      if (signatureDataUrl || trimmedSolution) {
         await saveLocalSignOff({
           workOrderId,
           userId: currentUserId,
           signedAt: timestamp,
           signatureDataUrl: signatureDataUrl ?? "",
-          solution,
+          solution: trimmedSolution,
         });
       }
       // Re-read after finishWorkOrderClock above so the just-closed
@@ -217,7 +226,7 @@ export function WorkOrderDetailScreen({
             .filter((period) => period.endedAt !== null)
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: finalArticles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
-          solution,
+          solution: trimmedSolution,
         }),
       });
       if (!response.ok) {
@@ -229,7 +238,7 @@ export function WorkOrderDetailScreen({
       await clearSyncedWorkOrderData(workOrderId, currentUserId);
       router.push("/today");
     },
-    [workOrderId, currentUserId, router],
+    [workOrderId, currentUserId, router, solution],
   );
 
   if (loading) {
@@ -279,10 +288,19 @@ export function WorkOrderDetailScreen({
         </Text>
       </Stack>
 
-      <TimerCard summary={summary} onToggleTravel={() => void handleToggle("travel")} onToggleWork={() => void handleToggle("work")} />
-
-      {section === "details" && <WorkSection workOrder={workOrder} />}
-      {section === "hours" && <HoursSection periods={periods} serverTimeEntries={detail.timeEntries} />}
+      {section === "details" && <WorkSection workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
+      {section === "hours" && (
+        <>
+          {/* Start/stop only shows on the Hours tab (product feedback,
+              2026-09-13) — see `timer-card.tsx`'s own doc comment. */}
+          <TimerCard
+            summary={summary}
+            onToggleTravel={() => void handleToggle("travel")}
+            onToggleWork={() => void handleToggle("work")}
+          />
+          <HoursSection periods={periods} serverTimeEntries={detail.timeEntries} />
+        </>
+      )}
       {section === "articles" && (
         <ArticlesSection
           workOrderId={workOrderId}

@@ -4,13 +4,19 @@ import { Button, Card, Inline, Stack, Text } from "@yourorg/ui";
 import { formatClockDigits, formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 
 /**
- * The sticky timer card (issue #170, IMPLEMENTATION.md §4) — `position:
- * sticky; top: 0` so start/stop is always one tap away regardless of scroll
- * position. Purely presentational: all the state-machine rules (max one
- * order running, travel/work mutually exclusive) live in
+ * The timer card (issue #170, IMPLEMENTATION.md §4), shown only on the Hours
+ * tab (product feedback, 2026-09-13 — start/stop no longer needs to follow
+ * the engineer across every section, only the one it belongs to; see
+ * `work-order-detail.tsx`). Purely presentational: all the state-machine
+ * rules (max one order running, travel/work mutually exclusive) live in
  * `lib/time/clocks.ts`; this component just renders whatever `summary` it's
  * handed and calls back on a tap, same "dumb view, smart state" split as
  * every other section here.
+ *
+ * No longer `position: sticky` (product feedback, 2026-09-13: it was pinned
+ * to the top of the scroll container, which read as "stuck" rather than
+ * part of the page) — it scrolls with the rest of the Hours tab like every
+ * other card.
  *
  * Running state: `--ui-accent-fg` (`#1f3540`, dark navy) is only readable
  * against a SOLID accent fill — that's the combination IMPLEMENTATION.md §4
@@ -42,73 +48,66 @@ export function TimerCard({
         : "Timer paused · total today";
   const labelColor = running ? "var(--ui-accent-fg)" : "var(--ui-muted-subtle)";
   const bodyColor = running ? "var(--ui-accent-fg)" : undefined;
-  // The idle button of the pair (e.g. "Start work" while travel is
-  // running) sits on the now-solid-gold card once anything is running — a
-  // solid-gold `"primary"` button would blend straight into it, so it
-  // drops to `"outline"` whenever the card itself is in its accent state.
-  // Idle with nothing running at all keeps `"primary"` (gold on the neutral
-  // card) for both buttons — "Start travel" included, matching "Start
-  // work"'s existing default.
-  const idleVariant = running ? "outline" : "primary";
+  // Idle buttons always render `"dark"` now (product feedback, 2026-09-13 —
+  // supersedes the old gold-`"primary"`-on-neutral-card default): a dark
+  // fixed-ink fill reads as a resting/secondary action on both the neutral
+  // card and the solid-gold running card, so it no longer needs to switch
+  // to `"outline"` just to stay legible once something starts running.
+  const idleVariant = "dark";
 
   return (
-    <div
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-        paddingTop: "0.5rem",
-        paddingBottom: "0.25rem",
-        background: "var(--ui-page-bg)",
-      }}
-    >
-      <Card style={running ? { background: "var(--ui-accent)", borderColor: "var(--ui-accent)" } : undefined}>
-        <Inline justify="between" align="start" gap="md" wrap>
-          <Stack gap="xs">
-            <Text
-              style={{
-                fontSize: "11px",
-                letterSpacing: "0.13em",
-                textTransform: "uppercase",
-                color: labelColor,
-              }}
-            >
-              {label}
-            </Text>
-            <Text
-              style={{
-                fontSize: "2rem",
-                fontWeight: 650,
-                fontVariantNumeric: "tabular-nums",
-                lineHeight: 1,
-                color: bodyColor ?? "var(--ui-fg)",
-              }}
-            >
-              {formatClockDigits(digitsMs)}
-            </Text>
-            <Text tone={running ? undefined : "muted"} style={{ color: bodyColor, fontVariantNumeric: "tabular-nums" }}>
-              Travel {formatClockHoursMinutes(summary.travelMs)} · Work {formatClockHoursMinutes(summary.workMs)}
-            </Text>
-          </Stack>
+    <Card style={running ? { background: "var(--ui-accent)", borderColor: "var(--ui-accent)" } : undefined}>
+      <Inline justify="between" align="start" gap="md">
+        <Stack gap="xs" style={{ minWidth: 0, flex: 1 }}>
+          <Text
+            style={{
+              fontSize: "11px",
+              letterSpacing: "0.13em",
+              textTransform: "uppercase",
+              color: labelColor,
+            }}
+          >
+            {label}
+          </Text>
+          <Text
+            style={{
+              fontSize: "2rem",
+              fontWeight: 650,
+              fontVariantNumeric: "tabular-nums",
+              lineHeight: 1,
+              color: bodyColor ?? "var(--ui-fg)",
+            }}
+          >
+            {formatClockDigits(digitsMs)}
+          </Text>
+          {/* Two lines, not one joined by "·" (product feedback,
+              2026-09-13) — the single line competed with the button column
+              for width and pushed it onto its own row on narrower cards. */}
+          <Text tone={running ? undefined : "muted"} style={{ color: bodyColor, fontVariantNumeric: "tabular-nums" }}>
+            Travel {formatClockHoursMinutes(summary.travelMs)}
+          </Text>
+          <Text tone={running ? undefined : "muted"} style={{ color: bodyColor, fontVariantNumeric: "tabular-nums" }}>
+            Work {formatClockHoursMinutes(summary.workMs)}
+          </Text>
+        </Stack>
 
-          <Stack gap="xs">
-            <Button
-              variant={summary.runningKind === "travel" ? "danger" : idleVariant}
-              onClick={onToggleTravel}
-              style={{ minHeight: 44 }}
-            >
-              {summary.runningKind === "travel" ? "Stop travel" : "Start travel"}
-            </Button>
-            <Button
-              variant={summary.runningKind === "work" ? "danger" : idleVariant}
-              onClick={onToggleWork}
-              style={{ minHeight: 44 }}
-            >
-              {summary.runningKind === "work" ? "Stop work" : "Start work"}
-            </Button>
-          </Stack>
-        </Inline>
-      </Card>
-    </div>
+        <Stack gap="xs" style={{ flexShrink: 0 }}>
+          <Button
+            variant={summary.runningKind === "travel" ? "danger" : idleVariant}
+            onClick={onToggleTravel}
+            style={{ minHeight: 44 }}
+          >
+            {summary.runningKind === "travel" ? "Stop travel" : "Start travel"}
+          </Button>
+          <Button
+            variant={summary.runningKind === "work" ? "danger" : idleVariant}
+            onClick={onToggleWork}
+            style={{ minHeight: 44 }}
+          >
+            {summary.runningKind === "work" ? "Stop work" : "Start work"}
+          </Button>
+        </Stack>
+      </Inline>
+    </Card>
   );
 }

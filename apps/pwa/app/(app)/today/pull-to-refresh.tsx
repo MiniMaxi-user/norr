@@ -23,11 +23,13 @@ export interface PullToRefreshProps {
  * so a drag that scrolls the page away from the top mid-gesture correctly
  * abandons the pull instead of fighting native scrolling).
  *
- * Deliberately reads/writes the *document's* scroll position
- * (`document.scrollingElement`), not a local scrollable `<div>` — this
- * page has no nav chrome yet (see `app/(app)/layout.tsx`'s doc comment) and
- * scrolls at the window level, unlike the root app's fixed-height desktop
- * panels (e.g. Planning's backlog/grid).
+ * Reads/writes the scroll position of `.ui-pwa-page-content` — the field
+ * PWA's one bounded scroll region (`app/(app)/layout.tsx`'s `.ui-pwa-shell`,
+ * bug report 2026-09-13) — via `closest()` on this component's own root,
+ * rather than `document.scrollingElement`/`window.scrollY` the way this
+ * used to before that shell existed: the page no longer scrolls at the
+ * window level, same fixed-height-panel idiom as the desktop app's own
+ * Planning backlog/grid.
  *
  * Registers listeners via a real `addEventListener` (not JSX `onTouch*`
  * props) specifically so `touchmove` can be `{ passive: false }` — only
@@ -49,9 +51,10 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    const scrollContainer = root.closest<HTMLElement>(".ui-pwa-page-content");
 
     function isAtTop() {
-      const scrollTop = document.scrollingElement?.scrollTop ?? window.scrollY;
+      const scrollTop = scrollContainer?.scrollTop ?? 0;
       return scrollTop <= 0;
     }
 
