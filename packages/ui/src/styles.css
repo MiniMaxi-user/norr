@@ -5117,82 +5117,123 @@ a.ui-relation-card-title:hover {
   bottom: 0;
   z-index: 40;
   display: flex;
-  align-items: stretch;
-  gap: 0.625rem;
+  align-items: flex-start;
+  gap: 0;
   padding: 8px 12px calc(24px + env(safe-area-inset-bottom));
   background: var(--ui-toolbar-bg);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--ui-border);
 }
+/* Today + every step share the same circle-then-label stack, so their
+   circles line up on one horizontal axis regardless of label length
+   ("Articles" vs "Sign") — the dash and the track's connecting line are
+   both positioned against that same axis (see the 23px top offsets below:
+   2px stack padding + half of the 44px circle, minus half the 2px line/dash
+   thickness). */
 .ui-bottom-bar-today {
   flex: 0 0 auto;
-  width: 86px;
-  min-height: 56px;
+  width: 60px;
+  padding-top: 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  border-radius: var(--ui-radius-lg);
-  border: 1px solid var(--ui-border);
-  background: var(--ui-surface);
-  color: var(--ui-muted);
-  font-size: var(--ui-text-xs);
+  gap: 4px;
   text-decoration: none;
   white-space: nowrap;
-  transition:
-    border-color var(--ui-duration-fast) var(--ui-ease),
-    color var(--ui-duration-fast) var(--ui-ease),
-    background var(--ui-duration-fast) var(--ui-ease);
 }
-.ui-bottom-bar-today-active {
-  border-color: var(--ui-accent);
-  background: var(--ui-accent-tint);
-  color: var(--ui-accent);
+/* The short dashed link from Today to the first step (menu.png/menu1.png)
+   — a fixed decorative stub outside the scrollable track, so it never moves
+   when the steps swipe underneath it. */
+.ui-bottom-bar-dash {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 0;
+  align-self: flex-start;
+  margin: 23px 2px 0;
+  border-top: 2px dashed var(--ui-border);
 }
 .ui-bottom-bar-context {
   flex: 1;
-  display: flex;
-  align-items: stretch;
-  gap: 0.25rem;
+  min-width: 0;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  border-left: 1px solid var(--ui-border);
-  padding-left: 0.625rem;
 }
 .ui-bottom-bar-context::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
-.ui-bottom-bar-item {
-  flex: 0 0 auto;
-  min-width: 72px;
-  min-height: 56px;
+.ui-bottom-bar-track {
+  position: relative;
+  display: flex;
+  padding-top: 2px;
+}
+.ui-bottom-bar-track-line {
+  position: absolute;
+  top: 23px;
+  left: 37px;
+  right: 37px;
+  height: 2px;
+  z-index: 0;
+}
+.ui-bottom-bar-track-item {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 74px;
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  padding: 0 0.5rem;
-  color: var(--ui-muted);
-  font-size: var(--ui-text-xs);
+  gap: 4px;
   text-decoration: none;
   white-space: nowrap;
 }
-.ui-bottom-bar-item-indicator {
-  width: 22px;
-  height: 3px;
+.ui-bottom-bar-circle {
+  width: 44px;
+  height: 44px;
   border-radius: var(--ui-radius-full);
-  background: var(--ui-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-muted);
+  transition:
+    border-color var(--ui-duration-fast) var(--ui-ease),
+    color var(--ui-duration-fast) var(--ui-ease),
+    background var(--ui-duration-fast) var(--ui-ease),
+    box-shadow var(--ui-duration-fast) var(--ui-ease);
 }
-.ui-bottom-bar-item-active {
+/* The gold "active step" glow — Today's circle always carries it (Today is
+   a permanent anchor, not tied to route-active state, per menu.png/
+   menu1.png showing it gold in every shot); a work-order step only carries
+   it while its section is open. */
+.ui-bottom-bar-circle-active {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-tint);
   color: var(--ui-accent);
+  box-shadow:
+    0 0 0 4px var(--ui-accent-tint),
+    0 0 16px 1px var(--ui-accent);
 }
-.ui-bottom-bar-item-active .ui-bottom-bar-item-indicator {
-  background: var(--ui-accent);
+.ui-bottom-bar-circle-done {
+  border-color: var(--ui-success);
+  background: var(--ui-success-tint);
+  color: var(--ui-success);
+}
+.ui-bottom-bar-label {
+  font-size: var(--ui-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-muted);
+}
+.ui-bottom-bar-label-active {
+  color: var(--ui-accent);
+  font-weight: 700;
+}
+.ui-bottom-bar-label-done {
+  color: var(--ui-success);
 }
 .ui-bottom-bar-hint {
   flex: 1;
