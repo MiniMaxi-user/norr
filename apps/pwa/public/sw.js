@@ -39,7 +39,22 @@
 // entirely client-side (`useSearchParams()` in `work-order-detail.tsx`) and
 // never baked into the server-rendered HTML the way `workOrderId` (from
 // `params.id`) is.
-const CACHE_VERSION = "v4";
+//
+// Bug report, 2026-09-13: a work order that was scheduled for today but
+// never manually opened online had NO shell entry at all — opening it from
+// Today while offline fell through to the browser's own offline error page,
+// not this file's `/today` fallback, because a `Link` click to a different
+// route is a Next.js client-side (RSC) transition, not a real browser
+// navigation — this worker's `fetch` handler only ever sees `mode:
+// "navigate"` for genuine document loads. `today-screen.tsx`'s `sync()` now
+// proactively warms this cache for every work order returned by a
+// successful `/api/workitems/today` fetch, via the `message` handler below
+// (a plain page-context `fetch()` can't populate this cache itself — only a
+// same-origin `fetch()` run FROM the service worker, same as the `install`
+// step above, can), and forces a real `window.location.assign()` navigation
+// on the first Today->work-order hop when offline so the browser actually
+// issues a `mode: "navigate"` request this cache can answer.
+const CACHE_VERSION = "v5";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
 const SHELL_URLS = ["/login", "/today"];
@@ -69,6 +84,35 @@ self.addEventListener("install", (event) => {
         ),
       );
       await self.skipWaiting();
+    })(),
+  );
+});
+
+// Bug report, 2026-09-13 (see the top-of-file comment on this same date) —
+// lets a page context ask this worker to warm `SHELL_CACHE` for a URL it
+// hasn't actually navigated to yet (`today-screen.tsx`'s sync-time
+// prefetch). Deliberately the SAME fetch+cache.put the `install` step above
+// already does for `/login`/`/today`, just parameterized and triggered
+// later — single-sourcing the cache name/key logic here instead of
+// duplicating a second copy of it in a page component, which can't reach
+// `SHELL_CACHE`/`shellCacheKey` at all (they're this worker's own module
+// scope). Best-effort like `install`'s own prefetch: a failed fetch (no
+// network yet, or the request racing a real navigation) must never throw
+// back at the caller — there's always a next sync to try again.
+self.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || data.type !== "PREFETCH_SHELL" || typeof data.url !== "string") return;
+  event.waitUntil(
+    (async () => {
+      try {
+        const url = new URL(data.url, self.location.origin);
+        const cache = await caches.open(SHELL_CACHE);
+        const response = await fetch(url.pathname + url.search, { credentials: "same-origin" });
+        if (response && response.ok) await cache.put(shellCacheKey(url), response);
+      } catch {
+        // No network, or the request failed — nothing to cache yet; the
+        // next successful sync will retry.
+      }
     })(),
   );
 });

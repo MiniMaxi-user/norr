@@ -12,6 +12,7 @@ import {
   getLocalDraft,
   getLocalPhotos,
   getLocalSignOff,
+  markSignOffSynced,
   saveLocalDraft,
   saveLocalSignOff,
   saveWorkOrderDetail,
@@ -239,6 +240,16 @@ export function WorkOrderDetailScreen({
    * offline), the error propagates to `SignOffSection`, which shows it
    * and leaves the engineer on this screen (periods/articles stay in
    * their local tables, nothing is lost) so nothing silently vanishes.
+   *
+   * Bug report, 2026-09-13: failure here used to be a dead end — the local
+   * sign-off row was already written, so the Today list showed "Signed"
+   * forever with no way for the server (desktop webapp, invoicing, other
+   * engineers) to ever actually receive the hours/articles/completion, and
+   * nothing retried. The sign-off row now carries `pendingSync: true` from
+   * the moment it's written until this POST actually succeeds (`
+   * lib/offline/retry-finish.ts` retries every such row on `online`/
+   * Today-mount); `today-screen.tsx` badges the card in the meantime so the
+   * engineer can see a job hasn't actually synced yet.
    */
   const handleFinish = useCallback(
     async (signatureDataUrl: string | null) => {
@@ -252,6 +263,7 @@ export function WorkOrderDetailScreen({
           signedAt: timestamp,
           signatureDataUrl: signatureDataUrl ?? "",
           solution: trimmedSolution,
+          pendingSync: true,
         });
       }
       // Re-read after finishWorkOrderClock above so the just-closed
@@ -279,6 +291,11 @@ export function WorkOrderDetailScreen({
       // local copies so a later re-tap/reopen can't resend (and
       // double-insert) them (QA finding, 2026-09-13).
       await clearSyncedWorkOrderData(workOrderId, currentUserId);
+      // Flips the sign-off's `pendingSync` off now that the POST above
+      // actually landed — a no-op if this order had neither a signature
+      // nor a solution (no `signoffs` row was ever written), see
+      // `markSignOffSynced`'s own doc comment.
+      await markSignOffSynced(workOrderId);
       router.push("/today");
     },
     [workOrderId, currentUserId, router, solution],
