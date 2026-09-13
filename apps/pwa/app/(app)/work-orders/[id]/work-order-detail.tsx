@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge, Callout, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
@@ -9,8 +9,10 @@ import {
   getCachedWorkOrderDetail,
   getClockPeriodsForOrder,
   getLocalArticles,
+  getLocalDraft,
   getLocalPhotos,
   getLocalSignOff,
+  saveLocalDraft,
   saveLocalSignOff,
   saveWorkOrderDetail,
   type ClockPeriod,
@@ -99,6 +101,14 @@ export function WorkOrderDetailScreen({
   // `initialDataUrl` on remount, so a tab switch mid-signature loses at most
   // the last half-second of drawing instead of the whole thing.
   const [signatureDraft, setSignatureDraft] = useState<string | null>(null);
+  // Bug report, 2026-09-13: lifting `solution`/`signatureDraft` into THIS
+  // component's state (above) only survives switching TABS — it's all still
+  // plain React state, gone the moment this whole screen unmounts (tapping
+  // Today in the bottom bar, then reopening the same work order later).
+  // Guards the autosave effect below from firing on the initial state
+  // set from `getLocalDraft`/`getLocalSignOff` — without it, that first
+  // set would immediately re-save the exact values it just read.
+  const draftLoadedRef = useRef(false);
 
   // `now` only ticks while a period on THIS order is actually running
   // (IMPLEMENTATION.md §5: "de interval hoeft alleen te tikken als er
@@ -122,6 +132,7 @@ export function WorkOrderDetailScreen({
 
   useEffect(() => {
     let cancelled = false;
+    draftLoadedRef.current = false;
     async function load() {
       setLoading(true);
       try {
@@ -160,17 +171,40 @@ export function WorkOrderDetailScreen({
     void refreshPeriods();
     void refreshArticles();
     void refreshPhotos();
-    void getLocalSignOff(workOrderId, currentUserId).then((row) => {
-      if (!cancelled) {
-        setSignOff(row);
-        if (row?.solution) setSolution(row.solution);
-        if (row?.signatureDataUrl) setSignatureDraft(row.signatureDataUrl);
-      }
+    void Promise.all([
+      getLocalSignOff(workOrderId, currentUserId),
+      getLocalDraft(workOrderId, currentUserId),
+    ]).then(([signOffRow, draftRow]) => {
+      if (cancelled) return;
+      setSignOff(signOffRow);
+      // The draft (autosaved continuously) wins over a leftover sign-off
+      // row when both exist — that only happens after a Finish attempt
+      // that saved the sign-off but then failed the server POST (see
+      // `handleFinish`), and the draft is always at least as recent.
+      setSolution(draftRow?.solution ?? signOffRow?.solution ?? "");
+      setSignatureDraft(draftRow?.signatureDataUrl ?? signOffRow?.signatureDataUrl ?? null);
+      draftLoadedRef.current = true;
     });
     return () => {
       cancelled = true;
     };
   }, [workOrderId, currentUserId, refreshPeriods, refreshArticles, refreshPhotos]);
+
+  // Autosaves `solution`/`signatureDraft` to IndexedDB on a short debounce
+  // (bug report, 2026-09-13) — see `draftLoadedRef`'s own comment above for
+  // why it's guarded until the initial load has run.
+  useEffect(() => {
+    if (!draftLoadedRef.current) return;
+    const timeout = setTimeout(() => {
+      void saveLocalDraft({
+        workOrderId,
+        userId: currentUserId,
+        solution: solution || null,
+        signatureDataUrl: signatureDraft,
+      });
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [workOrderId, currentUserId, solution, signatureDraft]);
 
   const summary = useMemo(() => computeClockSummary(periods, now), [periods, now]);
 

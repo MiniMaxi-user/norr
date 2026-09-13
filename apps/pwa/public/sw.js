@@ -24,10 +24,35 @@
 // here would risk serving stale JSON indefinitely; this worker's only job
 // is "can the page shell load at all without network," never the data
 // itself.
-const CACHE_VERSION = "v3";
+//
+// Bug report, 2026-09-13: `/work-orders/[id]` shell entries used to be
+// keyed by the FULL request (path + query), so each `?section=` tab was its
+// own separate cache entry — only whichever exact section URL happened to
+// have been the last one visited online stayed openable offline; the other
+// three fell through to the generic `/today`/`/login` fallback below
+// instead of this work order's own shell (looked like "Hours/Articles/
+// Photos/Sign won't open offline", while the no-`?section=` URL Today links
+// to kept working). `shellCacheKey()` now keys `/work-orders/[id]` entries
+// by PATHNAME ONLY — the work order id stays part of the key (so a
+// different work order never serves another one's stale shell), but the
+// `?section=` query is dropped, since which section is showing is derived
+// entirely client-side (`useSearchParams()` in `work-order-detail.tsx`) and
+// never baked into the server-rendered HTML the way `workOrderId` (from
+// `params.id`) is.
+const CACHE_VERSION = "v4";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
 const SHELL_URLS = ["/login", "/today"];
+
+/** The shell-cache key for a navigation to `url` — see this file's own top
+ * comment. Every `/work-orders/[id]` URL (any `?section=`) collapses to its
+ * bare pathname; everything else (just `/login`/`/today` in practice, since
+ * those are the only other navigable routes) keys by the full path+query,
+ * unchanged from before. */
+function shellCacheKey(url) {
+  if (url.pathname.startsWith("/work-orders/")) return url.pathname;
+  return url.pathname + url.search;
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -73,18 +98,20 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   // Navigations: network-first, falling back to the most recently cached
-  // response for that same URL when the network fails; refreshes the
-  // cache on every successful fetch.
+  // response for that same shell key when the network fails; refreshes the
+  // cache on every successful fetch. See this file's own top comment on why
+  // `/work-orders/[id]` is keyed by pathname only (drops `?section=`).
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
         const cache = await caches.open(SHELL_CACHE);
+        const cacheKey = shellCacheKey(url);
         try {
           const response = await fetch(request);
-          cache.put(request, response.clone());
+          cache.put(cacheKey, response.clone());
           return response;
         } catch {
-          const cached = await cache.match(request);
+          const cached = await cache.match(cacheKey);
           if (cached) return cached;
           // Last resort: whichever shell page IS cached, so the app at
           // least opens to something instead of the browser's own
