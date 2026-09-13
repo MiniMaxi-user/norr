@@ -388,3 +388,9 @@ export const RefreshCw = createIcon("RefreshCw", (
     <path d="M4 13a8 8 0 0 0 14.5 4.5M20 20v-4.5h-4.5" />
   </>
 ));
+
+// PWA bottom bar's "Sign off" step (issue #170 follow-up) — a signed
+// squiggle, distinct from `Pencil` (which reads as "edit", not "signature").
+export const Signature = createIcon("Signature", (
+  <path d="M3.5 16.5c1.3-3.3 2.4-5 3.2-5s.8 3.6 1.9 3.6 1.9-5.2 3.1-5.2 1.1 5 2.3 5 1.4-3.2 2.7-3.2 1.5 2.2 3.3 2.2" />
+));

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge, Callout, Card, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
 import type { BadgeVariant } from "@yourorg/ui";
-import { AlertTriangle, Building2, Check, ClipboardList, Clock } from "@yourorg/ui/icons";
+import { AlertTriangle, Check, ClipboardList, MapPin } from "@yourorg/ui/icons";
 import {
   getCachedWorkItems,
   getLastSyncedAt,
@@ -12,7 +12,13 @@ import {
   saveWorkItems,
   type CachedWorkItem,
 } from "@/lib/offline/db";
-import { formatClockHoursMinutes, getClockSummaryForOrder, getRunningWorkOrderId } from "@/lib/time/clocks";
+import {
+  formatClockDigits,
+  formatClockHoursMinutes,
+  getClockSummaryForOrder,
+  getRunningWorkOrderId,
+  type ClockSummary,
+} from "@/lib/time/clocks";
 import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
 import { initialsOf, ProfileSheet } from "./profile-sheet";
 import { PullToRefresh } from "./pull-to-refresh";
@@ -39,6 +45,19 @@ function formatSyncedTime(iso: string): string {
   const date = new Date(iso);
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** `"Friday 12 September"` (rendered as "FRIDAY 12 SEPTEMBER" via CSS
+ * `text-transform`, not `.toUpperCase()`, so it stays correct for any
+ * locale) — the header's date line above "Today's work"
+ * (`docs/designinstructieskanweg/Today.png`). Built from two separate
+ * `Intl.DateTimeFormat` calls, not one combined `weekday`+`day`+`month`
+ * formatter, because at least Chrome's `en-GB` inserts a comma after the
+ * weekday ("Friday, 12 September") that the reference design doesn't have. */
+function formatTodayDateLabel(date: Date): string {
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(date);
+  const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long" }).format(date);
+  return `${weekday} ${dayMonth}`;
 }
 
 function locationLabel(site: CachedWorkItem["site"]): string | null {
@@ -196,6 +215,32 @@ export function TodayScreen({
     [todayItems, nowItem],
   );
 
+  // The Now card's gold "Travel/Work time running" bar (Today.png) — ticks
+  // every second while the Now item has a running clock, cleared the moment
+  // it doesn't (finished, or the Now item changed). Recomputed from
+  // `startedAt` each tick via `computeClockSummary`, same "never accumulate
+  // on an interval" rule `lib/time/clocks.ts`'s own doc comment spells out —
+  // this just re-reads that fresh value on a 1s cadence to paint it.
+  const [runningSummary, setRunningSummary] = useState<ClockSummary | null>(null);
+  const nowItemId = nowItem?.isRunning ? nowItem.id : null;
+  useEffect(() => {
+    if (!nowItemId) {
+      setRunningSummary(null);
+      return;
+    }
+    let cancelled = false;
+    async function tick() {
+      const summary = await getClockSummaryForOrder(nowItemId as string, currentUserId, Date.now());
+      if (!cancelled) setRunningSummary(summary);
+    }
+    void tick();
+    const interval = setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [nowItemId, currentUserId]);
+
   if (loading) {
     return (
       <Stack gap="md">
@@ -211,10 +256,22 @@ export function TodayScreen({
   return (
     <>
       <Stack gap="md">
-        <Inline justify="between" align="center">
-          <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)" }}>
-            Today
-          </Heading>
+        <Inline justify="between" align="start">
+          <Stack gap="xs">
+            <Text
+              style={{
+                fontSize: "11px",
+                letterSpacing: "0.13em",
+                textTransform: "uppercase",
+                color: "var(--ui-muted-subtle)",
+              }}
+            >
+              {formatTodayDateLabel(new Date())}
+            </Text>
+            <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)", margin: 0 }}>
+              Today&apos;s work
+            </Heading>
+          </Stack>
           <button
             type="button"
             aria-label="Open profile"
@@ -270,7 +327,12 @@ export function TodayScreen({
                     >
                       Now
                     </Text>
-                    <TodayWorkItemCard item={nowItem} totalMs={signedTotals[nowItem.id]} emphasized />
+                    <TodayWorkItemCard
+                      item={nowItem}
+                      totalMs={signedTotals[nowItem.id]}
+                      runningSummary={runningSummary}
+                      emphasized
+                    />
                   </Stack>
                 )}
 
@@ -319,60 +381,132 @@ export function TodayScreen({
   );
 }
 
+/** The Now card's gold "Travel/Work time running" bar (Today.png) — same
+ * solid-`--ui-accent`-fill + dark-navy-`--ui-accent-fg`-text pairing as
+ * `timer-card.tsx`'s sticky timer, for the same contrast reason documented
+ * there. Not its own `<Link>`: the whole Now card is already wrapped in one
+ * (nesting an anchor inside an anchor is invalid), so "Open" is a plain
+ * styled span — the click target is the card. */
+function RunningTimeBar({ summary }: { summary: ClockSummary }) {
+  if (!summary.runningKind) return null;
+  const ms = summary.runningKind === "travel" ? summary.travelMs : summary.workMs;
+  const label = summary.runningKind === "travel" ? "Travel time running" : "Work time running";
+  return (
+    <Inline
+      justify="between"
+      align="center"
+      gap="sm"
+      style={{
+        borderRadius: "var(--ui-radius-lg)",
+        padding: "0.75rem 0.75rem 0.75rem 1rem",
+        background: "var(--ui-accent)",
+      }}
+    >
+      <Stack gap="xs">
+        <Text style={{ fontSize: "var(--ui-text-sm)", color: "var(--ui-accent-fg)", opacity: 0.75 }}>{label}</Text>
+        <Text
+          style={{
+            fontSize: "2rem",
+            fontWeight: 650,
+            fontVariantNumeric: "tabular-nums",
+            lineHeight: 1,
+            color: "var(--ui-accent-fg)",
+          }}
+        >
+          {formatClockDigits(ms)}
+        </Text>
+      </Stack>
+      <span
+        style={{
+          flexShrink: 0,
+          padding: "0.5rem 1.25rem",
+          borderRadius: "var(--ui-radius-full)",
+          background: "var(--ui-accent-fg)",
+          color: "var(--ui-accent)",
+          fontWeight: 600,
+          fontSize: "var(--ui-text-sm)",
+        }}
+      >
+        Open
+      </span>
+    </Inline>
+  );
+}
+
 function TodayWorkItemCard({
   item,
   totalMs,
+  runningSummary,
   emphasized,
 }: {
   item: TodayWorkItem;
   totalMs?: number;
+  runningSummary?: ClockSummary | null;
   emphasized?: boolean;
 }) {
   const location = locationLabel(item.site);
   const status = statusPresentation(item);
   const signed = item.flowStatus === "signed";
+  const clientName = item.client?.name ?? "Unknown client";
+  const showingRunningBar = Boolean(emphasized && runningSummary?.runningKind);
 
-  const card = (
-      <Card interactive={!signed} tone={emphasized && item.isRunning ? "accent" : "default"}>
-        <Stack gap="sm">
-          <Inline justify="between" align="start" gap="sm">
-            <Text>{item.title}</Text>
+  const card = emphasized ? (
+    <Card interactive={!signed}>
+      <Stack gap="sm">
+        <Text tone="muted" style={{ fontSize: "var(--ui-text-sm)" }}>
+          {item.scheduledAt ? formatTimeLabel(item.scheduledAt) : "No time scheduled"}
+        </Text>
+
+        <Stack gap="xs">
+          <Text style={{ fontSize: "var(--ui-text-xl)", fontWeight: 650 }}>{clientName}</Text>
+          <Text tone="muted">{item.title}</Text>
+          {location && (
             <Inline gap="xs" align="center">
-              {signed && <Check aria-hidden width={14} height={14} style={{ color: "var(--ui-success)" }} />}
-              <Badge variant={status.variant}>{status.label}</Badge>
+              <MapPin aria-hidden width={14} height={14} />
+              <Text tone="muted">{location}</Text>
             </Inline>
-          </Inline>
+          )}
+        </Stack>
 
-          <Stack gap="xs">
-            <Text tone="muted">{item.client?.name ?? "Unknown client"}</Text>
-            {location && (
-              <Inline gap="xs" align="center">
-                <Building2 aria-hidden width={14} height={14} />
-                <Text tone="muted">{location}</Text>
-              </Inline>
-            )}
-          </Stack>
-
-          <Inline justify="between" align="center" gap="sm">
-            <Inline gap="xs" align="center">
-              {item.scheduledAt ? (
-                <>
-                  <Clock aria-hidden width={14} height={14} />
-                  <Text tone="muted">{formatTimeLabel(item.scheduledAt)}</Text>
-                </>
-              ) : (
-                <Text tone="muted">No time scheduled</Text>
-              )}
-            </Inline>
-            {signed && totalMs !== undefined && (
-              <Text tone="muted" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {formatClockHoursMinutes(totalMs)} total
-              </Text>
-            )}
+        {showingRunningBar ? (
+          <RunningTimeBar summary={runningSummary as ClockSummary} />
+        ) : (
+          <Inline gap="xs" align="center">
+            {signed && <Check aria-hidden width={14} height={14} style={{ color: "var(--ui-success)" }} />}
+            <Badge variant={status.variant}>{status.label}</Badge>
             {!signed && item.type && <Badge color={item.type.color}>{item.type.label}</Badge>}
           </Inline>
+        )}
+      </Stack>
+    </Card>
+  ) : (
+    <Card interactive={!signed}>
+      <Inline gap="sm" align="start">
+        <Text
+          style={{
+            flexShrink: 0,
+            width: "2.75rem",
+            fontVariantNumeric: "tabular-nums",
+            color: signed ? "var(--ui-muted-subtle)" : "var(--ui-accent)",
+          }}
+        >
+          {item.scheduledAt ? formatTimeLabel(item.scheduledAt) : "—"}
+        </Text>
+        <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+          <Text>{clientName}</Text>
+          <Text tone="muted">
+            {signed && totalMs !== undefined
+              ? `Signed · ${formatClockHoursMinutes(totalMs)}`
+              : [item.title, location].filter(Boolean).join(" — ")}
+          </Text>
         </Stack>
-      </Card>
+        {status.variant !== "muted" && (
+          <Badge variant={status.variant} style={{ flexShrink: 0 }}>
+            {status.label}
+          </Badge>
+        )}
+      </Inline>
+    </Card>
   );
 
   // Finished work orders stay visible in the list (so the day still reads
