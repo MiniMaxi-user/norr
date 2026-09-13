@@ -125,6 +125,19 @@ export interface TeamMemberRecord {
    * too (e.g. for their own dispatch grouping) isn't harmful, just usually
    * unused. */
   regionId: string | null;
+  /** Issue #180 (Voorraad/warehouse module, building on #181's schema) — the
+   * `warehouses` row auto-created for this member when they are (or become)
+   * an `engineer` (see `supabase/migrations/20260916090000_warehouses_and_
+   * stock.sql`'s `ensure_engineer_warehouse` trigger). `null` for every
+   * non-engineer row (no warehouse exists for them), and also `null` if the
+   * caller's own RLS visibility doesn't include this member's warehouse (an
+   * `engineer` caller only ever sees their OWN warehouse row per
+   * `warehouses_select_scoped` — see `listTeamMembers`'s own comment on why
+   * this function doesn't branch on role). Populated via a single extra
+   * batched query, same "fetch once, bucket in JS by owning id" pattern
+   * `listWarehouses` in `app/(app)/inventory/actions.ts` uses for its own
+   * `warehouse_stock` aggregation — NOT an N+1 per member. */
+  warehouseId: string | null;
 }
 
 export interface PendingTeamInviteRecord {
@@ -180,6 +193,14 @@ interface InviteRow {
  * simply matches zero rows here — not an error, just an empty list. That's
  * fine for this story (only an owner manages the team), and means this
  * function never needs to branch on role itself.
+ *
+ * `warehouseId` (issue #180) is resolved the same "no role branching" way:
+ * one extra `warehouses` query, scoped by RLS the same as everything else
+ * here — an owner/planner/finance/administratie caller sees every member's
+ * warehouse id, an engineer caller only ever sees their OWN (`warehouses_
+ * select_scoped`), which simply means every OTHER member's `warehouseId`
+ * comes back `null` for that caller. Either way this function doesn't need
+ * to know which case it's in.
  */
 export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>> {
   const ctx = await requireModuleContext("settings");
@@ -187,7 +208,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
 
   const supabase = await createSupabaseServerClient();
 
-  const [membershipsResult, invitesResult] = await Promise.all([
+  const [membershipsResult, invitesResult, warehousesResult] = await Promise.all([
     supabase
       .from("memberships")
       .select(
@@ -199,10 +220,21 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       .select("id, email, role, created_at")
       .is("accepted_at", null)
       .order("created_at", { ascending: true }),
+    supabase.from("warehouses").select("id, user_id"),
   ]);
 
   if (membershipsResult.error) return fail(mapDbError(membershipsResult.error));
   if (invitesResult.error) return fail(mapDbError(invitesResult.error));
+  if (warehousesResult.error) return fail(mapDbError(warehousesResult.error));
+
+  // Bucket by user_id, same "fetch once, map in JS" pattern as
+  // `listWarehouses`'s own `warehouse_stock` aggregation in
+  // `app/(app)/inventory/actions.ts` — `user_id` is unique per org in
+  // `warehouses` (`unique (organization_id, user_id)`), so a plain Map (not
+  // an array-bucket) is enough here.
+  const warehouseIdByUserId = new Map<string, string>(
+    ((warehousesResult.data ?? []) as { id: string; user_id: string }[]).map((row) => [row.user_id, row.id]),
+  );
 
   const members = ((membershipsResult.data ?? []) as unknown as MembershipWithUserRow[])
     .filter(
@@ -218,6 +250,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       createdAt: row.created_at,
       isPlatformAdmin: row.user.is_platform_admin,
       regionId: row.region_id,
+      warehouseId: warehouseIdByUserId.get(row.user.id) ?? null,
       rateSettings: fromRateOverrideRow({
         has_custom_rate: row.has_custom_rate,
         travel_article_id: row.travel_article_id,

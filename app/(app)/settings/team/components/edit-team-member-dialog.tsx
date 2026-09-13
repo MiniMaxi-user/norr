@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Button, Dialog, Heading, Input, Label, Select, Separator, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import {
   updateTeamMemberProfile,
@@ -81,7 +82,14 @@ export interface EditTeamMemberDialogProps {
  */
 export function EditTeamMemberDialog({ open, onOpenChange, member, articles, regions, onSaved }: EditTeamMemberDialogProps) {
   useEscapeToClose(open, onOpenChange);
+  const router = useRouter();
   const isEngineer = member?.role === "engineer";
+
+  function handleViewWarehouse() {
+    if (!member?.warehouseId) return;
+    onOpenChange(false);
+    router.push(`/inventory/${member.warehouseId}`);
+  }
 
   async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
     if (!member) return { error: "No teammate selected." };
@@ -209,6 +217,18 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, reg
                     workSalePrice: state.fieldErrors?.workSalePrice,
                   }}
                 />
+
+                <Separator />
+                <Stack gap="xs">
+                  <Label>Voorraad</Label>
+                  {member.warehouseId ? (
+                    <Button type="button" variant="outline" onClick={handleViewWarehouse}>
+                      Bekijk magazijn
+                    </Button>
+                  ) : (
+                    <Text tone="muted">Magazijn wordt aangemaakt…</Text>
+                  )}
+                </Stack>
               </>
             )}
           </Stack>
