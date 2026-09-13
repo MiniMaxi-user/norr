@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Heading, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
+import { Button, Card, Heading, Inline, KeyValueList, Stack, Text, Textarea } from "@yourorg/ui";
 import { MapPin, Phone } from "@yourorg/ui/icons";
 import type { WorkOrderDetail } from "@/lib/work-orders/types";
 
@@ -21,8 +21,24 @@ function yearOf(iso: string | null): string | null {
  * actually need client JS; kept as a Client Component anyway so this file
  * can be swapped for one with real interactivity later without moving
  * files around).
+ *
+ * "Solution" (product feedback, 2026-09-13) lives here now, directly under
+ * Description — moved from the Sign-off tab so the two read together:
+ * Description is the fixed problem statement from the office (read-only,
+ * always), Solution is the free-text resolution the engineer writes
+ * (editable, synced to `work_orders.solution` on Finish — the work-order-
+ * level equivalent of `activities.solution` on the desktop webapp). State
+ * is owned by `work-order-detail.tsx` so it survives switching tabs.
  */
-export function WorkSection({ workOrder }: { workOrder: WorkOrderDetail }) {
+export function WorkSection({
+  workOrder,
+  solution,
+  onSolutionChange,
+}: {
+  workOrder: WorkOrderDetail;
+  solution: string;
+  onSolutionChange: (value: string) => void;
+}) {
   const { site, asset, contract, description } = workOrder;
   const addressParts = [site?.addressLine1, site?.addressLine2, site?.postalCode, site?.city].filter(
     (part): part is string => Boolean(part),
@@ -93,6 +109,19 @@ export function WorkSection({ workOrder }: { workOrder: WorkOrderDetail }) {
         <Stack gap="sm">
           <Heading level={3}>Description</Heading>
           <Text>{description || "No description added."}</Text>
+        </Stack>
+      </Card>
+
+      <Card>
+        <Stack gap="sm">
+          <Heading level={3}>Solution</Heading>
+          <Textarea
+            aria-label="Solution"
+            placeholder="What did you do to resolve this?"
+            value={solution}
+            onChange={(event) => onSolutionChange(event.target.value)}
+            rows={4}
+          />
         </Stack>
       </Card>
 

@@ -188,7 +188,13 @@
 html.dark,
 .ui-topbar {
   --ui-bg: #14252c;
-  --ui-page-bg: #14252c;
+  /* Distinct from `--ui-bg` (bug report, 2026-09-13: the field PWA's cards
+     were invisible against their own page — both tokens resolved to the
+     same `#14252c`). Light mode already keeps these apart for exactly this
+     reason (see that block's own comment above) — this reuses the darker
+     `--ui-bg-inset` value below so `.ui-card`'s `--ui-bg` fill reads as a
+     distinct, lighter surface again, same relationship as light mode. */
+  --ui-page-bg: #0f1d23;
   --ui-bg-inset: #0f1d23;
   --ui-surface: #1a2e36;
   --ui-surface-hover: #223a43;
@@ -237,18 +243,6 @@ html.dark,
   box-sizing: border-box;
 }
 
-:root {
-  /* The PWA bottom bar's true rendered height (`.ui-bottom-bar` below: 8px
-     top padding + its 56px-min-height row + 24px bottom padding +
-     `env(safe-area-inset-bottom)`), kept as one shared value so
-     `.ui-bottom-bar-scroll-spacer` — a DOM sibling of the bar, not a
-     descendant, so it can't just read a property scoped to `.ui-bottom-bar`
-     itself — can reuse it instead of an independent magic-number guess that
-     can drift out of sync (bug report, 2026-09-13: a device with a real
-     safe-area inset had a taller bar than the spacer accounted for, hiding
-     the last bit of scrollable content underneath it). */
-  --ui-bottom-bar-h: calc(8px + 56px + 24px + env(safe-area-inset-bottom));
-}
 html {
   color-scheme: light;
   /* Global density: every `--ui-text-*`/`--ui-space-*`/`--ui-radius-*` token
@@ -287,6 +281,15 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   transition: background-color var(--ui-duration-base) var(--ui-ease), color var(--ui-duration-base) var(--ui-ease);
+}
+/* The field PWA has no `.ui-app-layout-main` wrapper (desktop-only) to give
+   its page canvas `--ui-page-bg` — it renders straight onto `body` — so
+   without this override its cards' `--ui-bg` fill had nothing to contrast
+   against (bug report, 2026-09-13). Scoped to `.ui-pwa-html` (the PWA's own
+   `<html>` class, `apps/pwa/app/layout.tsx`) so the desktop app's plain
+   `body` background is unaffected. */
+html.ui-pwa-html body {
+  background: var(--ui-page-bg);
 }
 
 a {
@@ -965,6 +968,22 @@ html.dark .ui-topbar .ui-command-overlay {
 .ui-button-success:hover {
   background: var(--ui-success-strong);
   border-color: var(--ui-success-strong);
+}
+/* A fixed dark-ink fill — the PWA timer card's idle Start buttons
+   (product feedback, 2026-09-13) need to read as a resting/secondary
+   action on top of a solid-gold running card, where `.ui-button-outline`'s
+   transparent fill would blend straight into the card and `.ui-button-
+   primary`'s gold would disappear into it too. Uses the same fixed
+   Fjord-ink/Snö-text pairing as `.ui-sidebar`'s always-dark surface
+   (doesn't follow the light/dark theme toggle) rather than a semantic
+   token, since the point is to read as "dark" regardless of theme. */
+.ui-button-dark {
+  background: var(--ui-brand-fjord);
+  border-color: var(--ui-brand-fjord);
+  color: var(--ui-brand-snow);
+}
+.ui-button-dark:hover {
+  filter: brightness(1.2);
 }
 .ui-button-ghost {
   background: transparent;
@@ -5109,13 +5128,19 @@ a.ui-relation-card-title:hover {
  * light theme left its primary nav bar stuck dark — every other token
  * this section uses already had light-mode values, these two just
  * weren't routed through a variable at all).
+ *
+ * No longer `position: fixed` (bug report, 2026-09-13: every page ran its
+ * content behind the bar instead of stopping above it — the bar overlaid
+ * whatever the document's natural bottom happened to be, and a
+ * padding-bottom spacer on the scrolling content could only ever
+ * approximate the bar's true height). It's now a normal flex child, last
+ * in `.ui-pwa-shell`'s column, so it claims its own row and the scrollable
+ * `.ui-pwa-page-content` above it (`flex: 1; overflow-y: auto`) is sized to
+ * stop exactly above it — see `app/(app)/layout.tsx`. `flex-shrink: 0` so
+ * it never gets squeezed by that sibling.
  * ---------------------------------------------------------------------- */
 .ui-bottom-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
+  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   gap: 0;
@@ -5250,13 +5275,21 @@ a.ui-relation-card-title:hover {
   border-left: 1px solid var(--ui-border);
   padding-left: 0.625rem;
 }
-/* Scroll containers behind the fixed bar need this so their last row never
-   falls under it — see IMPLEMENTATION.md §3's "104px" note. Applied by the
-   app at the top-level scroll root (`app/(app)/layout.tsx`), not per-page,
-   same "one shared pattern, not reinvented per module" rule as everything
-   else in this section. */
-.ui-bottom-bar-scroll-spacer {
-  padding-bottom: calc(var(--ui-bottom-bar-h) + 16px);
+/* The field PWA's whole-viewport app shell (bug report, 2026-09-13,
+   replaces the old "document scroll + padding-bottom spacer" approach —
+   see `.ui-bottom-bar`'s own comment above for why that couldn't guarantee
+   content never ran behind the bar). A fixed-height flex column: the bar
+   claims its own row at the bottom, `.ui-pwa-page-content` gets everything
+   above it and scrolls within that bound, so the page genuinely stops
+   above the menu instead of the menu floating over it. Applied once in
+   `app/(app)/layout.tsx`, same "one shared pattern, not reinvented per
+   module" rule as everything else in this section. */
+.ui-pwa-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 /* Shared page-content padding for every screen under the field PWA's
    `(app)` route group (issue #170) — this app has no sidebar/topbar chrome
@@ -5264,11 +5297,21 @@ a.ui-relation-card-title:hover {
    so without this every page's content sat flush against the viewport
    edges (an accidental gap from issue #169, which shipped before there was
    any nav chrome to reason about it against). One shared class, applied at
-   the layout level, rather than each page hand-rolling its own padding. */
+   the layout level, rather than each page hand-rolling its own padding.
+   `flex: 1; min-height: 0; overflow-y: auto` makes it `.ui-pwa-shell`'s one
+   scrolling region (`min-height: 0` is the actual fix — without it a flex
+   column child can't shrink below its content size, so it just grows past
+   the shell instead of scrolling, same idiom as `.ui-app-layout-content`
+   on the desktop app). */
 .ui-pwa-page-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: calc(1rem + env(safe-area-inset-top)) 1rem 1rem;
   max-width: 720px;
   margin: 0 auto;
+  width: 100%;
   /* Bug report, 2026-09-13: an unbroken long string (a URL, serial number,
      long email — e.g. Work's Description or Sign off's Engineer row) could
      force this container wider than the viewport and make vertical touch-

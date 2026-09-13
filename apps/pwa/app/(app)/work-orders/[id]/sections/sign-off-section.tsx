@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Button, Callout, Card, Inline, KeyValueList, Stack, Text, Textarea } from "@yourorg/ui";
+import { Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
@@ -26,11 +26,9 @@ import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
  * a non-canvas-only signal that a signature exists, for anyone who can't
  * see the canvas itself.
  *
- * "Solution" (product feedback, 2026-09-13) is a free-text field synced to
- * `work_orders.solution` on Finish — the work-order-level equivalent of
- * `activities.solution` on the desktop webapp, so the resolution an
- * engineer writes here is actually visible there afterwards. Optional, same
- * as the signature.
+ * "Solution" (product feedback, 2026-09-13) moved to the Work tab, under
+ * Description — this section no longer owns it, only reads it via
+ * `onFinish`'s closure over `work-order-detail.tsx`'s lifted state.
  */
 export function SignOffSection({
   summary,
@@ -43,11 +41,10 @@ export function SignOffSection({
   articleCount: number;
   engineerName: string;
   existingSignOff: LocalSignOff | null;
-  onFinish: (signatureDataUrl: string | null, solution: string | null) => void | Promise<void>;
+  onFinish: (signatureDataUrl: string | null) => void | Promise<void>;
 }) {
   const padRef = useRef<SignaturePadHandle>(null);
   const [hasSignature, setHasSignature] = useState(Boolean(existingSignOff));
-  const [solution, setSolution] = useState(existingSignOff?.solution ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,8 +53,7 @@ export function SignOffSection({
     setError(null);
     try {
       const dataUrl = padRef.current?.toDataUrl() ?? null;
-      const trimmedSolution = solution.trim();
-      await onFinish(dataUrl, trimmedSolution ? trimmedSolution : null);
+      await onFinish(dataUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't finish this work order.");
     } finally {
@@ -92,17 +88,6 @@ export function SignOffSection({
             Clear
           </Button>
         </Inline>
-      </Stack>
-
-      <Stack gap="sm">
-        <Text tone="muted">Solution</Text>
-        <Textarea
-          aria-label="Solution"
-          placeholder="What did you do to resolve this?"
-          value={solution}
-          onChange={(event) => setSolution(event.target.value)}
-          rows={4}
-        />
       </Stack>
 
       {error && <Callout icon={AlertTriangle}>{error}</Callout>}
