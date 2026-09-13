@@ -33,15 +33,17 @@ function cx(...classes: (string | false | null | undefined)[]): string {
  * than part of the page) — it scrolls with the rest of the Hours tab like
  * every other card.
  *
- * Running-card state: `--ui-accent-fg` (`#1f3540`, dark navy) is only
- * readable against a SOLID accent fill — that's the combination
- * IMPLEMENTATION.md §4 specs ("kaart in accent `#c79a3e` met tekst
- * `#1f3540`"). `Card tone="accent"` doesn't give that: `.ui-card-accent`
- * fills with `--ui-accent-tint`, a ~16–20% translucent wash meant for
- * chips/CTA cards sitting on a neutral surface, not a running-state
- * indicator — the dark navy text on that pale wash was unreadable (bug
+ * Always the solid accent card now (product feedback, 2026-09-13 —
+ * supersedes the original "only gold while something's running" rule):
+ * `--ui-accent-fg` (`#1f3540`, dark navy) is only readable against a SOLID
+ * accent fill — that's the combination IMPLEMENTATION.md §4 specs ("kaart
+ * in accent `#c79a3e` met tekst `#1f3540`"). `Card tone="accent"` doesn't
+ * give that: `.ui-card-accent` fills with `--ui-accent-tint`, a ~16–20%
+ * translucent wash meant for chips/CTA cards sitting on a neutral surface,
+ * not this card — the dark navy text on that pale wash was unreadable (bug
  * report, 2026-09-12). So this card overrides the background/border
- * directly with the solid `--ui-accent` token instead of using `tone`.
+ * directly with the solid `--ui-accent` token instead of using `tone`,
+ * unconditionally.
  */
 export function TimerCard({
   summary,
@@ -55,11 +57,12 @@ export function TimerCard({
   const running = summary.runningKind !== null;
   const totalMs = summary.travelMs + summary.workMs;
   const digitsMs = summary.runningKind === "travel" ? summary.travelMs : summary.runningKind === "work" ? summary.workMs : totalMs;
-  const labelColor = running ? "var(--ui-accent-fg)" : "var(--ui-muted-subtle)";
-  const bodyColor = running ? "var(--ui-accent-fg)" : undefined;
+  // Always dark navy now that the card is always solid gold — no more
+  // `running`-conditional muted/undefined fallback.
+  const labelColor = "var(--ui-accent-fg)";
 
   return (
-    <Card style={running ? { background: "var(--ui-accent)", borderColor: "var(--ui-accent)" } : undefined}>
+    <Card style={{ background: "var(--ui-accent)", borderColor: "var(--ui-accent)" }}>
       <Inline justify="between" align="end" gap="md">
         <Stack gap="xs" style={{ minWidth: 0, flex: 1 }}>
           {running ? (
@@ -86,17 +89,17 @@ export function TimerCard({
               fontWeight: 650,
               fontVariantNumeric: "tabular-nums",
               lineHeight: 1,
-              color: bodyColor ?? "var(--ui-fg)",
+              color: "var(--ui-accent-fg)",
             }}
           >
             {formatClockDigits(digitsMs)}
           </Text>
 
           <Inline gap="md">
-            <Text tone={running ? undefined : "muted"} style={{ color: bodyColor, fontVariantNumeric: "tabular-nums" }}>
+            <Text style={{ color: "var(--ui-accent-fg)", fontVariantNumeric: "tabular-nums" }}>
               Travel {formatClockHoursMinutes(summary.travelMs)}
             </Text>
-            <Text tone={running ? undefined : "muted"} style={{ color: bodyColor, fontVariantNumeric: "tabular-nums" }}>
+            <Text style={{ color: "var(--ui-accent-fg)", fontVariantNumeric: "tabular-nums" }}>
               Work {formatClockHoursMinutes(summary.workMs)}
             </Text>
           </Inline>
