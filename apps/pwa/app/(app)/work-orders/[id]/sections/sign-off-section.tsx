@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
@@ -44,6 +44,11 @@ const SIGNATURE_AUTOSAVE_MS = 500;
  * `signatureDraft`/`onSignatureDraftChange`, and `initialDataUrl` below
  * reads it straight back — so a remount picks up wherever the last snapshot
  * left off, not a blank canvas.
+ *
+ * Bug report, 2026-09-13: `existingSignOff?.pendingSync` surfaces a "Not
+ * synced" badge here too, not just on the Today card — this tab is exactly
+ * where an engineer who just tapped Finish while offline would otherwise
+ * see nothing explaining why the app didn't seem to do anything.
  */
 export function SignOffSection({
   summary,
@@ -112,7 +117,10 @@ export function SignOffSection({
           onHasSignatureChange={setHasSignature}
         />
         <Inline justify="between" align="center">
-          <Text tone="muted">{hasSignature ? "Signature added" : "No signature yet"}</Text>
+          <Inline gap="xs" align="center">
+            <Text tone="muted">{hasSignature ? "Signature added" : "No signature yet"}</Text>
+            {existingSignOff?.pendingSync && <Badge variant="warning">Sync pending</Badge>}
+          </Inline>
           <Button
             variant="ghost"
             onClick={() => {

@@ -8,10 +8,14 @@ import { AlertTriangle, Check, ClipboardList, MapPin } from "@yourorg/ui/icons";
 import {
   getCachedWorkItems,
   getLastSyncedAt,
+  getPendingSyncWorkOrderIds,
   getSignedWorkOrderIds,
+  saveCatalog,
   saveWorkItems,
+  saveWorkOrderDetail,
   type CachedWorkItem,
 } from "@/lib/offline/db";
+import { retryPendingSignOffs } from "@/lib/offline/retry-finish";
 import {
   formatClockDigits,
   formatClockHoursMinutes,
@@ -19,12 +23,90 @@ import {
   getRunningWorkOrderId,
   type ClockSummary,
 } from "@/lib/time/clocks";
+import type { CatalogArticle, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
 import { PullToRefresh } from "./pull-to-refresh";
 
 interface TodayWorkItemsResponse {
   items: CachedWorkItem[];
   syncedAt: string;
+}
+
+/** How many `/api/work-orders/{id}` + shell-prefetch requests run at once
+ * during `warmOfflineCaches` below — bounded (bug report, 2026-09-13: "check
+ * of alle items netjes binnengehaald worden") so a 20-30 job day doesn't
+ * fire that many requests simultaneously, but still fast enough that the
+ * warm-up finishes in the background well before the engineer would
+ * plausibly go offline and tap into one. */
+const PREFETCH_BATCH_SIZE = 4;
+
+/** Posts `{ type: "PREFETCH_SHELL", url }` to the active service worker so
+ * it can warm `SHELL_CACHE` for `url` via its own same-origin `fetch()` (see
+ * `sw.js`'s `message` handler) — a plain page-context `fetch()` here would
+ * NOT be intercepted as a navigation and so would never populate that
+ * cache. Degrades to a no-op, never throws, if there's no service worker
+ * yet (unsupported browser) or it isn't controlling this page yet (a very
+ * first install, before `clients.claim()` has run) — the next successful
+ * sync retries. */
+async function prefetchShell(url: string): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  try {
+    await navigator.serviceWorker.ready;
+  } catch {
+    return;
+  }
+  navigator.serviceWorker.controller?.postMessage({ type: "PREFETCH_SHELL", url });
+}
+
+/**
+ * Warms every offline cache a work order needs to actually open and be
+ * usable with no network (bug report, 2026-09-13) — called after every
+ * successful `/api/workitems/today` fetch, not awaited by the caller (this
+ * runs in the background; the Today list itself is already usable the
+ * moment `saveWorkItems` above resolves):
+ * - `/api/work-orders/{id}` -> `workOrderDetails` (so `getCachedWorkOrderDetail`
+ *   has data for every scheduled job, not just ones already opened once).
+ * - the work order's shell HTML -> `SHELL_CACHE`, via the service worker
+ *   message above, so a first-time OFFLINE navigation into it can be served
+ *   at all (see `sw.js`'s top-of-file comment on this same date).
+ * - `/api/articles/catalog` -> `catalog`, once per sync (tenant-wide
+ *   reference data, not per-work-order) so the "Add article" sheet works
+ *   offline too.
+ * Runs in bounded batches (`PREFETCH_BATCH_SIZE`), and every individual
+ * fetch/cache-write is wrapped so one failure (a single 404, a mid-sync
+ * disconnect) never aborts the rest of the batch.
+ */
+async function warmOfflineCaches(items: CachedWorkItem[], currentUserId: string): Promise<void> {
+  try {
+    const response = await fetch("/api/articles/catalog");
+    if (response.ok) {
+      const data = (await response.json()) as { articles: CatalogArticle[] };
+      await saveCatalog(data.articles, currentUserId);
+    }
+  } catch {
+    // No network (unlikely right after a successful today-list fetch, but
+    // not impossible) — the catalog sheet still falls back to whatever it
+    // cached last time.
+  }
+
+  for (let i = 0; i < items.length; i += PREFETCH_BATCH_SIZE) {
+    const batch = items.slice(i, i + PREFETCH_BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (item) => {
+        try {
+          const response = await fetch(`/api/work-orders/${item.id}`);
+          if (response.ok) {
+            const detail = (await response.json()) as WorkOrderDetailResponse;
+            await saveWorkOrderDetail(item.id, detail, currentUserId);
+          }
+        } catch {
+          // Leaves whatever was cached before (or nothing) — a later sync
+          // retries every item again from scratch.
+        }
+        await prefetchShell(`/work-orders/${item.id}`);
+      }),
+    );
+  }
 }
 
 /** `"HH:mm"` — reimplementation of the root app's own one-liner
@@ -115,14 +197,22 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
   const [runningWorkOrderId, setRunningWorkOrderId] = useState<string | null>(null);
   const [signedWorkOrderIds, setSignedWorkOrderIds] = useState<ReadonlySet<string>>(new Set());
   const [signedTotals, setSignedTotals] = useState<Record<string, number>>({});
+  // Every work order this device has a still-not-synced "Finish" for (bug
+  // report, 2026-09-13) — drives the card's "Not synced" badge. Re-read
+  // alongside `signedWorkOrderIds`/`runningWorkOrderId` above since a
+  // successful background retry (`retryPendingSignOffs`) changes it without
+  // any network re-sync.
+  const [pendingSyncIds, setPendingSyncIds] = useState<ReadonlySet<string>>(new Set());
 
   const refreshLocalState = useCallback(async () => {
-    const [running, signed] = await Promise.all([
+    const [running, signed, pendingSync] = await Promise.all([
       getRunningWorkOrderId(currentUserId),
       getSignedWorkOrderIds(currentUserId),
+      getPendingSyncWorkOrderIds(currentUserId),
     ]);
     setRunningWorkOrderId(running);
     setSignedWorkOrderIds(signed);
+    setPendingSyncIds(pendingSync);
   }, [currentUserId]);
 
   const sync = useCallback(async () => {
@@ -136,6 +226,11 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
       setItems(data.items);
       setLastSyncedAt(data.syncedAt);
       setSyncFailed(false);
+      // Not awaited — this device's Today list is already usable the
+      // moment `saveWorkItems` above resolves; the offline-cache warm-up
+      // for every work order/the catalog runs in the background (bug
+      // report, 2026-09-13, see `warmOfflineCaches`'s own doc comment).
+      void warmOfflineCaches(data.items, currentUserId);
     } catch {
       // Any failure — network error or non-2xx — falls back to whatever's
       // cached locally; never a bare error screen (issue #169's offline
@@ -151,6 +246,30 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
       setLoading(false);
     }
     await refreshLocalState();
+  }, [currentUserId, refreshLocalState]);
+
+  // Retries any "Finish workitem" that failed to reach the server (bug
+  // report, 2026-09-13) — once on mount, and again on every `online` event,
+  // since that's the moment a retry is actually likely to succeed. Runs
+  // independently of `sync()` above (a pending Finish has nothing to do
+  // with whether today's list itself needs refreshing) and always finishes
+  // by re-reading local state so a just-cleared badge disappears
+  // immediately rather than waiting for the next unrelated re-render.
+  useEffect(() => {
+    let cancelled = false;
+    async function retryAndRefresh() {
+      await retryPendingSignOffs(currentUserId);
+      if (!cancelled) await refreshLocalState();
+    }
+    void retryAndRefresh();
+    function onOnline() {
+      void retryAndRefresh();
+    }
+    window.addEventListener("online", onOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", onOnline);
+    };
   }, [currentUserId, refreshLocalState]);
 
   useEffect(() => {
@@ -296,6 +415,7 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
                     item={nowItem}
                     totalMs={signedTotals[nowItem.id]}
                     runningSummary={runningSummary}
+                    pendingSync={pendingSyncIds.has(nowItem.id)}
                     emphasized
                   />
                 </Stack>
@@ -317,7 +437,12 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
                 ) : (
                   <Stack gap="sm">
                     {laterItems.map((item) => (
-                      <TodayWorkItemCard key={item.id} item={item} totalMs={signedTotals[item.id]} />
+                      <TodayWorkItemCard
+                        key={item.id}
+                        item={item}
+                        totalMs={signedTotals[item.id]}
+                        pendingSync={pendingSyncIds.has(item.id)}
+                      />
                     ))}
                   </Stack>
                 )}
@@ -392,11 +517,16 @@ function TodayWorkItemCard({
   item,
   totalMs,
   runningSummary,
+  pendingSync,
   emphasized,
 }: {
   item: TodayWorkItem;
   totalMs?: number;
   runningSummary?: ClockSummary | null;
+  /** This device has a not-yet-synced "Finish" for this order (bug report,
+   * 2026-09-13) — shown as its own badge, independent of `status`/`signed`
+   * below (a pending-sync order still reads as "Signed"). */
+  pendingSync?: boolean;
   emphasized?: boolean;
 }) {
   const location = locationLabel(item.site);
@@ -430,6 +560,7 @@ function TodayWorkItemCard({
             {signed && <Check aria-hidden width={14} height={14} style={{ color: "var(--ui-success)" }} />}
             <Badge variant={status.variant}>{status.label}</Badge>
             {!signed && item.type && <Badge color={item.type.color}>{item.type.label}</Badge>}
+            {pendingSync && <Badge variant="warning">Not synced</Badge>}
           </Inline>
         )}
       </Stack>
@@ -455,11 +586,10 @@ function TodayWorkItemCard({
               : [item.title, location].filter(Boolean).join(" — ")}
           </Text>
         </Stack>
-        {status.variant !== "muted" && (
-          <Badge variant={status.variant} style={{ flexShrink: 0 }}>
-            {status.label}
-          </Badge>
-        )}
+        <Inline gap="xs" align="center" style={{ flexShrink: 0 }}>
+          {status.variant !== "muted" && <Badge variant={status.variant}>{status.label}</Badge>}
+          {pendingSync && <Badge variant="warning">Not synced</Badge>}
+        </Inline>
       </Inline>
     </Card>
   );
@@ -476,8 +606,28 @@ function TodayWorkItemCard({
     );
   }
 
+  const href = `/work-orders/${item.id}`;
   return (
-    <Link href={`/work-orders/${item.id}`} style={{ display: "block" }}>
+    <Link
+      href={href}
+      style={{ display: "block" }}
+      onClick={(event) => {
+        // Bug report, 2026-09-13: a first-time offline open of a work order
+        // used to fail outright — Next's client-side transition fetches a
+        // fresh RSC payload for the destination route, which isn't (and
+        // structurally can't be) served by `sw.js`'s navigation fallback
+        // (that only ever sees real `mode: "navigate"` browser requests).
+        // Forcing a genuine document navigation here instead lets the
+        // browser issue exactly that kind of request, which the shell this
+        // order's sync-time prefetch warmed (`warmOfflineCaches` above) CAN
+        // answer. Only forced while actually offline — online, the normal
+        // client-side transition is faster and stays.
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          event.preventDefault();
+          window.location.assign(href);
+        }
+      }}
+    >
       {card}
     </Link>
   );

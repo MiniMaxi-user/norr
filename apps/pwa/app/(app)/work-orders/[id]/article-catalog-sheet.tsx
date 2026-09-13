@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Callout, Dialog, EmptyState, IconButton, Skeleton, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle, Boxes, X } from "@yourorg/ui/icons";
-import { addLocalArticle, type LocalArticle } from "@/lib/offline/db";
+import { addLocalArticle, getCachedCatalog, type LocalArticle } from "@/lib/offline/db";
 import type { CatalogArticle } from "@/lib/work-orders/types";
 
 /**
@@ -14,6 +14,13 @@ import type { CatalogArticle } from "@/lib/work-orders/types";
  * Stays open across multiple taps (closed only via the header's close
  * button or the overlay) so adding several different articles for one job
  * doesn't require re-opening the sheet each time.
+ *
+ * Bug report, 2026-09-13: this used to have NO offline fallback at all — a
+ * bare error every time it opened without a network. `today-screen.tsx`'s
+ * sync now warms `lib/offline/db.ts`'s `catalog` table (tenant reference
+ * data, rarely changes) alongside its per-work-order prefetching; a failed
+ * live fetch here falls back to that cache the same way `today-screen.tsx`/
+ * `work-order-detail.tsx` already fall back to their own caches.
  */
 export function ArticleCatalogSheet({
   open,
@@ -31,26 +38,36 @@ export function ArticleCatalogSheet({
   onAdded: () => void | Promise<void>;
 }) {
   const [catalog, setCatalog] = useState<CatalogArticle[] | null>(null);
+  const [offline, setOffline] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!open || catalog !== null) return;
     let cancelled = false;
-    void fetch("/api/articles/catalog")
-      .then((response) => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/articles/catalog");
         if (!response.ok) throw new Error("Failed to load catalog");
-        return response.json() as Promise<{ articles: CatalogArticle[] }>;
-      })
-      .then((data) => {
-        if (!cancelled) setCatalog(data.articles);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
+        const data = (await response.json()) as { articles: CatalogArticle[] };
+        if (!cancelled) {
+          setCatalog(data.articles);
+          setOffline(false);
+        }
+      } catch {
+        const cached = await getCachedCatalog(currentUserId);
+        if (cancelled) return;
+        if (cached.length > 0) {
+          setCatalog(cached);
+          setOffline(true);
+        } else {
+          setError(true);
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [open, catalog]);
+  }, [open, catalog, currentUserId]);
 
   async function handleAdd(article: CatalogArticle) {
     await addLocalArticle({
@@ -73,6 +90,9 @@ export function ArticleCatalogSheet({
         </IconButton>
       </Dialog.Header>
       <Dialog.Body>
+        {offline && catalog !== null && catalog.length > 0 && (
+          <Callout icon={AlertTriangle}>Showing the last synced catalog — couldn&apos;t refresh.</Callout>
+        )}
         {error ? (
           <Callout icon={AlertTriangle}>
             Couldn&apos;t load the article catalog. Try again once you&apos;re online.

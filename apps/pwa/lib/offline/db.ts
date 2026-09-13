@@ -49,11 +49,31 @@
  *   this cache the same way the Today list already falls back to
  *   `workitems` when `/api/workitems/today` fails.
  *
+ * Bug report, 2026-09-13 ("offline werkt niet goed... check of alle items
+ * netjes binnengehaald worden") — two more tables:
+ * - `catalog` — a read-through cache of `/api/articles/catalog`'s tenant
+ *   reference data (the "Add article" sheet), same idea as
+ *   `workOrderDetails` above but org-wide rather than per-work-order.
+ *   Populated by `today-screen.tsx`'s sync, read by
+ *   `article-catalog-sheet.tsx` on a failed live fetch.
+ * - `signoffs.pendingSync` (new field, not a new table) — `true` from the
+ *   moment `saveLocalSignOff` is called (before `POST
+ *   /api/work-orders/[id]/finish` is even attempted) until that POST
+ *   actually succeeds. Before this, a Finish attempted while offline left
+ *   the engineer seeing "Signed" locally forever with no retry and no
+ *   indication the server never got the hours/articles/completion —
+ *   `retry-finish.ts` retries every row still `pendingSync: true` on
+ *   `online`/Today-mount, and `today-screen.tsx` badges the card in the
+ *   meantime. Deliberately NOT folded into `today/derive.ts`'s
+ *   `signed`/`flowStatus` derivation — a pending-sync order still reads as
+ *   "Signed" (the job IS done from the engineer's POV), this is an
+ *   additive "hasn't reached the server yet" signal on top.
+ *
  * All issue #170 tables are scoped to the current engineer exactly like
  * `workitems`/`meta` already are — see `ensureCacheBelongsTo`.
  */
 import Dexie, { type Table } from "dexie";
-import type { WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { CatalogArticle, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 
 export interface CachedWorkItemReference {
   label: string;
@@ -137,6 +157,13 @@ export interface LocalSignOff {
    * `work-order-detail.tsx`'s `handleFinish`) re-shows this as a draft on
    * reopen, same as the signature already does via `initialDataUrl`. */
   solution: string | null;
+  /** `true` from the moment this row is written until the `POST
+   * /api/work-orders/[id]/finish` it was written ahead of actually
+   * succeeds — see this file's own top doc comment. Rows written before
+   * this field existed read back as `undefined`, which every check below
+   * treats as "not pending" (nothing to retry for a job finished before
+   * this feature shipped). */
+  pendingSync: boolean;
 }
 
 /** A work order's in-progress Solution text + signature-in-progress, saved
@@ -197,6 +224,16 @@ export interface CachedWorkOrderDetail {
   cachedAt: number;
 }
 
+/** A read-through cache of one `/api/articles/catalog` row (bug report,
+ * 2026-09-13) — see this file's own top doc comment. `userId` (not present
+ * on the API's own `CatalogArticle` shape) is added purely for
+ * `ensureCacheBelongsTo`'s scoping — articles are org-scoped, so a
+ * different engineer on a shared device may well belong to a different org
+ * and must never see this one's catalog. */
+export interface CachedCatalogArticle extends CatalogArticle {
+  userId: string;
+}
+
 const LAST_SYNCED_AT_KEY = "lastSyncedAt";
 /** Which engineer's data is currently cached (see the user-scoping note
  * below) — not shown in the UI, purely a guard. */
@@ -211,6 +248,7 @@ class WorkItemsDatabase extends Dexie {
   localPhotos!: Table<LocalPhoto, number>;
   workOrderDetails!: Table<CachedWorkOrderDetail, string>;
   detailDrafts!: Table<LocalDetailDraft, string>;
+  catalog!: Table<CachedCatalogArticle, string>;
 
   constructor() {
     super("norr-pwa");
@@ -278,6 +316,22 @@ class WorkItemsDatabase extends Dexie {
       workOrderDetails: "workOrderId, userId",
       detailDrafts: "workOrderId, userId",
     });
+    // v6 — bug report, 2026-09-13 ("offline werkt niet goed"): the
+    // `catalog` table (see `CachedCatalogArticle`'s own doc comment). The
+    // same fix also adds `signoffs.pendingSync` — a plain field, not an
+    // indexed one, so it needs no store-string change of its own, but gets
+    // called out here since it ships in this same version bump.
+    this.version(6).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+      catalog: "id, userId",
+    });
   }
 }
 
@@ -320,6 +374,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       db.localPhotos,
       db.workOrderDetails,
       db.detailDrafts,
+      db.catalog,
     ],
     async () => {
       await db.workitems.clear();
@@ -330,6 +385,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.localPhotos.clear();
       await db.workOrderDetails.clear();
       await db.detailDrafts.clear();
+      await db.catalog.clear();
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -475,6 +531,36 @@ export async function getSignedWorkOrderIds(currentUserId: string): Promise<Set<
   return new Set(rows.map((row) => row.workOrderId));
 }
 
+/** Every `signoffs` row for `currentUserId` still waiting on its `POST
+ * /api/work-orders/[id]/finish` to succeed (bug report, 2026-09-13) —
+ * `retry-finish.ts` re-attempts each of these on `online`/Today-mount.
+ * Filtered in JS rather than an indexed lookup, same reasoning as
+ * `getOpenClockPeriods` above: `pendingSync` isn't part of any compound
+ * index here, and the expected row count (at most a handful of
+ * still-unsynced finishes) makes a full per-user scan cheap enough. */
+export async function getPendingSignOffs(currentUserId: string): Promise<LocalSignOff[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.signoffs.where({ userId: currentUserId }).toArray();
+  return rows.filter((row) => row.pendingSync === true);
+}
+
+/** Every work order id `currentUserId` has a still-`pendingSync` sign-off
+ * for — the Today screen's "Not synced" badge (bug report, 2026-09-13). */
+export async function getPendingSyncWorkOrderIds(currentUserId: string): Promise<Set<string>> {
+  const rows = await getPendingSignOffs(currentUserId);
+  return new Set(rows.map((row) => row.workOrderId));
+}
+
+/** Flips `workOrderId`'s sign-off to synced — called once `retry-finish.ts`
+ * (or the original `handleFinish` attempt) gets a successful response from
+ * `POST /api/work-orders/[id]/finish`. A no-op (not a throw) if the row
+ * doesn't exist, matching `endClockPeriod`'s own defensive style above —
+ * this can race a device that never actually created a `signoffs` row
+ * (Finish with neither a signature nor a solution). */
+export async function markSignOffSynced(workOrderId: string): Promise<void> {
+  await db.signoffs.update(workOrderId, { pendingSync: false });
+}
+
 /** The in-progress Solution/signature draft for `workOrderId`, or `null` if
  * nothing's been autosaved yet — see `LocalDetailDraft`'s own doc comment. */
 export async function getLocalDraft(
@@ -606,6 +692,33 @@ export async function getCachedWorkOrderDetail(
   await ensureCacheBelongsTo(currentUserId);
   const row = await db.workOrderDetails.get(workOrderId);
   return row && row.userId === currentUserId ? row : null;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Article-catalog read-through cache (bug report, 2026-09-13) — see this
+ * file's own top doc comment on `catalog`/`CachedCatalogArticle`.
+ * ------------------------------------------------------------------------ */
+
+/** Bulk-replaces the cached article catalog with `articles`, scoped to
+ * `currentUserId` — same "full replace, no incremental merge" reasoning as
+ * `saveWorkItems`, since `/api/articles/catalog` is always fetched in full. */
+export async function saveCatalog(articles: CatalogArticle[], currentUserId: string): Promise<void> {
+  await db.transaction("rw", db.catalog, async () => {
+    await db.catalog.clear();
+    if (articles.length > 0) {
+      await db.catalog.bulkAdd(articles.map((article) => ({ ...article, userId: currentUserId })));
+    }
+  });
+}
+
+/** The cached article catalog for `currentUserId`, or `[]` if this device
+ * has never successfully synced one (or the cache belongs to a different
+ * user — see `ensureCacheBelongsTo`). `article-catalog-sheet.tsx` falls back
+ * to this on a failed live `/api/articles/catalog` fetch. */
+export async function getCachedCatalog(currentUserId: string): Promise<CatalogArticle[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.catalog.where({ userId: currentUserId }).toArray();
+  return rows.map(({ id, articleNumber, description }) => ({ id, articleNumber, description }));
 }
 
 /**
