@@ -3121,6 +3121,19 @@ select.ui-client-card-status-select {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Stepper ("-" / value / "+")
+ * ---------------------------------------------------------------------- */
+.ui-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ui-stepper-value {
+  min-width: 2.75rem;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------- *
  * Radio group — see components/radio-group.tsx. Native `<input
  * type="radio">`s sharing a `name` group themselves in the browser, so
  * (unlike the switch above, which needs the same `appearance:none` trick)

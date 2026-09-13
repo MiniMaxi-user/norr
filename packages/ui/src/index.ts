@@ -164,6 +164,7 @@ export {
 } from "./components/disclosure";
 export { Switch, type SwitchProps } from "./components/switch";
 export { Slider, type SliderProps } from "./components/slider";
+export { Stepper, type StepperProps } from "./components/stepper";
 export {
   RadioGroup,
   RadioGroupItem,

@@ -76,6 +76,17 @@ export type FeatureKey =
   // `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
   // `activities`/`quotes`/`checklists`/`contracts`/`planning` above.
   | "articles"
+  // Inventory / "Voorraad" (issue #181, "[Story] Locaties voorraad
+  // beheren") — a NEW standalone per-engineer warehouse/stock module
+  // (`warehouses`, `warehouse_stock`;
+  // supabase/migrations/20260916090000_warehouses_and_stock.sql) with its
+  // own dedicated `lib/rbac/permissions.ts` `inventory` module and
+  // `components/shell/nav-items.ts` "Voorraad" nav entry. Every Server
+  // Action for this module (once `api-backend-engineer` lands them) must
+  // call `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
+  // `articles`/`activities`/`quotes`/`checklists`/`contracts`/`planning`
+  // above.
+  | "inventory"
   | "reporting"
   // Placeholder from the original matrix (issue #4) for a future, broader
   // tenant billing/payment-tracking module ("Facturatie" — see
@@ -172,6 +183,17 @@ export type FeatureKey =
  * key here now (rather than waiting for the actions file to exist) avoids
  * repeating the exact omission flagged repeatedly in this comment block.
  *
+ * `inventory` added alongside the Inventory / "Voorraad" module (issue #181 —
+ * schema already live: `supabase/migrations/20260916090000_warehouses_and_
+ * stock.sql`): once `api-backend-engineer` lands
+ * `app/(app)/inventory/actions.ts`, every action in that file (and the
+ * `components/shell/nav-items.ts` "Voorraad" entry) will call `hasFeature()`
+ * first per CLAUDE.md rule 3 — same reasoning as
+ * `articles`/`activities`/`quotes`/`checklists`/`contracts`/`planning`
+ * above. Adding the key here now (rather than waiting for the actions file
+ * to exist) avoids repeating the exact omission flagged repeatedly in this
+ * comment block.
+ *
  * `invoicing` added alongside the Invoicing capability (issue #119 —
  * `invoices` table/Storage bucket landing in a concurrent
  * db-schema-architect migration): once `api-backend-engineer` lands the
@@ -197,6 +219,7 @@ const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "invoicing",
   "activities",
   "articles",
+  "inventory",
 ]);
 
 /**

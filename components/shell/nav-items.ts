@@ -112,6 +112,31 @@ export const NAV_ITEMS: NavItem[] = [
   // operational entities that precede/feed a Work Order (Clients/Assets/
   // Contracts/Work Orders), not "Insights".
   { moduleKey: "activities", label: "Meldingen", href: "/activities", icon: Bell, group: "Operations" },
+  // Inventory / "Voorraad" (issue #181) — an overview of every engineer's
+  // per-engineer warehouse (one row per engineer), for beheerders
+  // (Owner/Planner/Administratie/Finance) only. `moduleKey`/label follow the
+  // "Meldingen" precedent right above (Dutch label, English route segment —
+  // matching this app's existing Dutch-labeled-module convention rather than
+  // a `/voorraad` route). `icon: Boxes` is reused from Assets/Articles above
+  // for the same reason Articles' own comment gives: this icon set
+  // (packages/ui/src/icons.tsx) has no dedicated warehouse/crate icon, and
+  // `Boxes` is the closest fit available — arguably an even more literal fit
+  // here than for Articles. `requiredPermission` requires the FULL `read`
+  // action (not `read_own`, which Engineer also holds on this module for
+  // their own warehouse) so Engineer never sees this entry at all: per
+  // issue #181's confirmed scope, this web overview page lists EVERY
+  // engineer's warehouse, which Engineer's `read_own` does not cover — their
+  // own-warehouse access is a separate concern (issue #182's PWA work), same
+  // "requiredPermission drops the item entirely, not merely disables it"
+  // mechanism the Planning entry above uses to hide itself from Engineer.
+  {
+    moduleKey: "inventory",
+    label: "Voorraad",
+    href: "/inventory",
+    icon: Boxes,
+    group: "Operations",
+    requiredPermission: { module: "inventory", action: "read" },
+  },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3, group: "Insights" },
   { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt, group: "Insights" },
   // Everyone can *view* Settings (read-only for non-owners — see

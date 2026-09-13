@@ -55,6 +55,7 @@ export type Module =
   | "invoicing"
   | "activities"
   | "articles"
+  | "inventory"
   | "reporting"
   | "dashboard"
   | "billing"
@@ -108,6 +109,7 @@ const NONE: readonly Action[] = [] as const;
  * | Invoicing  | Create/Read/Delete | — | —          | —       | Create/Read/Delete |
  * | Activities | CRUD  | CRUD    | Create/Read/Update own| Read   | Read           |
  * | Articles   | CRUD  | Read    | Read                 | Read    | CRUD           |
+ * | Inventory  | CRUD  | CRUD    | Read own             | Read    | CRUD           |
  * | Reporting  | Read  | Read    | Create (own WOs)     | Read    | Read           |
  * | Dashboard  | Config| View    | View (own)           | View    | View           |
  * | Billing    | Read  | —       | —                    | CRUD    | CRUD           |
@@ -275,6 +277,29 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: CRUD,
   },
+  // Inventory / "Voorraad" (issue #181, "[Story] Locaties voorraad beheren",
+  // first of a three-story sequence — schema already shipped:
+  // supabase/migrations/20260916090000_warehouses_and_stock.sql's `warehouses`
+  // + `warehouse_stock` tables). A NEW top-level module, mirroring
+  // `articles`' owner-or-administratie CRUD write shape but widened to
+  // include `planner` too (per that migration's own design note 5,
+  // product-owner-confirmed after its first draft flagged the question:
+  // planner operationally manages engineer stock assignments day to day,
+  // including the search/add-article and remove-article flows, so they get
+  // full CRUD alongside owner/administratie, not `articles`' plain `read`).
+  // `engineer` gets ONLY `read_own` (their own warehouse/stock rows,
+  // `user_id = auth.uid()` in RLS) — no create/update/delete at all; real
+  // quantity writes from the engineer side are a separate PWA/system flow
+  // (issue #182), not a raw table grant here. `finance` gets plain `read`
+  // (all rows, for stock-value visibility) — matches that migration's RLS
+  // exactly.
+  inventory: {
+    owner: CRUD,
+    planner: CRUD,
+    engineer: ["read_own"],
+    finance: READ_ONLY,
+    administratie: CRUD,
+  },
   reporting: {
     owner: READ_ONLY,
     planner: READ_ONLY,
@@ -359,6 +384,12 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // Articles' Platform Admin column) — same NONE shape as `planning`/
   // `checklists`/`quotes`/`activities`.
   articles: NONE,
+  // Inventory / "Voorraad" (issue #181): no cross-tenant carve-out documented
+  // for this module either (product owner confirmed NONE — "most new modules
+  // get NONE here", per this module's own hand-off notes) — same NONE shape
+  // as `planning`/`checklists`/`quotes`/`invoicing`/`activities`/`articles`
+  // above.
+  inventory: NONE,
   reporting: READ_ONLY,
   dashboard: READ_ONLY,
   billing: NONE,
