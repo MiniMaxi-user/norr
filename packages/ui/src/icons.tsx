@@ -394,3 +394,15 @@ export const RefreshCw = createIcon("RefreshCw", (
 export const Signature = createIcon("Signature", (
   <path d="M3.5 16.5c1.3-3.3 2.4-5 3.2-5s.8 3.6 1.9 3.6 1.9-5.2 3.1-5.2 1.1 5 2.3 5 1.4-3.2 2.7-3.2 1.5 2.2 3.3 2.2" />
 ));
+
+// PWA timer card's start/stop toggles (product feedback, 2026-09-13,
+// `docs/designinstructieskanweg/startstoppng.png`) — solid glyphs, meant to
+// be used with `fill="currentColor" stroke="none"` on a colored circle
+// rather than this set's usual outline style, matching that reference.
+export const Play = createIcon("Play", <path d="M8 5.5v13l11-6.5-11-6.5Z" />);
+export const Pause = createIcon("Pause", (
+  <>
+    <rect x={7} y={5} width={4} height={14} rx={1} />
+    <rect x={13} y={5} width={4} height={14} rx={1} />
+  </>
+));

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — this
@@ -11,11 +11,24 @@ export const metadata: Metadata = {
   description: "Norr field-engineer PWA",
 };
 
+// Pinch-zoom/double-tap-zoom disabled (product feedback, 2026-09-13 — "dit
+// mag niet, moet een native app gevoel geven") via `maximumScale`/
+// `userScalable`, same as any installed-app-shell PWA; `touch-action:
+// manipulation` on `html.ui-pwa-html` (styles.css) is the belt-and-braces
+// companion — some browsers still allow a double-tap zoom gesture that
+// ignores this viewport meta on its own.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 // Issue #170's whole design (bottom bar, sticky timer card, signature
 // canvas, …) was built against the design system's dark palette
 // (`html.dark` in packages/ui/src/styles.css), so this app forces dark by
 // DEFAULT — but per product feedback (2026-09-12), an engineer can now
-// switch to light from the profile sheet (`today/profile-sheet.tsx`'s
+// switch to light from the profile sheet (`_nav/profile-sheet.tsx`'s
 // `AppearanceSection`), same `@yourorg/ui` `ThemeProvider`/`useTheme`
 // (localStorage `norr-ui-theme`) the desktop app already uses, just with
 // `defaultTheme="dark"` instead of that app's `"system"` — a field

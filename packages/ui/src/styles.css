@@ -270,6 +270,13 @@ html.dark {
    this class, so its own density is unaffected. */
 html.ui-pwa-html {
   font-size: 112.5%;
+  /* Native-app feel (product feedback, 2026-09-13) — `manipulation` still
+     allows normal panning/scrolling, it only drops the double-tap-to-zoom
+     and pinch-zoom gestures the `viewport` meta's `userScalable: false`
+     (`app/layout.tsx`) doesn't reliably suppress on its own in every
+     browser. Desktop app unaffected — same per-app class scoping as the
+     font-size rule above. */
+  touch-action: manipulation;
 }
 
 body {
@@ -968,22 +975,6 @@ html.dark .ui-topbar .ui-command-overlay {
 .ui-button-success:hover {
   background: var(--ui-success-strong);
   border-color: var(--ui-success-strong);
-}
-/* A fixed dark-ink fill — the PWA timer card's idle Start buttons
-   (product feedback, 2026-09-13) need to read as a resting/secondary
-   action on top of a solid-gold running card, where `.ui-button-outline`'s
-   transparent fill would blend straight into the card and `.ui-button-
-   primary`'s gold would disappear into it too. Uses the same fixed
-   Fjord-ink/Snö-text pairing as `.ui-sidebar`'s always-dark surface
-   (doesn't follow the light/dark theme toggle) rather than a semantic
-   token, since the point is to read as "dark" regardless of theme. */
-.ui-button-dark {
-  background: var(--ui-brand-fjord);
-  border-color: var(--ui-brand-fjord);
-  color: var(--ui-brand-snow);
-}
-.ui-button-dark:hover {
-  filter: brightness(1.2);
 }
 .ui-button-ghost {
   background: transparent;
@@ -5144,7 +5135,12 @@ a.ui-relation-card-title:hover {
   display: flex;
   align-items: flex-start;
   gap: 0;
-  padding: 8px 12px calc(24px + env(safe-area-inset-bottom));
+  /* Same total non-safe-area padding as before (32px: was 8+24, now
+     18+14) — product feedback, 2026-09-13: the bar's own height should
+     stay put, only the circles/labels/lines inside it shift down, since
+     the top of the circles read as cramped against the bar's top edge and
+     there was excess dead space below the labels. */
+  padding: 18px 12px calc(14px + env(safe-area-inset-bottom));
   background: var(--ui-toolbar-bg);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--ui-border);
@@ -5302,13 +5298,15 @@ a.ui-relation-card-title:hover {
    scrolling region (`min-height: 0` is the actual fix — without it a flex
    column child can't shrink below its content size, so it just grows past
    the shell instead of scrolling, same idiom as `.ui-app-layout-content`
-   on the desktop app). */
+   on the desktop app). Top padding is a plain `1rem` now, no longer
+   `env(safe-area-inset-top)` (product feedback, 2026-09-13) — `Topbar`
+   owns the top edge/notch inset now, this container sits below it. */
 .ui-pwa-page-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: calc(1rem + env(safe-area-inset-top)) 1rem 1rem;
+  padding: 1rem;
   max-width: 720px;
   margin: 0 auto;
   width: 100%;
@@ -5328,13 +5326,131 @@ a.ui-relation-card-title:hover {
   overflow-wrap: anywhere;
 }
 
-/* Norr wordmark, top-left of every screen (product feedback, 2026-09-12) —
-   mounted once by `app/(app)/layout.tsx` ahead of `{children}`, inside
-   `.ui-pwa-page-content` so it shares that class's side margins/safe-area
-   inset instead of needing its own. */
-.ui-pwa-logo-row {
+/* The field PWA's topbar (product feedback, 2026-09-13, supersedes the old
+   `.ui-pwa-logo-row` that just sat inside `.ui-pwa-page-content` and
+   scrolled away with it) — Norr wordmark left, profile avatar right,
+   always visible: a normal flex child of `.ui-pwa-shell`, `flex-shrink: 0`,
+   same "claims its own row, not `position: fixed`" shape as `.ui-bottom-
+   bar` (see that class's own comment for why). Owns the safe-area-inset-top
+   `.ui-pwa-page-content` used to carry itself, since this is now the thing
+   actually touching the top edge/notch. Same `--ui-toolbar-bg` blur
+   treatment as the bottom bar so the two read as one matching pair of
+   chrome. */
+.ui-pwa-topbar {
+  flex-shrink: 0;
   display: flex;
-  margin-bottom: 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: calc(0.75rem + env(safe-area-inset-top)) 1rem 0.75rem;
+  background: var(--ui-toolbar-bg);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--ui-border);
+}
+/* Logo 1.5× (product feedback, 2026-09-13) — scoped to the topbar so the
+   desktop sidebar's own `.ui-logo-full-mark` (22px, shared token) is
+   unaffected; 22px × 1.5 = 33px. */
+.ui-pwa-topbar .ui-logo-full-mark {
+  height: 33px;
+}
+.ui-pwa-topbar-avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ui-pwa-topbar-avatar:hover {
+  background: var(--ui-surface-hover);
+}
+
+/* Timer card "start/stop" (product feedback, 2026-09-13, new design per
+   `docs/designinstructieskanweg/startstoppng.png`, see `work-orders/[id]/
+   timer-card.tsx`) — a round Play/Pause toggle per kind with its label
+   underneath, replacing the old rectangular Start/Stop text buttons, plus
+   the "TRAVEL/WORK RUNNING" status pill that replaces the old plain
+   running-state label text. */
+.ui-timer-toggle {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--ui-radius-full);
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--ui-brand-snow);
+  transition: filter var(--ui-duration-fast) var(--ui-ease), transform var(--ui-duration-fast) var(--ui-ease);
+}
+.ui-timer-toggle:hover {
+  filter: brightness(1.1);
+}
+.ui-timer-toggle:active {
+  transform: translateY(1px);
+}
+/* Idle (tap to start) — the same fixed Fjord-ink fill as `.ui-sidebar`'s
+   always-dark surface, so it reads as "dark/resting" on both the neutral
+   card and the solid-gold running card, regardless of theme. */
+.ui-timer-toggle-idle {
+  background: var(--ui-brand-fjord);
+}
+/* The currently-running kind (tap to stop) — solid `--ui-success`, no more
+   `.ui-button-danger`/red for stopping. */
+.ui-timer-toggle-active {
+  background: var(--ui-success);
+}
+.ui-timer-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ui-timer-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ui-timer-toggle-label-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-success);
+  flex-shrink: 0;
+}
+.ui-timer-pill {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-success);
+  color: var(--ui-gray-50);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ui-timer-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-gray-50);
+  flex-shrink: 0;
 }
 
 /* Horizontally-scrollable pill row with a hidden scrollbar — Today's status

@@ -13,10 +13,12 @@ import { TodayScreen } from "./today-screen";
  * Reads the session again here (already resolved once by the layout's
  * `requireEngineerSession()` — `getCurrentEngineerSession()` is
  * `cache()`-wrapped per request, so this is a free re-read, not a second
- * round-trip) to hand `userId`/`fullName`/`email` down: `userId` scopes the
- * offline cache (`lib/offline/db.ts`) so a later engineer on the same
- * device never reads an earlier one's cached work orders, and
- * `fullName`/`email` are what the profile button/sheet display.
+ * round-trip) to hand `userId` down, scoping the offline cache
+ * (`lib/offline/db.ts`) so a later engineer on the same device never reads
+ * an earlier one's cached work orders. `fullName`/`email` no longer come
+ * through here (product feedback, 2026-09-13) — the profile button/sheet
+ * they used to feed now lives in the layout-level `Topbar`, which reads
+ * the same session itself.
  */
 export default async function TodayPage() {
   const session = await getCurrentEngineerSession();
@@ -27,5 +29,5 @@ export default async function TodayPage() {
   // unscoped (leak-prone) cache read.
   if (!session) return null;
 
-  return <TodayScreen currentUserId={session.userId} fullName={session.fullName} email={session.email} />;
+  return <TodayScreen currentUserId={session.userId} />;
 }
