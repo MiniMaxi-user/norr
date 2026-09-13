@@ -139,6 +139,27 @@ export interface LocalSignOff {
   solution: string | null;
 }
 
+/** A work order's in-progress Solution text + signature-in-progress, saved
+ * continuously (not just at Finish) so both survive navigating away and
+ * back (bug report, 2026-09-13: typing a Solution or drawing a signature,
+ * then tapping Today and reopening the same work order, lost both — they
+ * only ever lived in `work-order-detail.tsx`'s React state, which unmounts
+ * with the rest of the screen on navigation).
+ *
+ * Deliberately a SEPARATE table from `signoffs` above, not a reuse of it:
+ * `today/derive.ts`'s `deriveTodayFlowStatus` treats the mere EXISTENCE of a
+ * `signoffs` row for a work order as "this order is Signed/finished" (drives
+ * the Today list's terminal bucket and makes the card non-interactive) — an
+ * autosaved draft from someone still mid-job, who hasn't tapped "Finish
+ * workitem" yet, must never trip that. */
+export interface LocalDetailDraft {
+  workOrderId: string;
+  userId: string;
+  solution: string | null;
+  /** `canvas.toDataURL()` PNG, or `null` before any stroke is drawn. */
+  signatureDataUrl: string | null;
+}
+
 /** An article added from the "Add article" catalog sheet, not yet synced to
  * the server's `work_order_articles` (out of scope for this story — see
  * this file's own top doc comment). Repeated taps on the same catalog item
@@ -189,6 +210,7 @@ class WorkItemsDatabase extends Dexie {
   localArticles!: Table<LocalArticle, number>;
   localPhotos!: Table<LocalPhoto, number>;
   workOrderDetails!: Table<CachedWorkOrderDetail, string>;
+  detailDrafts!: Table<LocalDetailDraft, string>;
 
   constructor() {
     super("norr-pwa");
@@ -242,6 +264,20 @@ class WorkItemsDatabase extends Dexie {
       localPhotos: "++id, workOrderId",
       workOrderDetails: "workOrderId, userId",
     });
+    // v5 — `detailDrafts` (bug report, 2026-09-13), keyed by workOrderId
+    // like `signoffs`/`workOrderDetails` above, but deliberately its own
+    // table rather than a reuse of either — see `LocalDetailDraft`'s own
+    // doc comment for why.
+    this.version(5).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+    });
   }
 }
 
@@ -275,7 +311,16 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
   if (row?.value === currentUserId) return;
   await db.transaction(
     "rw",
-    [db.workitems, db.meta, db.clockPeriods, db.signoffs, db.localArticles, db.localPhotos, db.workOrderDetails],
+    [
+      db.workitems,
+      db.meta,
+      db.clockPeriods,
+      db.signoffs,
+      db.localArticles,
+      db.localPhotos,
+      db.workOrderDetails,
+      db.detailDrafts,
+    ],
     async () => {
       await db.workitems.clear();
       await db.meta.delete(LAST_SYNCED_AT_KEY);
@@ -284,6 +329,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.localArticles.clear();
       await db.localPhotos.clear();
       await db.workOrderDetails.clear();
+      await db.detailDrafts.clear();
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -429,6 +475,31 @@ export async function getSignedWorkOrderIds(currentUserId: string): Promise<Set<
   return new Set(rows.map((row) => row.workOrderId));
 }
 
+/** The in-progress Solution/signature draft for `workOrderId`, or `null` if
+ * nothing's been autosaved yet — see `LocalDetailDraft`'s own doc comment. */
+export async function getLocalDraft(
+  workOrderId: string,
+  currentUserId: string,
+): Promise<LocalDetailDraft | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.detailDrafts.get(workOrderId);
+  return row && row.userId === currentUserId ? row : null;
+}
+
+/** Overwrites `workOrderId`'s draft — `work-order-detail.tsx` calls this on
+ * a short debounce every time the Solution text or the in-progress
+ * signature changes, not just at Finish. */
+export async function saveLocalDraft(draft: LocalDetailDraft): Promise<void> {
+  await db.detailDrafts.put(draft);
+}
+
+/** Clears `workOrderId`'s draft — called once it's no longer needed: a
+ * successful Finish (`clearSyncedWorkOrderData` below) makes it moot, same
+ * as that function already does for `clockPeriods`/`localArticles`. */
+export async function deleteLocalDraft(workOrderId: string): Promise<void> {
+  await db.detailDrafts.delete(workOrderId);
+}
+
 /** Articles added from the catalog sheet for `workOrderId`, not yet synced. */
 export async function getLocalArticles(
   workOrderId: string,
@@ -551,9 +622,14 @@ export async function getCachedWorkOrderDetail(
  * (`lib/time/clocks.ts`) only closes the running period; it was never this
  * file's job to also decide when synced data is safe to delete, so that
  * decision (and this call) lives at the call site instead.
+ *
+ * Also clears `detailDrafts` for `workOrderId` (bug report, 2026-09-13) —
+ * once Finish succeeds the draft's job is done, and the order isn't
+ * reachable from Today again anyway (see `LocalDetailDraft`'s own doc
+ * comment), so leaving it behind would just be dead rows.
  */
 export async function clearSyncedWorkOrderData(workOrderId: string, currentUserId: string): Promise<void> {
-  await db.transaction("rw", db.clockPeriods, db.localArticles, async () => {
+  await db.transaction("rw", db.clockPeriods, db.localArticles, db.detailDrafts, async () => {
     const periods = await db.clockPeriods.where({ workOrderId }).toArray();
     const periodIds = periods
       .filter((period) => period.userId === currentUserId && period.id !== undefined)
@@ -565,5 +641,8 @@ export async function clearSyncedWorkOrderData(workOrderId: string, currentUserI
       .filter((article) => article.userId === currentUserId && article.id !== undefined)
       .map((article) => article.id as number);
     if (articleIds.length > 0) await db.localArticles.bulkDelete(articleIds);
+
+    const draft = await db.detailDrafts.get(workOrderId);
+    if (draft && draft.userId === currentUserId) await db.detailDrafts.delete(workOrderId);
   });
 }
