@@ -1,15 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import { Badge, Card, Inline, Stack, Text } from "@yourorg/ui";
+import { deleteClockPeriod, updateClockPeriodEndedAt, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
-import type { ClockPeriod } from "@/lib/offline/db";
 import type { WorkOrderTimeEntry } from "@/lib/work-orders/types";
+import { EditHoursDialog, type EditableHourRow } from "./edit-hours-dialog";
+import { SwipeableRow } from "./swipeable-row";
 
 interface HourRow {
   id: string;
   kind: "travel" | "work";
   startedAt: number;
   endedAt: number | null;
+  /** The row's own `clockPeriods` id — only set for local (not-yet-synced)
+   * rows, which is exactly the set this tab offers Edit/Delete on. `undefined`
+   * for a server-synced `time_entries` row (see this file's own top doc
+   * comment on why those stay read-only). */
+  localId?: number;
 }
 
 function formatRange(startedAt: number, endedAt: number | null): string {
@@ -25,27 +33,45 @@ function formatRange(startedAt: number, endedAt: number | null): string {
  * The "Hours" tab (issue #170, IMPLEMENTATION.md §4) — merges this device's
  * own local, not-yet-synced `clockPeriods` with the real, server-side
  * `time_entries` `/api/work-orders/[id]` already returns, into one
- * chronological list. Deliberately read-only: IMPLEMENTATION.md §4's own
- * "tikken op een regel is corrigeren" ("tapping a row corrects it") isn't
- * implemented here — building a real correction flow (which local period
- * to mutate, validation, what happens to an already-synced server entry) is
- * a separate feature this story's scope doesn't otherwise ask for, so this
- * renders the list without overclaiming that tap behavior in its copy.
+ * chronological list.
+ *
+ * Edit/Delete (product feedback, 2026-09-13 — supersedes this section's
+ * original "deliberately read-only" scope) is offered ONLY on a local,
+ * already-CLOSED row: never a server-synced `time_entries` row (mutating an
+ * already-committed accounting record needs its own authorized write route
+ * + RLS policy, which doesn't exist yet — out of scope here, same boundary
+ * `lib/offline/db.ts`'s top doc comment draws around every other local-only
+ * mutation in this story), and never the currently-RUNNING local period
+ * (editing a still-open row would silently stop it — a surprising side
+ * effect neither Edit nor Delete should have). `SwipeableRow` renders every
+ * row regardless — passing `undefined` for both handlers on an ineligible
+ * row just makes it inert (no reveal, no drag), so server rows and the
+ * running row read exactly as they did before this feature, no separate
+ * "read-only" branch needed.
  */
 export function HoursSection({
   periods,
   serverTimeEntries,
+  onPeriodsChange,
 }: {
   periods: ClockPeriod[];
   serverTimeEntries: WorkOrderTimeEntry[];
+  onPeriodsChange: () => void | Promise<void>;
 }) {
   const now = Date.now();
+  const [editingRow, setEditingRow] = useState<EditableHourRow | null>(null);
+  // Bumped on every Edit tap (including re-opening the same row after a
+  // cancelled edit) — `EditHoursDialog` is keyed by this so it always
+  // remounts fresh rather than reusing stale in-progress picker state; see
+  // that component's own doc comment.
+  const [editSession, setEditSession] = useState(0);
 
   const localRows: HourRow[] = periods.map((period) => ({
     id: `local-${period.id}`,
     kind: period.kind,
     startedAt: period.startedAt,
     endedAt: period.endedAt,
+    localId: period.id,
   }));
   const serverRows: HourRow[] = serverTimeEntries.map((entry) => ({
     id: `server-${entry.id}`,
@@ -67,6 +93,23 @@ export function HoursSection({
   );
   const totalMs = totals.travelMs + totals.workMs;
 
+  function handleEditTap(row: HourRow) {
+    if (row.localId === undefined || row.endedAt === null) return;
+    setEditingRow({ localId: row.localId, kind: row.kind, startedAt: row.startedAt, endedAt: row.endedAt });
+    setEditSession((session) => session + 1);
+  }
+
+  async function handleDeleteTap(row: HourRow) {
+    if (row.localId === undefined) return;
+    await deleteClockPeriod(row.localId);
+    await onPeriodsChange();
+  }
+
+  async function handleSaveEdit(localId: number, endedAt: number) {
+    await updateClockPeriodEndedAt(localId, endedAt);
+    await onPeriodsChange();
+  }
+
   return (
     <Stack gap="md">
       <Inline justify="between" align="center">
@@ -81,25 +124,32 @@ export function HoursSection({
           <Text tone="muted">Nothing logged yet · 0h 00m</Text>
         </Card>
       ) : (
-        <Card>
-          <Stack gap="sm">
-            {rows.map((row) => (
-              <Inline key={row.id} justify="between" align="center" gap="sm">
-                <Inline gap="sm" align="center">
-                  <Badge variant={row.kind === "travel" ? "muted" : "success"}>
-                    {row.kind === "travel" ? "Travel" : "Work"}
-                  </Badge>
-                  <Text tone="muted" style={{ fontVariantNumeric: "tabular-nums" }}>
-                    {formatRange(row.startedAt, row.endedAt)}
+        <Stack gap="md">
+          {rows.map((row) => {
+            const editable = row.localId !== undefined && row.endedAt !== null;
+            return (
+              <SwipeableRow
+                key={row.id}
+                onEdit={editable ? () => handleEditTap(row) : undefined}
+                onDelete={row.localId !== undefined ? () => void handleDeleteTap(row) : undefined}
+              >
+                <Inline justify="between" align="center" gap="sm">
+                  <Inline gap="sm" align="center">
+                    <Badge variant={row.kind === "travel" ? "muted" : "success"}>
+                      {row.kind === "travel" ? "Travel" : "Work"}
+                    </Badge>
+                    <Text tone="muted" style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {formatRange(row.startedAt, row.endedAt)}
+                    </Text>
+                  </Inline>
+                  <Text style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {formatClockHoursMinutes((row.endedAt ?? now) - row.startedAt)}
                   </Text>
                 </Inline>
-                <Text style={{ fontVariantNumeric: "tabular-nums" }}>
-                  {formatClockHoursMinutes((row.endedAt ?? now) - row.startedAt)}
-                </Text>
-              </Inline>
-            ))}
-          </Stack>
-        </Card>
+              </SwipeableRow>
+            );
+          })}
+        </Stack>
       )}
 
       <Text tone="muted">Times come from the timer on this device.</Text>
@@ -108,6 +158,16 @@ export function HoursSection({
         <Text tone="muted">Travel {formatClockHoursMinutes(totals.travelMs)}</Text>
         <Text tone="muted">Work {formatClockHoursMinutes(totals.workMs)}</Text>
       </Inline>
+
+      <EditHoursDialog
+        key={editSession}
+        open={editingRow !== null}
+        row={editingRow}
+        onOpenChange={(open) => {
+          if (!open) setEditingRow(null);
+        }}
+        onSave={handleSaveEdit}
+      />
     </Stack>
   );
 }

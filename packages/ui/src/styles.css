@@ -5453,6 +5453,120 @@ a.ui-relation-card-title:hover {
   flex-shrink: 0;
 }
 
+/* Swipe-to-reveal Hours row (product feedback, 2026-09-13, see
+   `work-orders/[id]/sections/swipeable-row.tsx`) — `.ui-swipe-row` clips the
+   actions underneath to the row's own rounded corners; `.ui-swipe-row-
+   content` is the part that actually translates on drag, always painted
+   OVER the action layers (`position: relative` + implicit stacking) so nothing
+   shows until it's dragged out of the way. `-actions-left`/`-actions-right`
+   are pinned to their own edge with `position: absolute`, sized/positioned
+   by the component's own inline `width` (kept in one JS constant,
+   `REVEAL_WIDTH`, rather than duplicated here). */
+.ui-swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--ui-radius-md);
+}
+.ui-swipe-row-content {
+  position: relative;
+  padding: 0.75rem 0.5rem;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  transition: transform 0.2s ease-out;
+  will-change: transform;
+}
+.ui-swipe-row-content-dragging {
+  transition: none;
+}
+.ui-swipe-row-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+}
+.ui-swipe-row-actions-left {
+  left: 0;
+}
+.ui-swipe-row-actions-right {
+  right: 0;
+}
+.ui-swipe-row-action {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Same filled-mid-tone-plus-light-text pairing as `.ui-button-success`. */
+.ui-swipe-row-action-edit {
+  background: var(--ui-success);
+  color: var(--ui-gray-50);
+}
+/* Dark ink (not light text) on `--ui-danger` — that token is a light-ish
+   coral in both themes (`--ui-danger-500`/its dark-mode value), closer in
+   tone to `--ui-accent`'s brass than to a deep red, so it takes the same
+   dark-ink-on-mid-tone pairing `--ui-accent-fg` uses on the timer card
+   rather than white. */
+.ui-swipe-row-action-delete {
+  background: var(--ui-danger);
+  color: var(--ui-gray-900);
+}
+
+/* Hour/minute wheel picker (product feedback, 2026-09-13, see
+   `work-orders/[id]/sections/edit-hours-dialog.tsx`) — two independently
+   scrollable, `scroll-snap`-aligned columns; `.ui-wheel-picker-highlight` is
+   a fixed, non-interactive band centered over both (`pointer-events: none`
+   implied by `aria-hidden` alone isn't enough — see the explicit rule
+   below — it's purely the "this row is the selected one" visual, sized/
+   positioned by the component's own inline `height`/`top` from the same
+   `ITEM_HEIGHT` constant the columns use, so the two can never drift out of
+   sync). */
+.ui-wheel-picker {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}
+.ui-wheel-picker-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  border-top: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface-hover);
+  border-radius: var(--ui-radius-sm);
+}
+.ui-wheel-picker-column {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  width: 4rem;
+}
+.ui-wheel-picker-column::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.ui-wheel-picker-item {
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--ui-text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-muted);
+}
+
 /* Horizontally-scrollable pill row with a hidden scrollbar — Today's status
    filters (issue #170, IMPLEMENTATION.md §6: "pills van 44px hoog,
    horizontaal scrollbaar met verborgen scrollbar") and any future filter row

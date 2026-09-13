@@ -307,7 +307,7 @@ export function WorkOrderDetailScreen({
             onToggleTravel={() => void handleToggle("travel")}
             onToggleWork={() => void handleToggle("work")}
           />
-          <HoursSection periods={periods} serverTimeEntries={detail.timeEntries} />
+          <HoursSection periods={periods} serverTimeEntries={detail.timeEntries} onPeriodsChange={refreshPeriods} />
         </>
       )}
       {section === "articles" && (

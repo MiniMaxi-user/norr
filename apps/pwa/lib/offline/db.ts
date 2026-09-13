@@ -383,6 +383,26 @@ export async function endClockPeriod(id: number, endedAt: number): Promise<void>
   await db.clockPeriods.update(id, { endedAt });
 }
 
+/** Overwrites an already-closed period's `endedAt` — the Hours tab's
+ * swipe-to-edit correction (product feedback, 2026-09-13), not the timer's
+ * own start/stop flow (`endClockPeriod`/`toggleClock` above). `startedAt`
+ * stays fixed; only the duration is being corrected. Only ever offered for
+ * local, not-yet-synced rows still on THIS device — never a server-synced
+ * `time_entries` row, same scope boundary as `removeLocalArticle` below —
+ * and never the currently-running period (editing a still-open row would
+ * silently stop it, a surprising side effect `hours-section.tsx` avoids by
+ * not offering this action on it). */
+export async function updateClockPeriodEndedAt(id: number, endedAt: number): Promise<void> {
+  await db.clockPeriods.update(id, { endedAt });
+}
+
+/** Deletes a single logged period outright — the Hours tab's swipe-to-
+ * delete (product feedback, 2026-09-13). Same local-only scope boundary as
+ * `updateClockPeriodEndedAt` above. */
+export async function deleteClockPeriod(id: number): Promise<void> {
+  await db.clockPeriods.delete(id);
+}
+
 /** Local sign-off for `workOrderId` by `currentUserId`, or `null` if not
  * (yet) signed on this device. */
 export async function getLocalSignOff(
