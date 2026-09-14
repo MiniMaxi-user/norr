@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { ThemeProvider, ToastProvider } from "@yourorg/ui";
+import { ThemeProvider, ThemeScript, ToastProvider } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — the
 // app never defines its own tokens or a local globals.css.
@@ -25,6 +25,18 @@ export const metadata: Metadata = {
 // applies to <html> is set from localStorage before React hydrates, so a
 // client/server markup diff on that one attribute is expected and safe to
 // suppress — it must NOT be used more broadly than this.
+//
+// `ThemeScript` (bug report, 2026-09-14, found while fixing the PWA's own
+// offline-navigation flash — see `apps/pwa/app/layout.tsx`'s identical
+// comment) sets the theme class on <html> synchronously as the document
+// parses, before `ThemeProvider`'s own effect ever runs, so a fresh full
+// page load never paints one frame of the wrong (default light) theme
+// first. A manual <head> tag in a ROOT layout is Next's documented escape
+// hatch for exactly this ("content outside what the Metadata API covers");
+// it merges with the metadata-managed tags rather than replacing them. Must
+// be rendered first, and its `attribute`/`defaultTheme` props must match
+// `ThemeProvider`'s own below exactly — see that component's own doc
+// comment (`@yourorg/ui`) for why.
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,6 +44,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <ThemeScript attribute="class" defaultTheme="system" />
+      </head>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {/* Mounted once at the app root (issue #94, "Maak Quote" — its
