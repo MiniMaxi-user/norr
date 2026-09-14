@@ -44,7 +44,7 @@ interface HoverKey {
 
 /**
  * The scheduler board's main area (issue #164) — one section per region (or
- * a single flat section for "Alle monteurs", per the confirmed grouping
+ * a single flat section for "All engineers", per the confirmed grouping
  * decision), each rendering either the half-hour `SchedulerGrid` (Day view,
  * real drag/drop + click-to-select scheduling) or the simplified `Timeline`
  * (Week view — a compact per-day block list, no half-hour precision, no
@@ -96,16 +96,16 @@ export function PlanningGrid({
                   )}
                 </Inline>
                 <Inline gap="sm">
-                  <Badge variant="muted">{section.engineers.length} monteurs</Badge>
+                  <Badge variant="muted">{section.engineers.length} engineers</Badge>
                   {backlogCountFor(section) !== null && (
-                    <Badge color="amber">{backlogCountFor(section)} te plannen</Badge>
+                    <Badge color="amber">{backlogCountFor(section)} to schedule</Badge>
                   )}
                 </Inline>
               </Inline>
             )}
 
             {section.engineers.length === 0 ? (
-              <Text tone="muted">Geen monteurs toegewezen aan deze regio.</Text>
+              <Text tone="muted">No engineers assigned to this region.</Text>
             ) : view === "day" ? (
               <DayGrid
                 date={date}

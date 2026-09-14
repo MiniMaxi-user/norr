@@ -36,9 +36,9 @@ export interface PlanningBacklogProps {
 }
 
 /**
- * "Werkvoorraad" backlog panel (issue #164) — count badge, a MULTI-SELECT
+ * "Backlog" panel (issue #164) — count badge, a MULTI-SELECT
  * type filter (`FilterPill` below) sourced from the org's own `activity_type`
- * reference items (not hardcoded to Storing/Onderhoud/Inspectie — a tenant
+ * reference items (not hardcoded to Breakdown/Maintenance/Inspection — a tenant
  * can configure more; those three are just the default-checked selection,
  * see `planning-screen.tsx`'s `DEFAULT_TYPE_FILTER`), grouped by region with
  * an hour total per group, draggable cards with a
@@ -96,12 +96,12 @@ export function PlanningBacklog({
     >
       <Stack gap="md" className="ui-planning-backlog-stack">
         <Inline justify="between" align="center">
-          <Text className="ui-planning-backlog-title">Werkvoorraad</Text>
+          <Text className="ui-planning-backlog-title">Backlog</Text>
           <Badge variant="muted">{workOrders.length}</Badge>
         </Inline>
 
-        <Inline gap="xs" wrap role="group" aria-label="Filter op type">
-          <FilterPill active={typeFilter.size === 0} title="Alle" icon={ClipboardList} onClick={onClearTypeFilter} />
+        <Inline gap="xs" wrap role="group" aria-label="Filter by type">
+          <FilterPill active={typeFilter.size === 0} title="All" icon={ClipboardList} onClick={onClearTypeFilter} />
           {activityTypes.map((type) => (
             <FilterPill
               key={type.value}
@@ -115,7 +115,7 @@ export function PlanningBacklog({
 
         <div className="ui-planning-backlog-scroll">
           {groups.length === 0 ? (
-            <Text tone="muted">Geen openstaande items.</Text>
+            <Text tone="muted">No outstanding items.</Text>
           ) : (
             <Stack gap="md">
               {groups.map((group) => (
@@ -131,7 +131,7 @@ export function PlanningBacklog({
                       <BacklogCard
                         key={workOrder.id}
                         workOrder={workOrder}
-                        clientName={clientNameById[workOrder.client_id] ?? "Onbekende klant"}
+                        clientName={clientNameById[workOrder.client_id] ?? "Unknown client"}
                         selected={selectedId === workOrder.id}
                         onSelect={() => onSelect(workOrder)}
                         onDragStart={() => onDragStart(workOrder)}
@@ -146,7 +146,7 @@ export function PlanningBacklog({
         </div>
 
         <Text tone="muted" className="ui-planning-backlog-hint">
-          Sleep een item naar een monteur. Klik een gepland blok om het terug te zetten.
+          Drag an item onto an engineer. Click a scheduled block to move it back.
         </Text>
       </Stack>
     </Card>
@@ -244,7 +244,7 @@ function BacklogCard({
           <Badge variant="muted">{formatDurationHours(workOrder.duration_minutes!)}</Badge>
         ) : (
           <Text tone="danger" className="ui-planning-backlog-card-meta">
-            Geen duur ingesteld
+            No duration set
           </Text>
         )}
       </Inline>

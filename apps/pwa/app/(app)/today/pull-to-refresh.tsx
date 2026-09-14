@@ -148,7 +148,7 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
             style={{ opacity: refreshing ? 1 : Math.min(pullDistance / PULL_THRESHOLD, 1) }}
           />
           <Text tone="muted">
-            {refreshing ? "Vernieuwen…" : pullDistance >= PULL_THRESHOLD ? "Loslaten om te vernieuwen" : "Trek om te vernieuwen"}
+            {refreshing ? "Refreshing…" : pullDistance >= PULL_THRESHOLD ? "Release to refresh" : "Pull to refresh"}
           </Text>
         </Inline>
       )}

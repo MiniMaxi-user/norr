@@ -72,7 +72,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     // cascading pickers (see `app/(app)/activities/subtypes-actions.ts`'s
     // module comment). `icon: Bell` matches this module's own established
     // visual identity elsewhere in the app — the primary sidebar's
-    // "Meldingen" entry (`components/shell/nav-items.ts`) already uses `Bell`
+    // "Activities" entry (`components/shell/nav-items.ts`) already uses `Bell`
     // for Activities, so this group reuses it rather than picking a new icon.
     label: "Activities",
     icon: Bell,

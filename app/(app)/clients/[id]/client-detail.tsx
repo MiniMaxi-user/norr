@@ -633,7 +633,7 @@ export function ClientDetail({
             )}
             {activitiesEnabled && (
               <Tabs.Tab value="activities" icon={<Bell />}>
-                Activiteiten{activities.length > 0 ? ` (${activities.length})` : ""}
+                Activities{activities.length > 0 ? ` (${activities.length})` : ""}
               </Tabs.Tab>
             )}
           </Tabs.List>

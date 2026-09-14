@@ -7,7 +7,7 @@ import "@yourorg/ui/styles.css";
 import { RegisterServiceWorker } from "./register-service-worker";
 
 export const metadata: Metadata = {
-  title: "Norr Monteur",
+  title: "Norr Engineer",
   description: "Norr field-engineer PWA",
 };
 
@@ -58,7 +58,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nl" className="ui-pwa-html" suppressHydrationWarning>
+    <html lang="en" className="ui-pwa-html" suppressHydrationWarning>
       <head>
         <ThemeScript attribute="class" defaultTheme="dark" />
         <link rel="manifest" href="/manifest.json" />

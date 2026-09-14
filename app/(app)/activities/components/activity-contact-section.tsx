@@ -73,7 +73,7 @@ export function ActivityContactSection({ draft, editing, onFieldChange }: Activi
         />
       )}
       <Text tone="muted" style={{ fontSize: "var(--ui-text-xs)" }}>
-        Overgenomen van de contactpersoon bij de client — hier aanpassen geldt alleen voor deze melding.
+        Copied from the client&apos;s contact person — editing here only applies to this activity.
       </Text>
     </Stack>
   );

@@ -7,7 +7,7 @@ import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/p
 import { ActivitiesScreen } from "./components/activities-screen";
 import { ActivitiesScreenSkeleton } from "./components/activities-screen-skeleton";
 
-export const metadata = { title: "Meldingen" };
+export const metadata = { title: "Activities" };
 
 interface ActivitiesPageProps {
   searchParams: Promise<{
@@ -20,7 +20,7 @@ interface ActivitiesPageProps {
 }
 
 /**
- * Activities/"Meldingen" module entry point (issue #59 frontend half) —
+ * Activities module entry point (issue #59 frontend half) —
  * mirrors `app/(app)/work-orders/page.tsx`'s shape exactly: Server Component
  * resolving session/entitlement/RBAC once, handing everything data-dependent
  * to a screen component behind `Suspense` so the page shell paints
@@ -46,8 +46,8 @@ export default async function ActivitiesPage({ searchParams }: ActivitiesPagePro
   return (
     <Stack gap="lg">
       <OverviewHeroBand
-        title="Meldingen"
-        subtitle="Calls, storingen, onderhoud, afspraken, and e-mail opvolging logged against your clients."
+        title="Activities"
+        subtitle="Calls, breakdowns, maintenance, appointments, and email follow-ups logged against your clients."
       />
 
       <Suspense

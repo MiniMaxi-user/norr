@@ -28,8 +28,8 @@ export default async function LoginPage({
         <AuthSplitLayout.FormArea>
           <Stack gap="lg">
             <Stack gap="xs">
-              <Heading level={1}>Welkom terug</Heading>
-              <Text tone="muted">Log in om je planning en teams te beheren.</Text>
+              <Heading level={1}>Welcome back</Heading>
+              <Text tone="muted">Log in to manage your planning and teams.</Text>
             </Stack>
 
             <LoginForm next={next} />
@@ -37,7 +37,7 @@ export default async function LoginPage({
             <Stack gap="lg">
               <Inline gap="sm" align="center">
                 <Separator />
-                <Text tone="muted">of</Text>
+                <Text tone="muted">or</Text>
                 <Separator />
               </Inline>
 
@@ -45,7 +45,7 @@ export default async function LoginPage({
                   kept visually present but inert per the product owner's
                   explicit note that non-functional chrome is fine for now. */}
               <Button type="button" variant="outline" fullWidth>
-                <ShieldCheck aria-hidden /> Doorgaan met SSO
+                <ShieldCheck aria-hidden /> Continue with SSO
               </Button>
             </Stack>
           </Stack>
@@ -53,14 +53,14 @@ export default async function LoginPage({
 
         <Inline gap="xs" align="center">
           <ShieldCheck aria-hidden />
-          <Text tone="muted">Beveiligd met enterprise-grade encryptie</Text>
+          <Text tone="muted">Secured with enterprise-grade encryption</Text>
         </Inline>
       </AuthSplitLayout.Panel>
 
       <AuthSplitLayout.Illustration
         cornerMark={<Logomark />}
-        tagline="Wij geven richting."
-        description="Van eerste melding tot laatste kilometer — norr stuurt elk team in het veld de juiste kant op."
+        tagline="We give direction."
+        description="From first activity to last mile — norr steers every team in the field the right way."
       >
         <NordicScene />
       </AuthSplitLayout.Illustration>

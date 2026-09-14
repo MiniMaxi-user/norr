@@ -115,9 +115,13 @@ export function weekRangeIso(date: Date): { from: string; to: string } {
   return { from: toOffsetIsoString(start), to: toOffsetIsoString(addDays(start, 7)) };
 }
 
-const DAY_HEADING_FORMAT = new Intl.DateTimeFormat("nl-NL", { weekday: "long", day: "numeric", month: "long" });
-const WEEK_DAY_FORMAT = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" });
-const SHORT_WEEKDAY_FORMAT = new Intl.DateTimeFormat("nl-NL", { weekday: "short", day: "numeric" });
+// "en-GB" (not "nl-NL") — matches `invoice-pdf.tsx`/`invoice-actions.ts`'s own
+// English-copy switch (issue #196): these format weekday/month names, so
+// leaving them Dutch would leave Dutch text bleeding into the otherwise
+// all-English Planning topbar/timeline.
+const DAY_HEADING_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
+const WEEK_DAY_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const SHORT_WEEKDAY_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric" });
 
 export function formatDayHeading(date: Date): string {
   const label = DAY_HEADING_FORMAT.format(date);

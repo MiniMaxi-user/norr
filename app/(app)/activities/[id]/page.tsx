@@ -132,7 +132,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
     <ActivityScreen
       key={activity.updated_at}
       mode="edit"
-      breadcrumbItems={[{ label: "Meldingen", href: "/activities" }, { label: activity.activity_type?.label ?? "Activity" }]}
+      breadcrumbItems={[{ label: "Activities", href: "/activities" }, { label: activity.activity_type?.label ?? "Activity" }]}
       activity={activity}
       client={client}
       asset={asset}

@@ -43,18 +43,18 @@ export async function logInAction(
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) {
-    return { error: "E-mailadres en wachtwoord zijn verplicht." };
+    return { error: "Email and password are required." };
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { error: "Ongeldig e-mailadres of wachtwoord." };
+    return { error: "Invalid email or password." };
   }
 
   if (!data.user) {
-    return { error: "Ongeldig e-mailadres of wachtwoord." };
+    return { error: "Invalid email or password." };
   }
 
   // Deactivated-tenant + role gate. Deliberately uses the SERVICE-ROLE
@@ -79,17 +79,17 @@ export async function logInAction(
 
   if (!typedMembership) {
     await supabase.auth.signOut();
-    return { error: "Dit account heeft geen toegang tot de monteur-app." };
+    return { error: "This account does not have access to the engineer app." };
   }
 
   if (typedMembership.organization && typedMembership.organization.is_active === false) {
     await supabase.auth.signOut();
-    return { error: "Dit account is gedeactiveerd. Neem contact op met je beheerder." };
+    return { error: "This account has been deactivated. Contact your administrator." };
   }
 
   if (typedMembership.role !== "engineer") {
     await supabase.auth.signOut();
-    return { error: "Deze app is alleen voor monteurs. Log in op de norr-webapp." };
+    return { error: "This app is for engineers only. Log in on the norr web app." };
   }
 
   redirect("/today");

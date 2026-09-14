@@ -16,15 +16,15 @@ import type { Locale } from "@/lib/profile/locale";
  * (itself fed by `lib/auth/session.ts`'s `CurrentSession`), not fetched
  * here.
  *
- * "Facturatie" has no real destination yet (`billing` isn't even in
+ * "Billing" has no real destination yet (`billing` isn't even in
  * `SHIPPED_FEATURES`, see lib/rbac/features.ts) — still rendered
  * disabled/inert per the product owner's note that non-functional chrome is
- * fine for now. "Profiel" (issue #49) used to be disabled for the same
+ * fine for now. "Profile" (issue #49) used to be disabled for the same
  * reason but now opens `ProfilePanel` — identity-level personal settings,
  * deliberately NOT gated by `hasFeature()` (every authenticated user has
- * one, regardless of role/org entitlements). "Instellingen" links to the
+ * one, regardless of role/org entitlements). "Settings" links to the
  * real `/settings` route (org-level module settings — a different surface
- * from "Profiel"). "Uitloggen" posts the real `logOutAction`.
+ * from "Profile"). "Log out" posts the real `logOutAction`.
  *
  * The "Platform Admin" indicator (issue #45, `session.isPlatformAdmin`)
  * lives in `Topbar` itself now, to the left of the search bar — not here —
@@ -95,13 +95,13 @@ export function UserMenu({
             setProfileOpen(true);
           }}
         >
-          Profiel
+          Profile
         </DropdownMenu.Item>
         <DropdownMenu.Item icon={<CreditCard aria-hidden />} disabled>
-          Facturatie
+          Billing
         </DropdownMenu.Item>
         <DropdownMenu.Item icon={<SettingsIcon aria-hidden />} href="/settings" onClick={() => setOpen(false)}>
-          Instellingen
+          Settings
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
         {/* No `onClick={() => setOpen(false)}` here (unlike "Instellingen"
@@ -113,7 +113,7 @@ export function UserMenu({
             this whole tree anyway, so there's nothing to manually close. */}
         <form action={logOutAction}>
           <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger>
-            Uitloggen
+            Log out
           </DropdownMenu.Item>
         </form>
       </DropdownMenu.Content>

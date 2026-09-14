@@ -14,7 +14,7 @@ import { formatDateParam, toOffsetIsoString } from "../date-utils";
 import type { PlanningEngineer } from "../grouping";
 import type { PlanningGroup, PlanningView } from "../types";
 
-/** The Werkvoorraad type filter's default selection (issue #164 follow-up) —
+/** The Backlog panel's type filter default selection (issue #164 follow-up) —
  * `activity_type` `value`s, not labels (labels are tenant-editable text). */
 const DEFAULT_TYPE_FILTER = new Set(["onderhoud", "inspectie", "storing"]);
 
@@ -143,7 +143,7 @@ export function PlanningScreen({
     if (result.error || !result.data) {
       setBacklogState(previousBacklog);
       setScheduledState(previousScheduled);
-      setError(result.error ?? "Kon dit item niet inplannen.");
+      setError(result.error ?? "Couldn't schedule this item.");
       return;
     }
     router.refresh();
@@ -169,7 +169,7 @@ export function PlanningScreen({
     if (result.error || !result.data) {
       setBacklogState(previousBacklog);
       setScheduledState(previousScheduled);
-      setError(result.error ?? "Kon dit item niet terugzetten naar de werkvoorraad.");
+      setError(result.error ?? "Couldn't move this item back to the backlog.");
       return;
     }
     router.refresh();

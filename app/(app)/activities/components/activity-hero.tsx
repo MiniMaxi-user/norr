@@ -205,7 +205,7 @@ export function ActivityHero({
   if (mode === "edit" && activity) {
     meta.push(
       <>
-        <Clock /> Open sinds {formatDurationSince(activity.reported_at)}
+        <Clock /> Open since {formatDurationSince(activity.reported_at)}
       </>,
     );
   }
@@ -250,7 +250,7 @@ export function ActivityHero({
           label="Contact person"
           loading={clientScoped.loadingContacts && Boolean(draft.contactPersonId) && !resolvedContact}
           title={resolvedContact?.name ?? draft.contactName ?? undefined}
-          subtitle={hasContactFacts ? "Wie er over deze melding gebeld wordt" : undefined}
+          subtitle={hasContactFacts ? "Who gets called about this activity" : undefined}
           emptyText="No contact set"
           onEdit={readOnly ? undefined : () => setRelationsOpen(true)}
         />

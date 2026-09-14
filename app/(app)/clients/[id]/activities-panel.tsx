@@ -52,7 +52,7 @@ export function ActivitiesPanel({ clientId, activities, canCreate }: ActivitiesP
     <Stack gap="md">
       <SectionHeader
         icon={Bell}
-        title="Activiteiten"
+        title="Activities"
         actions={canCreate && <CreateActivityButton clientId={clientId} label="+ Activity" size="sm" />}
       />
 
@@ -60,7 +60,7 @@ export function ActivitiesPanel({ clientId, activities, canCreate }: ActivitiesP
         <EmptyState
           icon={<Bell />}
           heading="No activities yet"
-          text="Log a call, storing, onderhoud, afspraak, or e-mail opvolging for this client."
+          text="Log a call, breakdown, maintenance, appointment, or email follow-up for this client."
           action={canCreate ? <CreateActivityButton clientId={clientId} label="New activity" /> : undefined}
         />
       ) : (
