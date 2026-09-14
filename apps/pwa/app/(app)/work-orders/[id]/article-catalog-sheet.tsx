@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Badge, Callout, Dialog, EmptyState, IconButton, Skeleton, Stack, Text } from "@yourorg/ui";
+import { useEffect, useMemo, useState } from "react";
+import { Badge, Callout, Dialog, EmptyState, IconButton, Input, Skeleton, Stack, Text } from "@yourorg/ui";
 import { AlertTriangle, Boxes, X } from "@yourorg/ui/icons";
 import { addLocalArticle, getCachedCatalog, type LocalArticle } from "@/lib/offline/db";
 import type { CatalogArticle } from "@/lib/work-orders/types";
+
+/** Unfiltered rows shown before the engineer types a search query — this
+ * sheet's catalog is already scoped to just the engineer's own stocked
+ * articles (`/api/articles/catalog`'s own doc comment), but even that list
+ * can run long, so it opens narrowed to a short, scannable slice rather than
+ * the full list, same reasoning `StockSheet` documents for its own search
+ * box (`_nav/stock-sheet.tsx`). */
+const DEFAULT_RESULT_LIMIT = 10;
 
 /**
  * "Add article" bottom sheet (issue #170, IMPLEMENTATION.md §4) — the
@@ -40,6 +48,13 @@ export function ArticleCatalogSheet({
   const [catalog, setCatalog] = useState<CatalogArticle[] | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState(false);
+  const [query, setQuery] = useState("");
+
+  // Reset the search box every time the sheet reopens — a stale query from
+  // the previous open never carries over.
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!open || catalog !== null) return;
@@ -80,6 +95,18 @@ export function ArticleCatalogSheet({
     await onAdded();
   }
 
+  // No query: a short, scannable slice (`DEFAULT_RESULT_LIMIT`) rather than
+  // the full catalog. With a query: every match across description/article
+  // number, and ONLY matches — never the unfiltered list alongside them.
+  const filtered = useMemo(() => {
+    if (!catalog) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return catalog.slice(0, DEFAULT_RESULT_LIMIT);
+    return catalog.filter(
+      (article) => article.description.toLowerCase().includes(q) || article.articleNumber.toLowerCase().includes(q),
+    );
+  }, [catalog, query]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
       <Dialog.Header>
@@ -90,55 +117,68 @@ export function ArticleCatalogSheet({
         </IconButton>
       </Dialog.Header>
       <Dialog.Body>
-        {offline && catalog !== null && catalog.length > 0 && (
-          <Callout icon={AlertTriangle}>Showing the last synced catalog — couldn&apos;t refresh.</Callout>
-        )}
-        {error ? (
-          <Callout icon={AlertTriangle}>
-            Couldn&apos;t load the article catalog. Try again once you&apos;re online.
-          </Callout>
-        ) : catalog === null ? (
-          <Stack gap="sm">
-            <Skeleton height={56} />
-            <Skeleton height={56} />
-            <Skeleton height={56} />
-          </Stack>
-        ) : catalog.length === 0 ? (
-          <EmptyState icon={<Boxes />} heading="No articles in the catalog yet." />
-        ) : (
-          <Stack gap="xs">
-            {catalog.map((article) => {
-              const added = localArticles.find((row) => row.articleId === article.id);
-              return (
-                <button
-                  key={article.id}
-                  type="button"
-                  onClick={() => void handleAdd(article)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.75rem",
-                    minHeight: 56,
-                    padding: "0 0.25rem",
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: "1px solid var(--ui-surface-hover)",
-                    color: "inherit",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                >
-                  <Stack gap="xs">
-                    <Text>{article.description}</Text>
-                    <Text tone="muted">{article.articleNumber}</Text>
-                  </Stack>
-                  {added && <Badge variant="accent">×{added.quantity}</Badge>}
-                </button>
-              );
-            })}
-          </Stack>
-        )}
+        <Stack gap="md">
+          <Input
+            type="search"
+            placeholder="Search by article number or name"
+            aria-label="Search articles"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+
+          {offline && catalog !== null && catalog.length > 0 && (
+            <Callout icon={AlertTriangle}>Showing the last synced catalog — couldn&apos;t refresh.</Callout>
+          )}
+          {error ? (
+            <Callout icon={AlertTriangle}>
+              Couldn&apos;t load the article catalog. Try again once you&apos;re online.
+            </Callout>
+          ) : catalog === null ? (
+            <Stack gap="sm">
+              <Skeleton height={56} />
+              <Skeleton height={56} />
+              <Skeleton height={56} />
+            </Stack>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<Boxes />}
+              heading={catalog.length === 0 ? "No articles in the catalog yet." : "No articles found."}
+            />
+          ) : (
+            <Stack gap="xs">
+              {filtered.map((article) => {
+                const added = localArticles.find((row) => row.articleId === article.id);
+                return (
+                  <button
+                    key={article.id}
+                    type="button"
+                    onClick={() => void handleAdd(article)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      minHeight: 56,
+                      padding: "0 0.25rem",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: "1px solid var(--ui-surface-hover)",
+                      color: "inherit",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Stack gap="xs">
+                      <Text>{article.description}</Text>
+                      <Text tone="muted">{article.articleNumber}</Text>
+                    </Stack>
+                    {added && <Badge variant="accent">×{added.quantity}</Badge>}
+                  </button>
+                );
+              })}
+            </Stack>
+          )}
+        </Stack>
       </Dialog.Body>
     </Dialog>
   );

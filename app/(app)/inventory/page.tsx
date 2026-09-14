@@ -7,7 +7,7 @@ import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { InventoryScreen } from "./components/inventory-screen";
 import { InventoryScreenSkeleton } from "./components/inventory-screen-skeleton";
 
-export const metadata = { title: "Voorraad" };
+export const metadata = { title: "Inventory" };
 
 /**
  * Inventory / "Voorraad" module entry point (issue #181) — the beheerder-
@@ -45,8 +45,8 @@ export default async function InventoryPage() {
   return (
     <Stack gap="lg">
       <OverviewHeroBand
-        title="Voorraad"
-        subtitle="Elke monteur heeft een eigen magazijn — bekijk voorraad, aantallen en waarde per magazijn."
+        title="Inventory"
+        subtitle="Every engineer has their own warehouse — view stock, quantities, and value per warehouse."
       />
 
       <Suspense fallback={<InventoryScreenSkeleton />}>

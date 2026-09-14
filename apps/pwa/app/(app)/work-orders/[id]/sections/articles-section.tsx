@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Card, EmptyState, IconButton, Inline, Stack, Text } from "@yourorg/ui";
 import { Boxes, Minus, Plus, X } from "@yourorg/ui/icons";
 import { removeLocalArticle, updateLocalArticleQuantity, type LocalArticle } from "@/lib/offline/db";
@@ -123,6 +123,20 @@ function ArticleRow({
   onQuantityChange?: (delta: number) => void;
 }) {
   const [stepperOpen, setStepperOpen] = useState(false);
+  const stepperRef = useRef<HTMLDivElement>(null);
+
+  // Click/tap anywhere outside the open stepper collapses it back to the
+  // plain quantity badge — same "outside" concept `AddWarehouseArticleCombobox`
+  // (web app) uses for its own dropdown, simpler here since there's nothing
+  // to select, just a reveal/hide toggle.
+  useEffect(() => {
+    if (!stepperOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!stepperRef.current?.contains(event.target as Node)) setStepperOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [stepperOpen]);
 
   return (
     <Inline justify="between" align="center" gap="sm">
@@ -132,27 +146,29 @@ function ArticleRow({
             {quantity}
           </span>
         ) : stepperOpen ? (
-          <Inline gap="xs" align="center">
-            <IconButton
-              variant="ghost"
-              aria-label="Increase quantity"
-              onClick={() => onQuantityChange(1)}
-              style={{ width: 44, height: 44 }}
-            >
-              <Plus aria-hidden width={16} height={16} />
-            </IconButton>
-            <Text style={{ minWidth: "1.5em", textAlign: "center", fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>
-              {quantity}
-            </Text>
-            <IconButton
-              variant="ghost"
-              aria-label="Decrease quantity"
-              onClick={() => onQuantityChange(-1)}
-              style={{ width: 44, height: 44 }}
-            >
-              <Minus aria-hidden width={16} height={16} />
-            </IconButton>
-          </Inline>
+          <div ref={stepperRef} style={{ display: "contents" }}>
+            <Inline gap="xs" align="center">
+              <IconButton
+                variant="ghost"
+                aria-label="Increase quantity"
+                onClick={() => onQuantityChange(1)}
+                style={{ width: 44, height: 44 }}
+              >
+                <Plus aria-hidden width={16} height={16} />
+              </IconButton>
+              <Text style={{ minWidth: "1.5em", textAlign: "center", fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>
+                {quantity}
+              </Text>
+              <IconButton
+                variant="ghost"
+                aria-label="Decrease quantity"
+                onClick={() => onQuantityChange(-1)}
+                style={{ width: 44, height: 44 }}
+              >
+                <Minus aria-hidden width={16} height={16} />
+              </IconButton>
+            </Inline>
+          </div>
         ) : (
           <button
             type="button"

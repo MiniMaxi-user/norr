@@ -220,13 +220,13 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, reg
 
                 <Separator />
                 <Stack gap="xs">
-                  <Label>Voorraad</Label>
+                  <Label>Inventory</Label>
                   {member.warehouseId ? (
                     <Button type="button" variant="outline" onClick={handleViewWarehouse}>
-                      Bekijk magazijn
+                      View warehouse
                     </Button>
                   ) : (
-                    <Text tone="muted">Magazijn wordt aangemaakt…</Text>
+                    <Text tone="muted">Warehouse is being created…</Text>
                   )}
                 </Stack>
               </>

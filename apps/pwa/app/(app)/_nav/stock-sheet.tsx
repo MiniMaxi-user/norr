@@ -34,9 +34,9 @@ const STATUS_VARIANT: Record<Exclude<StockStatus, null>, BadgeVariant> = {
 };
 
 const STATUS_LABEL: Record<Exclude<StockStatus, null>, string> = {
-  danger: "Laag",
-  warning: "Bijna op",
-  success: "Op peil",
+  danger: "Low stock",
+  warning: "Near threshold",
+  success: "OK",
 };
 
 function formatQuantity(value: number): string {
@@ -52,28 +52,29 @@ function formatSyncedAt(iso: string): string {
 }
 
 /**
- * The "Voorraad" (stock) view (issue #182), reached from the Profile sheet
- * (`profile-sheet.tsx`'s "Voorraad" row) — the engineer's own warehouse
- * stock: article number, description, unit, current quantity, and
- * `minThreshold` framed as "Gewenste voorraad" (this schema has no separate
- * "desired stock" column — see `MyStockItem`'s own doc comment). Never shows
- * a price (AC: "Engineer ziet geen prijs") — `/api/inventory/my-stock`
- * itself never selects one, so there is nothing to omit here either.
+ * The Stock view (issue #182), reached from the Profile sheet
+ * (`profile-sheet.tsx`'s "Stock" row) — the engineer's own warehouse
+ * stock: article number, description, unit, current quantity ("Current"),
+ * and `minThreshold` ("Min" — this schema has no separate "desired stock"
+ * column, see `MyStockItem`'s own doc comment; labels translated to English
+ * per product request, 2026-09-14). Never shows a price (AC: "Engineer ziet
+ * geen prijs") — `/api/inventory/my-stock` itself never selects one, so
+ * there is nothing to omit here either.
  *
  * A `Dialog size="sheet"` opened from `ProfileSheet`, the same shape every
  * other Profile drill-in/sub-action in this app already uses (`ArticleCatalogSheet`,
  * `EditHoursDialog`) — `ProfileSheet` closes itself first (see its own
- * "Voorraad" row handler) rather than stacking two sheets at once.
+ * "Stock" row handler) rather than stacking two sheets at once.
  *
  * Offline: loads straight from the local `myStock` Dexie cache on open (no
  * network fetch needed just to view what's already synced), and offers a
- * manual "Synchroniseren" button + "Laatste synchronisatie" timestamp (AC:
- * "web is altijd waarheid" — a manual sync is a full overwrite of the local
- * cache from `/api/inventory/my-stock`, never a merge, see `saveMyStock`).
- * Search is a client-side filter over this already-loaded list — this
- * dataset is small and per-engineer, no server round-trip needed.
+ * manual "Sync" button + "Last synced" timestamp (AC: "web is altijd
+ * waarheid" — a manual sync is a full overwrite of the local cache from
+ * `/api/inventory/my-stock`, never a merge, see `saveMyStock`). Search is a
+ * client-side filter over this already-loaded list — this dataset is small
+ * and per-engineer, no server round-trip needed.
  */
-export function VoorraadSheet({
+export function StockSheet({
   open,
   onOpenChange,
   currentUserId,
@@ -121,7 +122,7 @@ export function VoorraadSheet({
       setStock(data.stock);
       setLastSyncedAt(syncedAt);
     } catch {
-      setError("Synchroniseren mislukt. Probeer het opnieuw zodra je online bent.");
+      setError("Sync failed. Try again once you're online.");
     } finally {
       setSyncing(false);
     }
@@ -140,8 +141,8 @@ export function VoorraadSheet({
     <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
       <Dialog.Header>
         <div className="ui-dialog-sheet-handle" />
-        <Text style={{ fontWeight: 650 }}>Voorraad</Text>
-        <IconButton variant="ghost" aria-label="Sluiten" onClick={() => onOpenChange(false)}>
+        <Text style={{ fontWeight: 650 }}>Stock</Text>
+        <IconButton variant="ghost" aria-label="Close" onClick={() => onOpenChange(false)}>
           <X aria-hidden />
         </IconButton>
       </Dialog.Header>
@@ -149,8 +150,8 @@ export function VoorraadSheet({
         <Stack gap="md">
           <Input
             type="search"
-            placeholder="Zoek op artikelnummer of naam"
-            aria-label="Zoek in voorraad"
+            placeholder="Search by article number or name"
+            aria-label="Search stock"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -166,7 +167,7 @@ export function VoorraadSheet({
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Boxes />}
-              heading={stock.length === 0 ? "Nog geen voorraad gesynchroniseerd." : "Geen artikelen gevonden."}
+              heading={stock.length === 0 ? "No stock synced yet." : "No articles found."}
             />
           ) : (
             <Stack gap="xs">
@@ -182,11 +183,11 @@ export function VoorraadSheet({
           <Button variant="outline" fullWidth onClick={() => void handleSync()} disabled={syncing}>
             <Inline gap="xs" align="center" justify="center">
               <RefreshCw aria-hidden width={16} height={16} />
-              {syncing ? "Synchroniseren…" : "Synchroniseren"}
+              {syncing ? "Syncing…" : "Sync"}
             </Inline>
           </Button>
           <Text tone="muted" style={{ textAlign: "center" }}>
-            {lastSyncedAt ? `Laatste synchronisatie: ${formatSyncedAt(lastSyncedAt)}` : "Nog niet gesynchroniseerd"}
+            {lastSyncedAt ? `Last synced: ${formatSyncedAt(lastSyncedAt)}` : "Not synced yet"}
           </Text>
         </Stack>
       </Dialog.Footer>
@@ -207,10 +208,10 @@ function StockRow({ item }: { item: MyStockItem }) {
       </Inline>
       <Inline gap="md" style={{ marginTop: "0.375rem" }}>
         <Text tone="muted">
-          Huidige voorraad: <strong>{formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</strong>
+          Current: <strong>{formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</strong>
         </Text>
         <Text tone="muted">
-          Gewenste voorraad: {item.minThreshold === null ? "—" : formatQuantity(item.minThreshold)}
+          Min: {item.minThreshold === null ? "—" : formatQuantity(item.minThreshold)}
         </Text>
       </Inline>
     </div>

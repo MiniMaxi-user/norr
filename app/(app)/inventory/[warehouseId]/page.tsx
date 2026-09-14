@@ -44,7 +44,7 @@ export default async function WarehouseDetailPage({ params }: WarehouseDetailPag
   const canDelete = can(actor, "inventory", "delete");
 
   const breadcrumbItems = [
-    { label: "Voorraad", href: "/inventory" },
+    { label: "Inventory", href: "/inventory" },
     { label: warehouse.name },
   ];
 

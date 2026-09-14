@@ -112,12 +112,13 @@ export const NAV_ITEMS: NavItem[] = [
   // operational entities that precede/feed a Work Order (Clients/Assets/
   // Contracts/Work Orders), not "Insights".
   { moduleKey: "activities", label: "Meldingen", href: "/activities", icon: Bell, group: "Operations" },
-  // Inventory / "Voorraad" (issue #181) — an overview of every engineer's
-  // per-engineer warehouse (one row per engineer), for beheerders
-  // (Owner/Planner/Administratie/Finance) only. `moduleKey`/label follow the
-  // "Meldingen" precedent right above (Dutch label, English route segment —
-  // matching this app's existing Dutch-labeled-module convention rather than
-  // a `/voorraad` route). `icon: Boxes` is reused from Assets/Articles above
+  // Inventory (issue #181) — an overview of every engineer's per-engineer
+  // warehouse (one row per engineer), for beheerders (Owner/Planner/
+  // Administratie/Finance) only. Unlike "Meldingen"/"Facturatie" right above,
+  // this module's label was moved to English on product request (2026-09-14)
+  // — it no longer follows those two modules' Dutch-labeled convention, so
+  // don't use it as precedent for future modules either way. `icon: Boxes`
+  // is reused from Assets/Articles above
   // for the same reason Articles' own comment gives: this icon set
   // (packages/ui/src/icons.tsx) has no dedicated warehouse/crate icon, and
   // `Boxes` is the closest fit available — arguably an even more literal fit
@@ -131,7 +132,7 @@ export const NAV_ITEMS: NavItem[] = [
   // mechanism the Planning entry above uses to hide itself from Engineer.
   {
     moduleKey: "inventory",
-    label: "Voorraad",
+    label: "Inventory",
     href: "/inventory",
     icon: Boxes,
     group: "Operations",
