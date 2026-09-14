@@ -12,7 +12,15 @@
 // preserve "use client" when bundling multiple modules into one file) and
 // Next's RSC compiler would no longer see `ThemeProvider`/`useTheme`/`Tabs`
 // as client-boundary exports — see tsup.config.ts for the full story.
-export { ThemeProvider, useTheme, type ThemeName, type ThemeProviderProps, type ThemeContextValue } from "./client.js";
+export {
+  ThemeProvider,
+  useTheme,
+  ThemeScript,
+  type ThemeName,
+  type ThemeProviderProps,
+  type ThemeScriptProps,
+  type ThemeContextValue,
+} from "./client.js";
 export {
   ToastProvider,
   useToast,
