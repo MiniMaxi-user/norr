@@ -231,6 +231,13 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
       // for every work order/the catalog runs in the background (bug
       // report, 2026-09-13, see `warmOfflineCaches`'s own doc comment).
       void warmOfflineCaches(data.items, currentUserId);
+      // Bug report, 2026-09-14: re-warms `/today`'s own SHELL_CACHE entry on
+      // every successful authenticated sync, not just at service-worker
+      // install time — self-heals a previously-poisoned entry (see
+      // `sw.js`'s top-of-file comment on this same date) and keeps it fresh
+      // for engineers who mostly navigate via soft `Link` clicks, which
+      // never touch SHELL_CACHE on their own.
+      void prefetchShell("/today");
     } catch {
       // Any failure — network error or non-2xx — falls back to whatever's
       // cached locally; never a bare error screen (issue #169's offline

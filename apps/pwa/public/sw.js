@@ -54,7 +54,29 @@
 // step above, can), and forces a real `window.location.assign()` navigation
 // on the first Today->work-order hop when offline so the browser actually
 // issues a `mode: "navigate"` request this cache can answer.
-const CACHE_VERSION = "v5";
+//
+// Bug report, 2026-09-14: "logged in, go offline, tap Today -> the LOGIN
+// screen shows up" even though the session was never actually cleared. Root
+// cause was cache poisoning, not a real logout: `fetch(url, {credentials})`
+// follows redirects by default, so any moment this worker fetched `/today`
+// without a live session cookie (most commonly: the very first `install()`
+// on this device, which can happen while sitting on `/login`, before ever
+// signing in) landed on the middleware's redirect to `/login` — but the
+// code below still cached that LOGIN html under the literal `/today` KEY
+// (`cache.put(url, response)` used the requested url, not where the
+// response actually came from). Once poisoned, that `/today` entry only
+// ever gets corrected by a genuine authenticated hard reload of `/today`
+// (soft `Link` nav never touches `SHELL_CACHE`, see the comment above) — so
+// in practice most sessions would keep serving a stale login shell offline
+// indefinitely. `cacheKeyFor()` below now caches every navigation response
+// under where it ACTUALLY ended up (`response.url`), never under the
+// originally-requested key when the two differ — a `/today` fetch that
+// redirects to `/login` now correctly refreshes the `/login` entry and
+// leaves whatever `/today` already had alone, instead of overwriting it.
+// `today-screen.tsx`'s `sync()` also now calls `prefetchShell("/today")` on
+// every successful authenticated load, so the entry keeps healing itself
+// during normal use even if it was ever poisoned before this fix shipped.
+const CACHE_VERSION = "v6";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
 const SHELL_URLS = ["/login", "/today"];
@@ -69,6 +91,22 @@ function shellCacheKey(url) {
   return url.pathname + url.search;
 }
 
+/** The key to cache `response` under, given it was fetched for `requestUrl`
+ * — `requestUrl`'s own key UNLESS the response actually landed somewhere
+ * else (`response.redirected`, e.g. an unauthenticated `/today` fetch
+ * following the middleware's redirect to `/login`), in which case it's
+ * cached under the REDIRECT TARGET's key instead. Never lets a redirected
+ * response overwrite the key it was requested under — see this file's
+ * 2026-09-14 bug report above for why that matters. */
+function cacheKeyFor(requestUrl, response) {
+  if (!response.redirected) return shellCacheKey(requestUrl);
+  try {
+    return shellCacheKey(new URL(response.url));
+  } catch {
+    return shellCacheKey(requestUrl);
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
@@ -79,7 +117,9 @@ self.addEventListener("install", (event) => {
       await Promise.all(
         SHELL_URLS.map((url) =>
           fetch(url, { credentials: "same-origin" })
-            .then((response) => (response && response.ok ? cache.put(url, response) : undefined))
+            .then((response) =>
+              response && response.ok ? cache.put(cacheKeyFor(new URL(url, self.location.origin), response), response) : undefined,
+            )
             .catch(() => undefined),
         ),
       );
@@ -108,7 +148,7 @@ self.addEventListener("message", (event) => {
         const url = new URL(data.url, self.location.origin);
         const cache = await caches.open(SHELL_CACHE);
         const response = await fetch(url.pathname + url.search, { credentials: "same-origin" });
-        if (response && response.ok) await cache.put(shellCacheKey(url), response);
+        if (response && response.ok) await cache.put(cacheKeyFor(url, response), response);
       } catch {
         // No network, or the request failed — nothing to cache yet; the
         // next successful sync will retry.
@@ -152,7 +192,7 @@ self.addEventListener("fetch", (event) => {
         const cacheKey = shellCacheKey(url);
         try {
           const response = await fetch(request);
-          cache.put(cacheKey, response.clone());
+          cache.put(cacheKeyFor(url, response), response.clone());
           return response;
         } catch {
           const cached = await cache.match(cacheKey);
