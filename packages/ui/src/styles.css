@@ -284,14 +284,27 @@ html.ui-pwa-html {
      being a native scroll/rubber-band target underneath it: a touch-drag
      starting over an element with nothing of its own to scroll (the bars)
      still falls through to the document's own scroll/bounce unless that's
-     explicitly ruled out here. `height: 100%` + `overflow: hidden` genuinely
-     removes html/body as a scrollable box (not just visually clipped), and
-     `overscroll-behavior: none` additionally kills the elastic bounce/
-     pull-to-refresh gesture some browsers still trigger even without an
-     underlying scroll range. Scoped to `.ui-pwa-html`, same as the rule
-     above — the desktop app's own document-level scrolling is unaffected. */
-  height: 100%;
-  overflow: hidden;
+     explicitly ruled out here. `overscroll-behavior: none` kills that
+     elastic bounce/pull-to-refresh gesture directly, regardless of whether
+     there's an underlying scroll range to bounce within.
+     Regression, 2026-09-14 (same day): an earlier version of this fix ALSO
+     added `height: 100%; overflow: hidden`, genuinely removing html/body as
+     a scrollable box — that broke worse than the bug it fixed, on an iOS
+     device, the moment a work order's offline `Callout` (`work-order-
+     detail.tsx`) pushed content past `.ui-pwa-shell`'s own `height: 100dvh`:
+     iOS Safari's `dvh` can, in practice, lag/mis-measure right around a
+     content-height change (a known engine quirk, not specific to this app),
+     briefly rendering the shell taller than the ACTUAL visible viewport —
+     with body's own scroll removed, that overflow had nowhere to go, and
+     the bottom bar was left stuck partly below the screen with no way to
+     reach it (screenshot confirmed: the circles cut off mid-icon, no
+     labels). `overscroll-behavior: none` alone still stops the ORIGINAL
+     bounce/drag illusion (there's normally nothing to scroll, so nothing to
+     bounce), while leaving body free to actually scroll the few stray
+     pixels on the rare occasion `dvh` doesn't yet match reality — an
+     escape hatch, not a normal-case behavior change. Scoped to
+     `.ui-pwa-html`, same as the rule above — the desktop app's own
+     document-level scrolling is unaffected either way. */
   overscroll-behavior: none;
 }
 
@@ -310,13 +323,12 @@ body {
    without this override its cards' `--ui-bg` fill had nothing to contrast
    against (bug report, 2026-09-13). Scoped to `.ui-pwa-html` (the PWA's own
    `<html>` class, `apps/pwa/app/layout.tsx`) so the desktop app's plain
-   `body` background is unaffected. `height`/`overflow`/`overscroll-behavior`
-   here are the `<body>` half of the whole-page-drag fix above (bug report,
-   2026-09-14) — both `<html>` and `<body>` need them; a native scroll/bounce
-   on either one alone is enough to drag the visible page. */
+   `body` background is unaffected. `overscroll-behavior` here is the
+   `<body>` half of the whole-page-drag fix above (`html.ui-pwa-html`'s own
+   comment, including the 2026-09-14 regression note on why it's NOT paired
+   with `height`/`overflow` here) — a native bounce on either one alone is
+   enough to drag the visible page. */
 html.ui-pwa-html body {
-  height: 100%;
-  overflow: hidden;
   overscroll-behavior: none;
   background: var(--ui-page-bg);
 }
