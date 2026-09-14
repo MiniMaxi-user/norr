@@ -277,6 +277,22 @@ html.ui-pwa-html {
      browser. Desktop app unaffected — same per-app class scoping as the
      font-size rule above. */
   touch-action: manipulation;
+  /* Bug report, 2026-09-14: dragging on the (non-scrollable) topbar/bottom
+     bar dragged the WHOLE page down with it, including those bars
+     themselves — `.ui-pwa-shell`'s own `overflow: hidden` only stops content
+     from overflowing ITS box, it doesn't stop `<html>`/`<body>` from still
+     being a native scroll/rubber-band target underneath it: a touch-drag
+     starting over an element with nothing of its own to scroll (the bars)
+     still falls through to the document's own scroll/bounce unless that's
+     explicitly ruled out here. `height: 100%` + `overflow: hidden` genuinely
+     removes html/body as a scrollable box (not just visually clipped), and
+     `overscroll-behavior: none` additionally kills the elastic bounce/
+     pull-to-refresh gesture some browsers still trigger even without an
+     underlying scroll range. Scoped to `.ui-pwa-html`, same as the rule
+     above — the desktop app's own document-level scrolling is unaffected. */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -294,8 +310,14 @@ body {
    without this override its cards' `--ui-bg` fill had nothing to contrast
    against (bug report, 2026-09-13). Scoped to `.ui-pwa-html` (the PWA's own
    `<html>` class, `apps/pwa/app/layout.tsx`) so the desktop app's plain
-   `body` background is unaffected. */
+   `body` background is unaffected. `height`/`overflow`/`overscroll-behavior`
+   here are the `<body>` half of the whole-page-drag fix above (bug report,
+   2026-09-14) — both `<html>` and `<body>` need them; a native scroll/bounce
+   on either one alone is enough to drag the visible page. */
 html.ui-pwa-html body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--ui-page-bg);
 }
 
@@ -5186,10 +5208,25 @@ a.ui-relation-card-title:hover {
   margin: 23px 2px 0;
   border-top: 2px dashed var(--ui-border);
 }
+/* Bug report, 2026-09-14: the active/done circles' glow (`.ui-bottom-bar-
+   circle-active`'s `box-shadow`) got flat-clipped across its top edge —
+   `overflow-x: auto` here with no explicit `overflow-y` makes the UA compute
+   `overflow-y: auto` too (CSS Overflow §3: one axis non-`visible` forces the
+   other out of `visible`), so this element clips vertically as well, even
+   though only horizontal scrolling was ever intended. `Today`'s own circle
+   (a sibling OUTSIDE this element, in `.ui-bottom-bar-today`) was never
+   inside any clipping box and so never showed this. `padding-top` +
+   matching negative `margin-top` gives the clip box ~24px of headroom above
+   the track's content (comfortably covers the glow's ~21px max bleed: 4px
+   ring + 16px blur + 1px spread) without shifting where that content
+   actually paints — the padding pushes it down exactly as far as the
+   margin pulls the whole box back up. */
 .ui-bottom-bar-context {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+  padding-top: 24px;
+  margin-top: -24px;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -5319,6 +5356,15 @@ a.ui-relation-card-title:hover {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* Companion to the whole-page-drag fix (bug report, 2026-09-14, see
+     `html.ui-pwa-html`'s own comment): keeps an over-drag PAST this
+     container's own top/bottom edge from bubbling into a document-level
+     bounce/pull-to-refresh, now that html/body can no longer absorb it
+     themselves — this is the one region that's SUPPOSED to scroll, so it
+     gets `contain` (stop the gesture here) rather than `none` (which would
+     also kill this container's own legitimate momentum scrolling on some
+     browsers). */
+  overscroll-behavior-y: contain;
   padding: 1rem;
   max-width: 720px;
   margin: 0 auto;
