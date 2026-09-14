@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Avatar,
   Badge,
@@ -27,8 +28,6 @@ import {
   type TeamMemberRecord,
 } from "@/lib/team/actions";
 import { TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
-import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { EditTeamMemberDialog } from "./edit-team-member-dialog";
 import { InviteTeamMemberDialog } from "./invite-team-member-dialog";
 import { RemoveTeamMemberDialog } from "./remove-team-member-dialog";
@@ -52,16 +51,6 @@ export interface TeamManagerProps {
    * be rendered protected (role locked, no Remove) below, matching the
    * server-side self-change guards in `lib/team/actions.ts`. */
   currentUserId: string;
-  /** `listArticlesForSelect()`'s result (issue #93), fetched once by
-   * `team-board.tsx` and threaded down to `EditTeamMemberDialog`'s "Custom
-   * rate" section — same "fetch once, pass down" convention `accountManagers`
-   * follows for the Clients module. */
-  articles: ArticleSelectOption[];
-  /** `listReferenceItems("region")`'s result (issue #164, Planning module),
-   * fetched once by `team-board.tsx` and threaded down to
-   * `EditTeamMemberDialog`'s Region `<Select>` — same "fetch once, pass down"
-   * convention `articles` above follows. */
-  regions: ReferenceListItemRecord[];
 }
 
 interface RevealedLink {
@@ -98,6 +87,15 @@ interface RevealedLink {
  * `lib/team/actions.ts` (`updateTeamMemberRole`/`removeTeamMember`) — this is
  * just keeping the UI from offering a control that would only fail
  * server-side.
+ *
+ * Issue #192: a row click now navigates to that member's own
+ * `/settings/team/[userId]` detail page (same `router.push` convention
+ * `clients-table.tsx` uses for its own rows) instead of opening
+ * `EditTeamMemberDialog` — available to every viewer, not just `canWrite`,
+ * since the detail page itself renders every section read-only for a caller
+ * without write access. The row's own action buttons (`Edit`/`Reset
+ * password`/`Remove`, still `canWrite`-gated) stop click propagation so they
+ * don't also trigger the navigation.
  */
 export function TeamManager({
   members: initialMembers,
@@ -105,9 +103,8 @@ export function TeamManager({
   loadError,
   canWrite,
   currentUserId,
-  articles,
-  regions,
 }: TeamManagerProps) {
+  const router = useRouter();
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -211,7 +208,7 @@ export function TeamManager({
               const isSelf = member.userId === currentUserId;
               const roleLocked = isSelf || member.isPlatformAdmin;
               return (
-                <Table.Row key={member.userId} onClick={canWrite ? () => setEditTarget(member) : undefined}>
+                <Table.Row key={member.userId} onClick={() => router.push(`/settings/team/${member.userId}`)}>
                   <Table.Cell>
                     <Inline gap="sm" align="center">
                       <Avatar name={member.fullName || member.email} size="sm" photoUrl={member.avatarUrl} />
@@ -327,12 +324,8 @@ export function TeamManager({
               if (!open) setEditTarget(null);
             }}
             member={editTarget}
-            articles={articles}
-            regions={regions}
-            onSaved={(userId, fullName, rateSettings, regionId) => {
-              setMembers((prev) =>
-                prev.map((m) => (m.userId === userId ? { ...m, fullName, rateSettings, regionId } : m)),
-              );
+            onSaved={(userId, fullName) => {
+              setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, fullName } : m)));
               setEditTarget(null);
             }}
           />

@@ -138,6 +138,15 @@ export interface TeamMemberRecord {
    * `listWarehouses` in `app/(app)/inventory/actions.ts` uses for its own
    * `warehouse_stock` aggregation — NOT an N+1 per member. */
   warehouseId: string | null;
+  /** Issue #192 (Service Areas) — the set of ADDITIONAL Service Area
+   * (`region` reference-list item) ids this membership is assigned to via
+   * `public.membership_work_regions`, on top of (not instead of) its single
+   * default Service Area (`regionId` above, `memberships.region_id`). Raw
+   * joined set — includes nothing special, the UI decides how to display it
+   * relative to `regionId`. Populated via a single extra batched query,
+   * bucketed in JS by `membership_id`, same "fetch once, map in JS" pattern
+   * `warehouseId` above uses — NOT an N+1 per member. */
+  workRegionIds: string[];
 }
 
 export interface PendingTeamInviteRecord {
@@ -153,6 +162,7 @@ export interface TeamMembersResult {
 }
 
 interface MembershipWithUserRow {
+  id: string;
   created_at: string;
   role: TenantRole;
   has_custom_rate: boolean;
@@ -201,6 +211,12 @@ interface InviteRow {
  * select_scoped`), which simply means every OTHER member's `warehouseId`
  * comes back `null` for that caller. Either way this function doesn't need
  * to know which case it's in.
+ *
+ * `workRegionIds` (issue #192) is resolved the same way again: one extra
+ * `membership_work_regions` query (any org member may SELECT any row in
+ * their own org, per `membership_work_regions_select_member` — no per-caller
+ * visibility narrowing like `warehouseId` has), bucketed in JS by
+ * `membership_id` into a `Map<string, string[]>`.
  */
 export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>> {
   const ctx = await requireModuleContext("settings");
@@ -208,11 +224,11 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
 
   const supabase = await createSupabaseServerClient();
 
-  const [membershipsResult, invitesResult, warehousesResult] = await Promise.all([
+  const [membershipsResult, invitesResult, warehousesResult, workRegionsResult] = await Promise.all([
     supabase
       .from("memberships")
       .select(
-        "created_at, role, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, region_id, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)",
+        "id, created_at, role, has_custom_rate, travel_article_id, work_article_id, travel_sale_price, work_sale_price, region_id, user:users(id, email, full_name, avatar_path, avatar_updated_at, is_platform_admin)",
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -221,11 +237,13 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       .is("accepted_at", null)
       .order("created_at", { ascending: true }),
     supabase.from("warehouses").select("id, user_id"),
+    supabase.from("membership_work_regions").select("membership_id, region_id"),
   ]);
 
   if (membershipsResult.error) return fail(mapDbError(membershipsResult.error));
   if (invitesResult.error) return fail(mapDbError(invitesResult.error));
   if (warehousesResult.error) return fail(mapDbError(warehousesResult.error));
+  if (workRegionsResult.error) return fail(mapDbError(workRegionsResult.error));
 
   // Bucket by user_id, same "fetch once, map in JS" pattern as
   // `listWarehouses`'s own `warehouse_stock` aggregation in
@@ -235,6 +253,19 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
   const warehouseIdByUserId = new Map<string, string>(
     ((warehousesResult.data ?? []) as { id: string; user_id: string }[]).map((row) => [row.user_id, row.id]),
   );
+
+  // Bucket by membership_id — unlike `warehouseId` above, a membership can
+  // have MULTIPLE work-region rows, so this is an array-bucket Map, not a
+  // plain 1:1 Map.
+  const workRegionIdsByMembershipId = new Map<string, string[]>();
+  for (const row of (workRegionsResult.data ?? []) as { membership_id: string; region_id: string }[]) {
+    const bucket = workRegionIdsByMembershipId.get(row.membership_id);
+    if (bucket) {
+      bucket.push(row.region_id);
+    } else {
+      workRegionIdsByMembershipId.set(row.membership_id, [row.region_id]);
+    }
+  }
 
   const members = ((membershipsResult.data ?? []) as unknown as MembershipWithUserRow[])
     .filter(
@@ -251,6 +282,7 @@ export async function listTeamMembers(): Promise<ActionResult<TeamMembersResult>
       isPlatformAdmin: row.user.is_platform_admin,
       regionId: row.region_id,
       warehouseId: warehouseIdByUserId.get(row.user.id) ?? null,
+      workRegionIds: workRegionIdsByMembershipId.get(row.id) ?? [],
       rateSettings: fromRateOverrideRow({
         has_custom_rate: row.has_custom_rate,
         travel_article_id: row.travel_article_id,
@@ -835,4 +867,109 @@ export async function updateTeamMemberRegion(
   if (!updated) return fail("Could not update this teammate's region.");
 
   return ok({ userId: updated.user_id, regionId: updated.region_id });
+}
+
+export interface UpdateTeamMemberWorkRegionsResult {
+  userId: string;
+  regionIds: string[];
+}
+
+/**
+ * Owner-only. Replaces the FULL set of a teammate's ADDITIONAL Service Area
+ * (work-region) assignments — `public.membership_work_regions` — with
+ * `regionIds`. Independent concern from `updateTeamMemberRegion` above (the
+ * single default Service Area, `memberships.region_id`) — see that table's
+ * own comment in `supabase/migrations/20260918090000_service_area_seed_and_
+ * work_regions.sql` and this file's `TeamMemberRecord.workRegionIds` comment.
+ *
+ * Runs under the caller's OWN session client — `membership_work_regions_
+ * insert_owner`/`_delete_owner` RLS already let an owner write any
+ * membership's work-regions in their own org (`is_org_owner(organization_id)`,
+ * same boundary as `memberships_update_owner`) — but still independently
+ * re-verifies the target is a member of the caller's own org first, same
+ * shape as `updateTeamMemberRegion`.
+ *
+ * There is no UPDATE policy/grant on `membership_work_regions` at all (delete
+ * + re-insert is the only way to change an assignment — see that migration's
+ * design note 4), so this is implemented as a full replace: read the
+ * membership's current rows, diff against the deduped `regionIds` input, then
+ * `.delete().in("id", ...)` the ones no longer wanted and `.insert([...])`
+ * the newly-added ones. Both the delete and the insert are re-scoped by the
+ * membership's own id looked up above (never a client-supplied id), on top of
+ * RLS. Region existence/list_key/cross-org validity is NOT re-implemented
+ * here — same "trust the DB trigger, light client-side sanity only" boundary
+ * `updateTeamMemberRegion` documents for reference-list-backed columns
+ * generally; `derive_and_validate_membership_work_region` rejects a bad row
+ * with `23503` (dangling) or `23514` (wrong list_key / cross-org), mapped
+ * through `mapDbError` like every other write in this file.
+ *
+ * Empty array is valid — clears all work-region assignments.
+ */
+export async function updateTeamMemberWorkRegions(
+  userId: string,
+  regionIds: string[],
+): Promise<ActionResult<UpdateTeamMemberWorkRegionsResult>> {
+  const idResult = uuidSchema.safeParse(userId);
+  if (!idResult.success) return fail("Invalid user id.");
+
+  if (!Array.isArray(regionIds)) {
+    return fail("Please fix the highlighted fields.", { regionIds: ["Invalid region list."] });
+  }
+  const regionIdsResult = z.array(uuidSchema).safeParse(regionIds);
+  if (!regionIdsResult.success) {
+    return fail("Please fix the highlighted fields.", { regionIds: ["Invalid region."] });
+  }
+  const dedupedRegionIds = Array.from(new Set(regionIdsResult.data));
+
+  const ctx = await requireModuleContext("settings");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId } = ctx.context;
+
+  if (!can(actor, "settings", "update")) {
+    return fail("Only the organization owner can change a teammate's work Service Areas.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("memberships")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("user_id", idResult.data)
+    .maybeSingle<{ id: string }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("This person is not a member of your organization.");
+
+  const { data: currentRows, error: currentError } = await supabase
+    .from("membership_work_regions")
+    .select("id, region_id")
+    .eq("membership_id", target.id);
+
+  if (currentError) return fail(mapDbError(currentError));
+
+  const current = (currentRows ?? []) as { id: string; region_id: string }[];
+  const currentRegionIds = new Set(current.map((row) => row.region_id));
+  const nextRegionIds = new Set(dedupedRegionIds);
+
+  const idsToDelete = current.filter((row) => !nextRegionIds.has(row.region_id)).map((row) => row.id);
+  const regionIdsToInsert = dedupedRegionIds.filter((regionId) => !currentRegionIds.has(regionId));
+
+  if (idsToDelete.length > 0) {
+    const { error: deleteError } = await supabase
+      .from("membership_work_regions")
+      .delete()
+      .eq("membership_id", target.id)
+      .in("id", idsToDelete);
+    if (deleteError) return fail(mapDbError(deleteError));
+  }
+
+  if (regionIdsToInsert.length > 0) {
+    const { error: insertError } = await supabase
+      .from("membership_work_regions")
+      .insert(regionIdsToInsert.map((regionId) => ({ membership_id: target.id, region_id: regionId })));
+    if (insertError) return fail(mapDbError(insertError));
+  }
+
+  return ok({ userId: idResult.data, regionIds: dedupedRegionIds });
 }

@@ -2,26 +2,14 @@
 
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Input, Label, Select, Separator, Stack, Text, useEscapeToClose } from "@yourorg/ui";
-import {
-  updateTeamMemberProfile,
-  updateTeamMemberRateSettings,
-  updateTeamMemberRegion,
-  type TeamMemberRecord,
-} from "@/lib/team/actions";
-import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { RateSettingsSection } from "@/lib/rate-overrides/rate-settings-section";
-import type { RateOverrideRecord } from "@/lib/rate-overrides/schema";
+import { Button, Dialog, Heading, Input, Label, Stack, Text, useEscapeToClose } from "@yourorg/ui";
+import { updateTeamMemberProfile, type TeamMemberRecord } from "@/lib/team/actions";
 
 interface FormState {
   error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
   success?: boolean;
   fullName?: string;
-  rateSettings?: RateOverrideRecord;
-  regionId?: string | null;
 }
 
 const initialState: FormState = {};
@@ -30,66 +18,31 @@ export interface EditTeamMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: TeamMemberRecord | null;
-  /** `listArticlesForSelect()`'s result, fetched once by `team-board.tsx` and
-   * threaded down — only actually consumed when `member.role === "engineer"`
-   * (see this component's own doc comment), but fetched unconditionally same
-   * as `accountManagers` is for the Clients module, so it's ready the moment
-   * any engineer row is opened. */
-  articles: ArticleSelectOption[];
-  /** `listReferenceItems("region")`'s result (issue #164, Planning module),
-   * fetched once by `team-board.tsx` and threaded down — for the Region
-   * `<Select>` below, rendered for EVERY member row (not just engineers), see
-   * this component's own doc comment. */
-  regions: ReferenceListItemRecord[];
-  /** Called once every save this dialog performed succeeds, with the fields
-   * `TeamManager` needs to patch its local member list without a full
-   * `router.refresh()`. `rateSettings` is always the member's current (saved)
-   * settings — unchanged from `member.rateSettings` for a non-engineer row,
-   * which never renders (or submits) the rate section at all. `regionId` is
-   * always the member's current (saved) region. */
-  onSaved: (userId: string, fullName: string, rateSettings: RateOverrideRecord, regionId: string | null) => void;
+  /** Called once the save succeeds, with the member's fresh (saved) name, so
+   * `TeamManager` can patch its local member list without a full
+   * `router.refresh()`. */
+  onSaved: (userId: string, fullName: string) => void;
 }
 
 /**
- * Edit a teammate's own profile — display name, plus (issue #93, "Reistijd
- * en werktijd artikelen beheren") a "Custom rate" section, ONLY for a
- * teammate whose role is `engineer` (an "engineer" IS a `memberships` row
- * with `role = 'engineer'` — see `lib/rate-overrides/schema.ts`'s header
- * comment; no separate `engineers` table). Grown out of what used to be
- * `EditTeamMemberNameDialog` (name-only) rather than added as a second
- * dialog, per this issue's own instruction to keep team management in one
- * place instead of fragmenting it across two popups for the same row.
+ * Edit a teammate's display name. Trimmed down (issue #192) from what used
+ * to also carry a "Custom rate" section (issue #93) and a "Region" `<Select>`
+ * (issue #164) — both moved onto the new `/settings/team/[userId]` detail
+ * page (`RateOverridesSection`/`DefaultServiceAreaSection`, plus the new
+ * `ServiceAreasSection`), which is where region-linking specifically needed
+ * to live per this story ("op de monteur details pagina"). Each field now
+ * has exactly one home: name stays a quick single-field popup edit, rate
+ * overrides/Service Areas are detail-page-only — no field is editable from
+ * both places.
  *
  * Still correctly a `Dialog`, not a full page, per docs/ARCHITECTURE.md
- * "Popup vs. full page": that rule's "top-level module entity gets a real
- * page" default is about Clients/Assets/Contracts/Planning/future Quotes —
- * a team member row is a sub-entity of the Team settings screen (reached
- * from a table row, same weight class as Contacts/Sites on a client), not a
- * top-level module of its own. Bumped from `size="sm"` to `size="lg"` (was
- * a single name field before) now that an engineer row can also carry the
- * checkbox + two article pickers + two editable/two read-only price fields.
- *
- * Both saves run sequentially from ONE submit — same "one form, multiple
- * sequential Server Action calls" shape `NewClientPanel` already establishes
- * for `createClient` then `createSite` — rather than a nested mini-form
- * inside the rate section. `updateTeamMemberProfile` always runs first (name
- * is never conditional); `updateTeamMemberRateSettings` only runs for an
- * `engineer` row. If the name save succeeds but the rate save then fails,
- * the dialog stays open showing the rate error (same partial-failure
- * tolerance `NewClientPanel` documents for its own two-call submit) — the
- * name change already persisted, and resubmitting simply re-saves the same
- * name again (harmless) before retrying the rate save.
+ * "Popup vs. full page": a single quick-edit text field on a sub-entity row
+ * (reached from the Team table) is exactly the "small, secondary" case that
+ * stays a popup — the detail page exists for the sections that actually
+ * needed page-level room, not for this one.
  */
-export function EditTeamMemberDialog({ open, onOpenChange, member, articles, regions, onSaved }: EditTeamMemberDialogProps) {
+export function EditTeamMemberDialog({ open, onOpenChange, member, onSaved }: EditTeamMemberDialogProps) {
   useEscapeToClose(open, onOpenChange);
-  const router = useRouter();
-  const isEngineer = member?.role === "engineer";
-
-  function handleViewWarehouse() {
-    if (!member?.warehouseId) return;
-    onOpenChange(false);
-    router.push(`/inventory/${member.warehouseId}`);
-  }
 
   async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
     if (!member) return { error: "No teammate selected." };
@@ -100,48 +53,7 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, reg
       return { error: profileResult.error ?? "Could not save this name.", fieldErrors: profileResult.fieldErrors };
     }
 
-    const regionValue = String(formData.get("regionId") ?? "");
-    const regionId = regionValue === "" ? null : regionValue;
-    const regionResult = await updateTeamMemberRegion(member.userId, regionId);
-    if (regionResult.error) {
-      return {
-        error: regionResult.error,
-        fullName: profileResult.data.fullName,
-        rateSettings: member.rateSettings,
-      };
-    }
-
-    if (!isEngineer) {
-      return {
-        success: true,
-        fullName: profileResult.data.fullName,
-        rateSettings: member.rateSettings,
-        regionId: regionResult.data?.regionId ?? regionId,
-      };
-    }
-
-    // A `<Checkbox>` only appears in `FormData` at all when checked — see
-    // `RateSettingsSection`'s own doc comment.
-    const rateInput = {
-      ...Object.fromEntries(formData.entries()),
-      hasCustomRate: formData.get("hasCustomRate") === "on",
-    };
-    const rateResult = await updateTeamMemberRateSettings(member.userId, rateInput);
-    if (rateResult.error || !rateResult.data) {
-      return {
-        error: rateResult.error ?? "Could not save rate settings.",
-        fieldErrors: rateResult.fieldErrors,
-        fullName: profileResult.data.fullName,
-        regionId: regionResult.data?.regionId ?? regionId,
-      };
-    }
-
-    return {
-      success: true,
-      fullName: profileResult.data.fullName,
-      rateSettings: rateResult.data,
-      regionId: regionResult.data?.regionId ?? regionId,
-    };
+    return { success: true, fullName: profileResult.data.fullName };
   }
 
   const [state, formAction] = useActionState(action, initialState);
@@ -149,18 +61,13 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, reg
   useEffect(() => {
     if (state.success && member) {
       onOpenChange(false);
-      onSaved(
-        member.userId,
-        state.fullName ?? "",
-        state.rateSettings ?? member.rateSettings,
-        state.regionId !== undefined ? state.regionId : (member.regionId ?? null),
-      );
+      onSaved(member.userId, state.fullName ?? "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="lg">
+    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
       <Dialog.Header>
         <Heading level={3}>Edit teammate</Heading>
       </Dialog.Header>
@@ -184,53 +91,6 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, articles, reg
                 </Text>
               ))}
             </Stack>
-
-            <Stack gap="xs">
-              <Label htmlFor="edit-team-member-region">Region</Label>
-              <Select id="edit-team-member-region" name="regionId" defaultValue={member?.regionId ?? ""}>
-                <option value="">No region</option>
-                {regions.map((region) => (
-                  <option key={region.id} value={region.id}>
-                    {region.label}
-                  </option>
-                ))}
-              </Select>
-              {state.fieldErrors?.regionId?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-
-            {isEngineer && member && (
-              <>
-                <Separator />
-                <RateSettingsSection
-                  idPrefix="engineer-rate"
-                  initial={member.rateSettings}
-                  articles={articles}
-                  subjectLabel="engineer"
-                  errors={{
-                    travelArticleId: state.fieldErrors?.travelArticleId,
-                    workArticleId: state.fieldErrors?.workArticleId,
-                    travelSalePrice: state.fieldErrors?.travelSalePrice,
-                    workSalePrice: state.fieldErrors?.workSalePrice,
-                  }}
-                />
-
-                <Separator />
-                <Stack gap="xs">
-                  <Label>Inventory</Label>
-                  {member.warehouseId ? (
-                    <Button type="button" variant="outline" onClick={handleViewWarehouse}>
-                      View warehouse
-                    </Button>
-                  ) : (
-                    <Text tone="muted">Warehouse is being created…</Text>
-                  )}
-                </Stack>
-              </>
-            )}
           </Stack>
         </Dialog.Body>
         <Dialog.Footer>
