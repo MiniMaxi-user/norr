@@ -32,13 +32,34 @@
 // three fell through to the generic `/today`/`/login` fallback below
 // instead of this work order's own shell (looked like "Hours/Articles/
 // Photos/Sign won't open offline", while the no-`?section=` URL Today links
-// to kept working). `shellCacheKey()` now keys `/work-orders/[id]` entries
-// by PATHNAME ONLY — the work order id stays part of the key (so a
-// different work order never serves another one's stale shell), but the
-// `?section=` query is dropped, since which section is showing is derived
-// entirely client-side (`useSearchParams()` in `work-order-detail.tsx`) and
-// never baked into the server-rendered HTML the way `workOrderId` (from
-// `params.id`) is.
+// to kept working). `shellCacheKey()` briefly (through 2026-09-13) keyed
+// `/work-orders/[id]` entries by PATHNAME ONLY, dropping `?section=`, on the
+// assumption that which section is showing is derived entirely client-side
+// (`useSearchParams()` in `work-order-detail.tsx`) and never baked into the
+// server-rendered HTML the way `workOrderId` is — see the 2026-09-14 bug
+// report below for why that assumption didn't hold.
+//
+// Bug report, 2026-09-14: tapping a section tab (Hours/Articles/Photos/
+// Sign) while offline visibly flickers/reloads and opens the right page,
+// but the bottom-bar's step highlighting (active gold circle, done-green
+// circles before it) stays wrong — it does NOT re-derive from the section
+// actually shown. Root cause: even a same-pathname, `?section=`-only Link
+// click still needs a fresh RSC fetch from the server (Next.js can't know
+// client-side that a route's render doesn't depend on searchParams without
+// asking it), and that fetch failing offline triggers Next's own automatic
+// full-document-reload fallback — a GENUINE hard navigation, not a soft
+// one. With the pathname-only key above, that hard navigation's `mode:
+// "navigate"` request was served whatever section's shell happened to be
+// cached (in practice always "details", the only section
+// `warmOfflineCaches` used to prefetch) regardless of which `?section=` was
+// actually requested — the served document's initial render (and
+// apparently, in practice, its hydration) reflects THAT stale section, not
+// the live URL. `shellCacheKey()` is back to keying by the FULL request
+// (path + query) — each section is its own correctly-rendered cache entry
+// again — and `warmOfflineCaches` (`today-screen.tsx`) now prefetches every
+// section's shell per work order, not just the bare/"details" one, so this
+// doesn't regress into the 2026-09-13 bug of an unvisited section falling
+// through to the generic `/today`/`/login` fallback.
 //
 // Bug report, 2026-09-13: a work order that was scheduled for today but
 // never manually opened online had NO shell entry at all — opening it from
@@ -76,18 +97,16 @@
 // `today-screen.tsx`'s `sync()` also now calls `prefetchShell("/today")` on
 // every successful authenticated load, so the entry keeps healing itself
 // during normal use even if it was ever poisoned before this fix shipped.
-const CACHE_VERSION = "v6";
+const CACHE_VERSION = "v7";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
 const SHELL_URLS = ["/login", "/today"];
 
-/** The shell-cache key for a navigation to `url` — see this file's own top
- * comment. Every `/work-orders/[id]` URL (any `?section=`) collapses to its
- * bare pathname; everything else (just `/login`/`/today` in practice, since
- * those are the only other navigable routes) keys by the full path+query,
- * unchanged from before. */
+/** The shell-cache key for a navigation to `url` — the full path + query, so
+ * each `/work-orders/[id]?section=...` tab gets its own correctly-rendered
+ * entry. See this file's own top comment (2026-09-14) for why a work order's
+ * section can't be collapsed out of the key. */
 function shellCacheKey(url) {
-  if (url.pathname.startsWith("/work-orders/")) return url.pathname;
   return url.pathname + url.search;
 }
 

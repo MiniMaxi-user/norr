@@ -32,13 +32,25 @@ interface TodayWorkItemsResponse {
   syncedAt: string;
 }
 
-/** How many `/api/work-orders/{id}` + shell-prefetch requests run at once
- * during `warmOfflineCaches` below — bounded (bug report, 2026-09-13: "check
- * of alle items netjes binnengehaald worden") so a 20-30 job day doesn't
- * fire that many requests simultaneously, but still fast enough that the
- * warm-up finishes in the background well before the engineer would
- * plausibly go offline and tap into one. */
+/** How many work orders' `/api/work-orders/{id}` + shell-prefetch requests
+ * run at once during `warmOfflineCaches` below — bounded (bug report,
+ * 2026-09-13: "check of alle items netjes binnengehaald worden") so a 20-30
+ * job day doesn't fire that many requests simultaneously, but still fast
+ * enough that the warm-up finishes in the background well before the
+ * engineer would plausibly go offline and tap into one. Each item in a
+ * batch itself fires one shell-prefetch per `WORK_ORDER_SHELL_SECTIONS`
+ * entry (bug report, 2026-09-14) — bounded per-item concurrency, not an
+ * additional multiplier on this constant. */
 const PREFETCH_BATCH_SIZE = 4;
+
+/** Every `?section=` this device needs its own SHELL_CACHE entry for, per
+ * work order (bug report, 2026-09-14, see `sw.js`'s own top-of-file comment
+ * on this same date) — matches `WORK_ORDER_SECTIONS` in `_nav/bottom-bar.tsx`
+ * exactly (that file can't be imported from here, separate route group), plus
+ * the bare no-`?section=` URL Today's own work-order links use (defaults to
+ * "details" client-side, but is a DIFFERENT cache key from `?section=details`
+ * now that `shellCacheKey` keys by the full request again). */
+const WORK_ORDER_SHELL_SECTIONS = ["details", "hours", "articles", "photos", "sign"];
 
 /** Posts `{ type: "PREFETCH_SHELL", url }` to the active service worker so
  * it can warm `SHELL_CACHE` for `url` via its own same-origin `fetch()` (see
@@ -66,9 +78,11 @@ async function prefetchShell(url: string): Promise<void> {
  * moment `saveWorkItems` above resolves):
  * - `/api/work-orders/{id}` -> `workOrderDetails` (so `getCachedWorkOrderDetail`
  *   has data for every scheduled job, not just ones already opened once).
- * - the work order's shell HTML -> `SHELL_CACHE`, via the service worker
- *   message above, so a first-time OFFLINE navigation into it can be served
- *   at all (see `sw.js`'s top-of-file comment on this same date).
+ * - the work order's shell HTML, for EVERY section (`WORK_ORDER_SHELL_SECTIONS`,
+ *   bug report 2026-09-14 — a section's shell must be cached under its own
+ *   exact URL now, see `sw.js`'s top-of-file comment on that date) ->
+ *   `SHELL_CACHE`, via the service worker message above, so a first-time
+ *   OFFLINE navigation into any of them can be served at all.
  * - `/api/articles/catalog` -> `catalog`, once per sync (tenant-wide
  *   reference data, not per-work-order) so the "Add article" sheet works
  *   offline too.
@@ -104,6 +118,9 @@ async function warmOfflineCaches(items: CachedWorkItem[], currentUserId: string)
           // retries every item again from scratch.
         }
         await prefetchShell(`/work-orders/${item.id}`);
+        await Promise.all(
+          WORK_ORDER_SHELL_SECTIONS.map((section) => prefetchShell(`/work-orders/${item.id}?section=${section}`)),
+        );
       }),
     );
   }
