@@ -24,16 +24,19 @@ import {
 import { computeClockSummary, finishWorkOrderClock, toggleClock, type ClockKind } from "@/lib/time/clocks";
 import type { WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { TimerCard } from "./timer-card";
+import { HomeSection } from "./sections/home-section";
 import { WorkSection } from "./sections/work-section";
 import { HoursSection } from "./sections/hours-section";
 import { ArticlesSection } from "./sections/articles-section";
 import { PhotosSection } from "./sections/photos-section";
 import { SignOffSection } from "./sections/sign-off-section";
 
-export type WorkOrderSection = "details" | "hours" | "articles" | "photos" | "sign";
+export type WorkOrderSection = "home" | "work" | "hours" | "articles" | "photos" | "sign";
 
 function isSection(value: string | null): value is WorkOrderSection {
-  return value === "details" || value === "hours" || value === "articles" || value === "photos" || value === "sign";
+  return (
+    value === "home" || value === "work" || value === "hours" || value === "articles" || value === "photos" || value === "sign"
+  );
 }
 
 /** `"14:32"`, reused from `today-screen.tsx`'s own one-liner — see that
@@ -78,7 +81,7 @@ export function WorkOrderDetailScreen({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const section: WorkOrderSection = isSection(searchParams.get("section")) ? (searchParams.get("section") as WorkOrderSection) : "details";
+  const section: WorkOrderSection = isSection(searchParams.get("section")) ? (searchParams.get("section") as WorkOrderSection) : "home";
 
   const [detail, setDetail] = useState<WorkOrderDetailResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -348,7 +351,8 @@ export function WorkOrderDetailScreen({
         </Text>
       </Stack>
 
-      {section === "details" && <WorkSection workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
+      {section === "home" && <HomeSection workOrder={workOrder} />}
+      {section === "work" && <WorkSection workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
       {section === "hours" && (
         <>
           {/* Start/stop only shows on the Hours tab (product feedback,

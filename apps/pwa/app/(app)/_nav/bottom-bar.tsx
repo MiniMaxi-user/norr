@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Text } from "@yourorg/ui";
-import { Boxes, Building2, Camera, CalendarDays, Clock, Signature, type Icon } from "@yourorg/ui/icons";
+import { Boxes, Camera, CalendarDays, ClipboardList, Clock, Home, Signature, type Icon } from "@yourorg/ui/icons";
 
 /** `@yourorg/ui` doesn't publish its internal `cx` helper at a subpath (only
  * `.`/`./icons`/`./styles.css` are exported, see its `package.json`) — this
@@ -42,7 +42,8 @@ function cx(...classes: (string | false | null | undefined)[]): string {
  * that state down through props/context.
  */
 const WORK_ORDER_SECTIONS: { value: string; label: string; icon: Icon }[] = [
-  { value: "details", label: "Work", icon: Building2 },
+  { value: "home", label: "Home", icon: Home },
+  { value: "work", label: "Work", icon: ClipboardList },
   { value: "hours", label: "Hours", icon: Clock },
   { value: "articles", label: "Articles", icon: Boxes },
   { value: "photos", label: "Photos", icon: Camera },
@@ -79,7 +80,7 @@ export function BottomBar() {
 
   const workOrderMatch = /^\/work-orders\/([^/]+)/.exec(pathname);
   const workOrderId = workOrderMatch?.[1] ?? null;
-  const activeSection = searchParams.get("section") ?? "details";
+  const activeSection = searchParams.get("section") ?? "home";
   const isToday = pathname === "/today";
   const activeIndex = WORK_ORDER_SECTIONS.findIndex((section) => section.value === activeSection);
 
