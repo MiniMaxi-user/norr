@@ -28,7 +28,6 @@ import {
   type TeamMemberRecord,
 } from "@/lib/team/actions";
 import { TENANT_ROLES, type TenantRole } from "@/lib/rbac/permissions";
-import { EditTeamMemberDialog } from "./edit-team-member-dialog";
 import { InviteTeamMemberDialog } from "./invite-team-member-dialog";
 import { RemoveTeamMemberDialog } from "./remove-team-member-dialog";
 import { roleLabel } from "./role-label";
@@ -88,14 +87,18 @@ interface RevealedLink {
  * just keeping the UI from offering a control that would only fail
  * server-side.
  *
- * Issue #192: a row click now navigates to that member's own
+ * Issue #192: a row click navigates to that member's own
  * `/settings/team/[userId]` detail page (same `router.push` convention
- * `clients-table.tsx` uses for its own rows) instead of opening
- * `EditTeamMemberDialog` — available to every viewer, not just `canWrite`,
- * since the detail page itself renders every section read-only for a caller
- * without write access. The row's own action buttons (`Edit`/`Reset
- * password`/`Remove`, still `canWrite`-gated) stop click propagation so they
- * don't also trigger the navigation.
+ * `clients-table.tsx` uses for its own rows) — available to every viewer,
+ * not just `canWrite`, since the detail page itself renders every section
+ * read-only for a caller without write access. The row's own "Edit" button
+ * is just a second, explicit affordance to the SAME destination (not a
+ * dialog — `EditTeamMemberDialog` was removed once its last field, Name,
+ * moved onto the detail page too); it still stops click propagation so it
+ * doesn't also trigger the row's own `onClick` (harmless either way since
+ * both land on the same URL, but consistent with `Reset password`/`Remove`
+ * needing that same guard for real). "Reset password"/"Remove" stay
+ * row-level actions, still `canWrite`-gated.
  */
 export function TeamManager({
   members: initialMembers,
@@ -111,7 +114,6 @@ export function TeamManager({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<RevealedLink | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<TeamMemberRecord | null>(null);
   const [removeTarget, setRemoveTarget] = useState<TeamMemberRecord | null>(null);
 
   function clearRowError(key: string) {
@@ -243,7 +245,12 @@ export function TeamManager({
                       <Stack gap="xs">
                         <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
                           <Inline gap="xs">
-                            <Button variant="outline" size="sm" onClick={() => setEditTarget(member)} disabled={isPending}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/settings/team/${member.userId}`)}
+                              disabled={isPending}
+                            >
                               Edit
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => handleResetPassword(member)} disabled={isPending}>
@@ -318,17 +325,6 @@ export function TeamManager({
       {canWrite && (
         <>
           <InviteTeamMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={handleInvited} />
-          <EditTeamMemberDialog
-            open={editTarget !== null}
-            onOpenChange={(open) => {
-              if (!open) setEditTarget(null);
-            }}
-            member={editTarget}
-            onSaved={(userId, fullName) => {
-              setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, fullName } : m)));
-              setEditTarget(null);
-            }}
-          />
           <RemoveTeamMemberDialog
             open={removeTarget !== null}
             onOpenChange={(open) => {

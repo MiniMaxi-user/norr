@@ -8,6 +8,7 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { TeamMemberRecord } from "@/lib/team/actions";
 import { roleLabel } from "../components/role-label";
 import { DefaultServiceAreaSection } from "./default-service-area-section";
+import { FullNameSection } from "./full-name-section";
 import { RateOverridesSection } from "./rate-overrides-section";
 import { ServiceAreasSection } from "./service-areas-section";
 
@@ -29,12 +30,12 @@ export interface TeamMemberDetailProps {
 }
 
 /**
- * A single team member's detail page (issue #192) — header (avatar, name,
- * email, role) plus three independently-editable config sections: Rate
- * overrides (issue #93, engineer-only, relocated out of
- * `EditTeamMemberDialog`), Default Service Area (relocated out of the same
- * dialog's "Region" field), and Service Areas (issue #192, new — the
- * ADDITIONAL work regions a membership carries via
+ * A single team member's detail page (issue #192, plus a follow-up that
+ * removed `EditTeamMemberDialog` entirely) — header (avatar, name, email,
+ * role) plus four independently-editable config sections: Name (the last
+ * field that still lived in the now-removed dialog), Rate overrides (issue
+ * #93, engineer-only), Default Service Area, and Service Areas (issue #192,
+ * new — the ADDITIONAL work regions a membership carries via
  * `membership_work_regions`, independent of the single default above). Each
  * section saves itself immediately via its own server action call, same
  * "immediate section-scoped save, no page-wide Save/Cancel" convention
@@ -94,6 +95,13 @@ export function TeamMemberDetail({ member: initialMember, articles, regions, can
             ))}
         </Inline>
       </Card>
+
+      <FullNameSection
+        userId={member.userId}
+        fullName={member.fullName}
+        readOnly={readOnly}
+        onSaved={(fullName) => setMember((prev) => ({ ...prev, fullName }))}
+      />
 
       {isEngineer && (
         <RateOverridesSection
