@@ -138,6 +138,20 @@ export const REFERENCE_LIST_SECTIONS = [
       "Pre-agreed usage allowances or bundles that can be linked to a contract line item — e.g. 10,000 cups of coffee per year, or 1,000 B/W prints. Each Volume value is scoped to one Article Unit.",
     showDefaultDuration: false,
   },
+  // Service Area (issue #192, "Manage Service Areas via Settings"): a
+  // root-level, non-dependent list, same `region` `list_key` already used by
+  // the Planning module's scheduler board and `memberships.region_id`/
+  // `membership_work_regions` (see `lib/team/actions.ts`) — only the
+  // user-facing label is "Service Area" (covers both geographic regions and
+  // fixed locations like an internal workshop); the internal `region`
+  // identifier is unchanged.
+  {
+    key: "region",
+    title: "Service Area",
+    description:
+      "Geographic regions or fixed locations — e.g. an internal workshop — where work gets carried out. Used to assign engineers and group the Planning scheduler board.",
+    showDefaultDuration: false,
+  },
 ] as const;
 
 export type ReferenceListSectionKey = (typeof REFERENCE_LIST_SECTIONS)[number]["key"];

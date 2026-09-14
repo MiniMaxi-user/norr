@@ -139,6 +139,12 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     items: [
       { key: "team", label: "Team", href: "/settings/team" },
       { key: "account_managers", label: "Account Managers", href: "/settings/account-managers" },
+      // Issue #192 — Service Areas (the `region` reference list): grouped
+      // under People rather than a new group of its own, since its primary
+      // Settings-surfaced use is assigning engineers (Planning's "Per regio"
+      // grouping reads the same list, but has no Settings group of its own
+      // yet to house this instead).
+      { key: "region", label: findTitle("region"), href: "/settings/reference-lists/region" },
     ],
   },
   {
