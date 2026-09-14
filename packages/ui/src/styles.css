@@ -279,32 +279,27 @@ html.ui-pwa-html {
   touch-action: manipulation;
   /* Bug report, 2026-09-14: dragging on the (non-scrollable) topbar/bottom
      bar dragged the WHOLE page down with it, including those bars
-     themselves — `.ui-pwa-shell`'s own `overflow: hidden` only stops content
-     from overflowing ITS box, it doesn't stop `<html>`/`<body>` from still
-     being a native scroll/rubber-band target underneath it: a touch-drag
-     starting over an element with nothing of its own to scroll (the bars)
-     still falls through to the document's own scroll/bounce unless that's
-     explicitly ruled out here. `overscroll-behavior: none` kills that
-     elastic bounce/pull-to-refresh gesture directly, regardless of whether
-     there's an underlying scroll range to bounce within.
-     Regression, 2026-09-14 (same day): an earlier version of this fix ALSO
-     added `height: 100%; overflow: hidden`, genuinely removing html/body as
-     a scrollable box — that broke worse than the bug it fixed, on an iOS
-     device, the moment a work order's offline `Callout` (`work-order-
-     detail.tsx`) pushed content past `.ui-pwa-shell`'s own `height: 100dvh`:
-     iOS Safari's `dvh` can, in practice, lag/mis-measure right around a
-     content-height change (a known engine quirk, not specific to this app),
-     briefly rendering the shell taller than the ACTUAL visible viewport —
-     with body's own scroll removed, that overflow had nowhere to go, and
-     the bottom bar was left stuck partly below the screen with no way to
-     reach it (screenshot confirmed: the circles cut off mid-icon, no
-     labels). `overscroll-behavior: none` alone still stops the ORIGINAL
-     bounce/drag illusion (there's normally nothing to scroll, so nothing to
-     bounce), while leaving body free to actually scroll the few stray
-     pixels on the rare occasion `dvh` doesn't yet match reality — an
-     escape hatch, not a normal-case behavior change. Scoped to
-     `.ui-pwa-html`, same as the rule above — the desktop app's own
-     document-level scrolling is unaffected either way. */
+     themselves — a touch-drag starting over an element with nothing of its
+     own to scroll (the bars) falls through to whatever ancestor IS
+     scrollable, and `<body>` used to be one (see the history below).
+     `overscroll-behavior: none` kills any elastic bounce/pull-to-refresh
+     gesture directly, regardless of whether there's an underlying scroll
+     range to bounce within — kept here as a belt-and-braces backstop.
+     History (same day): two earlier attempts lived here before `.ui-pwa-
+     shell` itself switched to `position: fixed` (see that class's own
+     2026-09-14 comment) — first pairing this with `height: 100%; overflow:
+     hidden` (which genuinely removed body's OWN scroll, but on iOS traded
+     "whole page drags" for a WORSE bug: the shell could briefly render
+     taller than the real viewport, per `dvh`'s own known lag, and with
+     body's scroll gone that overflow had nowhere to go — the bottom bar got
+     stuck off-screen with no way back), then dropping back to just
+     `overscroll-behavior: none` alone as an escape hatch. Neither was
+     actually the right fix — `.ui-pwa-shell` no longer being sized from
+     `dvh` at all is — but this rule is harmless to keep regardless: once
+     `.ui-pwa-shell` is `position: fixed`, body has nothing left in normal
+     flow to scroll in the first place. Scoped to `.ui-pwa-html`, same as the
+     rule above — the desktop app's own document-level scrolling is
+     unaffected either way. */
   overscroll-behavior: none;
 }
 
@@ -5336,15 +5331,33 @@ a.ui-relation-card-title:hover {
 /* The field PWA's whole-viewport app shell (bug report, 2026-09-13,
    replaces the old "document scroll + padding-bottom spacer" approach —
    see `.ui-bottom-bar`'s own comment above for why that couldn't guarantee
-   content never ran behind the bar). A fixed-height flex column: the bar
-   claims its own row at the bottom, `.ui-pwa-page-content` gets everything
-   above it and scrolls within that bound, so the page genuinely stops
-   above the menu instead of the menu floating over it. Applied once in
+   content never ran behind the bar). A flex column: the bar claims its own
+   row at the bottom, `.ui-pwa-page-content` gets everything above it and
+   scrolls within that bound, so the page genuinely stops above the menu
+   instead of the menu floating over it. Applied once in
    `app/(app)/layout.tsx`, same "one shared pattern, not reinvented per
-   module" rule as everything else in this section. */
+   module" rule as everything else in this section.
+   Bug report, 2026-09-14 (screenshot: the menu bar permanently shifted down
+   / partly off-screen the moment a work order's offline Callout changed
+   `.ui-pwa-page-content`'s content height): `height: 100vh; height: 100dvh`
+   sized this box from a COMPUTED value, and iOS Safari's `dvh` can lag/
+   mis-measure right around a content-height change (a known engine quirk),
+   so the flex column was briefly sized taller than the real screen with the
+   bottom bar landing off the bottom of it — a first attempt at fixing this
+   (restoring `<body>`'s own scroll as an escape hatch) only made the bar
+   *reachable* again, not actually fixed in place, which isn't good enough.
+   `position: fixed; inset: 0` replaces `height` entirely: it's anchored
+   directly to the browser's real, live viewport edges every frame, with no
+   CSS-unit computation to ever lag behind — the standard, reliable way to
+   pin an app shell's top/bottom on mobile web. This also makes `<body>`
+   itself un-scrollable for free (nothing of its own is left in normal flow
+   once this, `<body>`'s only child, is taken out of it), which is what
+   originally stopped "dragging the topbar/bottom bar drags the whole page"
+   (`html.ui-pwa-html`'s own comment) — the `overscroll-behavior` rules
+   there are now a belt-and-braces backstop, not the load-bearing fix. */
 .ui-pwa-shell {
-  height: 100vh;
-  height: 100dvh;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
