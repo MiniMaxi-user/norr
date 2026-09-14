@@ -10,7 +10,7 @@ import { InventoryScreenSkeleton } from "./components/inventory-screen-skeleton"
 export const metadata = { title: "Inventory" };
 
 /**
- * Inventory / "Voorraad" module entry point (issue #181) — the beheerder-
+ * Inventory / "Voorraad" module entry point (issue #181) — the admin-
  * facing overview of every engineer's own warehouse (one row per engineer).
  * Mirrors `app/(app)/articles/page.tsx`'s shape exactly: Server Component
  * resolving session/entitlement/RBAC once, handing the data-dependent table
