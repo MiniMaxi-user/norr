@@ -5,7 +5,7 @@ import { Button, Dialog, Inline, Label, RadioGroup, RadioGroupItem, Stack, Text,
 import { ChevronRight, LogOut, Moon, Sun } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
-import { VoorraadSheet } from "./voorraad-sheet";
+import { StockSheet } from "./stock-sheet";
 
 export interface ProfileSheetProps {
   open: boolean;
@@ -70,11 +70,11 @@ const APP_VERSION = "0.1.0";
 export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserId, isOnline }: ProfileSheetProps) {
   const [weekMinutes, setWeekMinutes] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
-  // Issue #182's "Voorraad" (stock) drill-in — this sheet closes itself the
-  // moment it's opened (see the row's own `onClick` below) rather than
-  // stacking two `size="sheet"` dialogs at once, since no existing Profile
-  // sub-view in this app does that.
-  const [voorraadOpen, setVoorraadOpen] = useState(false);
+  // Issue #182's Stock drill-in — this sheet closes itself the moment it's
+  // opened (see the row's own `onClick` below) rather than stacking two
+  // `size="sheet"` dialogs at once, since no existing Profile sub-view in
+  // this app does that.
+  const [stockOpen, setStockOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -163,10 +163,10 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
             >
               <SheetRow label="This week" value={weekMinutes === null ? "…" : formatWeekMinutes(weekMinutes)} />
               <SheetNavRow
-                label="Voorraad"
+                label="Stock"
                 onClick={() => {
                   onOpenChange(false);
-                  setVoorraadOpen(true);
+                  setStockOpen(true);
                 }}
               />
               <SheetRow
@@ -189,7 +189,7 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
         </Dialog.Body>
       </Dialog>
 
-      <VoorraadSheet open={voorraadOpen} onOpenChange={setVoorraadOpen} currentUserId={currentUserId} />
+      <StockSheet open={stockOpen} onOpenChange={setStockOpen} currentUserId={currentUserId} />
     </>
   );
 }
@@ -273,7 +273,7 @@ function SheetRow({
 }
 
 /** Same visual row shape as `SheetRow` above, but a tappable drill-in into a
- * dedicated sub-view (issue #182's "Voorraad" row) rather than a plain
+ * dedicated sub-view (issue #182's Stock row) rather than a plain
  * label/value display — a chevron replaces the value, matching the "this
  * row navigates somewhere" convention. */
 function SheetNavRow({ label, onClick }: { label: string; onClick: () => void }) {
