@@ -31,7 +31,7 @@ import {
  * the migration's RLS exactly): `owner`/`planner`/`administratie` = CRUD, all
  * rows; `finance` = plain `read`, all rows; `engineer` = `read_own` only (no
  * write at all — real quantity writes from the engineer side are a separate
- * PWA/system flow, issue #182). This file builds ONLY the beheerder-facing
+ * PWA/system flow, issue #182). This file builds ONLY the admin-facing
  * (Owner/Planner/Administratie/Finance) overview + detail + stock-editing
  * actions — nothing here is reachable by an Engineer actor in practice (every
  * gate below checks the full, non-`_own` action, which `can()`/`canAny()`
