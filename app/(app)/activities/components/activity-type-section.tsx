@@ -64,7 +64,7 @@ export function ActivityTypeSection({ typeId, activityTypes, editing, onFieldCha
           same design token, rather than adding a one-off size variant for a
           single caller. */}
       <Text tone="muted" style={{ fontSize: "var(--ui-text-xs)" }}>
-        Asset is required for Storing or Onderhoud activities.
+        Asset is required for Breakdown or Maintenance activities.
       </Text>
     </Stack>
   );

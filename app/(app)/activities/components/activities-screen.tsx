@@ -118,7 +118,7 @@ export async function ActivitiesScreen({
           text={
             hasFilters
               ? "Try a different status, type, client, or action holder filter."
-              : "Log your first melding to start tracking it."
+              : "Log your first activity to start tracking it."
           }
           action={canCreate && !hasFilters ? <CreateActivityButton /> : undefined}
         />

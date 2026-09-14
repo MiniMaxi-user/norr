@@ -91,7 +91,7 @@ export default async function NewActivityPage({ searchParams }: NewActivityPageP
         { label: lockedClient.name, href: `/clients/${lockedClient.id}` },
         { label: "New activity" },
       ]
-    : [{ label: "Meldingen", href: "/activities" }, { label: "New activity" }];
+    : [{ label: "Activities", href: "/activities" }, { label: "New activity" }];
 
   const cancelHref = lockedClient ? `/clients/${lockedClient.id}` : "/activities";
 

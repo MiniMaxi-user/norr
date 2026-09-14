@@ -9,23 +9,24 @@ export interface ActivityHistorySectionProps {
   events: ActivityEventRecord[];
 }
 
-/** Dutch display strings for `activity_events.event_type`, exactly the copy
- * the design handoff specifies ("Melding aangemaakt" / "Action holder gezet" /
- * "Werkorder aangemaakt"), plus "Quote aangemaakt" for the `quote_created`
- * kind added by issue #121 — `listActivityEvents` deliberately returns the
- * raw `event_type` rather than pre-translating it (see that action's own doc
- * comment), so the mapping lives here instead. */
+/** Display strings for `activity_events.event_type` (translated to English
+ * per issue #196; the design handoff originally specified Dutch copy here:
+ * "Melding aangemaakt" / "Action holder gezet" / "Werkorder aangemaakt" /
+ * "Quote aangemaakt", the last added for the `quote_created` kind by issue
+ * #121) — `listActivityEvents` deliberately returns the raw `event_type`
+ * rather than pre-translating it (see that action's own doc comment), so the
+ * mapping lives here instead. */
 const EVENT_TYPE_LABELS: Record<ActivityEventType, string> = {
-  created: "Melding aangemaakt",
-  action_holder_changed: "Action holder gezet",
-  work_order_linked: "Werkorder aangemaakt",
-  quote_created: "Quote aangemaakt",
+  created: "Activity created",
+  action_holder_changed: "Action holder set",
+  work_order_linked: "Work order created",
+  quote_created: "Quote created",
 };
 
 /**
- * "Historie" section (`.design-handoff/melding_detail/README.md`) — `mode:
+ * "History" section (`.design-handoff/melding_detail/README.md`) — `mode:
  * "edit"` only, a `KeyValueList` fed by `listActivityEvents` (ascending,
- * oldest first — that action's own order). Label = "{date+time} · {Dutch
+ * oldest first — that action's own order). Label = "{date+time} · {event
  * description}"; value = the resolved actor's name for
  * `created`/`action_holder_changed`, or a link to the related work order/
  * quote for `work_order_linked`/`quote_created` (issue #121).
@@ -47,7 +48,7 @@ export function ActivityHistorySection({ events }: ActivityHistorySectionProps) 
 
   return (
     <Stack gap="md">
-      <SectionHeader icon={Clock} title="Historie" />
+      <SectionHeader icon={Clock} title="History" />
       {items.length > 0 ? <KeyValueList items={items} /> : <Text tone="muted">No history yet.</Text>}
     </Stack>
   );

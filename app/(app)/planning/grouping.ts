@@ -23,9 +23,9 @@ export interface PlanningSection {
   /** Region item id, or `"unassigned"`/`"all"` for the two synthetic
    * buckets below. Stable enough to use as a React key. */
   key: string;
-  /** `null` for the "Alle monteurs" flat mode — per the confirmed product
+  /** `null` for the "All engineers" flat mode — per the confirmed product
    * decision, that mode renders NO region section header/badges at all, the
-   * literal opposite of "Per regio", not a variant of it. */
+   * literal opposite of "By region", not a variant of it. */
   label: string | null;
   /** The region's own `description` (province subtitle), e.g. "Groningen ·
    * Friesland · Drenthe" — `null` for the flat/unassigned buckets. */
@@ -46,7 +46,7 @@ export function toPlanningEngineer(member: TeamMemberRecord): PlanningEngineer {
  * Builds the scheduler board's sections. `"engineer"` grouping is a single
  * flat section with no label (see `PlanningSection.label`'s own comment).
  * `"region"` grouping renders one section per region (in the org's
- * configured `sort_order`), plus a trailing "Overige monteurs" bucket for
+ * configured `sort_order`), plus a trailing "Other engineers" bucket for
  * any engineer with no `regionId` (or one that no longer resolves to a
  * region item) — engineers should never silently vanish from the board just
  * because they haven't been assigned a region yet.
@@ -70,7 +70,7 @@ export function buildEngineerSections(
 
   const unassigned = engineers.filter((engineer) => !engineer.regionId || !regionIds.has(engineer.regionId));
   if (unassigned.length > 0) {
-    sections.push({ key: "unassigned", label: "Overige monteurs", subtitle: null, engineers: unassigned });
+    sections.push({ key: "unassigned", label: "Other engineers", subtitle: null, engineers: unassigned });
   }
   return sections;
 }
@@ -79,7 +79,7 @@ export function buildEngineerSections(
  * panel's "grouped by region with an hour-total per region group" list —
  * grouped by the work order's SITE's region (`siteRegionById`), not the
  * assigned engineer's (a backlog item has no assignee yet). Work orders with
- * no site, or whose site has no region, fall into an "Onbekende regio"
+ * no site, or whose site has no region, fall into an "Unknown region"
  * bucket rather than disappearing. */
 export interface BacklogRegionGroup {
   key: string;
@@ -97,7 +97,7 @@ export function groupBacklogByRegion(
   for (const region of regions) {
     groups.set(region.id, { key: region.id, label: region.label, workOrders: [], totalMinutes: 0 });
   }
-  const unknown: BacklogRegionGroup = { key: "unknown", label: "Onbekende regio", workOrders: [], totalMinutes: 0 };
+  const unknown: BacklogRegionGroup = { key: "unknown", label: "Unknown region", workOrders: [], totalMinutes: 0 };
 
   for (const workOrder of workOrders) {
     const regionId = workOrder.site_id ? (siteRegionById[workOrder.site_id] ?? null) : null;

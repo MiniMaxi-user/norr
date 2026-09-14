@@ -232,7 +232,7 @@ export interface ListWorkOrdersOptions {
    * `scheduledFrom` above. */
   scheduledTo?: string;
   /** When true, filters to work orders with `scheduled_at is null` (issue
-   * #164, Planning module's "Werkvoorraad"/backlog panel — items not yet
+   * #164, Planning module's Backlog panel — items not yet
    * placed on the scheduler grid). */
   unscheduled?: boolean;
   limit?: number;

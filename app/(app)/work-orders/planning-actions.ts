@@ -235,7 +235,7 @@ export async function scheduleWorkOrder(
 }
 
 /**
- * Moves a work order back to the "Werkvoorraad"/backlog — clears both
+ * Moves a work order back to the Backlog — clears both
  * `assignedTo` and `scheduledAt`. Used by both a drag-back-to-backlog and a
  * click-to-unschedule interaction on the Planning grid.
  *

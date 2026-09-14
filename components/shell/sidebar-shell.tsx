@@ -72,9 +72,9 @@ export function SidebarShell({ defaultCollapsed, header, children, footer }: Sid
         <>
           {footer}
           {collapsed ? (
-            <Tooltip content="Navigatie uitklappen">
+            <Tooltip content="Expand navigation">
               <IconButton
-                aria-label="Navigatie uitklappen"
+                aria-label="Expand navigation"
                 aria-pressed={collapsed}
                 variant="ghost"
                 onClick={toggle}
@@ -91,7 +91,7 @@ export function SidebarShell({ defaultCollapsed, header, children, footer }: Sid
               onClick={toggle}
               className="ui-sidebar-collapse-toggle"
             >
-              <PanelLeftClose aria-hidden /> Inklappen
+              <PanelLeftClose aria-hidden /> Collapse
             </Button>
           )}
         </>

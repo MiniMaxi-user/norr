@@ -19,8 +19,8 @@ export default function LoginPage() {
           <Logo />
 
           <Stack gap="xs">
-            <Heading level={1}>Welkom terug</Heading>
-            <Text tone="muted">Log in om je werkorders van vandaag te bekijken.</Text>
+            <Heading level={1}>Welcome back</Heading>
+            <Text tone="muted">Log in to view today&apos;s work orders.</Text>
           </Stack>
 
           <LoginForm />

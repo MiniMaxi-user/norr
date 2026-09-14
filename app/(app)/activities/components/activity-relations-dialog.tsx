@@ -123,9 +123,9 @@ export function ActivityRelationsDialog({
   function handleSave() {
     void save({ clientId, assetId, contactPersonId, contactName, contactPhone, contactEmail }, () => {
       if (!clientId && !assetId) return "Select a client or an asset.";
-      if (assetRequired && !assetId) return "An asset is required for Storing or Onderhoud activities.";
+      if (assetRequired && !assetId) return "An asset is required for Breakdown or Maintenance activities.";
       if (contactRequired && !contactPersonId && !(contactName && contactPhone)) {
-        return "A contact person, or both a name and phone number, is required for Bel activiteit.";
+        return "A contact person, or both a name and phone number, is required for Call activity.";
       }
       return null;
     });
@@ -189,7 +189,7 @@ export function ActivityRelationsDialog({
               </Stack>
             )}
           </FormGrid>
-          {assetRequired && !isAssetLocked && <Text tone="muted">Asset is required for Storing or Onderhoud activities.</Text>}
+          {assetRequired && !isAssetLocked && <Text tone="muted">Asset is required for Breakdown or Maintenance activities.</Text>}
 
           <Stack gap="xs">
             <Label htmlFor="activity-relations-contact-person">Contact person</Label>
@@ -205,8 +205,8 @@ export function ActivityRelationsDialog({
             />
             <Text tone="muted">
               {contactRequired
-                ? "A contact person, or a name and phone number, is required for Bel activiteit."
-                : "Who to contact about this melding, if anyone. Name/phone/email can be fine-tuned in the Contact person section below."}
+                ? "A contact person, or a name and phone number, is required for Call activity."
+                : "Who to contact about this activity, if anyone. Name/phone/email can be fine-tuned in the Contact person section below."}
             </Text>
           </Stack>
         </Stack>

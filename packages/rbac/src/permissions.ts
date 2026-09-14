@@ -215,18 +215,18 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
   // reasoning `checklists`' own comment above gives for not folding into
   // `planning`.
   //
-  // Also deliberately NOT the existing `billing` ("Facturatie") module
+  // Also deliberately NOT the existing `billing` ("Billing") module
   // below: that row (`finance`+`administratie` CRUD, `owner` read-only) is a
   // docs/ARCHITECTURE.md placeholder from the original matrix (issue #4)
   // that has never actually been implemented anywhere in code (no
   // `app/(app)/billing` page/actions exist yet) — it's reserved for a
   // broader, not-yet-built tenant billing/payment-tracking module, and its
-  // dormant nav entry (`components/shell/nav-items.ts`'s "Facturatie" ->
+  // dormant nav entry (`components/shell/nav-items.ts`'s "Billing" ->
   // `/billing`, a route that doesn't exist yet) would light up in the
   // sidebar for every role — including roles with zero permission on it —
   // the moment `billing` were added to `SHIPPED_FEATURES` in
   // lib/rbac/features.ts. This story is a button + panel on the Quote detail
-  // page, not a new top-level Facturatie section, so it gets its own key
+  // page, not a new top-level Billing section, so it gets its own key
   // instead of prematurely shipping that dormant one.
   //
   // `finance` gets NONE: the issue names exactly three actor types (owner,

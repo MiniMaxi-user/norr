@@ -106,18 +106,15 @@ export const NAV_ITEMS: NavItem[] = [
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
   { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
   // Activities / "Meldingen" (issue #59) — the ticket-like entity that
-  // precedes a Work Order (call-back, storing, onderhoud, afspraak, e-mail
-  // opvolging). `moduleKey`/label are Dutch throughout this domain, matching
-  // the "Facturatie" precedent for billing. Grouped with the other
-  // operational entities that precede/feed a Work Order (Clients/Assets/
-  // Contracts/Work Orders), not "Insights".
-  { moduleKey: "activities", label: "Meldingen", href: "/activities", icon: Bell, group: "Operations" },
+  // precedes a Work Order (call-back, breakdown, maintenance, appointment,
+  // email follow-up). Grouped with the other operational entities that
+  // precede/feed a Work Order (Clients/Assets/Contracts/Work Orders), not
+  // "Insights". Label moved to English on product request (issue #196,
+  // 2026-09-14).
+  { moduleKey: "activities", label: "Activities", href: "/activities", icon: Bell, group: "Operations" },
   // Inventory (issue #181) — an overview of every engineer's per-engineer
-  // warehouse (one row per engineer), for beheerders (Owner/Planner/
-  // Administratie/Finance) only. Unlike "Meldingen"/"Facturatie" right above,
-  // this module's label was moved to English on product request (2026-09-14)
-  // — it no longer follows those two modules' Dutch-labeled convention, so
-  // don't use it as precedent for future modules either way. `icon: Boxes`
+  // warehouse (one row per engineer), for admins (Owner/Planner/
+  // Administratie/Finance) only. `icon: Boxes`
   // is reused from Assets/Articles above
   // for the same reason Articles' own comment gives: this icon set
   // (packages/ui/src/icons.tsx) has no dedicated warehouse/crate icon, and
@@ -139,7 +136,7 @@ export const NAV_ITEMS: NavItem[] = [
     requiredPermission: { module: "inventory", action: "read" },
   },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3, group: "Insights" },
-  { moduleKey: "billing", label: "Facturatie", href: "/billing", icon: Receipt, group: "Insights" },
+  { moduleKey: "billing", label: "Billing", href: "/billing", icon: Receipt, group: "Insights" },
   // Everyone can *view* Settings (read-only for non-owners — see
   // `lib/rbac/permissions.ts`'s `settings` entry); the module itself is
   // gated only on entitlement (`hasFeature`) like every other nav item, not

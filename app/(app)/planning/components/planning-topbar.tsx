@@ -7,13 +7,13 @@ import { addDays, formatDayHeading, formatWeekHeading, isToday } from "../date-u
 import type { PlanningGroup, PlanningView } from "../types";
 
 const VIEW_OPTIONS: readonly ViewSwitcherOption<PlanningView>[] = [
-  { value: "day", label: "Dag" },
+  { value: "day", label: "Day" },
   { value: "week", label: "Week" },
 ];
 
 const GROUP_OPTIONS: readonly ViewSwitcherOption<PlanningGroup>[] = [
-  { value: "region", label: "Per regio" },
-  { value: "engineer", label: "Alle monteurs" },
+  { value: "region", label: "By region" },
+  { value: "engineer", label: "All engineers" },
 ];
 
 export interface PlanningTopbarProps {
@@ -27,9 +27,9 @@ export interface PlanningTopbarProps {
 
 /**
  * The dark control bar (issue #164): date nav (‹ / heading / ›), a
- * "Vandaag" shortcut, the static "08:00–18:00" visible-hours label, the
- * GROEPEREN (Per regio / Alle monteurs) and Dag/Week `ViewSwitcher`s, and
- * the "+ Melding" trigger — reuses the existing `CreateActivityButton`
+ * "Today" shortcut, the static "08:00–18:00" visible-hours label, the
+ * Group by (By region / All engineers) and Day/Week `ViewSwitcher`s, and
+ * the "+ Activity" trigger — reuses the existing `CreateActivityButton`
  * (`app/(app)/activities/components/create-activity-button.tsx`) rather
  * than a bespoke Planning-only "new activity" trigger.
  */
@@ -40,7 +40,7 @@ export function PlanningTopbar({ date, view, group, onDateChange, onViewChange, 
     <div className="ui-planning-topbar">
       <div className="ui-planning-topbar-left">
         <IconButton
-          aria-label={view === "week" ? "Vorige week" : "Vorige dag"}
+          aria-label={view === "week" ? "Previous week" : "Previous day"}
           variant="ghost"
           onClick={() => onDateChange(addDays(date, -step))}
         >
@@ -50,14 +50,14 @@ export function PlanningTopbar({ date, view, group, onDateChange, onViewChange, 
           {view === "week" ? formatWeekHeading(date) : formatDayHeading(date)}
         </Text>
         <IconButton
-          aria-label={view === "week" ? "Volgende week" : "Volgende dag"}
+          aria-label={view === "week" ? "Next week" : "Next day"}
           variant="ghost"
           onClick={() => onDateChange(addDays(date, step))}
         >
           <ChevronRight aria-hidden />
         </IconButton>
         <Button variant="outline" size="sm" disabled={isToday(date)} onClick={() => onDateChange(new Date())}>
-          Vandaag
+          Today
         </Button>
         <Text tone="muted" className="ui-planning-topbar-hours">
           08:00 – 18:00
@@ -65,10 +65,10 @@ export function PlanningTopbar({ date, view, group, onDateChange, onViewChange, 
       </div>
 
       <div className="ui-planning-topbar-right">
-        <Text className="ui-planning-topbar-label">Groeperen</Text>
-        <ViewSwitcher aria-label="Groeperen op" value={group} options={GROUP_OPTIONS} onChange={onGroupChange} />
-        <ViewSwitcher aria-label="Dag- of weekweergave" value={view} options={VIEW_OPTIONS} onChange={onViewChange} />
-        <CreateActivityButton label="+ Melding" size="sm" />
+        <Text className="ui-planning-topbar-label">Group by</Text>
+        <ViewSwitcher aria-label="Group by" value={group} options={GROUP_OPTIONS} onChange={onGroupChange} />
+        <ViewSwitcher aria-label="Day or week view" value={view} options={VIEW_OPTIONS} onChange={onViewChange} />
+        <CreateActivityButton label="+ Activity" size="sm" />
       </div>
     </div>
   );

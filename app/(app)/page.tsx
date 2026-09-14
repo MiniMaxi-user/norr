@@ -12,7 +12,7 @@ export default function DashboardPage() {
       <Heading level={1}>Welcome to Norr</Heading>
       <Text tone="muted">
         The app shell is in place. Module content (Clients, Assets,
-        Contracts, Planning, Reporting, Facturatie) ships in later phases —
+        Contracts, Planning, Reporting, Billing) ships in later phases —
         see docs/ROADMAP.md.
       </Text>
 

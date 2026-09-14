@@ -400,7 +400,7 @@ export async function createActivity(input: unknown): Promise<ActionResult<{ act
   if (!typeCheck.ok) return fail(typeCheck.error, { typeId: [typeCheck.error] });
 
   if ((typeCheck.value === "storing" || typeCheck.value === "onderhoud") && !parsed.data.assetId) {
-    const message = "An asset is required for Storing or Onderhoud activities.";
+    const message = "An asset is required for Breakdown or Maintenance activities.";
     return fail(message, { assetId: [message] });
   }
 
@@ -409,7 +409,7 @@ export async function createActivity(input: unknown): Promise<ActionResult<{ act
     !parsed.data.contactPersonId &&
     !(parsed.data.contactName && parsed.data.contactPhone)
   ) {
-    const message = "A contact person, or both a name and phone number, is required for Bel activiteit.";
+    const message = "A contact person, or both a name and phone number, is required for Call activity.";
     return fail(message, { contactName: [message], contactPhone: [message] });
   }
 

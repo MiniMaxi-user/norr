@@ -40,12 +40,12 @@ export function LoginForm({ next }: { next?: string }) {
         <input type="hidden" name="next" value={next ?? ""} />
 
         <Stack gap="sm">
-          <Label htmlFor="email">E-mailadres</Label>
+          <Label htmlFor="email">Email address</Label>
           <Input
             id="email"
             name="email"
             type="email"
-            placeholder="jij@bedrijf.nl"
+            placeholder="you@company.com"
             autoComplete="email"
             required
             value={email}
@@ -55,7 +55,7 @@ export function LoginForm({ next }: { next?: string }) {
 
         <Stack gap="sm">
           <Inline justify="between" align="center">
-            <Label htmlFor="password">Wachtwoord</Label>
+            <Label htmlFor="password">Password</Label>
             {/* No password-reset flow exists yet (lib/auth/actions.ts) —
                 kept visually present but inert per the product owner's
                 explicit note that non-functional chrome is fine for now.
@@ -63,7 +63,7 @@ export function LoginForm({ next }: { next?: string }) {
                 mouse/pointer only, so Tab goes straight from e-mail to
                 password. */}
             <Button type="button" variant="link" size="sm" tabIndex={-1}>
-              Wachtwoord vergeten?
+              Forgot password?
             </Button>
           </Inline>
           <Input
@@ -88,7 +88,7 @@ export function LoginForm({ next }: { next?: string }) {
             checked={rememberEmail}
             onChange={(event) => setRememberEmail(event.target.checked)}
           />
-          <Label htmlFor="remember-email">Onthoud mijn gegevens</Label>
+          <Label htmlFor="remember-email">Remember my details</Label>
         </Inline>
 
         {state.error && <Text tone="danger">{state.error}</Text>}
@@ -103,7 +103,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" fullWidth disabled={pending}>
-      {pending ? "Inloggen…" : "Inloggen"}
+      {pending ? "Signing in…" : "Sign in"}
     </Button>
   );
 }

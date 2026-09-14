@@ -61,9 +61,9 @@ export type FeatureKey =
   // destination. Every invoice Server Action (once `api-backend-engineer`
   // lands them) must call `hasFeature()` first per CLAUDE.md rule 3.
   | "invoicing"
-  // Activities / "Meldingen" (issue #59) — see
+  // Activities (issue #59) — see
   // `lib/rbac/permissions.ts`'s dedicated `activities` module and
-  // `components/shell/nav-items.ts`'s "Meldingen" nav entry. Every Server
+  // `components/shell/nav-items.ts`'s "Activities" nav entry. Every Server
   // Action for this module must call `hasFeature()` first per CLAUDE.md
   // rule 3.
   | "activities"
@@ -89,12 +89,12 @@ export type FeatureKey =
   | "inventory"
   | "reporting"
   // Placeholder from the original matrix (issue #4) for a future, broader
-  // tenant billing/payment-tracking module ("Facturatie" — see
+  // tenant billing/payment-tracking module ("Billing" — see
   // `components/shell/nav-items.ts`) — NOT the same thing as `invoicing`
   // above (issue #119's PDF-invoice-from-a-quote capability, which has its
   // own key). Deliberately kept OUT of `SHIPPED_FEATURES` below: this module
   // has no page/actions of its own yet, and shipping it would light up the
-  // dormant "Facturatie" nav entry for every role.
+  // dormant "Billing" nav entry for every role.
   | "billing"
   // Tenant-configurable reference lists (picklists) — see
   // lib/reference-lists/actions.ts and lib/rbac/permissions.ts's `settings`
@@ -165,7 +165,7 @@ export type FeatureKey =
  * `supabase/migrations/20260824090000_quotes_core.sql`'s hand-off notes —
  * double-checked it's actually in this Set, not just the `FeatureKey` union.
  *
- * `activities` added alongside the Activities/"Meldingen" module (issue #59
+ * `activities` added alongside the Activities module (issue #59
  * — `supabase/migrations/20260828090000_activities_core.sql`'s RLS already
  * shipped): every Activities Server Action (once `api-backend-engineer`
  * lands them) will call `hasFeature()` first per CLAUDE.md rule 3 — same
@@ -203,7 +203,7 @@ export type FeatureKey =
  * `contracts`/`planning` above. Deliberately NOT the same as adding `billing`
  * here — `billing` stays out of this set (see its `FeatureKey` comment
  * above): it's still an unimplemented placeholder, and adding it now would
- * light up the dormant "Facturatie" nav entry (`components/shell/
+ * light up the dormant "Billing" nav entry (`components/shell/
  * nav-items.ts`, pointing at a `/billing` route that doesn't exist yet) for
  * every role, which this story does not intend.
  */
