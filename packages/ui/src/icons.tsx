@@ -197,6 +197,14 @@ export const MapPin = createIcon("MapPin", (
   </>
 ));
 
+export const Home = createIcon("Home", (
+  <>
+    <path d="M4 11.5 12 4l8 7.5" />
+    <path d="M6 10v9.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V10" />
+    <path d="M10 20.5V14h4v6.5" />
+  </>
+));
+
 export const Building2 = createIcon("Building2", (
   <>
     <rect x={4} y={3} width={12} height={18} rx={1} />

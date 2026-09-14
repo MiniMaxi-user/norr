@@ -48,9 +48,9 @@ const PREFETCH_BATCH_SIZE = 4;
  * on this same date) — matches `WORK_ORDER_SECTIONS` in `_nav/bottom-bar.tsx`
  * exactly (that file can't be imported from here, separate route group), plus
  * the bare no-`?section=` URL Today's own work-order links use (defaults to
- * "details" client-side, but is a DIFFERENT cache key from `?section=details`
+ * "home" client-side, but is a DIFFERENT cache key from `?section=home`
  * now that `shellCacheKey` keys by the full request again). */
-const WORK_ORDER_SHELL_SECTIONS = ["details", "hours", "articles", "photos", "sign"];
+const WORK_ORDER_SHELL_SECTIONS = ["home", "work", "hours", "articles", "photos", "sign"];
 
 /** Posts `{ type: "PREFETCH_SHELL", url }` to the active service worker so
  * it can warm `SHELL_CACHE` for `url` via its own same-origin `fetch()` (see

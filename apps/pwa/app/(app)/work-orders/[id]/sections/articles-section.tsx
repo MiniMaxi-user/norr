@@ -2,18 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, EmptyState, IconButton, Inline, Stack, Text } from "@yourorg/ui";
-import { Boxes, Minus, Plus, X } from "@yourorg/ui/icons";
+import { Boxes, Minus, Plus } from "@yourorg/ui/icons";
 import { removeLocalArticle, updateLocalArticleQuantity, type LocalArticle } from "@/lib/offline/db";
 import type { WorkOrderArticleEntry } from "@/lib/work-orders/types";
 import { ArticleCatalogSheet } from "../article-catalog-sheet";
+import { SwipeableRow } from "./swipeable-row";
 
 /**
  * The "Articles" tab (issue #170, IMPLEMENTATION.md §4) — server-synced
  * `work_order_articles` rows (read-only here, same reasoning as
  * `hours-section.tsx`) plus this device's own local, not-yet-synced
- * additions, in one list. Only local rows get a remove button — removing a
+ * additions, in one list. Only local rows are removable — removing a
  * server-synced row would be a write against the server, out of scope for
- * this story (`/api/work-orders/[id]`'s own doc comment).
+ * this story (`/api/work-orders/[id]`'s own doc comment). Removal is
+ * swipe-to-delete (product feedback, 2026-09-14 — matches the Hours tab's
+ * `SwipeableRow` gesture instead of a standalone cross/X button); a
+ * server-synced row gets no `onDelete`, so `SwipeableRow` renders it inert
+ * (no reveal, no drag), same convention `hours-section.tsx` uses.
  */
 export function ArticlesSection({
   workOrderId,
@@ -52,22 +57,23 @@ export function ArticlesSection({
         <Card>
           <Stack gap="sm">
             {serverArticles.map((article) => (
-              <ArticleRow
-                key={article.id}
-                quantity={article.quantity}
-                description={article.description}
-                articleNumber={article.articleNumber}
-              />
+              <SwipeableRow key={article.id}>
+                <ArticleRow
+                  quantity={article.quantity}
+                  description={article.description}
+                  articleNumber={article.articleNumber}
+                />
+              </SwipeableRow>
             ))}
             {localArticles.map((article) => (
-              <ArticleRow
-                key={article.id}
-                quantity={article.quantity}
-                description={article.description}
-                articleNumber={article.articleNumber}
-                onRemove={() => void handleRemove(article.id)}
-                onQuantityChange={(delta) => void handleQuantityChange(article.id, delta)}
-              />
+              <SwipeableRow key={article.id} onDelete={() => void handleRemove(article.id)}>
+                <ArticleRow
+                  quantity={article.quantity}
+                  description={article.description}
+                  articleNumber={article.articleNumber}
+                  onQuantityChange={(delta) => void handleQuantityChange(article.id, delta)}
+                />
+              </SwipeableRow>
             ))}
           </Stack>
         </Card>
@@ -110,13 +116,11 @@ function ArticleRow({
   quantity,
   description,
   articleNumber,
-  onRemove,
   onQuantityChange,
 }: {
   quantity: number;
   description: string;
   articleNumber: string;
-  onRemove?: () => void;
   /** Only passed for local (not-yet-synced) rows — see this file's own doc
    * comment on why server-synced rows stay read-only. Tapping the plain
    * quantity badge reveals a "+"-before/"-"-after stepper in its place. */
@@ -139,56 +143,49 @@ function ArticleRow({
   }, [stepperOpen]);
 
   return (
-    <Inline justify="between" align="center" gap="sm">
-      <Inline gap="sm" align="center">
-        {!onQuantityChange ? (
-          <span aria-hidden style={quantityBadgeStyle}>
-            {quantity}
-          </span>
-        ) : stepperOpen ? (
-          <div ref={stepperRef} style={{ display: "contents" }}>
-            <Inline gap="xs" align="center">
-              <IconButton
-                variant="ghost"
-                aria-label="Increase quantity"
-                onClick={() => onQuantityChange(1)}
-                style={{ width: 44, height: 44 }}
-              >
-                <Plus aria-hidden width={16} height={16} />
-              </IconButton>
-              <Text style={{ minWidth: "1.5em", textAlign: "center", fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>
-                {quantity}
-              </Text>
-              <IconButton
-                variant="ghost"
-                aria-label="Decrease quantity"
-                onClick={() => onQuantityChange(-1)}
-                style={{ width: 44, height: 44 }}
-              >
-                <Minus aria-hidden width={16} height={16} />
-              </IconButton>
-            </Inline>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setStepperOpen(true)}
-            aria-label={`Quantity ${quantity}, tap to adjust`}
-            style={{ ...quantityBadgeStyle, color: "inherit", cursor: "pointer" }}
-          >
-            {quantity}
-          </button>
-        )}
-        <Stack gap="xs">
-          <Text>{description}</Text>
-          <Text tone="muted">{articleNumber}</Text>
-        </Stack>
-      </Inline>
-      {onRemove && (
-        <IconButton variant="ghost" aria-label="Remove article" onClick={onRemove} style={{ width: 44, height: 44 }}>
-          <X aria-hidden />
-        </IconButton>
+    <Inline gap="sm" align="center">
+      {!onQuantityChange ? (
+        <span aria-hidden style={quantityBadgeStyle}>
+          {quantity}
+        </span>
+      ) : stepperOpen ? (
+        <div ref={stepperRef} style={{ display: "contents" }}>
+          <Inline gap="xs" align="center">
+            <IconButton
+              variant="ghost"
+              aria-label="Increase quantity"
+              onClick={() => onQuantityChange(1)}
+              style={{ width: 44, height: 44 }}
+            >
+              <Plus aria-hidden width={16} height={16} />
+            </IconButton>
+            <Text style={{ minWidth: "1.5em", textAlign: "center", fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>
+              {quantity}
+            </Text>
+            <IconButton
+              variant="ghost"
+              aria-label="Decrease quantity"
+              onClick={() => onQuantityChange(-1)}
+              style={{ width: 44, height: 44 }}
+            >
+              <Minus aria-hidden width={16} height={16} />
+            </IconButton>
+          </Inline>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setStepperOpen(true)}
+          aria-label={`Quantity ${quantity}, tap to adjust`}
+          style={{ ...quantityBadgeStyle, color: "inherit", cursor: "pointer" }}
+        >
+          {quantity}
+        </button>
       )}
+      <Stack gap="xs">
+        <Text>{description}</Text>
+        <Text tone="muted">{articleNumber}</Text>
+      </Stack>
     </Inline>
   );
 }
