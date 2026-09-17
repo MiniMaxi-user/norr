@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { findAutoDraftQuoteId, computeUnresolvedTimeEntryIds } from "@/lib/quotes/auto-draft";
+import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 
 /**
  * "Create Quote from Work Order" (issue #94, originally; issue #109 changed
@@ -121,22 +122,90 @@ interface ResolvedBillingRate {
   resolved_purchase_price: number | null;
 }
 
-/** Same whole-minute rounding step `elapsedMinutes` uses for display in
- * `./components/format-work-order-time.ts`, converted to a 2-decimal-place
+/** Row shape read straight off `organizations` for the six issue #198
+ * travel/work minimum + rounding columns — a direct, minimal-column query
+ * (not `getOrganizationTimeRoundingSettings`,
+ * `app/(app)/settings/organization-time-rounding-actions.ts`) since this
+ * code path is already inside an authorized request and doesn't need that
+ * action's own `requireModuleContext`/`can()` round trip. */
+interface OrganizationTimeRoundingRow {
+  travel_time_minimum_minutes: number | null;
+  travel_time_rounding_minutes: number | null;
+  travel_time_rounding_direction: "up" | "down";
+  work_time_minimum_minutes: number | null;
+  work_time_rounding_minutes: number | null;
+  work_time_rounding_direction: "up" | "down";
+}
+
+/** The org's travel/work rounding rules, shaped for `computeQuantityHours`. */
+interface OrganizationTimeRoundingRules {
+  travel: TimeRoundingRule;
+  work: TimeRoundingRule;
+}
+
+/** Fetches this org's issue #198 travel/work minimum + rounding settings
+ * once per `createBrandNewQuoteFromWorkOrder` call (not once per time entry)
+ * — a single row, six columns, no join. */
+async function getOrganizationTimeRoundingRules(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+): Promise<{ rules: OrganizationTimeRoundingRules | null; error: { code?: string; message: string } | null }> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select(
+      "travel_time_minimum_minutes, travel_time_rounding_minutes, travel_time_rounding_direction, work_time_minimum_minutes, work_time_rounding_minutes, work_time_rounding_direction",
+    )
+    .eq("id", organizationId)
+    .maybeSingle<OrganizationTimeRoundingRow>();
+
+  if (error) return { rules: null, error };
+  if (!data) return { rules: null, error: null };
+
+  return {
+    rules: {
+      travel: {
+        minimumMinutes: data.travel_time_minimum_minutes,
+        roundingMinutes: data.travel_time_rounding_minutes,
+        direction: data.travel_time_rounding_direction,
+      },
+      work: {
+        minimumMinutes: data.work_time_minimum_minutes,
+        roundingMinutes: data.work_time_rounding_minutes,
+        direction: data.work_time_rounding_direction,
+      },
+    },
+    error: null,
+  };
+}
+
+/**
+ * Same whole-minute-then-hours conversion `elapsedMinutes` uses for display
+ * in `./components/format-work-order-time.ts`, converted to a 2-decimal-place
  * hours figure (`quote_line_items.quantity` is `numeric(10,2)`) — kept
  * IDENTICAL to `sync_time_entry_to_auto_draft_quote`'s own rounding (see that
- * function's comment in the issue #109 migration) so a quantity never
- * differs between this fallback path and the always-on sync path. Returns
- * `null` when a duration genuinely can't be computed (defensive; `ended_at`
- * is already guaranteed non-null and >= `started_at` by the time this is
- * called) or rounds to `0` hours (a sub-30-second entry — treated as
- * unresolvable, same as the sync trigger). */
-function computeQuantityHours(startedAt: string, endedAt: string): number | null {
+ * function's comment, updated by issue #198's migration) so a quantity never
+ * differs between this fallback path and the always-on sync path.
+ *
+ * Issue #198: after computing the raw whole-minute duration, applies the
+ * org's own minimum-then-rounding rule for this entry's type (`rule` —
+ * travel or work, chosen by the caller per `time_entry_type`) via
+ * `computeRoundedMinutes` (`@yourorg/time-rounding`, the JS twin of
+ * `compute_rounded_minutes`,
+ * `supabase/migrations/20260920090000_travel_work_time_rounding_settings.sql`)
+ * BEFORE converting to hours — same order the SQL trigger applies it in.
+ *
+ * Returns `null` when a duration genuinely can't be computed (defensive;
+ * `ended_at` is already guaranteed non-null and >= `started_at` by the time
+ * this is called) or the net minutes round to `0` hours (treated as
+ * unresolvable, same as the sync trigger).
+ */
+function computeQuantityHours(startedAt: string, endedAt: string, rule: TimeRoundingRule): number | null {
   const start = new Date(startedAt).getTime();
   const end = new Date(endedAt).getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
   const totalMinutes = Math.round((end - start) / 60000);
-  const hours = Math.round((totalMinutes / 60) * 100) / 100;
+  const netMinutes = computeRoundedMinutes(totalMinutes, rule);
+  const hours = Math.round((netMinutes / 60) * 100) / 100;
   return hours > 0 ? hours : null;
 }
 
@@ -276,7 +345,7 @@ async function createBrandNewQuoteFromWorkOrder(
   organizationId: string,
   workOrder: SourceWorkOrder,
 ): Promise<ActionResult<CreateQuoteFromWorkOrderResult>> {
-  const [timeEntriesResult, workOrderArticlesResult] = await Promise.all([
+  const [timeEntriesResult, workOrderArticlesResult, timeRoundingResult] = await Promise.all([
     supabase
       .from("time_entries")
       .select("id, user_id, started_at, ended_at, time_entry_type:reference_list_items!time_entries_entry_type_id_fkey(value)")
@@ -289,10 +358,14 @@ async function createBrandNewQuoteFromWorkOrder(
       )
       .eq("work_order_id", workOrder.id)
       .order("created_at", { ascending: true }),
+    getOrganizationTimeRoundingRules(supabase, organizationId),
   ]);
 
   if (timeEntriesResult.error) return fail(mapDbError(timeEntriesResult.error));
   if (workOrderArticlesResult.error) return fail(mapDbError(workOrderArticlesResult.error));
+  if (timeRoundingResult.error) return fail(mapDbError(timeRoundingResult.error));
+  if (!timeRoundingResult.rules) return fail("Organization not found.");
+  const timeRoundingRules = timeRoundingResult.rules;
 
   const allTimeEntries = (timeEntriesResult.data ?? []) as unknown as SourceTimeEntry[];
   const workOrderArticles = (workOrderArticlesResult.data ?? []) as unknown as SourceWorkOrderArticle[];
@@ -352,7 +425,11 @@ async function createBrandNewQuoteFromWorkOrder(
       continue;
     }
 
-    const quantity = computeQuantityHours(entry.started_at, entry.ended_at as string);
+    const quantity = computeQuantityHours(
+      entry.started_at,
+      entry.ended_at as string,
+      isTravel ? timeRoundingRules.travel : timeRoundingRules.work,
+    );
     if (quantity === null) {
       // Rounds to 0 hours (or a defensive guard tripped) — treated the same
       // as "could not be priced" rather than inserted as a meaningless

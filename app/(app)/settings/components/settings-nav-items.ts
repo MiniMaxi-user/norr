@@ -131,7 +131,15 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     // same "own group" treatment "Templates" gets for the same reason.
     label: "Billing",
     icon: CreditCard,
-    items: [{ key: "default_rates", label: "Default Rates", href: "/settings/default-rates" }],
+    items: [
+      { key: "default_rates", label: "Default Rates", href: "/settings/default-rates" },
+      // Issue #198 — org-configurable travel/work minimum-duration +
+      // rounding settings ("Afronding reistijd werktijd"). Grouped next to
+      // "Default Rates" (same "Billing" group) since it's the other half of
+      // how a logged time entry becomes a billed duration — a rate setting,
+      // not an article catalog entry or a reference-list picklist.
+      { key: "time_rounding", label: "Time Rounding", href: "/settings/time-rounding" },
+    ],
   },
   {
     label: "People",

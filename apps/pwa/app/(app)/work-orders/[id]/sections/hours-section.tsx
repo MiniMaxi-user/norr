@@ -2,11 +2,19 @@
 
 import { useState } from "react";
 import { Badge, Card, Inline, Stack, Text } from "@yourorg/ui";
+import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 import { deleteClockPeriod, updateClockPeriodTimes, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
-import type { WorkOrderTimeEntry } from "@/lib/work-orders/types";
+import type { TimeRoundingSettings, WorkOrderTimeEntry } from "@/lib/work-orders/types";
 import { EditHoursDialog, type EditableHourRow } from "./edit-hours-dialog";
 import { SwipeableRow } from "./swipeable-row";
+
+/** Safe no-op rule (today's exact pre-#198 behavior) — used whenever the
+ * org's cached rounding settings (issue #198,
+ * `getCachedTimeRoundingSettings`/`work-order-detail.tsx`) aren't loaded
+ * yet, e.g. the very first offline load before any sync has ever landed.
+ * Never blocks rendering on the real settings arriving. */
+const NO_OP_RULE: TimeRoundingRule = { minimumMinutes: null, roundingMinutes: null, direction: "up" };
 
 interface HourRow {
   id: string;
@@ -18,6 +26,18 @@ interface HourRow {
    * for a server-synced `time_entries` row (see this file's own top doc
    * comment on why those stay read-only). */
   localId?: number;
+}
+
+/** Issue #198 — this row's rounded (billable) duration in minutes, applied
+ * uniformly to local and server-synced rows alike (the rounding rule is the
+ * same regardless of sync state) and to a still-RUNNING local period's live
+ * elapsed time (an approximate in-progress reading either way — same
+ * treatment a raw duration already got before this). `now` is only used for
+ * a running row's `endedAt ?? now`. */
+function netMinutesFor(row: HourRow, settings: TimeRoundingSettings | null, now: number): number {
+  const rawMinutes = Math.max(0, Math.round(((row.endedAt ?? now) - row.startedAt) / 60000));
+  const rule = settings ? settings[row.kind] : NO_OP_RULE;
+  return computeRoundedMinutes(rawMinutes, rule);
 }
 
 function formatRange(startedAt: number, endedAt: number | null): string {
@@ -48,15 +68,30 @@ function formatRange(startedAt: number, endedAt: number | null): string {
  * row just makes it inert (no reveal, no drag), so server rows and the
  * running row read exactly as they did before this feature, no separate
  * "read-only" branch needed.
+ *
+ * Issue #198: every duration shown here (per-row, the Travel/Work totals,
+ * the top "Hours" badge) is the NET (rounded/billable) figure —
+ * `netMinutesFor` — not the raw clocked one; the row's Start–End clock-time
+ * range (`formatRange`) is unaffected and always stays raw, since that's
+ * what actually happened, not a billable amount. Edit (`EditHoursDialog`)
+ * still edits the row's real gross start/end clock times exactly as before
+ * — this only changes what duration figure gets DISPLAYED here.
  */
 export function HoursSection({
   periods,
   serverTimeEntries,
   onPeriodsChange,
+  roundingSettings,
 }: {
   periods: ClockPeriod[];
   serverTimeEntries: WorkOrderTimeEntry[];
   onPeriodsChange: () => void | Promise<void>;
+  /** Issue #198 — the org's cached travel/work minimum + rounding settings
+   * (`getCachedTimeRoundingSettings`, read by `work-order-detail.tsx`).
+   * `null` until the first successful cache read — every duration below
+   * falls back to a safe no-op rule (`NO_OP_RULE`) in that case rather than
+   * blocking rendering on it. */
+  roundingSettings: TimeRoundingSettings | null;
 }) {
   const now = Date.now();
   const [editingRow, setEditingRow] = useState<EditableHourRow | null>(null);
@@ -82,16 +117,24 @@ export function HoursSection({
 
   const rows = [...serverRows, ...localRows].sort((a, b) => a.startedAt - b.startedAt);
 
+  // Issue #198 — every duration below (the per-row figure, the Travel/Work
+  // totals, and the top "Hours" badge) is the NET (rounded/billable) one,
+  // summed from each row's own already-rounded minutes rather than rounding
+  // one lump sum — same per-entry rounding the web work order screen and
+  // `computeQuantityHours` (`app/(app)/work-orders/create-quote-actions.ts`)
+  // already apply. The row's own Start–End clock-time range (`formatRange`
+  // below) stays raw/gross regardless — only a duration figure is ever
+  // rounded, never the logged clock times themselves.
   const totals = rows.reduce(
     (acc, row) => {
-      const elapsed = (row.endedAt ?? now) - row.startedAt;
-      if (row.kind === "travel") acc.travelMs += elapsed;
-      else acc.workMs += elapsed;
+      const netMinutes = netMinutesFor(row, roundingSettings, now);
+      if (row.kind === "travel") acc.travelMinutes += netMinutes;
+      else acc.workMinutes += netMinutes;
       return acc;
     },
-    { travelMs: 0, workMs: 0 },
+    { travelMinutes: 0, workMinutes: 0 },
   );
-  const totalMs = totals.travelMs + totals.workMs;
+  const totalMinutes = totals.travelMinutes + totals.workMinutes;
 
   function handleEditTap(row: HourRow) {
     if (row.localId === undefined || row.endedAt === null) return;
@@ -116,7 +159,9 @@ export function HoursSection({
         <Text style={{ fontSize: "11px", letterSpacing: "0.13em", textTransform: "uppercase", color: "var(--ui-muted-subtle)" }}>
           Hours
         </Text>
-        <Text style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{formatClockHoursMinutes(totalMs)}</Text>
+        <Text style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+          {formatClockHoursMinutes(totalMinutes * 60000)}
+        </Text>
       </Inline>
 
       {rows.length === 0 ? (
@@ -143,7 +188,7 @@ export function HoursSection({
                     </Text>
                   </Inline>
                   <Text style={{ fontVariantNumeric: "tabular-nums" }}>
-                    {formatClockHoursMinutes((row.endedAt ?? now) - row.startedAt)}
+                    {formatClockHoursMinutes(netMinutesFor(row, roundingSettings, now) * 60000)}
                   </Text>
                 </Inline>
               </SwipeableRow>
@@ -155,8 +200,8 @@ export function HoursSection({
       <Text tone="muted">Times come from the timer on this device.</Text>
 
       <Inline justify="between" gap="sm" wrap>
-        <Text tone="muted">Travel {formatClockHoursMinutes(totals.travelMs)}</Text>
-        <Text tone="muted">Work {formatClockHoursMinutes(totals.workMs)}</Text>
+        <Text tone="muted">Travel {formatClockHoursMinutes(totals.travelMinutes * 60000)}</Text>
+        <Text tone="muted">Work {formatClockHoursMinutes(totals.workMinutes * 60000)}</Text>
       </Inline>
 
       <EditHoursDialog

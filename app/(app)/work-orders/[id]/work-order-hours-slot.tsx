@@ -1,6 +1,10 @@
 import { listTimeEntries } from "../time-entries-actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
+import {
+  getOrganizationTimeRoundingSettings,
+  type OrganizationTimeRoundingSettings,
+} from "@/app/(app)/settings/organization-time-rounding-actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { WorkOrderHoursSection } from "../components/work-order-hours-section";
 import { WorkOrderCostStatsReporter } from "../components/work-order-hero-context";
@@ -17,7 +21,19 @@ import { WorkOrderCostStatsReporter } from "../components/work-order-hero-contex
  * via `WorkOrderCostStatsReporter` when `canSeeCosts` (the
  * `!canSeeCosts` engineer fallback is owned by `WorkOrderMaterialSlot`'s own
  * reporter instead — see that component's doc comment).
+ *
+ * Issue #198: also fetches the org's travel/work minimum + rounding
+ * settings (`getOrganizationTimeRoundingSettings`, any org member can read
+ * it) and passes them down so `WorkOrderHoursSection` can show each entry's
+ * NET (billable) duration alongside its existing gross one. Falls back to a
+ * no-op rule (today's exact pre-#198 behavior) on a fetch failure — never
+ * blocks this whole slot on a settings read the caller has no write access
+ * to anyway.
  */
+const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
+  travel: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+  work: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+};
 export async function WorkOrderHoursSlot({
   workOrderId,
   assignedTo,
@@ -39,18 +55,20 @@ export async function WorkOrderHoursSlot({
   canDelete: boolean;
   canSeeCosts: boolean;
 }) {
-  const [timeEntriesResult, timeEntryTypesResult, costSummaryResult, unresolvedTimeEntriesResult] =
+  const [timeEntriesResult, timeEntryTypesResult, costSummaryResult, unresolvedTimeEntriesResult, timeRoundingResult] =
     await Promise.all([
       listTimeEntries(workOrderId),
       listReferenceItems("time_entry_type"),
       canSeeCosts ? getWorkOrderCostSummary(workOrderId) : Promise.resolve(null),
       canSeeCosts ? getUnresolvedWorkOrderTimeEntries(workOrderId) : Promise.resolve(null),
+      getOrganizationTimeRoundingSettings(),
     ]);
 
   const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
   const timeEntryTypes = timeEntryTypesResult.data?.items ?? [];
   const costSummary = costSummaryResult?.data ?? null;
   const unresolvedTimeEntryCount = unresolvedTimeEntriesResult?.data?.unresolvedTimeEntryIds.length ?? 0;
+  const roundingSettings = timeRoundingResult.data?.settings ?? DEFAULT_TIME_ROUNDING_SETTINGS;
 
   return (
     <>
@@ -70,6 +88,7 @@ export async function WorkOrderHoursSlot({
         canSeeCosts={canSeeCosts}
         costSummary={costSummary}
         unresolvedTimeEntryCount={unresolvedTimeEntryCount}
+        roundingSettings={roundingSettings}
       />
     </>
   );

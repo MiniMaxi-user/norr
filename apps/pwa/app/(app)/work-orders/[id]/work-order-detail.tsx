@@ -6,6 +6,7 @@ import { Badge, Callout, EmptyState, Heading, Inline, Skeleton, Stack, Text } fr
 import { AlertTriangle } from "@yourorg/ui/icons";
 import {
   clearSyncedWorkOrderData,
+  getCachedTimeRoundingSettings,
   getCachedWorkOrderDetail,
   getClockPeriodsForOrder,
   getLocalArticles,
@@ -13,6 +14,7 @@ import {
   getLocalPhotos,
   getLocalSignOff,
   markSignOffSynced,
+  saveCachedTimeRoundingSettings,
   saveLocalDraft,
   saveLocalSignOff,
   saveWorkOrderDetail,
@@ -22,7 +24,7 @@ import {
   type LocalSignOff,
 } from "@/lib/offline/db";
 import { computeClockSummary, finishWorkOrderClock, toggleClock, type ClockKind } from "@/lib/time/clocks";
-import type { WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { TimerCard } from "./timer-card";
 import { HomeSection } from "./sections/home-section";
 import { WorkSection } from "./sections/work-section";
@@ -87,6 +89,13 @@ export function WorkOrderDetailScreen({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailOffline, setDetailOffline] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Issue #198 — the org-level cache (`lib/offline/db.ts`'s `meta` key, NOT
+  // tied to this specific work order), read alongside `detail` below so
+  // `HoursSection` can show NET durations. `null` until the first
+  // successful read (either this load's own live/cached path, or an
+  // earlier Today-screen sync already populated it) — `HoursSection` falls
+  // back to a safe no-op rounding rule on `null`, never blocks on it.
+  const [roundingSettings, setRoundingSettings] = useState<TimeRoundingSettings | null>(null);
 
   const [periods, setPeriods] = useState<ClockPeriod[]>([]);
   const [localArticles, setLocalArticles] = useState<LocalArticle[]>([]);
@@ -146,10 +155,12 @@ export function WorkOrderDetailScreen({
         }
         const data = (await response.json()) as WorkOrderDetailResponse;
         await saveWorkOrderDetail(workOrderId, data, currentUserId);
+        await saveCachedTimeRoundingSettings(data.timeRoundingSettings, currentUserId);
         if (!cancelled) {
           setDetail(data);
           setDetailError(null);
           setDetailOffline(false);
+          setRoundingSettings(data.timeRoundingSettings);
         }
       } catch (error) {
         // Any failure (offline, or a real server error) falls back to
@@ -157,7 +168,10 @@ export function WorkOrderDetailScreen({
         // successfully — never a bare error screen when there's a cache to
         // show instead, same "never a bare error screen" reasoning as the
         // Today list's own sync (`today-screen.tsx`).
-        const cached = await getCachedWorkOrderDetail(workOrderId, currentUserId);
+        const [cached, cachedRounding] = await Promise.all([
+          getCachedWorkOrderDetail(workOrderId, currentUserId),
+          getCachedTimeRoundingSettings(currentUserId),
+        ]);
         if (!cancelled) {
           if (cached) {
             setDetail(cached.detail);
@@ -166,6 +180,7 @@ export function WorkOrderDetailScreen({
           } else {
             setDetailError(error instanceof Error ? error.message : "Failed to load work order.");
           }
+          setRoundingSettings(cachedRounding);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -362,7 +377,12 @@ export function WorkOrderDetailScreen({
             onToggleTravel={() => void handleToggle("travel")}
             onToggleWork={() => void handleToggle("work")}
           />
-          <HoursSection periods={periods} serverTimeEntries={detail.timeEntries} onPeriodsChange={refreshPeriods} />
+          <HoursSection
+            periods={periods}
+            serverTimeEntries={detail.timeEntries}
+            onPeriodsChange={refreshPeriods}
+            roundingSettings={roundingSettings}
+          />
         </>
       )}
       {section === "articles" && (

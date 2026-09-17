@@ -33,6 +33,18 @@ import { WorkOrderHeroStatsProvider, useWorkOrderHeroStatsValue } from "./work-o
 import { draftFromWorkOrder, draftToInput, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
 import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
+import type { OrganizationTimeRoundingSettings } from "@/app/(app)/settings/organization-time-rounding-actions";
+
+/** Issue #198's no-op fallback (today's exact pre-#198 behavior) — used only
+ * by this file's own `hoursSlot ??` fallback path below, which renders
+ * exclusively in `mode: "create"` (no `workOrderId` yet, so `timeEntries` is
+ * always `[]` here) — a real org rounding rule is fetched and passed down
+ * by `../[id]/work-order-hours-slot.tsx` instead once a work order exists to
+ * stream that slot for. */
+const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
+  travel: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+  work: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+};
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
@@ -679,6 +691,7 @@ function WorkOrderScreenBody({
             canSeeCosts={Boolean(canSeeCosts)}
             costSummary={costSummary}
             unresolvedTimeEntryCount={unresolvedTimeEntryCount}
+            roundingSettings={DEFAULT_TIME_ROUNDING_SETTINGS}
           />
         )}
         {materialSlot ?? (
