@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
+import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
 
 /**
  * Server Actions for the Work Orders module (issue #13 backend half, second
@@ -36,6 +37,32 @@ import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
  *    the Planner-asset-update gap documented in `app/(app)/assets/actions.ts`,
  *    except here it's the *intended* behavior, not a gap).
  *  - DELETE: owner/planner only.
+ *
+ * `updateWorkOrder`/`deleteWorkOrder` additionally enforce a checkout lock
+ * (issue #203, "Checkout workitem naar pwa" — see `./checkout-lock.ts`'s own
+ * doc comment for the full reasoning): once the assigned engineer's PWA has
+ * pulled a `scheduled` work order's full detail
+ * (`checkout_work_order_if_scheduled` flipping its `status_id` to
+ * `checkout` or, from there, any later lifecycle status), the PLANNER/OWNER
+ * can no longer edit or delete that row through this app. This is
+ * specifically an OWNER/PLANNER-side lock, not an engineer-access
+ * restriction: `deleteWorkOrder` is owner/planner-only to begin with (no
+ * `delete_own` exists for an engineer to be exempted from), so the guard
+ * there is unconditional; `updateWorkOrder` is shared by both the
+ * owner/planner (`update`) and engineer (`update_own`) paths, so the guard
+ * only applies when the actor has the full `update` action — an engineer
+ * updating their OWN assigned row keeps working normally even once it's
+ * checked out or later (mirrors `checkout_work_order_if_scheduled`'s own
+ * "the PWA itself is never restricted by this" design). Confirmed the
+ * engineer-own-row exception is actually load-bearing here, not dead code:
+ * the field-engineer PWA (`apps/pwa`) is a separate Next.js app with its own
+ * API routes (e.g. `apps/pwa/app/api/work-orders/[id]/finish/route.ts`) that
+ * write `work_orders` directly under RLS, never through this function — but
+ * `planning.engineer` legitimately includes `update_own` in the RBAC matrix
+ * below, and `updateWorkOrder` is this app's only Work Order write path, so
+ * an engineer session in THIS app (not just the PWA) reaching this function
+ * for their own assigned row is an intended, RBAC/RLS-sanctioned case, not a
+ * hypothetical one to guard against.
  *
  * Practical consequence for callers of `listWorkOrders`/`getWorkOrder`: an
  * engineer's plain query already comes back scoped to their assigned rows —
@@ -394,6 +421,27 @@ export async function updateWorkOrder(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203) — owner/planner path only (see the module
+  // comment above for why the engineer `update_own` path is exempt). Adds a
+  // lightweight pre-check SELECT (this function otherwise does its read+
+  // write in one round trip) only when the actor actually has the full
+  // `update` action, so the common engineer-own-row case pays no extra cost.
+  if (can(ctx.context.actor, "planning", "update")) {
+    const { data: target, error: targetError } = await supabase
+      .from("work_orders")
+      .select("id, status_id")
+      .eq("id", idResult.data)
+      .maybeSingle<{ id: string; status_id: string }>();
+
+    if (targetError) return fail(mapDbError(targetError));
+    if (!target) return fail("Work order not found, or you do not have permission to update it.");
+
+    if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+      return fail("This work order has been checked out and can no longer be edited.");
+    }
+  }
+
   const { data, error } = await supabase
     .from("work_orders")
     .update(row)
@@ -420,6 +468,23 @@ export async function deleteWorkOrder(id: string): Promise<ActionResult<{ delete
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203) — unconditional here: `delete` is
+  // owner/planner-only to begin with (no `delete_own` for an engineer to be
+  // exempted from), unlike `updateWorkOrder`'s two-path guard above.
+  const { data: target, error: targetError } = await supabase
+    .from("work_orders")
+    .select("id, status_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string; status_id: string }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("Work order not found, or you do not have permission to delete it.");
+
+  if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+    return fail("This work order has been checked out and can no longer be deleted.");
+  }
+
   const { data, error } = await supabase
     .from("work_orders")
     .delete()

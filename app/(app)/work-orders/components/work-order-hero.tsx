@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
-import { CalendarDays, MapPin, Pencil } from "@yourorg/ui/icons";
+import { CalendarDays, Lock, MapPin, Pencil } from "@yourorg/ui/icons";
 import type { WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
@@ -40,6 +40,13 @@ export interface WorkOrderHeroProps {
    * `<Select>` folded into `WorkOrderStatusPriorityDialog`. */
   types: ReferenceListItemRecord[];
   readOnly?: boolean;
+  /** `[id]/page.tsx`'s own `locked` (issue #203) — true once this work order
+   * is checked-out-or-later for a planner/owner actor. Already reflected in
+   * `readOnly` (hides the status/priority edit pencil below, same as any
+   * other read-only view) — this is purely for the extra "Checked out —
+   * read-only" `Badge` so it reads as a DIFFERENT reason than a plain
+   * `finance`/`administratie` viewer's read-only view. */
+  locked?: boolean;
   /** Hours/Material/Checklist KPI tiles — computed by `WorkOrderScreen` from
    * the data it already fetched/holds, kept out of this component so it
    * doesn't also need the raw time entries/articles/checklist items. */
@@ -113,6 +120,7 @@ export function WorkOrderHero({
   priorities,
   types,
   readOnly,
+  locked,
   stats,
   actions,
   onTitleChange,
@@ -152,6 +160,14 @@ export function WorkOrderHero({
         <IconButton variant="ghost" aria-label="Edit status &amp; priority" onClick={() => setStatusOpen(true)}>
           <Pencil />
         </IconButton>
+      )}
+      {/* Issue #203 — distinct from the plain read-only (`readOnly` without
+       * `locked`) case: explains WHY the Edit affordances above just
+       * disappeared, rather than leaving that silent. */}
+      {mode === "edit" && locked && (
+        <Badge variant="muted">
+          <Lock aria-hidden /> Checked out — read-only
+        </Badge>
       )}
     </span>,
   ];
