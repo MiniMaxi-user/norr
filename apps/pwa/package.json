@@ -6,13 +6,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "predev": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
+    "predev": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac && npm run build -w @yourorg/time-rounding",
     "dev": "next dev",
-    "prebuild": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
+    "prebuild": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac && npm run build -w @yourorg/time-rounding",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "pretypecheck": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac",
+    "pretypecheck": "npm run build -w @yourorg/ui && npm run build -w @yourorg/rbac && npm run build -w @yourorg/time-rounding",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "@supabase/supabase-js": "^2.112.3",
     "dexie": "^4.0.11",
     "@yourorg/rbac": "*",
+    "@yourorg/time-rounding": "*",
     "@yourorg/ui": "*",
     "next": "^15.5.23",
     "react": "^19.0.0",

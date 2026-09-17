@@ -8,6 +8,7 @@ import type {
   WorkOrderDetail,
   WorkOrderDetailResponse,
   WorkOrderTimeEntry,
+  TimeRoundingSettings,
 } from "@/lib/work-orders/types";
 
 /**
@@ -23,6 +24,15 @@ import type {
  * backed read half of the story — timer start/stop, new articles, photos,
  * and signatures stay local-only (`lib/offline/db.ts`) and are never posted
  * back here or anywhere else in this story.
+ *
+ * Issue #198: also returns `timeRoundingSettings` — the caller's org's
+ * travel/work minimum + rounding settings (`organizations.travel_time_*`/
+ * `work_time_*`, read directly, not via the root app's Settings Server
+ * Action) — so a work order detail deep-link is self-contained for any
+ * future net-(billable)-duration display without a second round trip.
+ * Falls back to "no minimum, no rounding" (`DEFAULT_TIME_ROUNDING_SETTINGS`)
+ * for the defensive edge case of an authenticated engineer session with no
+ * resolved organization membership.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -98,6 +108,47 @@ interface WorkOrderArticleRow {
   article: { article_number: string; description: string } | null;
 }
 
+/** Issue #198: the six `organizations` columns behind `timeRoundingSettings`
+ * — a direct, minimal-column query (not the Settings Server Action,
+ * `app/(app)/settings/organization-time-rounding-actions.ts`, which is root-
+ * app-only and does its own separate `requireModuleContext`/`can()` round
+ * trip) scoped by `session.organization.id`, the org context this route
+ * already resolves via `getCurrentEngineerSession`. */
+interface OrganizationTimeRoundingRow {
+  travel_time_minimum_minutes: number | null;
+  travel_time_rounding_minutes: number | null;
+  travel_time_rounding_direction: "up" | "down";
+  work_time_minimum_minutes: number | null;
+  work_time_rounding_minutes: number | null;
+  work_time_rounding_direction: "up" | "down";
+}
+
+const ORGANIZATION_TIME_ROUNDING_SELECT =
+  "travel_time_minimum_minutes, travel_time_rounding_minutes, travel_time_rounding_direction, work_time_minimum_minutes, work_time_rounding_minutes, work_time_rounding_direction";
+
+/** `null`/no-membership fallback: today's exact pre-#198 behavior (no
+ * minimum, no rounding) for both travel and work. */
+const DEFAULT_TIME_ROUNDING_SETTINGS: TimeRoundingSettings = {
+  travel: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+  work: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+};
+
+function toTimeRoundingSettings(row: OrganizationTimeRoundingRow | null): TimeRoundingSettings {
+  if (!row) return DEFAULT_TIME_ROUNDING_SETTINGS;
+  return {
+    travel: {
+      minimumMinutes: row.travel_time_minimum_minutes,
+      roundingMinutes: row.travel_time_rounding_minutes,
+      direction: row.travel_time_rounding_direction,
+    },
+    work: {
+      minimumMinutes: row.work_time_minimum_minutes,
+      roundingMinutes: row.work_time_rounding_minutes,
+      direction: row.work_time_rounding_direction,
+    },
+  };
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID_RE.test(id)) {
@@ -115,7 +166,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const supabase = await createClient();
 
-  const [workOrderResult, timeEntriesResult, articlesResult] = await Promise.all([
+  const [workOrderResult, timeEntriesResult, articlesResult, timeRoundingResult] = await Promise.all([
     supabase.from("work_orders").select(WORK_ORDER_DETAIL_SELECT).eq("id", id).maybeSingle(),
     supabase
       .from("time_entries")
@@ -127,6 +178,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .select("id, article_id, quantity, article:articles!work_order_articles_article_id_fkey(article_number,description)")
       .eq("work_order_id", id)
       .order("created_at", { ascending: true }),
+    session.organization
+      ? supabase
+          .from("organizations")
+          .select(ORGANIZATION_TIME_ROUNDING_SELECT)
+          .eq("id", session.organization.id)
+          .maybeSingle<OrganizationTimeRoundingRow>()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (workOrderResult.error) {
@@ -148,6 +206,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (articlesResult.error) {
     console.error("GET /api/work-orders/[id]: failed to load articles", articlesResult.error);
     return NextResponse.json({ error: "Failed to load consumed articles." }, { status: 500 });
+  }
+  if (timeRoundingResult.error) {
+    console.error("GET /api/work-orders/[id]: failed to load time rounding settings", timeRoundingResult.error);
+    return NextResponse.json({ error: "Failed to load time rounding settings." }, { status: 500 });
   }
 
   const workOrder: WorkOrderDetail = {
@@ -210,6 +272,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     quantity: entry.quantity,
   }));
 
-  const response: WorkOrderDetailResponse = { workOrder, timeEntries, articles };
+  const timeRoundingSettings = toTimeRoundingSettings(
+    (timeRoundingResult.data ?? null) as OrganizationTimeRoundingRow | null,
+  );
+
+  const response: WorkOrderDetailResponse = { workOrder, timeEntries, articles, timeRoundingSettings };
   return NextResponse.json(response);
 }

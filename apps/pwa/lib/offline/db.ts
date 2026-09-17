@@ -56,6 +56,14 @@
  *   `workOrderDetails` above but org-wide rather than per-work-order.
  *   Populated by `today-screen.tsx`'s sync, read by
  *   `article-catalog-sheet.tsx` on a failed live fetch.
+ * - `meta` also stores the issue #198 org-level `timeRoundingSettings` (JSON-
+ *   stringified under its own key) — the caller's org's travel/work minimum
+ *   + rounding settings, carried on both `/api/work-orders/[id]` and
+ *   `/api/workitems/today` responses. Deliberately NOT a new table: this is
+ *   ORG-level config, not per-work-order, and `meta` already exists purely
+ *   for this kind of one-row-per-key singleton value (see `lastSyncedAt`
+ *   above) — see `saveCachedTimeRoundingSettings`/
+ *   `getCachedTimeRoundingSettings` below.
  * - `signoffs.pendingSync` (new field, not a new table) — `true` from the
  *   moment `saveLocalSignOff` is called (before `POST
  *   /api/work-orders/[id]/finish` is even attempted) until that POST
@@ -73,7 +81,7 @@
  * `workitems`/`meta` already are — see `ensureCacheBelongsTo`.
  */
 import Dexie, { type Table } from "dexie";
-import type { CatalogArticle, WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { CatalogArticle, TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import type { MyStockItem } from "@/lib/inventory/types";
 
 export interface CachedWorkItemReference {
@@ -252,6 +260,10 @@ const LAST_SYNCED_AT_KEY = "lastSyncedAt";
  * mirroring the `workitems`+`meta` pair's own "meta stores the sync
  * timestamp" convention rather than a third table. */
 const MY_STOCK_LAST_SYNCED_AT_KEY = "myStockLastSyncedAt";
+/** Issue #198 — the `meta` key backing `saveCachedTimeRoundingSettings`/
+ * `getCachedTimeRoundingSettings` below (JSON-stringified
+ * `TimeRoundingSettings`). */
+const TIME_ROUNDING_SETTINGS_KEY = "timeRoundingSettings";
 /** Which engineer's data is currently cached (see the user-scoping note
  * below) — not shown in the UI, purely a guard. */
 const USER_ID_KEY = "userId";
@@ -401,6 +413,12 @@ const db = new WorkItemsDatabase();
  * cache — showing Engineer B Engineer A's own stock quantities on a shared
  * device would be exactly the same class of leak) and its own
  * `MY_STOCK_LAST_SYNCED_AT_KEY` meta row are wiped here too, same mechanism.
+ *
+ * Issue #198's `TIME_ROUNDING_SETTINGS_KEY` meta row is wiped here too —
+ * it's org-level, not per-engineer, but a shared device switching to a
+ * different engineer very plausibly switches organization as well, and
+ * there's no reason to keep serving a stale org's rounding rule against a
+ * new session; the very next successful sync repopulates it immediately.
  */
 async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
   const row = await db.meta.get(USER_ID_KEY);
@@ -431,6 +449,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.catalog.clear();
       await db.myStock.clear();
       await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
+      await db.meta.delete(TIME_ROUNDING_SETTINGS_KEY);
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -822,6 +841,44 @@ export async function getMyStockLastSyncedAt(currentUserId: string): Promise<str
   await ensureCacheBelongsTo(currentUserId);
   const row = await db.meta.get(MY_STOCK_LAST_SYNCED_AT_KEY);
   return row?.value ?? null;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Issue #198 — the org-level travel/work minimum + rounding settings cache
+ * (`meta` table, own key — see `TIME_ROUNDING_SETTINGS_KEY`'s own doc
+ * comment on why this is a `meta` key rather than a new table). Written
+ * whenever EITHER `/api/work-orders/[id]` or `/api/workitems/today`'s
+ * response is received (both now carry `timeRoundingSettings`) — last-write-
+ * wins is fine, this is org-wide config that rarely changes, not a per-
+ * record value with its own freshness concern.
+ * ------------------------------------------------------------------------ */
+
+/** Overwrites the cached org-level time rounding settings, scoped to
+ * `currentUserId` like every other cache in this file (see
+ * `ensureCacheBelongsTo`). */
+export async function saveCachedTimeRoundingSettings(
+  settings: TimeRoundingSettings,
+  currentUserId: string,
+): Promise<void> {
+  await ensureCacheBelongsTo(currentUserId);
+  await db.meta.put({ key: TIME_ROUNDING_SETTINGS_KEY, value: JSON.stringify(settings) });
+}
+
+/** The cached org-level time rounding settings for `currentUserId`, or
+ * `null` if this device has never synced one yet (e.g. the very first
+ * offline load before any `/api/work-orders/[id]`/`/api/workitems/today`
+ * response has ever landed) — callers fall back to a safe no-op rule
+ * (`{minimumMinutes: null, roundingMinutes: null, direction: "up"}`) rather
+ * than blocking rendering on this. */
+export async function getCachedTimeRoundingSettings(currentUserId: string): Promise<TimeRoundingSettings | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.meta.get(TIME_ROUNDING_SETTINGS_KEY);
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as TimeRoundingSettings;
+  } catch {
+    return null;
+  }
 }
 
 /** Optimistically decrements every cached `myStock` row for `articleId`

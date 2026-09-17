@@ -7,6 +7,21 @@
  * `/api/workitems/today`.
  */
 
+import type { TimeRoundingRule } from "@yourorg/time-rounding";
+
+export type { TimeRoundingRule };
+
+/** The caller's org's issue #198 travel/work minimum + rounding settings —
+ * included on both `/api/work-orders/[id]` and `/api/workitems/today`
+ * responses so the PWA has this cached offline before any specific work
+ * order is even opened. Display/computation of net vs. gross duration using
+ * this is a separate (frontend-ui-engineer) pass — this type only carries
+ * the data. */
+export interface TimeRoundingSettings {
+  travel: TimeRoundingRule;
+  work: TimeRoundingRule;
+}
+
 export interface WorkOrderDetailReference {
   label: string;
   color: string | null;
@@ -88,6 +103,10 @@ export interface WorkOrderDetailResponse {
   workOrder: WorkOrderDetail;
   timeEntries: WorkOrderTimeEntry[];
   articles: WorkOrderArticleEntry[];
+  /** Issue #198: the caller's org's travel/work minimum + rounding settings
+   * — self-contained so a work order detail deep-link doesn't need a
+   * separate round trip to compute net (billable) durations. */
+  timeRoundingSettings: TimeRoundingSettings;
 }
 
 /** `/api/articles/catalog` response item — the "Add article" bottom sheet's
