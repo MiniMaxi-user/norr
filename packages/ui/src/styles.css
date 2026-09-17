@@ -5657,7 +5657,15 @@ a.ui-relation-card-title:hover {
   font-size: var(--ui-text-lg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-muted);
+  color: var(--ui-muted-subtle);
+  transition: color var(--ui-duration-fast) var(--ui-ease);
+}
+/* The one row actually centered under `.ui-wheel-picker-highlight` — needs
+   real contrast against its faded neighbors so it's obvious which hh/mm is
+   about to be picked (product feedback, 2026-09-17). */
+.ui-wheel-picker-item[aria-selected="true"] {
+  color: var(--ui-fg);
+  font-size: var(--ui-text-xl);
 }
 
 /* Horizontally-scrollable pill row with a hidden scrollbar — Today's status

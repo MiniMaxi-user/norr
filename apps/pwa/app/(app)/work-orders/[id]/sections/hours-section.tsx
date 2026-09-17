@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge, Card, Inline, Stack, Text } from "@yourorg/ui";
-import { deleteClockPeriod, updateClockPeriodEndedAt, type ClockPeriod } from "@/lib/offline/db";
+import { deleteClockPeriod, updateClockPeriodTimes, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
 import type { WorkOrderTimeEntry } from "@/lib/work-orders/types";
 import { EditHoursDialog, type EditableHourRow } from "./edit-hours-dialog";
@@ -105,8 +105,8 @@ export function HoursSection({
     await onPeriodsChange();
   }
 
-  async function handleSaveEdit(localId: number, endedAt: number) {
-    await updateClockPeriodEndedAt(localId, endedAt);
+  async function handleSaveEdit(localId: number, startedAt: number, endedAt: number) {
+    await updateClockPeriodTimes(localId, startedAt, endedAt);
     await onPeriodsChange();
   }
 
