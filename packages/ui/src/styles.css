@@ -3791,6 +3791,15 @@ select.ui-client-card-status-select {
 .ui-planning-backlog-card-meta {
   font-size: var(--ui-text-xs);
 }
+/* The card's info button (opens `WorkOrderQuickView`) — same compact
+   1.5rem square as `.ui-relation-card-head .ui-icon-button` below, so it
+   sits flush next to the type badge instead of bulking up the card header. */
+.ui-planning-backlog-card-info {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  flex-shrink: 0;
+}
 
 /* Main scheduler area — one Card per region section (see
    planning-grid.tsx). `.ui-planning-grid-area` (the region-section `Stack`

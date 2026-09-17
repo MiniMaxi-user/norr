@@ -5,7 +5,30 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { canAny } from "@/lib/rbac/permissions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { updateWorkOrder, type WorkOrderRecord } from "./actions";
+
+/**
+ * Resolves this org's `work_order_status` item for `value` ("new" or
+ * "scheduled") — both scheduling and unscheduling drive the lifecycle status
+ * alongside `scheduled_at`/`assigned_to` (product feedback, 2026-09-17): the
+ * Backlog panel only ever shows `New` items (`../../planning/components/
+ * planning-board.tsx` filters on it), so a work order that leaves or re-enters
+ * the backlog must have its status kept in lockstep, or it would vanish from
+ * both the Backlog and the scheduler grid at once. Goes through
+ * `listReferenceItems` (cached, `settings`-module read) rather than a raw
+ * query here, same reuse-over-reimplement reasoning as everywhere else in
+ * this file.
+ */
+async function resolveWorkOrderStatusId(value: "new" | "scheduled"): Promise<{ id: string } | { error: string }> {
+  const result = await listReferenceItems("work_order_status");
+  if (!result.data) return { error: result.error ?? "Could not resolve the work order status list." };
+  const item = result.data.items.find((candidate) => candidate.value === value);
+  if (!item) {
+    return { error: `This organization's work order status list has no "${value}" value configured.` };
+  }
+  return { id: item.id };
+}
 
 /** Duplicated from `WORK_ORDER_SELECT` in `./actions.ts` (kept in sync by
  * hand) rather than imported from there: `./actions.ts` is a `"use server"`
@@ -228,16 +251,25 @@ export async function scheduleWorkOrder(
     return fail("This time slot overlaps with another scheduled item.");
   }
 
+  const scheduledStatus = await resolveWorkOrderStatusId("scheduled");
+  if ("error" in scheduledStatus) return fail(scheduledStatus.error);
+
   return updateWorkOrder(idResult.data, {
     assignedTo: parsed.data.assignedTo,
     scheduledAt: parsed.data.scheduledAt,
+    statusId: scheduledStatus.id,
   });
 }
 
 /**
- * Moves a work order back to the Backlog — clears both
- * `assignedTo` and `scheduledAt`. Used by both a drag-back-to-backlog and a
- * click-to-unschedule interaction on the Planning grid.
+ * Moves a work order back to the Backlog — clears both `assignedTo` and
+ * `scheduledAt`, and resets `status_id` back to this org's `New` status (see
+ * `resolveWorkOrderStatusId`'s own doc comment for why: the Backlog only
+ * shows `New` items, so leaving the status wherever it happened to be would
+ * make the item vanish from both panels). Used by dragging a scheduled block
+ * back onto the Backlog panel (product feedback, 2026-09-17: clicking a
+ * scheduled block used to trigger this too — that's now a read-only quick-
+ * view popup instead, see `WorkOrderQuickView`).
  *
  * Deliberately does NOT call `updateWorkOrder({ assignedTo: null,
  * scheduledAt: null })`: `workOrderUpdateSchema`'s `assignedTo`/`scheduledAt`
@@ -272,10 +304,13 @@ export async function unscheduleWorkOrder(id: string): Promise<ActionResult<{ wo
     return fail("You do not have permission to update work orders.");
   }
 
+  const newStatus = await resolveWorkOrderStatusId("new");
+  if ("error" in newStatus) return fail(newStatus.error);
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("work_orders")
-    .update({ assigned_to: null, scheduled_at: null })
+    .update({ assigned_to: null, scheduled_at: null, status_id: newStatus.id })
     .eq("id", idResult.data)
     .select(WORK_ORDER_SELECT)
     .maybeSingle();

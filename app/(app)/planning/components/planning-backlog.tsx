@@ -1,8 +1,8 @@
 "use client";
 
 import type { DragEvent } from "react";
-import { Badge, Button, Card, Inline, Stack, Text, resolveColor } from "@yourorg/ui";
-import { ClipboardList, type Icon } from "@yourorg/ui/icons";
+import { Badge, Button, Card, IconButton, Inline, Stack, Text, resolveColor } from "@yourorg/ui";
+import { ClipboardList, Info, type Icon } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
@@ -17,6 +17,10 @@ export interface PlanningBacklogProps {
   clientNameById: Record<string, string>;
   selectedId: string | null;
   onSelect: (workOrder: WorkOrderRecord) => void;
+  /** Opens the read-only `WorkOrderQuickView` popup — wired to each card's
+   * own info button (not the card's main click target, which stays the
+   * click-to-select scheduling fallback described above). */
+  onQuickView: (workOrder: WorkOrderRecord) => void;
   onDragStart: (workOrder: WorkOrderRecord) => void;
   onDragEnd: () => void;
   /** Multi-select: which `activity_type` `value`s are currently checked. An
@@ -68,6 +72,7 @@ export function PlanningBacklog({
   clientNameById,
   selectedId,
   onSelect,
+  onQuickView,
   onDragStart,
   onDragEnd,
   typeFilter,
@@ -134,6 +139,7 @@ export function PlanningBacklog({
                         clientName={clientNameById[workOrder.client_id] ?? "Unknown client"}
                         selected={selectedId === workOrder.id}
                         onSelect={() => onSelect(workOrder)}
+                        onQuickView={() => onQuickView(workOrder)}
                         onDragStart={() => onDragStart(workOrder)}
                         onDragEnd={onDragEnd}
                       />
@@ -146,7 +152,8 @@ export function PlanningBacklog({
         </div>
 
         <Text tone="muted" className="ui-planning-backlog-hint">
-          Drag an item onto an engineer. Click a scheduled block to move it back.
+          Drag an item onto an engineer, or select it and click a slot. Drag a scheduled block back here to
+          unschedule it.
         </Text>
       </Stack>
     </Card>
@@ -187,6 +194,7 @@ function BacklogCard({
   clientName,
   selected,
   onSelect,
+  onQuickView,
   onDragStart,
   onDragEnd,
 }: {
@@ -194,6 +202,7 @@ function BacklogCard({
   clientName: string;
   selected: boolean;
   onSelect: () => void;
+  onQuickView: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
@@ -233,7 +242,22 @@ function BacklogCard({
     >
       <Inline justify="between" align="start" gap="sm">
         <Text className="ui-planning-backlog-card-title">{workOrder.title}</Text>
-        {workOrder.work_order_type && <Badge color={workOrder.work_order_type.color}>{workOrder.work_order_type.label}</Badge>}
+        <Inline gap="xs" align="center">
+          {workOrder.work_order_type && <Badge color={workOrder.work_order_type.color}>{workOrder.work_order_type.label}</Badge>}
+          <IconButton
+            className="ui-planning-backlog-card-info"
+            variant="ghost"
+            aria-label="Details"
+            title="Details"
+            onClick={(event) => {
+              event.stopPropagation();
+              onQuickView();
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Info aria-hidden width={14} height={14} />
+          </IconButton>
+        </Inline>
       </Inline>
       <Text tone="muted" className="ui-planning-backlog-card-meta">
         {clientName}
