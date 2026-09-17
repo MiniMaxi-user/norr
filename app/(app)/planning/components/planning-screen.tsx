@@ -10,6 +10,7 @@ import { setLastUsedView } from "@/lib/preferences/actions";
 import { PlanningTopbar } from "./planning-topbar";
 import { PlanningBacklog } from "./planning-backlog";
 import { PlanningGrid } from "./planning-grid";
+import { WorkOrderQuickView, type WorkOrderQuickViewSite } from "./work-order-quick-view";
 import { formatDateParam, toOffsetIsoString } from "../date-utils";
 import type { PlanningEngineer } from "../grouping";
 import type { PlanningGroup, PlanningView } from "../types";
@@ -28,6 +29,7 @@ export interface PlanningScreenProps {
   initialBacklog: WorkOrderRecord[];
   initialScheduled: WorkOrderRecord[];
   siteRegionById: Record<string, string | null>;
+  siteById: Record<string, WorkOrderQuickViewSite>;
   clientNameById: Record<string, string>;
 }
 
@@ -59,6 +61,7 @@ export function PlanningScreen({
   initialBacklog,
   initialScheduled,
   siteRegionById,
+  siteById,
   clientNameById,
 }: PlanningScreenProps) {
   const router = useRouter();
@@ -71,6 +74,9 @@ export function PlanningScreen({
 
   const [draggingWorkOrder, setDraggingWorkOrder] = useState<WorkOrderRecord | null>(null);
   const [selectedBacklogWorkOrder, setSelectedBacklogWorkOrder] = useState<WorkOrderRecord | null>(null);
+  // The read-only quick-view popup (product feedback, 2026-09-17) — opened by
+  // clicking a work item, in either panel; see `WorkOrderQuickView`.
+  const [quickViewWorkOrder, setQuickViewWorkOrder] = useState<WorkOrderRecord | null>(null);
   // Multi-select: an EMPTY set means "Alle" (no filter, show every type,
   // including one a tenant adds later) — never a separate "all" sentinel
   // value. Defaults to Onderhoud/Inspectie/Storing (only the ones that
@@ -201,6 +207,7 @@ export function PlanningScreen({
           clientNameById={clientNameById}
           selectedId={selectedBacklogWorkOrder?.id ?? null}
           onSelect={handleSelectBacklog}
+          onQuickView={setQuickViewWorkOrder}
           onDragStart={setDraggingWorkOrder}
           onDragEnd={() => setDraggingWorkOrder(null)}
           typeFilter={typeFilter}
@@ -223,11 +230,20 @@ export function PlanningScreen({
           draggingWorkOrder={draggingWorkOrder}
           selectedBacklogWorkOrder={selectedBacklogWorkOrder}
           onScheduleRequest={performSchedule}
-          onUnschedule={performUnschedule}
+          onQuickView={setQuickViewWorkOrder}
           onBlockDragStart={setDraggingWorkOrder}
           onBlockDragEnd={() => setDraggingWorkOrder(null)}
         />
       </div>
+
+      <WorkOrderQuickView
+        workOrder={quickViewWorkOrder}
+        clientName={quickViewWorkOrder ? (clientNameById[quickViewWorkOrder.client_id] ?? "Unknown client") : ""}
+        site={quickViewWorkOrder?.site_id ? (siteById[quickViewWorkOrder.site_id] ?? null) : null}
+        onOpenChange={(open) => {
+          if (!open) setQuickViewWorkOrder(null);
+        }}
+      />
     </>
   );
 }

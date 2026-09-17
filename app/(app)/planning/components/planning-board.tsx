@@ -55,7 +55,11 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
     );
   }
 
-  const backlog = backlogResult.data.workOrders;
+  // Backlog panel only ever shows `New` items (product feedback, 2026-09-17)
+  // — filtered here against the already-embedded `work_order_status.value`
+  // rather than an extra `listWorkOrders` round trip with a `statusId`
+  // filter, since `WORK_ORDER_SELECT` already resolves it onto every row.
+  const backlog = backlogResult.data.workOrders.filter((wo) => wo.work_order_status?.value === "new");
   const scheduled = scheduledResult.data.workOrders;
   const clients = clientsResult.data?.clients ?? [];
   const clientNameById: Record<string, string> = {};
@@ -64,7 +68,15 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
   const distinctClientIds = Array.from(new Set([...backlog, ...scheduled].map((wo) => wo.client_id)));
   const sitesResult = await listSitesForClientIds(distinctClientIds);
   const siteRegionById: Record<string, string | null> = {};
-  for (const site of sitesResult.data?.sites ?? []) siteRegionById[site.id] = site.region_id;
+  // Address fields for the `WorkOrderQuickView` popup (product feedback,
+  // 2026-09-17) — `listSitesForClientIds` already projects `address_line1`/
+  // `city` for the Assets map view's pin labels, so this just re-keys the
+  // same rows by `id` rather than fetching them again.
+  const siteById: Record<string, { address_line1: string | null; city: string | null }> = {};
+  for (const site of sitesResult.data?.sites ?? []) {
+    siteRegionById[site.id] = site.region_id;
+    siteById[site.id] = { address_line1: site.address_line1, city: site.city };
+  }
 
   const engineers = teamResult.data.members.filter((member) => member.role === "engineer").map(toPlanningEngineer);
 
@@ -79,6 +91,7 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
       initialBacklog={backlog}
       initialScheduled={scheduled}
       siteRegionById={siteRegionById}
+      siteById={siteById}
       clientNameById={clientNameById}
     />
   );

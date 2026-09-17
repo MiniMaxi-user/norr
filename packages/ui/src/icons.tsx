@@ -414,3 +414,13 @@ export const Pause = createIcon("Pause", (
     <rect x={13} y={5} width={4} height={14} rx={1} />
   </>
 ));
+
+// Planning board's quick-view popup trigger (issue #164 follow-up) — a
+// circled "i", distinct from `CircleHelp`'s question mark.
+export const Info = createIcon("Info", (
+  <>
+    <circle cx={12} cy={12} r={9} />
+    <line x1={12} y1={11} x2={12} y2={16.5} />
+    <line x1={12} y1={7.5} x2={12} y2={7.5} />
+  </>
+));

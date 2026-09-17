@@ -32,7 +32,12 @@ export interface PlanningGridProps {
   draggingWorkOrder: WorkOrderRecord | null;
   selectedBacklogWorkOrder: WorkOrderRecord | null;
   onScheduleRequest: (workOrder: WorkOrderRecord, engineerId: string, scheduledAt: Date) => void;
-  onUnschedule: (workOrder: WorkOrderRecord) => void;
+  /** Opens the read-only `WorkOrderQuickView` popup for a work item — the
+   * click behavior on a scheduled block, both here (Day view) and in
+   * `WeekTimeline` below. Clicking a scheduled block used to unschedule it
+   * (product feedback, 2026-09-17: that was unwanted — a scheduled item is
+   * now only ever moved back to the Backlog by dragging it there). */
+  onQuickView: (workOrder: WorkOrderRecord) => void;
   onBlockDragStart: (workOrder: WorkOrderRecord) => void;
   onBlockDragEnd: () => void;
 }
@@ -67,7 +72,7 @@ export function PlanningGrid({
   draggingWorkOrder,
   selectedBacklogWorkOrder,
   onScheduleRequest,
-  onUnschedule,
+  onQuickView,
   onBlockDragStart,
   onBlockDragEnd,
 }: PlanningGridProps) {
@@ -117,7 +122,7 @@ export function PlanningGrid({
                 hoverKey={hoverKey}
                 onHoverChange={setHoverKey}
                 onScheduleRequest={onScheduleRequest}
-                onUnschedule={onUnschedule}
+                onQuickView={onQuickView}
                 onBlockDragStart={onBlockDragStart}
                 onBlockDragEnd={onBlockDragEnd}
               />
@@ -126,7 +131,7 @@ export function PlanningGrid({
                 date={date}
                 engineers={section.engineers}
                 scheduled={scheduled}
-                onUnschedule={onUnschedule}
+                onQuickView={onQuickView}
               />
             )}
           </Stack>
@@ -146,7 +151,7 @@ function DayGrid({
   hoverKey,
   onHoverChange,
   onScheduleRequest,
-  onUnschedule,
+  onQuickView,
   onBlockDragStart,
   onBlockDragEnd,
 }: {
@@ -159,7 +164,7 @@ function DayGrid({
   hoverKey: HoverKey | null;
   onHoverChange: (key: HoverKey | null) => void;
   onScheduleRequest: (workOrder: WorkOrderRecord, engineerId: string, scheduledAt: Date) => void;
-  onUnschedule: (workOrder: WorkOrderRecord) => void;
+  onQuickView: (workOrder: WorkOrderRecord) => void;
   onBlockDragStart: (workOrder: WorkOrderRecord) => void;
   onBlockDragEnd: () => void;
 }) {
@@ -185,7 +190,7 @@ function DayGrid({
               hoverKey,
               onHoverChange,
               onScheduleRequest,
-              onUnschedule,
+              onQuickView,
               onBlockDragStart,
               onBlockDragEnd,
             })}
@@ -206,7 +211,7 @@ function buildDayCells({
   hoverKey,
   onHoverChange,
   onScheduleRequest,
-  onUnschedule,
+  onQuickView,
   onBlockDragStart,
   onBlockDragEnd,
 }: {
@@ -219,7 +224,7 @@ function buildDayCells({
   hoverKey: HoverKey | null;
   onHoverChange: (key: HoverKey | null) => void;
   onScheduleRequest: (workOrder: WorkOrderRecord, engineerId: string, scheduledAt: Date) => void;
-  onUnschedule: (workOrder: WorkOrderRecord) => void;
+  onQuickView: (workOrder: WorkOrderRecord) => void;
   onBlockDragStart: (workOrder: WorkOrderRecord) => void;
   onBlockDragEnd: () => void;
 }): ReactNode[] {
@@ -312,7 +317,7 @@ function buildDayCells({
         color={wo.work_order_type?.color}
         title={wo.title}
         meta={`${formatTimeLabel(wo.scheduled_at!)} · ${clientNameById[wo.client_id] ?? ""}`}
-        onClick={() => onUnschedule(wo)}
+        onClick={() => onQuickView(wo)}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.setData("text/plain", wo.id);
@@ -335,12 +340,12 @@ function WeekTimeline({
   date,
   engineers,
   scheduled,
-  onUnschedule,
+  onQuickView,
 }: {
   date: Date;
   engineers: PlanningEngineer[];
   scheduled: WorkOrderRecord[];
-  onUnschedule: (workOrder: WorkOrderRecord) => void;
+  onQuickView: (workOrder: WorkOrderRecord) => void;
 }) {
   const monday = startOfWeek(date);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -372,7 +377,7 @@ function WeekTimeline({
                       meta={formatTimeLabel(wo.scheduled_at!)}
                       color={wo.work_order_type?.color}
                       variant={durationBadgeVariant(wo)}
-                      onClick={() => onUnschedule(wo)}
+                      onClick={() => onQuickView(wo)}
                     />
                   ))}
                 </Stack>
