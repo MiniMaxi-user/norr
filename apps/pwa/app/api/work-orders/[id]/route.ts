@@ -115,6 +115,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const supabase = await createClient();
 
+  // Checkout transition (issue #203, "Checkout workitem naar pwa"): fired
+  // unconditionally, under the caller's own session, BEFORE the main SELECT
+  // below so the response already reflects a just-flipped `checkout` status
+  // if relevant. `checkout_work_order_if_scheduled` is itself a safe,
+  // idempotent no-op (never throws) unless this caller is the row's own
+  // `assigned_to` AND its current status is exactly `scheduled` — see that
+  // function's own comment in
+  // `supabase/migrations/20260920100000_work_order_checkout_status.sql`. A
+  // best-effort side effect, not the data this route actually exists to
+  // return: logged and swallowed on error, never fails the request.
+  const { error: checkoutError } = await supabase.rpc("checkout_work_order_if_scheduled", {
+    p_work_order_id: id,
+  });
+  if (checkoutError) {
+    console.error("GET /api/work-orders/[id]: checkout_work_order_if_scheduled RPC failed", checkoutError);
+  }
+
   const [workOrderResult, timeEntriesResult, articlesResult] = await Promise.all([
     supabase.from("work_orders").select(WORK_ORDER_DETAIL_SELECT).eq("id", id).maybeSingle(),
     supabase

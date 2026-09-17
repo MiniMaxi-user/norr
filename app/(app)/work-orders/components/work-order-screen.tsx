@@ -53,6 +53,15 @@ export interface WorkOrderScreenProps {
   contract?: ContractRecord | null;
   assignedMember?: OrgMemberRecord | null;
   readOnly?: boolean;
+  /** `[id]/page.tsx`'s own `locked` (issue #203) — true once this work order
+   * is checked-out-or-later AND the actor is the planner/owner (not the
+   * assigned engineer's own `update_own` path, which stays editable). Already
+   * folded into `readOnly` above for the hero/relation-card/assignment-section
+   * Edit affordances; threaded through separately (edit mode only) purely so
+   * `WorkOrderHero` can render its own distinct "Checked out — read-only"
+   * indicator rather than looking like an ordinary permission-based
+   * read-only view. */
+  locked?: boolean;
   clients: ClientRecord[];
   lockedClientId?: string;
   /** Pre-selects (but doesn't lock) the client — e.g. `new/page.tsx`'s
@@ -226,6 +235,7 @@ export function WorkOrderScreen({
   asset = null,
   contract = null,
   readOnly,
+  locked,
   clients,
   lockedClientId,
   initialClientId,
@@ -401,6 +411,7 @@ export function WorkOrderScreen({
         priorities={priorities}
         types={types}
         readOnly={readOnly}
+        locked={locked}
         members={members}
         currentUserId={currentUserId}
         canDelete={canDelete}
@@ -456,6 +467,8 @@ interface WorkOrderScreenBodyProps {
   priorities: ReferenceListItemRecord[];
   types: ReferenceListItemRecord[];
   readOnly?: boolean;
+  /** See `WorkOrderScreenProps.locked`'s own doc comment. */
+  locked?: boolean;
   members: OrgMemberRecord[];
   currentUserId?: string;
   canDelete?: boolean;
@@ -522,6 +535,7 @@ function WorkOrderScreenBody({
   priorities,
   types,
   readOnly,
+  locked,
   members,
   currentUserId,
   canDelete,
@@ -638,6 +652,7 @@ function WorkOrderScreenBody({
         priorities={priorities}
         types={types}
         readOnly={readOnly}
+        locked={locked}
         stats={stats}
         actions={heroActions}
         onTitleChange={onTitleChange}

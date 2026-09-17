@@ -84,10 +84,18 @@ interface WorkOrderDetailPageProps {
  * this file's own `Promise.all` into the relevant slot component), never
  * whether it's requested at all.
  *
- * `readOnly` (exactly `!canEdit` below) hides every Edit affordance across
+ * `readOnly` (`!canEdit || locked` below) hides every Edit affordance across
  * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
  * never a 404, never a disabled-but-technically-interactive control RLS
- * would just reject. `WorkOrderScreen` is keyed by `workOrder.updated_at` so
+ * would just reject. `locked` (issue #203, "Checkout workitem naar pwa") is
+ * the separate "checked out or later" case — folded into `readOnly` so it
+ * gets the exact same hero/relation-card/assignment-section treatment for a
+ * planner/owner, but ALSO threaded through on its own (see `locked` prop
+ * below) so `WorkOrderHero` can render its distinct "Checked out —
+ * read-only" indicator, and so `canDelete`/`canCreateQuote`/
+ * `canUpdateTimeEntriesAny`/`canUpdateWorkOrderArticlesAny` (none of which
+ * `readOnly` reaches) can be gated on it too. `WorkOrderScreen` is keyed by
+ * `workOrder.updated_at` so
  * a successful inline save (which never navigates away — see that
  * component's own doc comment) remounts it with the freshly saved values
  * instead of leaving stale local draft state behind — including this page's
@@ -112,6 +120,22 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const workOrderResult = await getWorkOrder(id);
   if (!workOrderResult.data) notFound();
   const workOrder = workOrderResult.data.workOrder;
+
+  // Checkout lock (issue #203) — UI-only read-only treatment mirroring the
+  // server-side guard `updateWorkOrder`/`deleteWorkOrder` (`../actions.ts`)
+  // already enforce via `isWorkOrderCheckedOutOrLater` (`../checkout-lock.ts`):
+  // once the assigned engineer's PWA has pulled this work order onto their
+  // device (status `checkout` or later — every work order reaching this page
+  // already has a status past `new`, so "not `scheduled`" is enough, same
+  // heuristic `planning-grid.tsx` uses for its own lock icon), a
+  // planner/owner can no longer edit or delete it, or its Hours/Material
+  // sub-entities, or turn it into a Quote. Gated on
+  // `can(actor, "planning", "update")` — the FULL path, not `update_own` —
+  // to mirror `updateWorkOrder`'s own exact distinction: an engineer editing
+  // their OWN assigned work order (only ever `update_own`) is exempt, same as
+  // server-side.
+  const isCheckedOutOrLater = workOrder.work_order_status?.value !== "new" && workOrder.work_order_status?.value !== "scheduled";
+  const locked = isCheckedOutOrLater && can(actor, "planning", "update");
 
   // Checklists (issue #14) are their own, separately-entitled module (NOT
   // folded into `planning` — see `lib/rbac/permissions.ts`'s `checklists`
@@ -139,7 +163,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // in `../create-quote-actions.ts` exactly: a separately-entitled module
   // (`quotes`) AND `can(actor, "quotes", "create")` (owner/planner only).
   const quotesEnabled = await hasFeature(session.organization, "quotes");
-  const canCreateQuote = quotesEnabled && canAccessModule(actor, "quotes") && can(actor, "quotes", "create");
+  const canCreateQuote = quotesEnabled && canAccessModule(actor, "quotes") && can(actor, "quotes", "create") && !locked;
   // Issue #109 — gates the "To invoice" KPI tile's real total, the Hours
   // section's per-bucket cost figures, and the "N entries missing rate"
   // warning. Mirrors `getWorkOrderCostSummary`/`getUnresolvedWorkOrderTimeEntries`'s
@@ -199,7 +223,11 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const priorities = prioritiesResult?.data?.items ?? [];
   const types = typesResult?.data?.items ?? [];
 
-  const canDelete = can(actor, "planning", "delete");
+  // `&& !locked` (issue #203) hides the hero's own Delete button AND the
+  // Hours/Material sections' own row-level delete in one place — `canDelete`
+  // is reused as-is for both below, same "one gate, several call sites"
+  // precedent the next comment already establishes.
+  const canDelete = can(actor, "planning", "delete") && !locked;
   // Time Entries (issue #15) share the `planning` module's own actions —
   // see time-entries-panel.tsx's module comment for why `canDelete` above is
   // reused as-is (owner/planner CRUD on `planning` implies both Work Orders
@@ -210,14 +238,20 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // caller who can actually log on someone else's behalf may exercise (see
   // `createTimeEntry`'s own on-behalf-of logic in `time-entries-actions.ts`).
   const canLogTimeForOthers = can(actor, "planning", "create");
-  const canUpdateTimeEntriesAny = can(actor, "planning", "update");
+  // `&& !locked` (issue #203) hides the planner/owner "edit any entry"
+  // affordance once checked out; `canUpdateTimeEntriesOwn` (the engineer's
+  // own path) is deliberately left untouched, mirroring `updateWorkOrder`'s
+  // own `update`-vs-`update_own` exemption this page's `locked` computation
+  // is already based on.
+  const canUpdateTimeEntriesAny = can(actor, "planning", "update") && !locked;
   const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
 
   // Consumed Articles (issue #94) — same `planning` module, see
   // `consumed-articles-panel.tsx`'s own doc comment for why there is only one
   // create gate here (`canCreateWorkOrderArticles`, computed above) rather
-  // than a further `canLogTimeForOthers`-style split.
-  const canUpdateWorkOrderArticlesAny = can(actor, "planning", "update");
+  // than a further `canLogTimeForOthers`-style split. `&& !locked` mirrors
+  // `canUpdateTimeEntriesAny` above for the same reason.
+  const canUpdateWorkOrderArticlesAny = can(actor, "planning", "update") && !locked;
   const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own");
 
   // Checklists (issue #14) are their OWN module (see comment above), not a
@@ -232,7 +266,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       mode="edit"
       breadcrumbItems={[{ label: "Work Orders", href: "/work-orders" }, { label: workOrder.title }]}
       workOrder={workOrder}
-      readOnly={!canEdit}
+      readOnly={!canEdit || locked}
+      locked={locked}
       client={client}
       site={site}
       asset={asset}

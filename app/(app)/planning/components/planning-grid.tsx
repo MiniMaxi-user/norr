@@ -2,6 +2,7 @@
 
 import { useState, type DragEvent, type ReactNode } from "react";
 import { Avatar, Badge, Card, Inline, SchedulerGrid, Stack, Text, Timeline } from "@yourorg/ui";
+import { Lock } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { buildEngineerSections, type PlanningEngineer, type PlanningSection } from "../grouping";
@@ -45,6 +46,39 @@ export interface PlanningGridProps {
 interface HoverKey {
   engineerId: string;
   slot: number;
+}
+
+/** Display-only "already checked out (or further along) by the engineer's
+ * PWA" heuristic (issue #203) — every work order reaching this grid already
+ * has `scheduled_at` set, so any status other than `"scheduled"` here means
+ * `checkout`/`en_route`/`in_progress`/`completed`/`invoiced` in practice. The
+ * real enforcement is server-side (`isWorkOrderCheckedOutOrLater`, compared
+ * by `sort_order`, in `app/(app)/work-orders/checkout-lock.ts`) — this is
+ * purely the glanceable lock icon on the block, so a planner sees why a drag
+ * will be rejected before even attempting it (the inline error on a rejected
+ * drop, already wired up via `performSchedule`/`performUnschedule`'s revert,
+ * is what actually explains it). */
+function isLockedWorkOrder(workOrder: WorkOrderRecord): boolean {
+  return workOrder.work_order_status?.value !== "scheduled";
+}
+
+/** Shared block title composition for `SchedulerGrid.Block`/`Timeline.Block`
+ * — both accept `title: ReactNode`, not just a string, so a locked work
+ * order's title is prefixed with a small `aria-hidden` `Lock` glyph rather
+ * than requiring a new icon-slot prop on either design-system component.
+ * Icon + text rendered as plain inline flow (not an `Inline` flex wrapper) —
+ * same "icon then text, no flex wrapper" shape `WorkOrderHero`'s own meta
+ * row already uses for its `MapPin`/`CalendarDays` facts — so the whole
+ * thing stays a single inline run inside `.ui-scheduler-grid-block-title`'s/
+ * `.ui-timeline-block-title`'s existing `white-space: nowrap; text-overflow:
+ * ellipsis` truncation instead of breaking it with a nested flex child. */
+function blockTitle(workOrder: WorkOrderRecord): ReactNode {
+  if (!isLockedWorkOrder(workOrder)) return workOrder.title;
+  return (
+    <>
+      <Lock aria-hidden /> {workOrder.title}
+    </>
+  );
 }
 
 /**
@@ -315,7 +349,7 @@ function buildDayCells({
         key={wo.id}
         span={span}
         color={wo.work_order_type?.color}
-        title={wo.title}
+        title={blockTitle(wo)}
         meta={`${formatTimeLabel(wo.scheduled_at!)} · ${clientNameById[wo.client_id] ?? ""}`}
         onClick={() => onQuickView(wo)}
         draggable
@@ -373,7 +407,7 @@ function WeekTimeline({
                   {dayItems.map((wo) => (
                     <Timeline.Block
                       key={wo.id}
-                      title={wo.title}
+                      title={blockTitle(wo)}
                       meta={formatTimeLabel(wo.scheduled_at!)}
                       color={wo.work_order_type?.color}
                       variant={durationBadgeVariant(wo)}

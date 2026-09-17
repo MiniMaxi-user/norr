@@ -7,6 +7,7 @@ import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { canAny } from "@/lib/rbac/permissions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { updateWorkOrder, type WorkOrderRecord } from "./actions";
+import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
 
 /**
  * Resolves this org's `work_order_status` item for `value` ("new" or
@@ -201,7 +202,7 @@ export async function scheduleWorkOrder(
   // a mismatched `id` here comes back as "not found," not a permission leak.
   const { data: target, error: targetError } = await supabase
     .from("work_orders")
-    .select("id, organization_id, assigned_to, scheduled_at, duration_minutes")
+    .select("id, organization_id, assigned_to, scheduled_at, duration_minutes, status_id")
     .eq("id", idResult.data)
     .maybeSingle<{
       id: string;
@@ -209,10 +210,22 @@ export async function scheduleWorkOrder(
       assigned_to: string | null;
       scheduled_at: string | null;
       duration_minutes: number | null;
+      status_id: string;
     }>();
 
   if (targetError) return fail(mapDbError(targetError));
   if (!target) return fail("Work order not found, or you do not have permission to schedule it.");
+
+  // Checkout lock (issue #203): once the assigned engineer's PWA has pulled
+  // this work order's full detail (`checkout_work_order_if_scheduled`
+  // flipping it past `scheduled`), the Planning board can no longer
+  // reschedule it — `sort_order`-based, so `en_route`/`in_progress`/
+  // `completed`/`invoiced` are covered too, not just the exact `checkout`
+  // state. See `./checkout-lock.ts`'s own doc comment for the full
+  // reasoning; the PWA itself is never restricted by this.
+  if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+    return fail("This work order has already been checked out by the engineer and can no longer be rescheduled.");
+  }
 
   if (target.duration_minutes == null) {
     return fail("This work order has no duration set — set one before scheduling.");
@@ -304,10 +317,35 @@ export async function unscheduleWorkOrder(id: string): Promise<ActionResult<{ wo
     return fail("You do not have permission to update work orders.");
   }
 
+  const supabase = await createSupabaseServerClient();
+
+  // Re-fetch the target's own row before mutating — same "never trust a
+  // client-supplied assumption about current state" precedent
+  // `scheduleWorkOrder`'s own doc comment describes above. This function
+  // didn't need a pre-check before the checkout lock existed (it only ever
+  // wrote a fixed `{ assigned_to: null, scheduled_at: null, status_id:
+  // <new> }` shape, with no cross-field validation of its own) — the lock
+  // now requires knowing the target's CURRENT `status_id` first, so this
+  // adds the same lightweight pre-check SELECT `scheduleWorkOrder` already
+  // has, rather than a second unrelated round trip.
+  const { data: target, error: targetError } = await supabase
+    .from("work_orders")
+    .select("id, status_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string; status_id: string }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("Work order not found, or you do not have permission to update it.");
+
+  // Checkout lock (issue #203) — same guard/reasoning as `scheduleWorkOrder`
+  // above.
+  if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+    return fail("This work order has already been checked out by the engineer and can no longer be rescheduled.");
+  }
+
   const newStatus = await resolveWorkOrderStatusId("new");
   if ("error" in newStatus) return fail(newStatus.error);
 
-  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("work_orders")
     .update({ assigned_to: null, scheduled_at: null, status_id: newStatus.id })
