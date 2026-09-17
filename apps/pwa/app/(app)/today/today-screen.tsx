@@ -10,6 +10,7 @@ import {
   getLastSyncedAt,
   getPendingSyncWorkOrderIds,
   getSignedWorkOrderIds,
+  saveCachedTimeRoundingSettings,
   saveCatalog,
   saveWorkItems,
   saveWorkOrderDetail,
@@ -23,13 +24,17 @@ import {
   getRunningWorkOrderId,
   type ClockSummary,
 } from "@/lib/time/clocks";
-import type { CatalogArticle, WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { CatalogArticle, TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
 import { PullToRefresh } from "./pull-to-refresh";
 
 interface TodayWorkItemsResponse {
   items: CachedWorkItem[];
   syncedAt: string;
+  /** Issue #198 — the caller's org's travel/work minimum + rounding
+   * settings, cached via `saveCachedTimeRoundingSettings` below so it's
+   * available offline before any specific work order is opened. */
+  timeRoundingSettings: TimeRoundingSettings;
 }
 
 /** How many work orders' `/api/work-orders/{id}` + shell-prefetch requests
@@ -240,6 +245,7 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
       }
       const data = (await response.json()) as TodayWorkItemsResponse;
       await saveWorkItems(data.items, data.syncedAt, currentUserId);
+      await saveCachedTimeRoundingSettings(data.timeRoundingSettings, currentUserId);
       setItems(data.items);
       setLastSyncedAt(data.syncedAt);
       setSyncFailed(false);

@@ -20,14 +20,28 @@ import {
   Tooltip,
 } from "@yourorg/ui";
 import { AlertTriangle, Clock, Pencil, Trash2 } from "@yourorg/ui/icons";
+import { computeRoundedMinutes } from "@yourorg/time-rounding";
 import { clockOut, createTimeEntry, updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { OrgMemberRecord } from "@/lib/members/actions";
 import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatCurrency } from "@/lib/format/currency";
+import type { OrganizationTimeRoundingSettings } from "@/app/(app)/settings/organization-time-rounding-actions";
 import { DeleteTimeEntryDialog } from "./delete-time-entry-dialog";
 import { elapsedMinutes, formatHoursMinutes, formatTimeOfDay } from "./format-work-order-time";
+
+/** "0:40 · net 1:00" when the org's rounding settings (issue #198) actually
+ * change `grossMinutes`, else just the plain gross figure — additive, never
+ * replaces the existing gross display (acceptance criterion: "huidige
+ * werking" for gross stays unchanged). Shared by both the per-row duration
+ * and the Travel/Work/Total `SummaryRow` figures below so the two stay in
+ * the exact same format. */
+function formatGrossNet(grossMinutes: number, netMinutes: number): string {
+  return netMinutes !== grossMinutes
+    ? `${formatHoursMinutes(grossMinutes)} · net ${formatHoursMinutes(netMinutes)}`
+    : formatHoursMinutes(grossMinutes);
+}
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -78,6 +92,13 @@ export interface WorkOrderHoursSectionProps {
    * `Callout` above the row list when non-zero, only for `canSeeCosts`
    * callers. */
   unresolvedTimeEntryCount?: number;
+  /** Issue #198 — the org's travel/work minimum + rounding settings
+   * (`getOrganizationTimeRoundingSettings`, fetched by
+   * `../[id]/work-order-hours-slot.tsx` and passed down here). Drives the
+   * additive "· net X" figure on each row and the Travel/Work/Total
+   * summary — the existing gross figures are computed from `timeEntries`
+   * exactly as before and never touched by this. */
+  roundingSettings: OrganizationTimeRoundingSettings;
 }
 
 /**
@@ -116,6 +137,7 @@ export function WorkOrderHoursSection({
   canSeeCosts,
   costSummary,
   unresolvedTimeEntryCount = 0,
+  roundingSettings,
 }: WorkOrderHoursSectionProps) {
   const router = useRouter();
   const [dialogSection, setDialogSection] = useState<"travel" | "work" | null>(null);
@@ -144,6 +166,20 @@ export function WorkOrderHoursSection({
 
   const travelMinutes = travelEntries.reduce((sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0), 0);
   const workMinutes = workEntries.reduce((sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0), 0);
+
+  // Issue #198 — NET (billable) minutes per bucket, summed from each
+  // entry's own already-rounded minutes (not the bucket's gross total
+  // rounded as one lump) — matches `computeQuantityHours`'s own per-entry
+  // rounding (`app/(app)/work-orders/create-quote-actions.ts`), so this
+  // display and the auto-draft quote it feeds never disagree.
+  const travelNetMinutes = travelEntries.reduce((sum, entry) => {
+    const raw = elapsedMinutes(entry.started_at, entry.ended_at);
+    return sum + (raw === null ? 0 : computeRoundedMinutes(raw, roundingSettings.travel));
+  }, 0);
+  const workNetMinutes = workEntries.reduce((sum, entry) => {
+    const raw = elapsedMinutes(entry.started_at, entry.ended_at);
+    return sum + (raw === null ? 0 : computeRoundedMinutes(raw, roundingSettings.work));
+  }, 0);
 
   const disabledHint = "Save the work order first";
 
@@ -179,7 +215,12 @@ export function WorkOrderHoursSection({
         )}
         {!isRunning && (
           <Text className="ui-row-trailing ui-tabular-nums">
-            {formatHoursMinutes(elapsedMinutes(entry.started_at, entry.ended_at))}
+            {(() => {
+              const raw = elapsedMinutes(entry.started_at, entry.ended_at);
+              if (raw === null) return formatHoursMinutes(raw);
+              const net = computeRoundedMinutes(raw, roundingSettings[kind]);
+              return formatGrossNet(raw, net);
+            })()}
           </Text>
         )}
         {isRunning && canEditRow && (
@@ -247,20 +288,20 @@ export function WorkOrderHoursSection({
               {
                 label: "Travel",
                 value: showCosts
-                  ? `${formatHoursMinutes(travelMinutes)} · ${formatCurrency(costSummary!.travelTotal)}`
-                  : formatHoursMinutes(travelMinutes),
+                  ? `${formatGrossNet(travelMinutes, travelNetMinutes)} · ${formatCurrency(costSummary!.travelTotal)}`
+                  : formatGrossNet(travelMinutes, travelNetMinutes),
               },
               {
                 label: "Work",
                 value: showCosts
-                  ? `${formatHoursMinutes(workMinutes)} · ${formatCurrency(costSummary!.laborTotal)}`
-                  : formatHoursMinutes(workMinutes),
+                  ? `${formatGrossNet(workMinutes, workNetMinutes)} · ${formatCurrency(costSummary!.laborTotal)}`
+                  : formatGrossNet(workMinutes, workNetMinutes),
               },
               {
                 label: "Total",
                 value: showCosts
-                  ? `${formatHoursMinutes(travelMinutes + workMinutes)} · ${formatCurrency(costSummary!.travelTotal + costSummary!.laborTotal)}`
-                  : formatHoursMinutes(travelMinutes + workMinutes),
+                  ? `${formatGrossNet(travelMinutes + workMinutes, travelNetMinutes + workNetMinutes)} · ${formatCurrency(costSummary!.travelTotal + costSummary!.laborTotal)}`
+                  : formatGrossNet(travelMinutes + workMinutes, travelNetMinutes + workNetMinutes),
                 emphasis: "bold",
               },
             ]}
