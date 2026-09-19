@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, IconButton, RecordHeroBand, StatStrip, Text, type StatStripItem } from "@yourorg/ui";
+import { Badge, Button, IconButton, RecordHeroBand, StatStrip, Text, Tooltip, type StatStripItem } from "@yourorg/ui";
 import { CalendarDays, Lock, MapPin, Pencil } from "@yourorg/ui/icons";
 import { approveWorkOrderReview, type WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
@@ -44,16 +44,19 @@ export interface WorkOrderHeroProps {
   /** `[id]/page.tsx`'s own `locked` (issue #203) — true once this work order
    * is checked-out-or-later for a planner/owner actor. Already reflected in
    * `readOnly` (hides the status/priority edit pencil below, same as any
-   * other read-only view) — this is purely for the extra "Checked out —
-   * read-only" `Badge` so it reads as a DIFFERENT reason than a plain
-   * `finance`/`administratie` viewer's read-only view. */
+   * other read-only view) — this is purely for the extra lock icon (product
+   * feedback, 2026-09-19: showing a whole second "Checked out — read-only"
+   * `Badge` next to the real status badge read as two statuses, doubly so
+   * when the real status IS literally "Checked out" — a single small icon on
+   * the existing status badge conveys the same "why is this read-only"
+   * without implying a second status value). */
   locked?: boolean;
   /** `[id]/page.tsx`'s own `canApproveReview` — `can(actor, "planning",
    * "update") && workOrder.work_order_status?.value === "to_review"`. Gates
-   * the "Approve" button rendered right next to the "Checked out —
-   * read-only" `Badge` above (see this component's own doc comment for why
-   * that's the chosen spot). A work order reaching `to_review` is always
-   * `locked` too, so this population is a subset of who'd see that badge. */
+   * the "Approve" button rendered right next to the status badge above (see
+   * this component's own doc comment for why that's the chosen spot). A work
+   * order reaching `to_review` is always `locked` too, so this population is
+   * a subset of who'd see the lock icon. */
   canApproveReview?: boolean;
   /** Hours/Material/Checklist KPI tiles — computed by `WorkOrderScreen` from
    * the data it already fetched/holds, kept out of this component so it
@@ -188,11 +191,16 @@ export function WorkOrderHero({
       )}
       {/* Issue #203 — distinct from the plain read-only (`readOnly` without
        * `locked`) case: explains WHY the Edit affordances above just
-       * disappeared, rather than leaving that silent. */}
+       * disappeared, rather than leaving that silent. A single small icon
+       * (not a second text `Badge`) so it never reads as a second status
+       * value next to the real status badge above — see this file's own
+       * `locked` prop doc comment for why that changed. */}
       {mode === "edit" && locked && (
-        <Badge variant="muted">
-          <Lock aria-hidden /> Checked out — read-only
-        </Badge>
+        <Tooltip content="Read-only — checked out by the engineer">
+          <IconButton variant="ghost" aria-label="Read-only — checked out by the engineer" disabled>
+            <Lock aria-hidden />
+          </IconButton>
+        </Tooltip>
       )}
       {/* "Approve" — placed right next to the badge above rather than in
        * `actions` (the hero's Create Quote/Delete toolbar): this is the one
