@@ -7,6 +7,7 @@ import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { timeEntryClockInSchema, timeEntryCreateSchema, timeEntryUpdateSchema } from "./schema";
 import type { ResolvedReferenceItem } from "./actions";
+import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
 
 /**
  * Server Actions for a Work Order's Time Entries (issue #15, second stage) —
@@ -47,6 +48,24 @@ import type { ResolvedReferenceItem } from "./actions";
  *    `clockIn`'s override).
  * An owner/planner (plain `create`) may pass any `userId` (defaulting to
  * themselves when omitted) to log/clock someone else in.
+ *
+ * Checkout lock (issue #203 follow-up — closing a real server-side gap):
+ * `createTimeEntry`/`updateTimeEntry`/`deleteTimeEntry`/`clockOut` all call
+ * `isWorkOrderCheckedOutOrLater` (`./checkout-lock.ts`) before writing, same
+ * helper `updateWorkOrder`/`deleteWorkOrder` (`./actions.ts`) already use.
+ * UNLIKE `updateWorkOrder`'s two-path guard, there is NO engineer-own-row
+ * exemption here — the guard applies to EVERY caller regardless of role, per
+ * product's ask: once a work order is checked out, Travel/Work time becomes
+ * edit-only-via-the-PWA for everyone on the web app, including the assigned
+ * engineer's own `update_own`/`create_own` path (the PWA itself writes
+ * `time_entries` directly under RLS, never through these actions — see
+ * `apps/pwa/app/api/work-orders/[id]/finish/route.ts` — so this lock never
+ * blocks the one path that's actually supposed to keep working). `clockIn`
+ * (starting a NEW running entry from a genuinely still-open work order) is
+ * deliberately left unguarded — by the time a work order is checked out or
+ * later, the PWA's own flow has already moved past "clock in" for it, and
+ * `createTimeEntry`/`updateTimeEntry`/`clockOut` are where a post-checkout
+ * write from this app would actually happen.
  */
 
 export interface TimeEntryRecord {
@@ -84,6 +103,30 @@ function toTimeEntryUpdateRow(input: ReturnType<typeof timeEntryUpdateSchema.par
   if (input.endedAt !== undefined) row.ended_at = input.endedAt;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   return row;
+}
+
+/**
+ * Resolves an existing time entry's parent work order `status_id`, for the
+ * checkout-lock guard in `updateTimeEntry`/`deleteTimeEntry`/`clockOut` —
+ * those three only take a time-entry `id`, unlike `createTimeEntry` which
+ * already has `workOrderId` directly. A single embedded select (this file's
+ * existing style already embeds `time_entry_type` the same way via
+ * `TIME_ENTRY_SELECT`) rather than two round trips. `work_orders` is `not
+ * null` on `time_entries.work_order_id`, so the embed is always present when
+ * the time entry itself is found — no `!inner` needed.
+ */
+async function loadWorkOrderStatusForTimeEntry(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  timeEntryId: string,
+): Promise<{ found: false } | { found: true; statusId: string | null }> {
+  const { data } = await supabase
+    .from("time_entries")
+    .select("work_orders(status_id)")
+    .eq("id", timeEntryId)
+    .maybeSingle<{ work_orders: { status_id: string } | null }>();
+
+  if (!data) return { found: false };
+  return { found: true, statusId: data.work_orders?.status_id ?? null };
 }
 
 /**
@@ -215,6 +258,19 @@ export async function createTimeEntry(
 
   const supabase = await createSupabaseServerClient();
 
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const { data: workOrderForLock, error: workOrderForLockError } = await supabase
+    .from("work_orders")
+    .select("status_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ status_id: string }>();
+
+  if (workOrderForLockError) return fail(mapDbError(workOrderForLockError));
+  if (workOrderForLock && (await isWorkOrderCheckedOutOrLater(workOrderForLock.status_id))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const canLogForOthers = can(ctx.context.actor, "planning", "create");
   let userId = ctx.context.session.userId;
   if (canLogForOthers) {
@@ -277,6 +333,14 @@ export async function clockOut(id: string): Promise<ActionResult<{ timeEntry: Ti
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
+  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("time_entries")
     .update({ ended_at: new Date().toISOString() })
@@ -322,6 +386,14 @@ export async function updateTimeEntry(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
+  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("time_entries")
     .update(row)
@@ -349,6 +421,19 @@ export async function deleteTimeEntry(id: string): Promise<ActionResult<{ delete
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption
+  // (unlike `deleteWorkOrder`'s "owner/planner-only to begin with" shape,
+  // this one genuinely does need a fresh guard: `deleteTimeEntry` itself was
+  // already owner/planner-only, but nothing previously stopped that
+  // owner/planner from deleting a time entry once its work order was
+  // checked out).
+  const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
+  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("time_entries")
     .delete()

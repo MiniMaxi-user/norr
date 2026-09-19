@@ -44,6 +44,7 @@ export async function WorkOrderHoursSlot({
   canUpdateTimeEntriesOwn,
   canDelete,
   canSeeCosts,
+  locked,
 }: {
   workOrderId: string;
   assignedTo: string | null;
@@ -54,6 +55,14 @@ export async function WorkOrderHoursSlot({
   canUpdateTimeEntriesOwn: boolean;
   canDelete: boolean;
   canSeeCosts: boolean;
+  /** `[id]/page.tsx`'s own `isCheckedOutOrLater` (issue #203) — deliberately
+   * NOT that file's owner/planner-scoped `locked` (this section's own
+   * "checked out" `Callout` and its role-agnostic own-row gates need to cover
+   * an engineer's own checked-out work order too, see `[id]/page.tsx`'s
+   * `canUpdateTimeEntriesOwn` doc comment) — threaded straight through to
+   * `WorkOrderHoursSection`'s own "checked out" `Callout`, see that
+   * component's doc comment. */
+  locked: boolean;
 }) {
   const [timeEntriesResult, timeEntryTypesResult, costSummaryResult, unresolvedTimeEntriesResult, timeRoundingResult] =
     await Promise.all([
@@ -89,6 +98,7 @@ export async function WorkOrderHoursSlot({
         costSummary={costSummary}
         unresolvedTimeEntryCount={unresolvedTimeEntryCount}
         roundingSettings={roundingSettings}
+        locked={locked}
       />
     </>
   );

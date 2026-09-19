@@ -137,6 +137,16 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const isCheckedOutOrLater = workOrder.work_order_status?.value !== "new" && workOrder.work_order_status?.value !== "scheduled";
   const locked = isCheckedOutOrLater && can(actor, "planning", "update");
 
+  // "Goedkeuren"/Approve (office review gate, product feedback, 2026-09-18 —
+  // see `approveWorkOrderReview`'s own doc comment in `../actions.ts`). A
+  // work order reaching `to_review` is necessarily already `locked` above
+  // (that status sits past `checkout` in the lifecycle), so this is purely an
+  // ADDITIONAL narrowing of the same `can(actor, "planning", "update")`
+  // population — the one action they can still take on a locked work order
+  // from this page, surfaced right next to the "Checked out — read-only"
+  // badge that already explains why everything else is gone.
+  const canApproveReview = can(actor, "planning", "update") && workOrder.work_order_status?.value === "to_review";
+
   // Checklists (issue #14) are their own, separately-entitled module (NOT
   // folded into `planning` — see `lib/rbac/permissions.ts`'s `checklists`
   // row doc comment), so per CLAUDE.md rule 3 / docs/ARCHITECTURE.md
@@ -157,8 +167,17 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canEdit = canAny(actor, "planning", ["update", "update_own"]);
   // Consumed Articles (issue #94) — same gate `createWorkOrderArticle` itself
   // enforces; used ahead of the fetch below to skip `listArticlesForSelect()`
-  // entirely for a caller who could never render its picker anyway.
-  const canCreateWorkOrderArticles = canAny(actor, "planning", ["create", "create_own"]);
+  // entirely for a caller who could never render its picker anyway. `&&
+  // !isCheckedOutOrLater` (issue #203 follow-up, tightened 2026-09-18 after
+  // qa-reviewer caught this using `locked` — `locked` is owner/planner-scoped
+  // (mirrors `updateWorkOrder`'s own engineer-`update_own` exemption), but
+  // this gate also covers an engineer's OWN `create_own` path, and the
+  // server-side guard `createWorkOrderArticle` (`../work-order-articles-
+  // actions.ts`) now enforces the lock unconditionally, with NO role
+  // exemption — so the UI gate must be role-agnostic too, or an engineer's
+  // own checked-out work order would still show a live "+ Article" button
+  // that unconditionally fails server-side).
+  const canCreateWorkOrderArticles = canAny(actor, "planning", ["create", "create_own"]) && !isCheckedOutOrLater;
   // "Maak Quote" (issue #94) — mirrors `createQuoteFromWorkOrder`'s own gate
   // in `../create-quote-actions.ts` exactly: a separately-entitled module
   // (`quotes`) AND `can(actor, "quotes", "create")` (owner/planner only).
@@ -237,22 +256,33 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // rows let picking WHICH engineer the entry belongs to, which only a
   // caller who can actually log on someone else's behalf may exercise (see
   // `createTimeEntry`'s own on-behalf-of logic in `time-entries-actions.ts`).
-  const canLogTimeForOthers = can(actor, "planning", "create");
+  // `&& !locked` (issue #203 follow-up) mirrors `canUpdateTimeEntriesAny`
+  // below: once checked out, the PWA is the sole place to log a new time
+  // entry too, same as editing an existing one — no role exemption, matching
+  // the server-side guard `createTimeEntry`/`clockIn` (`../time-entries-
+  // actions.ts`) now enforces unconditionally once checked-out-or-later.
+  const canLogTimeForOthers = can(actor, "planning", "create") && !locked;
   // `&& !locked` (issue #203) hides the planner/owner "edit any entry"
-  // affordance once checked out; `canUpdateTimeEntriesOwn` (the engineer's
-  // own path) is deliberately left untouched, mirroring `updateWorkOrder`'s
-  // own `update`-vs-`update_own` exemption this page's `locked` computation
-  // is already based on.
+  // affordance once checked out. `canUpdateTimeEntriesOwn` (the engineer's
+  // own path) is `&& !isCheckedOutOrLater` — NOT `locked` — since 2026-09-18
+  // (qa-reviewer caught the original "deliberately left untouched, mirroring
+  // updateWorkOrder's exemption" reasoning as wrong for this sub-resource:
+  // `updateWorkOrder` itself genuinely exempts an engineer's own `update_own`
+  // row, but `updateTimeEntry`'s server-side guard, once checked out, has NO
+  // such exemption — it blocks every caller. The UI gate has to match that.
   const canUpdateTimeEntriesAny = can(actor, "planning", "update") && !locked;
-  const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own");
+  const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own") && !isCheckedOutOrLater;
 
   // Consumed Articles (issue #94) — same `planning` module, see
   // `consumed-articles-panel.tsx`'s own doc comment for why there is only one
   // create gate here (`canCreateWorkOrderArticles`, computed above) rather
   // than a further `canLogTimeForOthers`-style split. `&& !locked` mirrors
-  // `canUpdateTimeEntriesAny` above for the same reason.
+  // `canUpdateTimeEntriesAny` above for the same reason; `canUpdateWorkOrder-
+  // ArticlesOwn` mirrors `canUpdateTimeEntriesOwn`'s `!isCheckedOutOrLater`
+  // fix above for the same reason (`updateWorkOrderArticle`'s server-side
+  // guard has no role exemption either).
   const canUpdateWorkOrderArticlesAny = can(actor, "planning", "update") && !locked;
-  const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own");
+  const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own") && !isCheckedOutOrLater;
 
   // Checklists (issue #14) are their OWN module (see comment above), not a
   // reuse of `planning`'s actions/permissions.
@@ -280,6 +310,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       canDelete={canDelete}
       currentUserId={session.userId}
       canCreateQuote={canCreateQuote}
+      canApproveReview={canApproveReview}
       canAccessChecklists={canAccessChecklists}
       hoursSlot={
         <Suspense fallback={<WorkOrderHoursSectionSkeleton />}>
@@ -293,6 +324,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
             canDelete={canDelete}
             canSeeCosts={canSeeCosts}
+            locked={isCheckedOutOrLater}
           />
         </Suspense>
       }
@@ -306,6 +338,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             canDelete={canDelete}
             currentUserId={session.userId}
             reportToInvoice={!canSeeCosts}
+            locked={isCheckedOutOrLater}
           />
         </Suspense>
       }

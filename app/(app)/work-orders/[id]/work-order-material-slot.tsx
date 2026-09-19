@@ -21,6 +21,7 @@ export async function WorkOrderMaterialSlot({
   canDelete,
   currentUserId,
   reportToInvoice,
+  locked,
 }: {
   workOrderId: string;
   canCreateWorkOrderArticles: boolean;
@@ -31,6 +32,14 @@ export async function WorkOrderMaterialSlot({
   /** `!canSeeCosts` — computed by `[id]/page.tsx`, see
    * `WorkOrderMaterialStatsReporter`'s own doc comment for why. */
   reportToInvoice: boolean;
+  /** `[id]/page.tsx`'s own `isCheckedOutOrLater` (issue #203) — deliberately
+   * NOT that file's owner/planner-scoped `locked` (this section's own
+   * "checked out" `Callout` and its role-agnostic own-row gates need to cover
+   * an engineer's own checked-out work order too, see `[id]/page.tsx`'s
+   * `canUpdateWorkOrderArticlesOwn` doc comment) — threaded straight through
+   * to `WorkOrderMaterialSection`'s own "checked out" `Callout`, see that
+   * component's doc comment. */
+  locked: boolean;
 }) {
   const [workOrderArticlesResult, articlesForSelectResult] = await Promise.all([
     listWorkOrderArticles(workOrderId),
@@ -57,6 +66,7 @@ export async function WorkOrderMaterialSlot({
         canUpdateOwn={canUpdateWorkOrderArticlesOwn}
         canDelete={canDelete}
         currentUserId={currentUserId}
+        locked={locked}
       />
     </>
   );

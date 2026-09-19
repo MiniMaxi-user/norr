@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./schema";
+import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
 
 /**
  * Server Actions for a Work Order's consumed Articles (issue #94 schema
@@ -32,6 +33,19 @@ import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./sc
  * creates a row attributed to themselves; an owner/planner's extra `CRUD`
  * privilege is about being able to read/update/delete ANY row (not just
  * their own), not about attributing a row to someone else.
+ *
+ * Checkout lock (issue #203 follow-up — closing a real server-side gap):
+ * `createWorkOrderArticle`/`updateWorkOrderArticle`/`deleteWorkOrderArticle`
+ * all call `isWorkOrderCheckedOutOrLater` (`./checkout-lock.ts`) before
+ * writing, same helper `updateWorkOrder`/`deleteWorkOrder` (`./actions.ts`)
+ * and `./time-entries-actions.ts` already use. Same "every caller, no role
+ * exemption" rule as that file: once a work order is checked out, consumed
+ * articles become edit-only-via-the-PWA for everyone on the web app,
+ * including the assigned engineer's own `update_own`/`create_own` path (the
+ * PWA writes `work_order_articles` directly under RLS, never through these
+ * actions — see `apps/pwa/app/api/work-orders/[id]/finish/route.ts` — so
+ * this lock never blocks the one path that's actually supposed to keep
+ * working).
  */
 
 export interface WorkOrderArticleRecord {
@@ -72,6 +86,30 @@ function toWorkOrderArticleUpdateRow(input: ReturnType<typeof workOrderArticleUp
   if (input.articleId !== undefined) row.article_id = input.articleId;
   if (input.quantity !== undefined) row.quantity = input.quantity;
   return row;
+}
+
+/**
+ * Resolves an existing consumed-article row's parent work order `status_id`,
+ * for the checkout-lock guard in `updateWorkOrderArticle`/
+ * `deleteWorkOrderArticle` — those two only take a `work_order_articles` row
+ * `id`, unlike `createWorkOrderArticle` which already has `workOrderId`
+ * directly. Same shape as `loadWorkOrderStatusForTimeEntry` in
+ * `./time-entries-actions.ts`. `work_orders` is `not null` on
+ * `work_order_articles.work_order_id`, so the embed is always present when
+ * the row itself is found — no `!inner` needed.
+ */
+async function loadWorkOrderStatusForArticle(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  workOrderArticleId: string,
+): Promise<{ found: false } | { found: true; statusId: string | null }> {
+  const { data } = await supabase
+    .from("work_order_articles")
+    .select("work_orders(status_id)")
+    .eq("id", workOrderArticleId)
+    .maybeSingle<{ work_orders: { status_id: string } | null }>();
+
+  if (!data) return { found: false };
+  return { found: true, statusId: data.work_orders?.status_id ?? null };
 }
 
 /**
@@ -132,6 +170,20 @@ export async function createWorkOrderArticle(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const { data: workOrderForLock, error: workOrderForLockError } = await supabase
+    .from("work_orders")
+    .select("status_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ status_id: string }>();
+
+  if (workOrderForLockError) return fail(mapDbError(workOrderForLockError));
+  if (workOrderForLock && (await isWorkOrderCheckedOutOrLater(workOrderForLock.status_id))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("work_order_articles")
     .insert({
@@ -181,6 +233,14 @@ export async function updateWorkOrderArticle(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const lockCheck = await loadWorkOrderStatusForArticle(supabase, idResult.data);
+  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("work_order_articles")
     .update(row)
@@ -208,6 +268,14 @@ export async function deleteWorkOrderArticle(id: string): Promise<ActionResult<{
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Checkout lock (issue #203 follow-up) — see the module comment above for
+  // why every caller is guarded here, with no engineer-own-row exemption.
+  const lockCheck = await loadWorkOrderStatusForArticle(supabase, idResult.data);
+  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+    return fail("This work order has been checked out and can no longer be edited.");
+  }
+
   const { data, error } = await supabase
     .from("work_order_articles")
     .delete()

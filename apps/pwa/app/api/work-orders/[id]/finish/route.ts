@@ -20,12 +20,20 @@ import { createClient } from "@/lib/supabase/server";
  *    is the FIRST and ONLY time this data reaches the server (nothing was
  *    synced earlier), so there's no partial-sync/dedupe state to reconcile.
  * 2. Sets `status_id` to the caller's own organization's `work_order_status`
- *    "completed" reference item, stamps `completed_at`, and writes
+ *    "to_review" reference item (office review gate, product feedback,
+ *    2026-09-18 — see `supabase/migrations/20260920110000_work_order_to_
+ *    review_status.sql`'s header: an engineer finishing a job from the field
+ *    no longer lands it straight on `completed`; a separate owner/planner-
+ *    only "Goedkeuren"/Approve action, `approveWorkOrderReview` in
+ *    `app/(app)/work-orders/actions.ts`, is what actually flips it on to
+ *    `completed` from the desktop app), stamps `completed_at`, and writes
  *    `work_orders.solution` (product feedback, 2026-09-13: the desktop
  *    webapp had nowhere to see how a job was actually resolved) from the
  *    Sign off tab's free-text field — same "first and only sync" reasoning
  *    as the periods/articles above, so this plainly overwrites the column
- *    rather than merging.
+ *    rather than merging. `completed_at` is still stamped HERE, not on
+ *    approval — it represents when the engineer physically finished the job
+ *    in the field, not when the office later reviews/approves it.
  *
  * Same session -> `canAny()` -> RLS-scoped-query pattern as every other
  * route in this app. `time_entries_insert_scoped`/`work_order_articles_
@@ -241,29 +249,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Failed to resolve the completed status." }, { status: 500 });
   }
 
-  const { data: completedItem, error: completedItemError } = await supabase
+  const { data: toReviewItem, error: toReviewItemError } = await supabase
     .from("reference_list_items")
     .select("id")
     .eq("reference_list_id", statusList.id)
-    .eq("value", "completed")
+    .eq("value", "to_review")
     .maybeSingle();
 
-  if (completedItemError || !completedItem) {
+  if (toReviewItemError || !toReviewItem) {
     console.error(
-      "POST /api/work-orders/[id]/finish: organization's work_order_status list has no 'completed' item",
-      completedItemError,
+      "POST /api/work-orders/[id]/finish: organization's work_order_status list has no 'to_review' item",
+      toReviewItemError,
     );
-    return NextResponse.json({ error: "Failed to resolve the completed status." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to resolve the to-review status." }, { status: 500 });
   }
 
   const { error: updateError } = await supabase
     .from("work_orders")
-    .update({ status_id: completedItem.id, completed_at: new Date().toISOString(), solution })
+    .update({ status_id: toReviewItem.id, completed_at: new Date().toISOString(), solution })
     .eq("id", id);
 
   if (updateError) {
     console.error("POST /api/work-orders/[id]/finish: failed to update work order", updateError);
-    return NextResponse.json({ error: "Failed to mark this work order as completed." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to mark this work order as awaiting review." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

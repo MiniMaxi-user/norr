@@ -138,6 +138,12 @@ export interface WorkOrderScreenProps {
    * can(actor, "quotes", "create")` — gates the hero's "Create Quote" action
    * (issue #94). */
   canCreateQuote?: boolean;
+  /** `can(actor, "planning", "update") && workOrder.work_order_status?.value
+   * === "to_review"` — gates the hero's "Goedkeuren" (Approve) button, see
+   * `WorkOrderHero`'s own doc comment for placement/rationale. Computed by
+   * `[id]/page.tsx`; always `false` in `mode: "create"` (no status to review
+   * yet). */
+  canApproveReview?: boolean;
   /** `can(actor, "planning", "read")` (issue #109) — gates BOTH the "To
    * invoice" KPI tile's real (material + travel + labor) total AND
    * `WorkOrderHoursSection`'s per-bucket cost figures / "N entries missing
@@ -276,6 +282,7 @@ export function WorkOrderScreen({
   canUpdateWorkOrderArticlesAny,
   canUpdateWorkOrderArticlesOwn,
   canCreateQuote,
+  canApproveReview,
   canSeeCosts,
   costSummary = null,
   unresolvedTimeEntryCount = 0,
@@ -427,6 +434,7 @@ export function WorkOrderScreen({
         members={members}
         currentUserId={currentUserId}
         canDelete={canDelete}
+        canApproveReview={canApproveReview}
         canAccessChecklists={canAccessChecklists}
         hoursSlot={hoursSlot}
         materialSlot={materialSlot}
@@ -484,6 +492,8 @@ interface WorkOrderScreenBodyProps {
   members: OrgMemberRecord[];
   currentUserId?: string;
   canDelete?: boolean;
+  /** See `WorkOrderScreenProps.canApproveReview`'s own doc comment. */
+  canApproveReview?: boolean;
   canAccessChecklists?: boolean;
   hoursSlot?: ReactNode;
   materialSlot?: ReactNode;
@@ -551,6 +561,7 @@ function WorkOrderScreenBody({
   members,
   currentUserId,
   canDelete,
+  canApproveReview,
   canAccessChecklists,
   hoursSlot,
   materialSlot,
@@ -665,6 +676,7 @@ function WorkOrderScreenBody({
         types={types}
         readOnly={readOnly}
         locked={locked}
+        canApproveReview={canApproveReview}
         stats={stats}
         actions={heroActions}
         onTitleChange={onTitleChange}
@@ -692,6 +704,7 @@ function WorkOrderScreenBody({
             costSummary={costSummary}
             unresolvedTimeEntryCount={unresolvedTimeEntryCount}
             roundingSettings={DEFAULT_TIME_ROUNDING_SETTINGS}
+            locked={locked}
           />
         )}
         {materialSlot ?? (
@@ -705,6 +718,7 @@ function WorkOrderScreenBody({
             canUpdateOwn={Boolean(canUpdateWorkOrderArticlesOwn)}
             canDelete={Boolean(canDelete)}
             currentUserId={currentUserId}
+            locked={locked}
           />
         )}
       </FormGrid>

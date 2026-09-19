@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  Callout,
   Combobox,
   Dialog,
   EmptyState,
@@ -17,7 +18,7 @@ import {
   Tooltip,
   type ComboboxOption,
 } from "@yourorg/ui";
-import { Boxes, Pencil, Trash2 } from "@yourorg/ui/icons";
+import { Boxes, Lock, Pencil, Trash2 } from "@yourorg/ui/icons";
 import { createWorkOrderArticle, updateWorkOrderArticle, type WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import { formatCurrency } from "@/lib/format/currency";
@@ -34,6 +35,12 @@ export interface WorkOrderMaterialSectionProps {
   canUpdateOwn: boolean;
   canDelete: boolean;
   currentUserId?: string;
+  /** `[id]/page.tsx`'s own `locked` (issue #203) — see
+   * `WorkOrderHoursSectionProps.locked`'s own doc comment for the full
+   * rationale; same section-local "checked out" `Callout`, additive to
+   * `WorkOrderHero`'s own badge. Defaults to `false` — `mode: "create"` (no
+   * `workOrderId` yet) can never be locked. */
+  locked?: boolean;
 }
 
 /**
@@ -55,6 +62,7 @@ export function WorkOrderMaterialSection({
   canUpdateOwn,
   canDelete,
   currentUserId,
+  locked = false,
 }: WorkOrderMaterialSectionProps) {
   const [adding, setAdding] = useState(false);
   const [editingRow, setEditingRow] = useState<WorkOrderArticleRecord | null>(null);
@@ -83,6 +91,12 @@ export function WorkOrderMaterialSection({
           )
         }
       />
+
+      {locked && (
+        <Callout icon={Lock}>
+          This work order has been checked out by the engineer and can no longer be edited here.
+        </Callout>
+      )}
 
       {workOrderArticles.length === 0 ? (
         <EmptyState

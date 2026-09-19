@@ -19,7 +19,7 @@ import {
   Text,
   Tooltip,
 } from "@yourorg/ui";
-import { AlertTriangle, Clock, Pencil, Trash2 } from "@yourorg/ui/icons";
+import { AlertTriangle, Clock, Lock, Pencil, Trash2 } from "@yourorg/ui/icons";
 import { computeRoundedMinutes } from "@yourorg/time-rounding";
 import { clockOut, createTimeEntry, updateTimeEntry, type TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
@@ -30,18 +30,6 @@ import { formatCurrency } from "@/lib/format/currency";
 import type { OrganizationTimeRoundingSettings } from "@/app/(app)/settings/organization-time-rounding-actions";
 import { DeleteTimeEntryDialog } from "./delete-time-entry-dialog";
 import { elapsedMinutes, formatHoursMinutes, formatTimeOfDay } from "./format-work-order-time";
-
-/** "0:40 · net 1:00" when the org's rounding settings (issue #198) actually
- * change `grossMinutes`, else just the plain gross figure — additive, never
- * replaces the existing gross display (acceptance criterion: "huidige
- * werking" for gross stays unchanged). Shared by both the per-row duration
- * and the Travel/Work/Total `SummaryRow` figures below so the two stay in
- * the exact same format. */
-function formatGrossNet(grossMinutes: number, netMinutes: number): string {
-  return netMinutes !== grossMinutes
-    ? `${formatHoursMinutes(grossMinutes)} · net ${formatHoursMinutes(netMinutes)}`
-    : formatHoursMinutes(grossMinutes);
-}
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -95,10 +83,23 @@ export interface WorkOrderHoursSectionProps {
   /** Issue #198 — the org's travel/work minimum + rounding settings
    * (`getOrganizationTimeRoundingSettings`, fetched by
    * `../[id]/work-order-hours-slot.tsx` and passed down here). Drives the
-   * additive "· net X" figure on each row and the Travel/Work/Total
-   * summary — the existing gross figures are computed from `timeEntries`
-   * exactly as before and never touched by this. */
+   * NET (billable, rounded) duration shown on each row and in the
+   * Travel/Work/Total summary (product feedback: show only the net figure,
+   * no "net" label, no gross figure alongside it — the raw/gross duration is
+   * still used internally to compute net, just never rendered). */
   roundingSettings: OrganizationTimeRoundingSettings;
+  /** `[id]/page.tsx`'s own `locked` (issue #203) — true once this work order
+   * is checked-out-or-later for a planner/owner actor. Already reflected in
+   * `canLogTimeForOthers`/`canUpdateAny` above (both `&& !locked`, hiding the
+   * `+ Travel`/`+ Work` buttons and the "edit any entry" affordance) — this
+   * is purely the section-local "checked out" `Callout` (product feedback,
+   * 2026-09-18: "laat duidelijker zien dat het workitem niet te bewerken is")
+   * so a user who scrolled past the hero's own small badge (`WorkOrderHero`'s
+   * "Checked out — read-only" `Badge`) still sees WHY these buttons are gone
+   * without having to scroll back up. Additive, not a replacement for that
+   * badge. Defaults to `false` — `mode: "create"` (no `workOrderId` yet) can
+   * never be locked. */
+  locked?: boolean;
 }
 
 /**
@@ -138,6 +139,7 @@ export function WorkOrderHoursSection({
   costSummary,
   unresolvedTimeEntryCount = 0,
   roundingSettings,
+  locked = false,
 }: WorkOrderHoursSectionProps) {
   const router = useRouter();
   const [dialogSection, setDialogSection] = useState<"travel" | "work" | null>(null);
@@ -163,9 +165,6 @@ export function WorkOrderHoursSection({
 
   const travelEntries = timeEntries.filter((entry) => entry.time_entry_type?.value === "travel");
   const workEntries = timeEntries.filter((entry) => entry.time_entry_type?.value !== "travel");
-
-  const travelMinutes = travelEntries.reduce((sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0), 0);
-  const workMinutes = workEntries.reduce((sum, entry) => sum + (elapsedMinutes(entry.started_at, entry.ended_at) ?? 0), 0);
 
   // Issue #198 — NET (billable) minutes per bucket, summed from each
   // entry's own already-rounded minutes (not the bucket's gross total
@@ -219,7 +218,7 @@ export function WorkOrderHoursSection({
               const raw = elapsedMinutes(entry.started_at, entry.ended_at);
               if (raw === null) return formatHoursMinutes(raw);
               const net = computeRoundedMinutes(raw, roundingSettings[kind]);
-              return formatGrossNet(raw, net);
+              return formatHoursMinutes(net);
             })()}
           </Text>
         )}
@@ -261,6 +260,12 @@ export function WorkOrderHoursSection({
         }
       />
 
+      {locked && (
+        <Callout icon={Lock}>
+          This work order has been checked out by the engineer and can no longer be edited here.
+        </Callout>
+      )}
+
       {stopError && <Text tone="danger">{stopError}</Text>}
 
       {canSeeCosts && unresolvedTimeEntryCount > 0 && (
@@ -288,20 +293,20 @@ export function WorkOrderHoursSection({
               {
                 label: "Travel",
                 value: showCosts
-                  ? `${formatGrossNet(travelMinutes, travelNetMinutes)} · ${formatCurrency(costSummary!.travelTotal)}`
-                  : formatGrossNet(travelMinutes, travelNetMinutes),
+                  ? `${formatHoursMinutes(travelNetMinutes)} · ${formatCurrency(costSummary!.travelTotal)}`
+                  : formatHoursMinutes(travelNetMinutes),
               },
               {
                 label: "Work",
                 value: showCosts
-                  ? `${formatGrossNet(workMinutes, workNetMinutes)} · ${formatCurrency(costSummary!.laborTotal)}`
-                  : formatGrossNet(workMinutes, workNetMinutes),
+                  ? `${formatHoursMinutes(workNetMinutes)} · ${formatCurrency(costSummary!.laborTotal)}`
+                  : formatHoursMinutes(workNetMinutes),
               },
               {
                 label: "Total",
                 value: showCosts
-                  ? `${formatGrossNet(travelMinutes + workMinutes, travelNetMinutes + workNetMinutes)} · ${formatCurrency(costSummary!.travelTotal + costSummary!.laborTotal)}`
-                  : formatGrossNet(travelMinutes + workMinutes, travelNetMinutes + workNetMinutes),
+                  ? `${formatHoursMinutes(travelNetMinutes + workNetMinutes)} · ${formatCurrency(costSummary!.travelTotal + costSummary!.laborTotal)}`
+                  : formatHoursMinutes(travelNetMinutes + workNetMinutes),
                 emphasis: "bold",
               },
             ]}

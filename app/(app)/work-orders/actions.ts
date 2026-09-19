@@ -7,6 +7,7 @@ import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
 import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 
 /**
  * Server Actions for the Work Orders module (issue #13 backend half, second
@@ -495,4 +496,89 @@ export async function deleteWorkOrder(id: string): Promise<ActionResult<{ delete
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Work order not found, or you do not have permission to delete it.");
   return ok({ deletedId: data.id as string });
+}
+
+/**
+ * "Goedkeuren"/Approve step (office review gate, product feedback,
+ * 2026-09-18 — see `supabase/migrations/20260920110000_work_order_to_review_
+ * status.sql`'s header). The PWA's "Finish workitem" action
+ * (`apps/pwa/app/api/work-orders/[id]/finish/route.ts`) now lands a work
+ * order in `to_review` instead of `completed` when an engineer sends it back
+ * from the field; this is the narrow owner/planner-only action that moves it
+ * the rest of the way, from `to_review` to `completed`.
+ *
+ * Deliberately reuses `can(actor, "planning", "update")` — the exact same
+ * permission `updateWorkOrder`'s owner/planner path already gates on — rather
+ * than introducing a new RBAC action; an "approve" is just a status-only
+ * update, and the RBAC matrix already has no separate concept for it.
+ *
+ * Resolves the target row's CURRENT status via the same cached
+ * `listReferenceItems("work_order_status")` lookup `isWorkOrderCheckedOutOrLater`
+ * (`./checkout-lock.ts`) uses, and requires it to be EXACTLY `to_review` — an
+ * exact-value check, not a `sort_order` comparison like that helper's own
+ * "checked out or later" test, since only this one specific transition is
+ * allowed here (unlike that helper, which intentionally also matches every
+ * later lifecycle status).
+ *
+ * Deliberately does NOT call `isWorkOrderCheckedOutOrLater` — every OTHER
+ * owner/planner write is locked once a work order is `checkout` or later
+ * (see the module comment above and `checkout-lock.ts`'s own header), but a
+ * work order reaching `to_review` is necessarily already past `checkout` by
+ * definition, so applying that same lock here would make this action
+ * permanently unreachable. This is the one deliberate exception design note
+ * 4 of `20260920100000_work_order_checkout_status.sql`'s header didn't
+ * anticipate.
+ *
+ * Plain RLS-scoped update under the caller's own session, same as
+ * `updateWorkOrder` — `work_orders_update_scoped` already lets an owner/
+ * planner update any row in their org (`20260823120000_work_orders_core.sql`),
+ * so no new SECURITY DEFINER function/migration is needed.
+ */
+export async function approveWorkOrderReview(
+  id: string,
+): Promise<ActionResult<{ workOrder: WorkOrderRecord }>> {
+  const idResult = uuidSchema.safeParse(id);
+  if (!idResult.success) return fail("Invalid work order id.");
+
+  const ctx = await requireModuleContext("planning");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "planning", "update")) {
+    return fail("Only an owner or planner can approve a work order.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("work_orders")
+    .select("id, status_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string; status_id: string }>();
+
+  if (targetError) return fail(mapDbError(targetError));
+  if (!target) return fail("Work order not found, or you do not have permission to approve it.");
+
+  const statusResult = await listReferenceItems("work_order_status");
+  if (!statusResult.data) return fail("Failed to resolve this work order's status.");
+
+  const currentStatusItem = statusResult.data.items.find((candidate) => candidate.id === target.status_id);
+  if (!currentStatusItem || currentStatusItem.value !== "to_review") {
+    return fail("This work item is not awaiting review.");
+  }
+
+  const completedItem = statusResult.data.items.find((candidate) => candidate.value === "completed");
+  if (!completedItem) {
+    return fail("Failed to resolve the completed status.");
+  }
+
+  const { data, error } = await supabase
+    .from("work_orders")
+    .update({ status_id: completedItem.id })
+    .eq("id", idResult.data)
+    .select(WORK_ORDER_SELECT)
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Work order not found, or you do not have permission to approve it.");
+  return ok({ workOrder: data as WorkOrderRecord });
 }

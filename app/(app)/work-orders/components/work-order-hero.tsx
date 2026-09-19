@@ -1,10 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { Badge, IconButton, RecordHeroBand, StatStrip, type StatStripItem } from "@yourorg/ui";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Badge, Button, IconButton, RecordHeroBand, StatStrip, Text, type StatStripItem } from "@yourorg/ui";
 import { CalendarDays, Lock, MapPin, Pencil } from "@yourorg/ui/icons";
-import type { WorkOrderRecord } from "../actions";
+import { approveWorkOrderReview, type WorkOrderRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
@@ -47,6 +48,13 @@ export interface WorkOrderHeroProps {
    * read-only" `Badge` so it reads as a DIFFERENT reason than a plain
    * `finance`/`administratie` viewer's read-only view. */
   locked?: boolean;
+  /** `[id]/page.tsx`'s own `canApproveReview` — `can(actor, "planning",
+   * "update") && workOrder.work_order_status?.value === "to_review"`. Gates
+   * the "Approve" button rendered right next to the "Checked out —
+   * read-only" `Badge` above (see this component's own doc comment for why
+   * that's the chosen spot). A work order reaching `to_review` is always
+   * `locked` too, so this population is a subset of who'd see that badge. */
+  canApproveReview?: boolean;
   /** Hours/Material/Checklist KPI tiles — computed by `WorkOrderScreen` from
    * the data it already fetched/holds, kept out of this component so it
    * doesn't also need the raw time entries/articles/checklist items. */
@@ -121,6 +129,7 @@ export function WorkOrderHero({
   types,
   readOnly,
   locked,
+  canApproveReview,
   stats,
   actions,
   onTitleChange,
@@ -129,8 +138,24 @@ export function WorkOrderHero({
   onRelationsSave,
   onStatusPrioritySave,
 }: WorkOrderHeroProps) {
+  const router = useRouter();
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [isApproving, startApproving] = useTransition();
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  function handleApprove() {
+    if (!workOrder) return;
+    setApproveError(null);
+    startApproving(async () => {
+      const result = await approveWorkOrderReview(workOrder.id);
+      if (!result.data) {
+        setApproveError(result.error ?? "Could not approve this work order.");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   const resolvedSite =
     clientScoped.sites.find((candidate) => candidate.id === draft.siteId) ??
@@ -169,8 +194,21 @@ export function WorkOrderHero({
           <Lock aria-hidden /> Checked out — read-only
         </Badge>
       )}
+      {/* "Approve" — placed right next to the badge above rather than in
+       * `actions` (the hero's Create Quote/Delete toolbar): this is the one
+       * place on the page a planner reviewing a checked-out work order is
+       * guaranteed to look first, keeping "why is this locked / what do I do
+       * about it" in one spot. */}
+      {mode === "edit" && canApproveReview && (
+        <Button type="button" variant="primary" size="sm" onClick={handleApprove} disabled={isApproving}>
+          {isApproving ? "Approving…" : "Approve"}
+        </Button>
+      )}
     </span>,
   ];
+  if (approveError) {
+    meta.push(<Text tone="danger">{approveError}</Text>);
+  }
   if (resolvedSite) {
     meta.push(
       <>
