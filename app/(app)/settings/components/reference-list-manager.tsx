@@ -73,6 +73,7 @@ export function ReferenceListManager({
   });
   const [deleteTarget, setDeleteTarget] = useState<ReferenceListItemRecord | null>(null);
   const [isReordering, startReordering] = useTransition();
+  const [reorderError, setReorderError] = useState<string | null>(null);
 
   function openAdd() {
     setFormState({ open: true, item: null });
@@ -86,11 +87,29 @@ export function ReferenceListManager({
     const current = sorted[index];
     const target = sorted[index + direction];
     if (!current || !target) return;
+    setReorderError(null);
     startReordering(async () => {
-      await Promise.all([
+      // Previously ignored both results — a failed swap (e.g. a stale/
+      // deleted row) silently did nothing, with no feedback at all. Also
+      // guards against a genuinely no-op swap (two items that already share
+      // the same `sort_order` — a real corrupted-data case hit in
+      // production, 2026-09-19: a tenant's list had two ties from an earlier
+      // migration's backfill; swapping two already-equal values looks like
+      // "the buttons don't work" with nothing in the UI explaining why).
+      if (current.sort_order === target.sort_order) {
+        setReorderError(
+          "These two items already share the same order position (a data inconsistency) — reordering them has no effect. Contact support to have this list's order repaired.",
+        );
+        return;
+      }
+      const [currentResult, targetResult] = await Promise.all([
         updateReferenceItem(current.id, { sortOrder: target.sort_order }),
         updateReferenceItem(target.id, { sortOrder: current.sort_order }),
       ]);
+      if (!currentResult.data || !targetResult.data) {
+        setReorderError(currentResult.error ?? targetResult.error ?? "Could not reorder these items.");
+        return;
+      }
       router.refresh();
     });
   }
@@ -98,6 +117,7 @@ export function ReferenceListManager({
   return (
     <Stack gap="md">
       {loadError && <Text tone="danger">{loadError}</Text>}
+      {reorderError && <Text tone="danger">{reorderError}</Text>}
 
       {canWrite && (
         <div>
