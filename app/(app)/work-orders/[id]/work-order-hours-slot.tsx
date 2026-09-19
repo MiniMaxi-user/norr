@@ -55,7 +55,7 @@ export async function WorkOrderHoursSlot({
   canUpdateTimeEntriesOwn: boolean;
   canDelete: boolean;
   canSeeCosts: boolean;
-  /** `[id]/page.tsx`'s own `isCheckedOutOrLater` (issue #203) — deliberately
+  /** `[id]/page.tsx`'s own `isCheckedOutInField` (issue #203) — deliberately
    * NOT that file's owner/planner-scoped `locked` (this section's own
    * "checked out" `Callout` and its role-agnostic own-row gates need to cover
    * an engineer's own checked-out work order too, see `[id]/page.tsx`'s

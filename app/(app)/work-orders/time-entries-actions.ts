@@ -7,7 +7,7 @@ import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { timeEntryClockInSchema, timeEntryCreateSchema, timeEntryUpdateSchema } from "./schema";
 import type { ResolvedReferenceItem } from "./actions";
-import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
+import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 
 /**
  * Server Actions for a Work Order's Time Entries (issue #15, second stage) —
@@ -51,11 +51,15 @@ import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
  *
  * Checkout lock (issue #203 follow-up — closing a real server-side gap):
  * `createTimeEntry`/`updateTimeEntry`/`deleteTimeEntry`/`clockOut` all call
- * `isWorkOrderCheckedOutOrLater` (`./checkout-lock.ts`) before writing, same
+ * `isWorkOrderCheckedOutInField` (`./checkout-lock.ts`) before writing, same
  * helper `updateWorkOrder`/`deleteWorkOrder` (`./actions.ts`) already use.
- * UNLIKE `updateWorkOrder`'s two-path guard, there is NO engineer-own-row
- * exemption here — the guard applies to EVERY caller regardless of role, per
- * product's ask: once a work order is checked out, Travel/Work time becomes
+ * BOUNDED (`checkout` through `in_progress` only, since 2026-09-19 — see that
+ * function's own doc comment): once a work order reaches `to_review`, the
+ * office can edit Travel/Work time again to correct it before approving,
+ * same as `updateWorkOrder`. UNLIKE `updateWorkOrder`'s two-path guard, there
+ * is NO engineer-own-row exemption here while the lock IS in effect — the
+ * guard applies to EVERY caller regardless of role, per product's ask: while
+ * a work order is genuinely still out in the field, Travel/Work time becomes
  * edit-only-via-the-PWA for everyone on the web app, including the assigned
  * engineer's own `update_own`/`create_own` path (the PWA itself writes
  * `time_entries` directly under RLS, never through these actions — see
@@ -267,7 +271,7 @@ export async function createTimeEntry(
     .maybeSingle<{ status_id: string }>();
 
   if (workOrderForLockError) return fail(mapDbError(workOrderForLockError));
-  if (workOrderForLock && (await isWorkOrderCheckedOutOrLater(workOrderForLock.status_id))) {
+  if (workOrderForLock && (await isWorkOrderCheckedOutInField(workOrderForLock.status_id))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 
@@ -337,7 +341,7 @@ export async function clockOut(id: string): Promise<ActionResult<{ timeEntry: Ti
   // Checkout lock (issue #203 follow-up) — see the module comment above for
   // why every caller is guarded here, with no engineer-own-row exemption.
   const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
-  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+  if (lockCheck.found && (await isWorkOrderCheckedOutInField(lockCheck.statusId))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 
@@ -390,7 +394,7 @@ export async function updateTimeEntry(
   // Checkout lock (issue #203 follow-up) — see the module comment above for
   // why every caller is guarded here, with no engineer-own-row exemption.
   const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
-  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+  if (lockCheck.found && (await isWorkOrderCheckedOutInField(lockCheck.statusId))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 
@@ -430,7 +434,7 @@ export async function deleteTimeEntry(id: string): Promise<ActionResult<{ delete
   // owner/planner from deleting a time entry once its work order was
   // checked out).
   const lockCheck = await loadWorkOrderStatusForTimeEntry(supabase, idResult.data);
-  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+  if (lockCheck.found && (await isWorkOrderCheckedOutInField(lockCheck.statusId))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 

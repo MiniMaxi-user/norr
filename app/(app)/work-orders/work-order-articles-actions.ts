@@ -6,7 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./schema";
-import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
+import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 
 /**
  * Server Actions for a Work Order's consumed Articles (issue #94 schema
@@ -36,11 +36,14 @@ import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
  *
  * Checkout lock (issue #203 follow-up — closing a real server-side gap):
  * `createWorkOrderArticle`/`updateWorkOrderArticle`/`deleteWorkOrderArticle`
- * all call `isWorkOrderCheckedOutOrLater` (`./checkout-lock.ts`) before
+ * all call `isWorkOrderCheckedOutInField` (`./checkout-lock.ts`) before
  * writing, same helper `updateWorkOrder`/`deleteWorkOrder` (`./actions.ts`)
- * and `./time-entries-actions.ts` already use. Same "every caller, no role
- * exemption" rule as that file: once a work order is checked out, consumed
- * articles become edit-only-via-the-PWA for everyone on the web app,
+ * and `./time-entries-actions.ts` already use. BOUNDED (`checkout` through
+ * `in_progress` only, since 2026-09-19 — see that function's own doc
+ * comment): once a work order reaches `to_review`, the office can edit
+ * consumed articles again to correct them before approving. Same "every
+ * caller, no role exemption" rule as that file while the lock IS in effect:
+ * consumed articles become edit-only-via-the-PWA for everyone on the web app,
  * including the assigned engineer's own `update_own`/`create_own` path (the
  * PWA writes `work_order_articles` directly under RLS, never through these
  * actions — see `apps/pwa/app/api/work-orders/[id]/finish/route.ts` — so
@@ -180,7 +183,7 @@ export async function createWorkOrderArticle(
     .maybeSingle<{ status_id: string }>();
 
   if (workOrderForLockError) return fail(mapDbError(workOrderForLockError));
-  if (workOrderForLock && (await isWorkOrderCheckedOutOrLater(workOrderForLock.status_id))) {
+  if (workOrderForLock && (await isWorkOrderCheckedOutInField(workOrderForLock.status_id))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 
@@ -237,7 +240,7 @@ export async function updateWorkOrderArticle(
   // Checkout lock (issue #203 follow-up) — see the module comment above for
   // why every caller is guarded here, with no engineer-own-row exemption.
   const lockCheck = await loadWorkOrderStatusForArticle(supabase, idResult.data);
-  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+  if (lockCheck.found && (await isWorkOrderCheckedOutInField(lockCheck.statusId))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 
@@ -272,7 +275,7 @@ export async function deleteWorkOrderArticle(id: string): Promise<ActionResult<{
   // Checkout lock (issue #203 follow-up) — see the module comment above for
   // why every caller is guarded here, with no engineer-own-row exemption.
   const lockCheck = await loadWorkOrderStatusForArticle(supabase, idResult.data);
-  if (lockCheck.found && (await isWorkOrderCheckedOutOrLater(lockCheck.statusId))) {
+  if (lockCheck.found && (await isWorkOrderCheckedOutInField(lockCheck.statusId))) {
     return fail("This work order has been checked out and can no longer be edited.");
   }
 

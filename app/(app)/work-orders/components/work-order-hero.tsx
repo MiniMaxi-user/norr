@@ -41,22 +41,26 @@ export interface WorkOrderHeroProps {
    * `<Select>` folded into `WorkOrderStatusPriorityDialog`. */
   types: ReferenceListItemRecord[];
   readOnly?: boolean;
-  /** `[id]/page.tsx`'s own `locked` (issue #203) — true once this work order
-   * is checked-out-or-later for a planner/owner actor. Already reflected in
-   * `readOnly` (hides the status/priority edit pencil below, same as any
-   * other read-only view) — this is purely for the extra lock icon (product
-   * feedback, 2026-09-19: showing a whole second "Checked out — read-only"
-   * `Badge` next to the real status badge read as two statuses, doubly so
-   * when the real status IS literally "Checked out" — a single small icon on
-   * the existing status badge conveys the same "why is this read-only"
-   * without implying a second status value). */
+  /** `[id]/page.tsx`'s own `locked` (issue #203) — true only while this work
+   * order is genuinely still out in the field for a planner/owner actor
+   * (`checkout` through `in_progress`; NOT `to_review`/`completed`/
+   * `invoiced` any more, since 2026-09-19's tightening — see
+   * `isWorkOrderCheckedOutInField`'s own doc comment in `../checkout-lock.ts`
+   * for why). Already reflected in `readOnly` (hides the status/priority edit
+   * pencil below, same as any other read-only view) — this is purely for the
+   * extra lock icon (product feedback, 2026-09-19: showing a whole second
+   * "Checked out — read-only" `Badge` next to the real status badge read as
+   * two statuses, doubly so when the real status IS literally "Checked out"
+   * — a single small icon on the existing status badge conveys the same "why
+   * is this read-only" without implying a second status value). */
   locked?: boolean;
   /** `[id]/page.tsx`'s own `canApproveReview` — `can(actor, "planning",
    * "update") && workOrder.work_order_status?.value === "to_review"`. Gates
    * the "Approve" button rendered right next to the status badge above (see
-   * this component's own doc comment for why that's the chosen spot). A work
-   * order reaching `to_review` is always `locked` too, so this population is
-   * a subset of who'd see the lock icon. */
+   * this component's own doc comment for why that's the chosen spot). NOT a
+   * subset of `locked` any more (since 2026-09-19 — `to_review` is no longer
+   * checked-out-in-field, so the lock icon won't be showing at this point):
+   * the button appears on its own, next to the plain status badge. */
   canApproveReview?: boolean;
   /** Hours/Material/Checklist KPI tiles — computed by `WorkOrderScreen` from
    * the data it already fetched/holds, kept out of this component so it
@@ -202,11 +206,10 @@ export function WorkOrderHero({
           </IconButton>
         </Tooltip>
       )}
-      {/* "Approve" — placed right next to the badge above rather than in
-       * `actions` (the hero's Create Quote/Delete toolbar): this is the one
-       * place on the page a planner reviewing a checked-out work order is
-       * guaranteed to look first, keeping "why is this locked / what do I do
-       * about it" in one spot. */}
+      {/* "Approve" — placed right next to the status badge above rather than
+       * in `actions` (the hero's Create Quote/Delete toolbar): this is the
+       * one place on the page a planner reviewing a `to_review` work order is
+       * guaranteed to look first. */}
       {mode === "edit" && canApproveReview && (
         <Button type="button" variant="primary" size="sm" onClick={handleApprove} disabled={isApproving}>
           {isApproving ? "Approving…" : "Approve"}

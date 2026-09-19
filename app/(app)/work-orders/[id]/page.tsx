@@ -4,6 +4,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getWorkOrder } from "../actions";
+import { isWorkOrderCheckedOutInField } from "../checkout-lock";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { getContract } from "@/app/(app)/contracts/actions";
@@ -88,13 +89,15 @@ interface WorkOrderDetailPageProps {
  * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
  * never a 404, never a disabled-but-technically-interactive control RLS
  * would just reject. `locked` (issue #203, "Checkout workitem naar pwa") is
- * the separate "checked out or later" case — folded into `readOnly` so it
- * gets the exact same hero/relation-card/assignment-section treatment for a
- * planner/owner, but ALSO threaded through on its own (see `locked` prop
- * below) so `WorkOrderHero` can render its distinct "Checked out —
- * read-only" indicator, and so `canDelete`/`canCreateQuote`/
- * `canUpdateTimeEntriesAny`/`canUpdateWorkOrderArticlesAny` (none of which
- * `readOnly` reaches) can be gated on it too. `WorkOrderScreen` is keyed by
+ * the separate "genuinely still out in the field" case (`checkout` through
+ * `in_progress` only, since 2026-09-19 — NOT `to_review`/`completed`/
+ * `invoiced`, see `isWorkOrderCheckedOutInField`'s own doc comment) — folded
+ * into `readOnly` so it gets the exact same hero/relation-card/assignment-
+ * section treatment for a planner/owner, but ALSO threaded through on its
+ * own (see `locked` prop below) so `WorkOrderHero` can render its distinct
+ * lock icon, and so `canDelete`/`canCreateQuote`/`canUpdateTimeEntriesAny`/
+ * `canUpdateWorkOrderArticlesAny` (none of which `readOnly` reaches) can be
+ * gated on it too. `WorkOrderScreen` is keyed by
  * `workOrder.updated_at` so
  * a successful inline save (which never navigates away — see that
  * component's own doc comment) remounts it with the freshly saved values
@@ -121,30 +124,34 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   if (!workOrderResult.data) notFound();
   const workOrder = workOrderResult.data.workOrder;
 
-  // Checkout lock (issue #203) — UI-only read-only treatment mirroring the
-  // server-side guard `updateWorkOrder`/`deleteWorkOrder` (`../actions.ts`)
-  // already enforce via `isWorkOrderCheckedOutOrLater` (`../checkout-lock.ts`):
-  // once the assigned engineer's PWA has pulled this work order onto their
-  // device (status `checkout` or later — every work order reaching this page
-  // already has a status past `new`, so "not `scheduled`" is enough, same
-  // heuristic `planning-grid.tsx` uses for its own lock icon), a
-  // planner/owner can no longer edit or delete it, or its Hours/Material
-  // sub-entities, or turn it into a Quote. Gated on
-  // `can(actor, "planning", "update")` — the FULL path, not `update_own` —
-  // to mirror `updateWorkOrder`'s own exact distinction: an engineer editing
-  // their OWN assigned work order (only ever `update_own`) is exempt, same as
+  // Checkout lock (issue #203, tightened 2026-09-19) — UI-only read-only
+  // treatment mirroring the server-side guard `updateWorkOrder`/
+  // `deleteWorkOrder` (`../actions.ts`) already enforce via
+  // `isWorkOrderCheckedOutInField` (`../checkout-lock.ts`): a BOUNDED window,
+  // `checkout` through `in_progress` only — NOT the Planning board's own
+  // unbounded `isWorkOrderCheckedOutOrLater` (that one stays locked all the
+  // way through `invoiced`, see that function's own doc comment for why
+  // these are two separate checks). While genuinely still out in the field,
+  // a planner/owner can no longer edit or delete this work order, or its
+  // Hours/Material sub-entities, or turn it into a Quote. Once the work
+  // order reaches `to_review` (sent back for office review), `completed`, or
+  // `invoiced`, this is `false` again — the office can correct it, same as
+  // the server-side guard now allows. Gated on `can(actor, "planning",
+  // "update")` — the FULL path, not `update_own` — to mirror
+  // `updateWorkOrder`'s own exact distinction: an engineer editing their OWN
+  // assigned work order (only ever `update_own`) is exempt, same as
   // server-side.
-  const isCheckedOutOrLater = workOrder.work_order_status?.value !== "new" && workOrder.work_order_status?.value !== "scheduled";
-  const locked = isCheckedOutOrLater && can(actor, "planning", "update");
+  const isCheckedOutInField = await isWorkOrderCheckedOutInField(workOrder.status_id);
+  const locked = isCheckedOutInField && can(actor, "planning", "update");
 
-  // "Goedkeuren"/Approve (office review gate, product feedback, 2026-09-18 —
-  // see `approveWorkOrderReview`'s own doc comment in `../actions.ts`). A
-  // work order reaching `to_review` is necessarily already `locked` above
-  // (that status sits past `checkout` in the lifecycle), so this is purely an
-  // ADDITIONAL narrowing of the same `can(actor, "planning", "update")`
-  // population — the one action they can still take on a locked work order
-  // from this page, surfaced right next to the "Checked out — read-only"
-  // badge that already explains why everything else is gone.
+  // "Approve" (office review gate, product feedback, 2026-09-18 — see
+  // `approveWorkOrderReview`'s own doc comment in `../actions.ts`). No longer
+  // implies `locked` above (since 2026-09-19's tightening, `to_review` is
+  // NOT checked-out-in-field — the office can edit the work order at this
+  // point, that's the actual purpose of the review step) — this is simply
+  // the one extra action available at exactly this one status, for the same
+  // `can(actor, "planning", "update")` population, surfaced next to the
+  // status badge in the hero regardless of whether the lock icon is showing.
   const canApproveReview = can(actor, "planning", "update") && workOrder.work_order_status?.value === "to_review";
 
   // Checklists (issue #14) are their own, separately-entitled module (NOT
@@ -168,7 +175,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // Consumed Articles (issue #94) — same gate `createWorkOrderArticle` itself
   // enforces; used ahead of the fetch below to skip `listArticlesForSelect()`
   // entirely for a caller who could never render its picker anyway. `&&
-  // !isCheckedOutOrLater` (issue #203 follow-up, tightened 2026-09-18 after
+  // !isCheckedOutInField` (issue #203 follow-up, tightened 2026-09-18 after
   // qa-reviewer caught this using `locked` — `locked` is owner/planner-scoped
   // (mirrors `updateWorkOrder`'s own engineer-`update_own` exemption), but
   // this gate also covers an engineer's OWN `create_own` path, and the
@@ -177,7 +184,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // exemption — so the UI gate must be role-agnostic too, or an engineer's
   // own checked-out work order would still show a live "+ Article" button
   // that unconditionally fails server-side).
-  const canCreateWorkOrderArticles = canAny(actor, "planning", ["create", "create_own"]) && !isCheckedOutOrLater;
+  const canCreateWorkOrderArticles = canAny(actor, "planning", ["create", "create_own"]) && !isCheckedOutInField;
   // "Maak Quote" (issue #94) — mirrors `createQuoteFromWorkOrder`'s own gate
   // in `../create-quote-actions.ts` exactly: a separately-entitled module
   // (`quotes`) AND `can(actor, "quotes", "create")` (owner/planner only).
@@ -264,25 +271,25 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canLogTimeForOthers = can(actor, "planning", "create") && !locked;
   // `&& !locked` (issue #203) hides the planner/owner "edit any entry"
   // affordance once checked out. `canUpdateTimeEntriesOwn` (the engineer's
-  // own path) is `&& !isCheckedOutOrLater` — NOT `locked` — since 2026-09-18
+  // own path) is `&& !isCheckedOutInField` — NOT `locked` — since 2026-09-18
   // (qa-reviewer caught the original "deliberately left untouched, mirroring
   // updateWorkOrder's exemption" reasoning as wrong for this sub-resource:
   // `updateWorkOrder` itself genuinely exempts an engineer's own `update_own`
   // row, but `updateTimeEntry`'s server-side guard, once checked out, has NO
   // such exemption — it blocks every caller. The UI gate has to match that.
   const canUpdateTimeEntriesAny = can(actor, "planning", "update") && !locked;
-  const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own") && !isCheckedOutOrLater;
+  const canUpdateTimeEntriesOwn = can(actor, "planning", "update_own") && !isCheckedOutInField;
 
   // Consumed Articles (issue #94) — same `planning` module, see
   // `consumed-articles-panel.tsx`'s own doc comment for why there is only one
   // create gate here (`canCreateWorkOrderArticles`, computed above) rather
   // than a further `canLogTimeForOthers`-style split. `&& !locked` mirrors
   // `canUpdateTimeEntriesAny` above for the same reason; `canUpdateWorkOrder-
-  // ArticlesOwn` mirrors `canUpdateTimeEntriesOwn`'s `!isCheckedOutOrLater`
+  // ArticlesOwn` mirrors `canUpdateTimeEntriesOwn`'s `!isCheckedOutInField`
   // fix above for the same reason (`updateWorkOrderArticle`'s server-side
   // guard has no role exemption either).
   const canUpdateWorkOrderArticlesAny = can(actor, "planning", "update") && !locked;
-  const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own") && !isCheckedOutOrLater;
+  const canUpdateWorkOrderArticlesOwn = can(actor, "planning", "update_own") && !isCheckedOutInField;
 
   // Checklists (issue #14) are their OWN module (see comment above), not a
   // reuse of `planning`'s actions/permissions.
@@ -324,7 +331,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
             canDelete={canDelete}
             canSeeCosts={canSeeCosts}
-            locked={isCheckedOutOrLater}
+            locked={isCheckedOutInField}
           />
         </Suspense>
       }
@@ -338,7 +345,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
             canDelete={canDelete}
             currentUserId={session.userId}
             reportToInvoice={!canSeeCosts}
-            locked={isCheckedOutOrLater}
+            locked={isCheckedOutInField}
           />
         </Suspense>
       }

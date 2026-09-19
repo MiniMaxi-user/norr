@@ -6,7 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
-import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
+import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 
 /**
@@ -428,6 +428,12 @@ export async function updateWorkOrder(
   // lightweight pre-check SELECT (this function otherwise does its read+
   // write in one round trip) only when the actor actually has the full
   // `update` action, so the common engineer-own-row case pays no extra cost.
+  // `isWorkOrderCheckedOutInField` (NOT `isWorkOrderCheckedOutOrLater`, since
+  // 2026-09-19) — this page's own edit-lock is bounded (`checkout` through
+  // `in_progress` only): once a work order reaches `to_review`, the office
+  // needs to be able to correct it again before approving it to `completed`.
+  // See `./checkout-lock.ts`'s module comment for the full reasoning behind
+  // the two separate functions.
   if (can(ctx.context.actor, "planning", "update")) {
     const { data: target, error: targetError } = await supabase
       .from("work_orders")
@@ -438,7 +444,7 @@ export async function updateWorkOrder(
     if (targetError) return fail(mapDbError(targetError));
     if (!target) return fail("Work order not found, or you do not have permission to update it.");
 
-    if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+    if (await isWorkOrderCheckedOutInField(target.status_id)) {
       return fail("This work order has been checked out and can no longer be edited.");
     }
   }
@@ -473,6 +479,9 @@ export async function deleteWorkOrder(id: string): Promise<ActionResult<{ delete
   // Checkout lock (issue #203) — unconditional here: `delete` is
   // owner/planner-only to begin with (no `delete_own` for an engineer to be
   // exempted from), unlike `updateWorkOrder`'s two-path guard above.
+  // `isWorkOrderCheckedOutInField`, not `isWorkOrderCheckedOutOrLater` — see
+  // `updateWorkOrder`'s own comment above for why (bounded to
+  // `checkout`..`in_progress`, since 2026-09-19).
   const { data: target, error: targetError } = await supabase
     .from("work_orders")
     .select("id, status_id")
@@ -482,7 +491,7 @@ export async function deleteWorkOrder(id: string): Promise<ActionResult<{ delete
   if (targetError) return fail(mapDbError(targetError));
   if (!target) return fail("Work order not found, or you do not have permission to delete it.");
 
-  if (await isWorkOrderCheckedOutOrLater(target.status_id)) {
+  if (await isWorkOrderCheckedOutInField(target.status_id)) {
     return fail("This work order has been checked out and can no longer be deleted.");
   }
 
