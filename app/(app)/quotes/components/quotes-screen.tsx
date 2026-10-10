@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { ClipboardList } from "@yourorg/ui/icons";
-import { listQuotes } from "../actions";
+import { listQuotes, type QuoteType } from "../actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listClients, type ClientRecord } from "@/app/(app)/clients/actions";
 import { CreateQuoteButton } from "./create-quote-button";
 import { QuotesTable } from "./quotes-table";
+import { QuotesFilters } from "./quotes-filters";
+import { GenerateContractQuotesButton } from "./generate-contract-quotes-button";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -16,15 +19,27 @@ export interface QuotesScreenProps {
    * `count`/pagination to whichever set is actually showing. See the module
    * comment below for why a filter (not just a badge) is the default. */
   showDrafts: boolean;
+  /** Raw `?status=` selection (quote_status item values); `undefined` = default (Draft). */
+  statusFilter?: string[];
+  /** Raw `?type=` selection; `undefined` = default (Default). */
+  typeFilter?: string[];
+  canGenerateContractQuotes: boolean;
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
 }
 
-function buildPageHref(page: number, showDrafts: boolean): string {
+const TYPE_OPTIONS = [
+  { value: "default", label: "Default" },
+  { value: "contract", label: "Contract" },
+];
+
+function buildPageHref(page: number, showDrafts: boolean, statusFilter?: string[], typeFilter?: string[]): string {
   const qs = new URLSearchParams();
   if (page > 0) qs.set("page", String(page));
   if (showDrafts) qs.set("drafts", "1");
+  if (statusFilter) qs.set("status", statusFilter.join(","));
+  if (typeFilter) qs.set("type", typeFilter.join(","));
   const query = qs.toString();
   return query ? `/quotes?${query}` : "/quotes";
 }
@@ -54,12 +69,42 @@ function buildPageHref(page: number, showDrafts: boolean): string {
  * an auto-draft visually distinct from a "real" quote the moment a planner
  * does choose to look at both together.
  */
-export async function QuotesScreen({ page, showDrafts, canCreate, canEdit, canDelete }: QuotesScreenProps) {
+export async function QuotesScreen({
+  page,
+  showDrafts,
+  statusFilter,
+  typeFilter,
+  canGenerateContractQuotes,
+  canCreate,
+  canEdit,
+  canDelete,
+}: QuotesScreenProps) {
   const offset = page * LIST_PAGE_SIZE;
+
+  const statusItemsResult = await listReferenceItems("quote_status");
+  const statusOptions = (statusItemsResult.data?.items ?? [])
+    .filter((item) => item.is_active !== false)
+    .map((item) => ({ value: item.value, label: item.label }));
+
+  // Absent param = default (Draft only / Default only). A selection covering
+  // every option is "no filter" (so quotes with a since-deactivated status
+  // still show when "All" is chosen).
+  const selectedStatuses = (statusFilter ?? ["draft"]).filter((value) => statusOptions.some((o) => o.value === value));
+  const selectedTypes = (typeFilter ?? ["default"]).filter((value): value is QuoteType =>
+    TYPE_OPTIONS.some((o) => o.value === value),
+  );
+  const allStatuses = statusOptions.length > 0 && selectedStatuses.length === statusOptions.length;
+  const allTypes = selectedTypes.length === TYPE_OPTIONS.length;
 
   const [clientsResult, quotesResult] = await Promise.all([
     listClients({ limit: 200 }),
-    listQuotes({ limit: LIST_PAGE_SIZE, offset, isAutoDraft: showDrafts ? undefined : false }),
+    listQuotes({
+      limit: LIST_PAGE_SIZE,
+      offset,
+      isAutoDraft: showDrafts ? undefined : false,
+      status: statusOptions.length === 0 || allStatuses ? undefined : selectedStatuses,
+      type: allTypes ? undefined : selectedTypes,
+    }),
   ]);
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
@@ -68,16 +113,23 @@ export async function QuotesScreen({ page, showDrafts, canCreate, canEdit, canDe
   const toolbar = (
     <Toolbar>
       <Toolbar.Section>
+        <QuotesFilters
+          statusOptions={statusOptions}
+          typeOptions={TYPE_OPTIONS}
+          selectedStatuses={selectedStatuses}
+          selectedTypes={selectedTypes}
+        />
         <Text tone="muted">
           {quotesResult.data ? `${quotesResult.data.count} quote${quotesResult.data.count === 1 ? "" : "s"}` : ""}
         </Text>
       </Toolbar.Section>
       <Toolbar.Section align="end">
-        <Link href={buildPageHref(0, !showDrafts)}>
+        <Link href={buildPageHref(0, !showDrafts, statusFilter, typeFilter)}>
           <Button type="button" variant="outline" size="sm">
             {showDrafts ? "Hide draft quotes" : "Show draft quotes"}
           </Button>
         </Link>
+        {canGenerateContractQuotes && <GenerateContractQuotesButton />}
         {canCreate && <CreateQuoteButton />}
       </Toolbar.Section>
     </Toolbar>
@@ -102,8 +154,8 @@ export async function QuotesScreen({ page, showDrafts, canCreate, canEdit, canDe
         {toolbar}
         <EmptyState
           icon={<ClipboardList />}
-          heading="No quotes yet"
-          text="Create your first proposal to start pricing work for a client."
+          heading="No quotes found"
+          text="No quotes match the current filters. Adjust the Status or Type filter, or create a new proposal."
           action={canCreate ? <CreateQuoteButton /> : undefined}
         />
       </>
@@ -129,7 +181,7 @@ export async function QuotesScreen({ page, showDrafts, canCreate, canEdit, canDe
         </Text>
         <span>
           {hasPrev ? (
-            <Link href={buildPageHref(page - 1, showDrafts)}>
+            <Link href={buildPageHref(page - 1, showDrafts, statusFilter, typeFilter)}>
               <Button type="button" variant="outline" size="sm">
                 Previous
               </Button>
@@ -140,7 +192,7 @@ export async function QuotesScreen({ page, showDrafts, canCreate, canEdit, canDe
             </Button>
           )}{" "}
           {hasNext ? (
-            <Link href={buildPageHref(page + 1, showDrafts)}>
+            <Link href={buildPageHref(page + 1, showDrafts, statusFilter, typeFilter)}>
               <Button type="button" variant="outline" size="sm">
                 Next
               </Button>

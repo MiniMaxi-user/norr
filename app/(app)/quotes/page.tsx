@@ -10,7 +10,7 @@ import { QuotesScreenSkeleton } from "./components/quotes-screen-skeleton";
 export const metadata = { title: "Quotes" };
 
 interface QuotesPageProps {
-  searchParams: Promise<{ page?: string; drafts?: string }>;
+  searchParams: Promise<{ page?: string; drafts?: string; status?: string; type?: string }>;
 }
 
 /**
@@ -31,6 +31,15 @@ interface QuotesPageProps {
  * planner satisfies — an engineer/finance/administratie never sees it, even
  * though they can still view the list.
  */
+/** `undefined` (param absent) = use the default; otherwise the parsed list. */
+function parseListParam(raw: string | undefined): string[] | undefined {
+  if (raw === undefined) return undefined;
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -47,14 +56,26 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   // doc comment for the full design.
   const showDrafts = params.drafts === "1";
 
+  // Issues #210/#211 - multi-select Status/Type filters live in the URL as
+  // comma-separated lists; an absent param means the default (Draft / Default).
+  const statusFilter = parseListParam(params.status);
+  const typeFilter = parseListParam(params.type);
+  const canGenerateContractQuotes =
+    can(actor, "quotes", "create") &&
+    (await hasFeature(session.organization, "contracts")) &&
+    canAccessModule(actor, "contracts");
+
   return (
     <Stack gap="lg">
       <OverviewHeroBand title="Quotes" subtitle="Pre-sale proposals, across every client." />
 
-      <Suspense key={`${page}-${showDrafts}`} fallback={<QuotesScreenSkeleton />}>
+      <Suspense key={`${page}-${showDrafts}-${statusFilter?.join(",")}-${typeFilter?.join(",")}`} fallback={<QuotesScreenSkeleton />}>
         <QuotesScreen
           page={page}
           showDrafts={showDrafts}
+          statusFilter={statusFilter}
+          typeFilter={typeFilter}
+          canGenerateContractQuotes={canGenerateContractQuotes}
           canCreate={can(actor, "quotes", "create")}
           canEdit={can(actor, "quotes", "update")}
           canDelete={can(actor, "quotes", "delete")}

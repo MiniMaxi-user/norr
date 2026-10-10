@@ -4,6 +4,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getQuote, listQuoteLineItems } from "../actions";
 import { getInvoiceForQuote } from "../invoice-actions";
+import { getContract } from "@/app/(app)/contracts/actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
@@ -89,8 +90,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   const canReadInvoice = invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "read");
   const canGenerateInvoice =
     invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "create");
-  const canDeleteInvoice =
-    invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "delete");
+  // Contract relation card (issue #210) - only when the caller may read contracts.
+  const canReadContract =
+    (await hasFeature(session.organization, "contracts")) && canAccessModule(actor, "contracts");
 
   const [
     clientResult,
@@ -101,6 +103,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     articlesResult,
     workOrderResult,
     invoiceResult,
+    contractResult,
   ] = await Promise.all([
     getClient(quote.client_id),
     listClients({ limit: 200 }),
@@ -110,6 +113,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     listArticlesForSelect(),
     quote.work_order_id ? getWorkOrder(quote.work_order_id) : Promise.resolve(null),
     canReadInvoice ? getInvoiceForQuote(quote.id) : Promise.resolve(null),
+    quote.contract_id && canReadContract ? getContract(quote.contract_id) : Promise.resolve(null),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -122,6 +126,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   const articles = articlesResult.data?.articles ?? [];
   const sourceWorkOrder = workOrderResult?.data?.workOrder ?? null;
   const invoice = invoiceResult?.data?.invoice ?? null;
+  const contract = contractResult?.data?.contract ?? null;
 
   const canEdit = can(actor, "quotes", "update");
   const canDelete = can(actor, "quotes", "delete");
@@ -147,7 +152,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       canDeleteLineItems={canDeleteLineItems}
       invoice={invoice}
       canGenerateInvoice={canGenerateInvoice}
-      canDeleteInvoice={canDeleteInvoice}
+      contract={contract}
     />
   );
 }

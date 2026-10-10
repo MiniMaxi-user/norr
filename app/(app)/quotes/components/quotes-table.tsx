@@ -64,8 +64,9 @@ export function QuotesTable({ quotes, clientNameById, canEdit, canDelete, showDr
             <Table.Row>
               <Table.HeaderCell>Name</Table.HeaderCell>
               <Table.HeaderCell>Client</Table.HeaderCell>
+              <Table.HeaderCell>Type</Table.HeaderCell>
               <Table.HeaderCell align="center">Status</Table.HeaderCell>
-              <Table.HeaderCell>Valid until</Table.HeaderCell>
+              <Table.HeaderCell>Valid until / period</Table.HeaderCell>
               <Table.HeaderCell>Total</Table.HeaderCell>
               {showActionsColumn && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
             </Table.Row>
@@ -84,12 +85,23 @@ export function QuotesTable({ quotes, clientNameById, canEdit, canDelete, showDr
                   )}
                 </Table.Cell>
                 <Table.Cell>{clientNameById.get(quote.client_id) ?? "—"}</Table.Cell>
+                <Table.Cell>
+                  {quote.quote_type === "contract" ? (
+                    <Badge variant="accent">Contract</Badge>
+                  ) : (
+                    <Text tone="muted">Default</Text>
+                  )}
+                </Table.Cell>
                 <Table.Cell align="center">
                   <Badge color={quote.quote_status?.color} variant="muted">
                     {quote.quote_status?.label ?? "—"}
                   </Badge>
                 </Table.Cell>
-                <Table.Cell>{formatDate(quote.valid_until)}</Table.Cell>
+                <Table.Cell>
+                  {quote.quote_type === "contract" && quote.contract_period_start && quote.contract_period_end
+                    ? `${formatDate(quote.contract_period_start)} - ${formatDate(quote.contract_period_end)}`
+                    : formatDate(quote.valid_until)}
+                </Table.Cell>
                 <Table.Cell>{formatCurrency(quote.total)}</Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">

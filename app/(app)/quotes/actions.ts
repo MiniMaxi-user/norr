@@ -87,6 +87,8 @@ export interface ResolvedReferenceItem {
   color: string | null;
 }
 
+export type QuoteType = "default" | "contract";
+
 export interface QuoteRecord {
   id: string;
   organization_id: string;
@@ -120,6 +122,15 @@ export interface QuoteRecord {
    * page can render a "Source" `RelationCard` linking back to
    * `/work-orders/[work_order_id]` when set. */
   work_order_id: string | null;
+  /** System enum (issue #211): `default` or `contract` (generated from a due
+   * contract, issue #210). Immutable after insert. */
+  quote_type: QuoteType;
+  /** The contract a `contract` quote was generated for; null for `default`
+   * quotes or when the contract was deleted since. */
+  contract_id: string | null;
+  /** Invoiced period of a `contract` quote (ISO dates); null for `default`. */
+  contract_period_start: string | null;
+  contract_period_end: string | null;
   /** Embedded via `reference_list_items!quotes_status_id_fkey(...)` — see
    * `QUOTE_SELECT` below. Postgres's default FK naming for an unnamed column
    * FK is `<table>_<column>_fkey` (same reasoning `app/(app)/contracts/
@@ -335,6 +346,12 @@ function toQuoteLineItemUpdateRow(input: ReturnType<typeof quoteLineItemUpdateSc
 export interface ListQuotesOptions {
   clientId?: string;
   statusId?: string;
+  /** Issue #211 multi-select status filter: quote_status item ids (uuid) and/or
+   * item values (e.g. `draft`, `invoiced`), OR-combined. Empty/omitted = no
+   * status filter. */
+  status?: string[];
+  /** Issue #211 multi-select type filter (OR-combined). Empty/omitted = both. */
+  type?: QuoteType[];
   /** Issue #109 — filter to only auto-draft (`true`) or only "real"
    * (`false`) quotes. Omitted (`undefined`, the default) returns both, same
    * as before this filter existed — the frontend's default `/quotes` list
@@ -359,6 +376,11 @@ export interface ListQuotesOptions {
 export async function listQuotes(
   options: ListQuotesOptions = {},
 ): Promise<ActionResult<{ quotes: QuoteRecord[]; count: number }>> {
+  const typeFilter = z.array(z.enum(["default", "contract"])).max(2).safeParse(options.type ?? []);
+  if (!typeFilter.success) return fail("Invalid type filter.");
+  const statusFilter = z.array(z.string().trim().min(1).max(100)).max(50).safeParse(options.status ?? []);
+  if (!statusFilter.success) return fail("Invalid status filter.");
+
   for (const [label, value] of [
     ["client id filter", options.clientId],
     ["status id filter", options.statusId],
@@ -383,6 +405,22 @@ export async function listQuotes(
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.statusId) query = query.eq("status_id", options.statusId);
   if (options.isAutoDraft !== undefined) query = query.eq("is_auto_draft", options.isAutoDraft);
+  if (typeFilter.data.length > 0) query = query.in("quote_type", typeFilter.data);
+  if (statusFilter.data.length > 0) {
+    const ids = statusFilter.data.filter((v) => uuidSchema.safeParse(v).success);
+    const values = statusFilter.data.filter((v) => !uuidSchema.safeParse(v).success);
+    if (values.length > 0) {
+      const { data: items, error: itemsError } = await supabase
+        .from("reference_list_items")
+        .select("id, reference_list:reference_lists!inner(list_key)")
+        .eq("reference_list.list_key", "quote_status")
+        .in("value", values);
+      if (itemsError) return fail(mapDbError(itemsError));
+      ids.push(...(items ?? []).map((item) => item.id as string));
+    }
+    // No matching status at all -> match nothing (not everything).
+    query = query.in("status_id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  }
   query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
 
   const { data, error, count } = await query;
@@ -504,7 +542,11 @@ export async function deleteQuote(id: string): Promise<ActionResult<{ deletedId:
     .select("id")
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  if (error) {
+    // invoices.quote_id has no cascade (issue #211): an invoiced quote is permanent.
+    if (error.code === "23503") return fail("This quote has been invoiced and can't be deleted.");
+    return fail(mapDbError(error));
+  }
   if (!data) return fail("Quote not found, or you do not have permission to delete it.");
   return ok({ deletedId: data.id as string });
 }

@@ -29,6 +29,8 @@ import type { InvoiceSummary } from "../invoice-actions";
 import { formatDate } from "@/lib/format/date";
 import { QuoteDetailActions } from "./quote-detail-actions";
 import { QuoteRelationCards } from "./quote-relation-cards";
+import { QuoteInvoicePanel } from "./quote-invoice-panel";
+import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import { QuoteRelationsDialog } from "./quote-relations-dialog";
 import { QuoteLineItemsPanel } from "./quote-line-items-panel";
 
@@ -60,11 +62,13 @@ export interface QuoteDetailProps {
   canDeleteLineItems: boolean;
   /** This quote's invoice, if one has already been generated (issue #119) —
    * `null` both when none exists yet and when the caller can't read
-   * invoices at all (`page.tsx` only fetches it when `canGenerateInvoice`/
-   * `canDeleteInvoice`'s underlying `read` check passes). */
+   * invoices at all (`page.tsx` only fetches it when the caller passes the
+   * invoicing `read` check). */
   invoice: InvoiceSummary | null;
   canGenerateInvoice: boolean;
-  canDeleteInvoice: boolean;
+  /** The contract a `contract` quote was generated for (issue #210); `null`
+   * for default quotes, a deleted contract, or a caller who can't read contracts. */
+  contract: ContractRecord | null;
 }
 
 /**
@@ -83,10 +87,10 @@ export interface QuoteDetailProps {
  * ("a future story could still move Quotes to Pattern A ... until then treat
  * it as intentional"). This is that story.
  *
- * No Asset/Contract `RelationCard` here — deliberate, not an oversight:
- * `quotes` has no top-level `asset_id`/`contract_id` column (only per-line
- * `quote_line_items.asset_id`, already rendered inline in the table below),
- * see `quote-relation-cards.tsx`'s own doc comment for the full reasoning.
+ * No Asset `RelationCard` here (asset linkage is per line item only, rendered
+ * inline in the table below). Contract quotes (issue #210,
+ * `quotes.contract_id`) do get a Contract `RelationCard` with the invoiced
+ * period; see `quote-relation-cards.tsx`.
  *
  * Every inline-editable affordance here (title input, the relation cards'
  * Edit button, the Details/Notes edit pencils) is gated on `canEdit` and
@@ -120,7 +124,7 @@ export function QuoteDetail({
   canDeleteLineItems,
   invoice,
   canGenerateInvoice,
-  canDeleteInvoice,
+  contract,
 }: QuoteDetailProps) {
   const router = useRouter();
 
@@ -242,9 +246,12 @@ export function QuoteDetail({
           )
         }
         badges={
-          <Badge color={quote.quote_status?.color} variant="muted">
-            {quote.quote_status?.label ?? "—"}
-          </Badge>
+          <>
+            <Badge color={quote.quote_status?.color} variant="muted">
+              {quote.quote_status?.label ?? "—"}
+            </Badge>
+            {quote.quote_type === "contract" && <Badge variant="accent">Contract</Badge>}
+          </>
         }
         meta={meta}
         actions={
@@ -253,17 +260,24 @@ export function QuoteDetail({
             canDelete={canDelete}
             invoice={invoice}
             canGenerateInvoice={canGenerateInvoice}
-            canDeleteInvoice={canDeleteInvoice}
           />
         }
       />
 
       {saveError && <Text tone="danger">{saveError}</Text>}
 
+      {invoice && <QuoteInvoicePanel invoice={invoice} />}
+
       <QuoteRelationCards
         client={client}
         site={site}
         sourceWorkOrder={sourceWorkOrder}
+        contract={contract}
+        contractPeriod={
+          quote.quote_type === "contract" && quote.contract_period_start && quote.contract_period_end
+            ? `${formatDate(quote.contract_period_start)} - ${formatDate(quote.contract_period_end)}`
+            : null
+        }
         readOnly={!canEdit}
         onEdit={() => setRelationsOpen(true)}
       />

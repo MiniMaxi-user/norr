@@ -233,12 +233,13 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
   // administratie, platform admin) and explicitly does not include finance —
   // matching CLAUDE.md rule 7 ("build exactly what a story's acceptance
   // criteria specify"). `engineer`/`planner` are NONE for the same reason.
+  // No `delete` since issue #211: invoices are permanent (no delete policy/grant).
   invoicing: {
-    owner: ["create", "read", "delete"],
+    owner: ["create", "read"],
     planner: NONE,
     engineer: NONE,
     finance: NONE,
-    administratie: ["create", "read", "delete"],
+    administratie: ["create", "read"],
   },
   // Activities (issue #59, "melding"): a NEW top-level module (a ticket-like
   // entity preceding a Work Order), a NEW shape — not a `planning` alias, per

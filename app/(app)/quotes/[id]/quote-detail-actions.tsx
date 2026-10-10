@@ -22,24 +22,17 @@ export function QuoteDetailActions({
   canDelete,
   invoice,
   canGenerateInvoice,
-  canDeleteInvoice,
 }: {
   quote: QuoteRecord;
   canDelete: boolean;
   invoice: InvoiceSummary | null;
   canGenerateInvoice: boolean;
-  canDeleteInvoice: boolean;
 }) {
   const [deleting, setDeleting] = useState(false);
 
   return (
     <>
-      <QuoteInvoiceActions
-        quoteId={quote.id}
-        invoice={invoice}
-        canGenerate={canGenerateInvoice}
-        canDelete={canDeleteInvoice}
-      />
+      <QuoteInvoiceActions quoteId={quote.id} invoice={invoice} canGenerate={canGenerateInvoice} />
 
       {canDelete && (
         <Button type="button" variant="danger" onClick={() => setDeleting(true)}>

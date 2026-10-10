@@ -17,19 +17,23 @@
 -- 42501.
 --
 -- This is a DELIBERATELY NARROWER/different RBAC shape than every other
--- module tested so far: only owner/administratie may SELECT/INSERT/DELETE
--- invoices at all -- planner/engineer/finance get ZERO access (not even
+-- module tested so far: only owner/administratie may SELECT/INSERT invoices (and
+-- UPDATE the e-mail status columns only; invoices are permanent, no DELETE)
+-- at all -- planner/engineer/finance get ZERO access (not even
 -- read), unlike quotes' owner+planner-write/everyone-read shape. Coverage:
--- owner and administratie can each generate (insert) and delete an invoice;
+-- owner and administratie can each generate (insert) an invoice but cannot
+-- delete one (delete policy/grant dropped in 20261010100000);
 -- planner/engineer/finance can neither read nor create nor delete an org's
 -- invoices; cross-org isolation on invoices AND on the invoices Storage
 -- bucket; next_invoice_number() produces distinct, gapless-per-caller,
 -- sequential numbers under concurrent-style repeated calls for the same
 -- organization and never collides across organizations; next_invoice_number()
 -- itself rejects a non-owner/administratie caller (42501); at-most-one-
--- invoice-per-quote is enforced (unique quote_id); deleting a quote cascades
--- to its invoice; there is no UPDATE grant on invoices at all, even for an
--- owner on their own org's row; and Storage cross-org isolation on the
+-- invoice-per-quote is enforced (unique quote_id); deleting an invoiced quote
+-- is rejected (FK without cascade, 23503); only the e-mail status columns
+-- (emailed_to/emailed_at/email_error) are UPDATE-able, any other column fails
+-- with 42501 even for an owner on their own org's row (the e-mail columns are
+-- covered in contract_quotes_and_invoicing_rls.test.sql); and Storage cross-org isolation on the
 -- invoices bucket is tested against a DIFFERENT org's owner, not just a
 -- same-org non-owner/administratie role.
 
@@ -187,15 +191,17 @@ select lives_ok(
   'administratie_a can insert an invoice for Quote A2'
 ); -- 12
 
-select lives_ok(
+select throws_ok(
   $$ delete from public.invoices where id = 'a5000000-0000-0000-0000-00000000000b' $$,
-  'administratie_a can delete an invoice in org_a'
+  '42501',
+  null,
+  'administratie_a cannot delete an invoice: invoices are permanent (delete grant dropped in 20261010100000)'
 ); -- 13
 
 select is(
   (select count(*)::int from public.invoices where id = 'a5000000-0000-0000-0000-00000000000b'),
-  0,
-  'the deleted invoice is actually gone after administratie_a''s delete'
+  1,
+  'the invoice still exists after administratie_a''s rejected delete'
 ); -- 14
 
 -- ---------------------------------------------------------------------------
@@ -226,12 +232,11 @@ select throws_ok(
   'planner_a cannot call next_invoice_number() for org_a directly (function-internal role re-check, defense in depth)'
 ); -- 17
 
-delete from public.invoices where id = 'a5000000-0000-0000-0000-00000000000a';
-
-select is(
-  (select count(*)::int from public.invoices where id = 'a5000000-0000-0000-0000-00000000000a'),
-  1,
-  'planner_a''s DELETE is silently excluded by RLS; Quote A1''s invoice still exists'
+select throws_ok(
+  $$ delete from public.invoices where id = 'a5000000-0000-0000-0000-00000000000a' $$,
+  '42501',
+  null,
+  'planner_a''s DELETE is rejected (no delete grant at all since 20261010100000)'
 ); -- 18
 
 -- ---------------------------------------------------------------------------
@@ -329,7 +334,7 @@ select lives_ok(
 ); -- 29
 
 -- ---------------------------------------------------------------------------
--- 7. on delete cascade: deleting a quote removes its invoice.
+-- 7. deleting an invoiced quote is rejected (FK without cascade, 23503).
 -- ---------------------------------------------------------------------------
 select pg_temp.act_as('a9111111-1111-1111-1111-111111111111');
 
@@ -337,27 +342,25 @@ insert into public.invoices (id, quote_id, invoice_number, pdf_path)
 values ('a5000000-0000-0000-0000-00000000000d', 'a6000000-0000-0000-0000-00000000000c',
   'INV-2026-0004', 'a8000000-0000-0000-0000-00000000000a/a6000000-0000-0000-0000-00000000000c/invoice.pdf');
 
-delete from public.quotes where id = 'a6000000-0000-0000-0000-00000000000c';
-
-select is(
-  (select count(*)::int from public.invoices where id = 'a5000000-0000-0000-0000-00000000000d'),
-  0,
-  'deleting Quote A3 cascades to delete its invoice (on delete cascade)'
+select throws_ok(
+  $$ delete from public.quotes where id = 'a6000000-0000-0000-0000-00000000000c' $$,
+  '23503',
+  null,
+  'deleting Quote A3 is rejected because it has an invoice (no cascade)'
 ); -- 30
 
 -- ---------------------------------------------------------------------------
--- 8. No UPDATE grant on invoices at all (design note 2): even the invoice's
---    OWNING org's owner cannot UPDATE a single column, and the failure mode
---    is 42501 (missing privilege, from the absent GRANT) -- NOT a silent
---    RLS-USING exclusion, since there is no UPDATE policy/grant to even
---    evaluate a USING clause against. Still acting as owner_a from section 7;
+-- 8. Only the e-mail status columns are UPDATE-able (20261010100000): even the
+--    invoice's OWNING org's owner cannot UPDATE any other column (e.g.
+--    invoice_number), and the failure mode is 42501 (missing column
+--    privilege) -- NOT a silent RLS-USING exclusion. Still acting as owner_a from section 7;
 --    a5000000-0000-0000-0000-00000000000a (org_a, Quote A1) still exists.
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$ update public.invoices set invoice_number = 'INV-2026-9999' where id = 'a5000000-0000-0000-0000-00000000000a' $$,
   '42501',
   null,
-  'owner_a cannot UPDATE invoice_number (or any column) on their own org''s invoice -- there is no UPDATE grant on invoices at all, so this is a missing-privilege error, not an RLS USING/WITH CHECK failure'
+  'owner_a cannot UPDATE invoice_number on their own org''s invoice -- only the e-mail status columns are granted, so this is a missing-privilege error, not an RLS USING/WITH CHECK failure'
 ); -- 31
 
 -- ---------------------------------------------------------------------------

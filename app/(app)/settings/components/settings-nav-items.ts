@@ -139,6 +139,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // how a logged time entry becomes a billed duration — a rate setting,
       // not an article catalog entry or a reference-list picklist.
       { key: "time_rounding", label: "Time Rounding", href: "/settings/time-rounding" },
+      // Issues #210/#211 - per-tenant invoice email (sender, CC, subject, body).
+      { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email" },
     ],
   },
   {

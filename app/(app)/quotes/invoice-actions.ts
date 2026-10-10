@@ -1,261 +1,207 @@
 "use server";
 
-import { createElement, type ReactElement } from "react";
 import { z } from "zod";
-import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { sendEmail } from "@/lib/email/resend";
 import { getOrganizationCompanySettings } from "../settings/company-actions";
-import { InvoiceDocument, type InvoicePdfAddress, type InvoicePdfLineItem, type InvoicePdfVatBreakdownEntry } from "./invoice-pdf";
+import { formatInvoiceTotal, renderInvoicePdfForQuote } from "./invoice-render";
+import {
+  DEFAULT_INVOICE_EMAIL_BODY,
+  DEFAULT_INVOICE_EMAIL_SUBJECT,
+  renderInvoiceEmailTemplate,
+} from "./invoice-email-schema";
 
 /**
- * Server Actions for Invoicing (issue #119, "Als owner / administratie /
- * platform admin wil ik een factuur kunnen maken") — generate/view/delete a
- * PDF invoice from a Quote. Same four-step preamble as every other module's
- * actions (see `app/(app)/clients/actions.ts`'s header comment): resolve
- * module context (`hasFeature("invoicing")` + RBAC actor) -> `can()` ->
- * Zod validation -> query under the caller's own session (RLS is always the
- * real backstop). Modeled most closely on `../clients/logo-actions.ts`
- * (generate/store a derived artifact in Storage, keep a small pointer row,
- * allow delete) — adapted for a financial PDF instead of an image:
+ * Server Actions for invoicing a quote (issues #119, #211).
  *
- *  - `invoices` has NO update policy/grant at all (migration
- *    `20260903100000_invoices_core.sql`, design note 2) — regenerating an
- *    invoice is DELETE the existing row (if any) + its Storage object, then
- *    INSERT a fresh one, never an UPDATE. `generateInvoice` below implements
- *    exactly that "replace" dance.
- *  - RLS/RBAC boundary is owner/administratie ONLY (`lib/rbac/permissions.ts`'s
- *    `invoicing` module) — deliberately narrower than, and role-different
- *    from, `quotes`' own owner+planner boundary. A Platform Admin needs no
- *    special-casing here: they qualify purely by being `owner` of their own
- *    org (confirmed scope decision, see the migration's header).
- *  - The `invoices` Storage bucket is PRIVATE — every "view the PDF" flow
- *    goes through a short-lived signed URL minted server-side
- *    (`getInvoiceSignedUrl`), never a public URL. No service-role client
- *    anywhere in this file: every Supabase call runs under the caller's own
- *    session (`lib/supabase/server.ts`), same as every other action in this
- *    repo, since `invoices`' RLS + the Storage bucket's own RLS already do
- *    the real enforcement.
+ * Flow of `invoiceQuote` ("Generate invoice"):
+ *  1. `invoicing` feature + `can(actor, "invoicing", "create")` (owner /
+ *     administratie), Zod-validated id.
+ *  2. Refuse if the quote already has an invoice (invoices are permanent: no
+ *     regenerate, no delete).
+ *  3. Mint the sequential number (`next_invoice_number` RPC), INSERT the
+ *     `invoices` row (`pdf_path` stays null). The DB trigger
+ *     `invoices_advance_contract_period` then advances the contract's
+ *     invoiced period / next invoice date for contract quotes.
+ *  4. The DB trigger on invoices sets the quote status to 'invoiced'.
+ *  5. Best effort, after the commit: render the PDF on demand and e-mail it to
+ *     the client's invoice contact (see `sendInvoiceEmail`). Invoicing
+ *     succeeds even when the e-mail is skipped or fails.
  *
- * PDF layout itself lives in `./invoice-pdf.tsx` (`InvoiceDocument`) —
- * kept separate from this data-fetching/orchestration file. Rendered via
- * `@react-pdf/renderer`'s `renderToBuffer()`, which runs in plain Node.js
- * (no headless browser), so this file is a normal Server Action module.
- * `createElement` (not JSX) is used to build the document element, since this
- * is a `.ts` file, not `.tsx`.
+ * PDFs are never stored: they are rendered on demand by the route handler
+ * `GET /quotes/[id]/invoice` and by the e-mail step, both via
+ * `./invoice-render.ts`. Every query runs under the caller's own session (RLS
+ * is the real backstop); no service-role client.
  */
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-// ---------------------------------------------------------------------------
-// Shared: resolving a client's own postal address for the PDF, and computing
-// the money figures from a quote's line items. Both are used only by
-// `generateInvoice` below, but pulled out as standalone functions to keep
-// that function's own body readable.
-// ---------------------------------------------------------------------------
+export type InvoiceEmailOutcome =
+  | { status: "sent"; to: string }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; to: string | null; error: string };
 
-interface SiteAddressRow {
-  address_line1: string | null;
-  address_line2: string | null;
-  postal_code: string | null;
-  city: string | null;
-  country: string | null;
-  is_invoice_address: boolean;
-  is_primary: boolean;
-}
-
-/**
- * Picks the "best" address to show for a client on the invoice: its
- * `is_invoice_address` site if it has one (the acceptance criterion's own
- * "FACTUUR AAN" requirement), falling back to its `is_primary` site, then
- * simply the first site (alphabetical by address, matching `getClient`'s own
- * site ordering in `../clients/actions.ts`) — rather than rendering no
- * address at all just because a client hasn't explicitly flagged one of its
- * sites as the invoice address. Used for BOTH the recipient (the quote's own
- * client) and the sender (the tenant's own `ownClient`) — there is no
- * separate concept of "the organization's own address" anywhere in this
- * schema, only Sites belonging to its own Client row (`organizations.
- * own_client_id`), so the same resolution applies to both. Returns `null`
- * when the client has no sites at all (renders no address block, not a
- * broken one).
- */
-async function resolveClientAddress(
-  supabase: SupabaseServerClient,
-  clientId: string,
-): Promise<InvoicePdfAddress | null> {
-  const { data, error } = await supabase
-    .from("sites")
-    .select("address_line1,address_line2,postal_code,city,country,is_invoice_address,is_primary")
-    .eq("client_id", clientId)
-    .order("address_line1", { ascending: true });
-
-  if (error || !data || data.length === 0) return null;
-
-  const rows = data as SiteAddressRow[];
-  const firstRow = rows[0];
-  if (!firstRow) return null; // unreachable given the length check above; satisfies strict indexing
-  const chosen = rows.find((s) => s.is_invoice_address) ?? rows.find((s) => s.is_primary) ?? firstRow;
-
-  return {
-    line1: chosen.address_line1,
-    line2: chosen.address_line2,
-    postalCode: chosen.postal_code,
-    city: chosen.city,
-    country: chosen.country,
-  };
-}
-
-interface InvoiceQuoteLineItemRow {
-  description: string;
-  /** Snapshotted at the moment an article was picked (migration
-   * `20260903130000_quote_line_items_article_number.sql`) — the row's own
-   * plain column, independent of `article_id`/the joined `article` below.
-   * Read in preference to the joined article's own `article_number` (see
-   * `computeInvoiceLineItems`) since it survives the source article later
-   * being deleted (`article_id` is `on delete set null`), unlike the join. */
-  article_number: string | null;
-  quantity: number | string;
-  unit_price: number | string;
-  discount_percent: number | string;
-  asset_id: string | null;
-  article: {
-    article_number: string;
-    vat_rate: { value: string | number } | null;
-  } | null;
-}
-
-interface InvoiceAssetLabelRow {
-  id: string;
-  serial_number: string | null;
-  asset_model: { name: string } | null;
-}
-
-/** Combines an asset's serial number and model name into the single display
- * string the reference PDF's "SERIENR. / MODEL" column expects — mirrors
- * `quote-line-items-panel.tsx`'s own "degrade gracefully" convention for an
- * optional field (only one half missing still renders the other; both
- * missing renders nothing at all, resolved to `null` here so the PDF's own
- * `?? "—"` fallback applies exactly like every other optional column). */
-function formatAssetLabel(asset: Pick<InvoiceAssetLabelRow, "serial_number" | "asset_model"> | undefined): string | null {
-  if (!asset) return null;
-  const parts = [asset.serial_number, asset.asset_model?.name].filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join(" / ") : null;
-}
-
-interface ComputedLineItems {
-  lineItems: InvoicePdfLineItem[];
-  subtotal: number;
-  vatBreakdown: InvoicePdfVatBreakdownEntry[];
-  vatTotal: number;
-  total: number;
-}
-
-/**
- * Replicates `quote-line-items-panel.tsx`'s exact math server-side (per that
- * file's own doc comment, referenced by this feature's hand-off): a line's
- * pre-VAT total is `quantity * unitPrice * (1 - discountPercent / 100)`, its
- * VAT rate is `0` when it has no linked article (`lineVatPercent`'s own
- * reasoning — there is no VAT-rate column on `quote_line_items` itself), and
- * VAT is computed PER LINE then summed — so mixed VAT rates on one quote are
- * handled correctly (each line contributes to its own rate's bucket in
- * `vatBreakdown`, sorted highest-first, matching the reference PDF's single-
- * rate "Btw 21%" line as the one-rate special case of the same general
- * mechanism). Rounds each displayed money figure independently to 2 decimal
- * places (money precision) only at the end, not per intermediate step, same
- * "avoid floating-point summation artifacts" reasoning as `computeTotal` in
- * `../quotes/actions.ts`.
- */
-function computeInvoiceLineItems(
-  rows: readonly InvoiceQuoteLineItemRow[],
-  assetLabelById: ReadonlyMap<string, string | null>,
-): ComputedLineItems {
-  const vatBuckets = new Map<number, number>();
-  let subtotalRaw = 0;
-
-  const lineItems: InvoicePdfLineItem[] = rows.map((row) => {
-    const quantity = Number(row.quantity);
-    const unitPrice = Number(row.unit_price);
-    const discountPercent = Number(row.discount_percent);
-    const vatPercent = row.article?.vat_rate?.value ? Number(row.article.vat_rate.value) : 0;
-
-    const lineTotal = quantity * unitPrice * (1 - discountPercent / 100);
-    subtotalRaw += lineTotal;
-    vatBuckets.set(vatPercent, (vatBuckets.get(vatPercent) ?? 0) + lineTotal * (vatPercent / 100));
-
-    return {
-      // Read the row's OWN snapshotted `article_number` column in
-      // preference to the joined article's — the row's own column survives
-      // the source article later being deleted (`article_id on delete set
-      // null`), unlike the join. Falls back to the joined article's number
-      // only in the defensive case where the row's own column is somehow
-      // null but a live article is still linked (shouldn't normally happen
-      // post-backfill/going-forward).
-      articleNumber: row.article_number ?? row.article?.article_number ?? null,
-      description: row.description,
-      // `?? null` here on purpose: no asset linked at all (id is `null`)
-      // and "linked but its label couldn't be resolved" (id present but
-      // missing from the map — shouldn't happen, same defensive-only
-      // reasoning as `quote-line-items-panel.tsx`'s own "Unknown asset"
-      // fallback) both degrade to the same blank cell.
-      assetLabel: row.asset_id ? (assetLabelById.get(row.asset_id) ?? null) : null,
-      quantity,
-      unitPrice,
-      discountPercent,
-      vatPercent,
-      lineTotal: Math.round(lineTotal * 100) / 100,
-    };
-  });
-
-  const vatBreakdown: InvoicePdfVatBreakdownEntry[] = Array.from(vatBuckets.entries())
-    .sort(([a], [b]) => b - a)
-    .map(([vatPercent, amount]) => ({ vatPercent, amount: Math.round(amount * 100) / 100 }));
-
-  const subtotal = Math.round(subtotalRaw * 100) / 100;
-  const vatTotal = Math.round(vatBreakdown.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100;
-
-  return { lineItems, subtotal, vatBreakdown, vatTotal, total: Math.round((subtotal + vatTotal) * 100) / 100 };
-}
-
-// "en-GB" (not "nl-NL") to match `invoice-pdf.tsx`'s own English-copy switch
-// — this formats month names ("3 September 2026"), so leaving it Dutch would
-// leave a Dutch month name bleeding into an otherwise all-English PDF.
-const dateFormatter = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" });
-
-function addDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// generateInvoice
-// ---------------------------------------------------------------------------
-
-export interface GenerateInvoiceResult {
+export interface InvoiceQuoteResult {
   invoiceId: string;
   invoiceNumber: string;
-  signedUrl: string;
+  /** Whether the quote now has status 'invoiced' (set by the DB trigger on
+   * invoices, re-read after the insert). */
+  statusUpdated: boolean;
+  email: InvoiceEmailOutcome;
 }
 
-const SIGNED_URL_TTL_SECONDS = 120;
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function formatMailbox(name: string | null, email: string): string {
+  const cleanName = (name ?? "").replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+  return cleanName ? `${cleanName} <${email}>` : email;
+}
+
+interface InvoiceEmailSettingsRow {
+  from_email: string | null;
+  from_name: string | null;
+  cc_email: string | null;
+  subject_template: string | null;
+  body_template: string | null;
+}
 
 /**
- * Generates (or regenerates) a PDF invoice for `quoteId`. Regeneration is
- * DELETE-the-existing-row-and-object THEN INSERT-a-fresh-one (see the module
- * comment above) — `invoices.quote_id` is `unique`, so a stale row would
- * otherwise make the fresh INSERT fail with a `23505` unique-violation.
+ * Best-effort invoice e-mail. Never throws. Recipient = the invoice contact of
+ * the client's `is_invoice_address` site.
+ *
+ * Recording policy on `invoices` (emailed_to / emailed_at / email_error):
+ *  - no invoice-address site, or no invoice contact on it: nothing is sent and
+ *    NOTHING is recorded (a legitimate "don't e-mail" configuration).
+ *  - contact without e-mail address: email_error = "Invoice contact has no
+ *    e-mail address".
+ *  - sender not configured: email_error = "Invoice email sender not configured".
+ *  - provider/render failure: email_error = the error message.
+ *  - success: emailed_to + emailed_at set, email_error cleared.
  */
-export async function generateInvoice(quoteId: string): Promise<ActionResult<GenerateInvoiceResult>> {
+async function sendInvoiceEmail(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  organizationName: string,
+  quoteId: string,
+  clientId: string,
+): Promise<InvoiceEmailOutcome> {
+  try {
+    const { data: invoiceSites, error: siteError } = await supabase
+      .from("sites")
+      .select("invoice_contact_id")
+      .eq("client_id", clientId)
+      .eq("is_invoice_address", true)
+      .not("invoice_contact_id", "is", null);
+    if (siteError) return { status: "failed", to: null, error: siteError.message };
+
+    const contactId = (invoiceSites ?? []).map((s) => s.invoice_contact_id as string | null).find(Boolean);
+    if (!contactId) return { status: "skipped", reason: "No invoice address or invoice contact" };
+
+    const { data: invoiceRow } = await supabase
+      .from("invoices")
+      .select("id")
+      .eq("quote_id", quoteId)
+      .maybeSingle<{ id: string }>();
+    if (!invoiceRow) return { status: "failed", to: null, error: "Invoice not found" };
+
+    const record = async (patch: {
+      emailed_to?: string | null;
+      emailed_at?: string | null;
+      email_error: string | null;
+    }) => {
+      await supabase.from("invoices").update(patch).eq("id", invoiceRow.id);
+    };
+
+    const { data: contact, error: contactError } = await supabase
+      .from("contacts")
+      .select("email")
+      .eq("id", contactId)
+      .maybeSingle<{ email: string | null }>();
+    if (contactError) return { status: "failed", to: null, error: contactError.message };
+
+    const rawEmail = contact?.email?.trim() || null;
+    if (!rawEmail) {
+      const error = "Invoice contact has no e-mail address";
+      await record({ email_error: error });
+      return { status: "failed", to: null, error };
+    }
+    if (!z.string().email().safeParse(rawEmail).success) {
+      const error = "Invoice contact has an invalid e-mail address";
+      await record({ email_error: error });
+      return { status: "failed", to: null, error };
+    }
+    const to = rawEmail;
+
+    const { data: settings } = await supabase
+      .from("invoice_email_settings")
+      .select("from_email, from_name, cc_email, subject_template, body_template")
+      .eq("organization_id", organizationId)
+      .maybeSingle<InvoiceEmailSettingsRow>();
+
+    if (!settings?.from_email) {
+      const error = "Invoice email sender not configured";
+      await record({ email_error: error });
+      return { status: "failed", to, error };
+    }
+
+    const { rendered, error: renderError } = await renderInvoicePdfForQuote(supabase, quoteId);
+    if (!rendered) {
+      const error = renderError ?? "Could not render the invoice PDF.";
+      await record({ email_error: error });
+      return { status: "failed", to, error };
+    }
+
+    const values = {
+      invoice_number: rendered.invoiceNumber,
+      client_name: rendered.clientName,
+      quote_name: rendered.quoteName,
+      total: formatInvoiceTotal(rendered.total),
+      due_date: rendered.dueDateLabel,
+      organization_name: organizationName,
+    };
+    const subject = renderInvoiceEmailTemplate(settings.subject_template || DEFAULT_INVOICE_EMAIL_SUBJECT, values)
+      .replace(/[\r\n]+/g, " ")
+      .trim();
+    const text = renderInvoiceEmailTemplate(settings.body_template || DEFAULT_INVOICE_EMAIL_BODY, values);
+    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`;
+
+    const sent = await sendEmail({
+      from: formatMailbox(settings.from_name, settings.from_email),
+      to: [to],
+      cc: settings.cc_email ? [settings.cc_email] : undefined,
+      subject,
+      text,
+      html,
+      attachments: [{ filename: `${rendered.invoiceNumber}.pdf`, content: rendered.pdf }],
+    });
+
+    if (!sent.ok) {
+      await record({ email_error: sent.error });
+      return { status: "failed", to, error: sent.error };
+    }
+
+    await record({ emailed_to: to, emailed_at: new Date().toISOString(), email_error: null });
+    return { status: "sent", to };
+  } catch (error) {
+    return { status: "failed", to: null, error: error instanceof Error ? error.message : "Unexpected e-mail error" };
+  }
+}
+
+/** "Generate invoice": see the module comment for the full flow. */
+export async function invoiceQuote(quoteId: string): Promise<ActionResult<InvoiceQuoteResult>> {
   const idResult = uuidSchema.safeParse(quoteId);
   if (!idResult.success) return fail("Invalid quote id.");
 
   const ctx = await requireModuleContext("invoicing");
   if (!ctx.ok) return fail(ctx.error);
-  const { actor, organizationId } = ctx.context;
+  const { actor, organizationId, session } = ctx.context;
 
   if (!can(actor, "invoicing", "create")) {
     return fail("Only an owner or administratie member can generate invoices.");
@@ -263,209 +209,81 @@ export async function generateInvoice(quoteId: string): Promise<ActionResult<Gen
 
   const supabase = await createSupabaseServerClient();
 
-  // 1. Load the quote (RLS-scoped to the caller's org) with its client, and
-  // — if the quote already has a linked work order (issue #94) — that work
-  // order's own `title`, used only as an identifying text on the PDF's meta
-  // row (see ./invoice-pdf.tsx's own doc comment on why this is NOT a
-  // "werkordernummer"). `!fkey` disambiguators throughout, matching this
-  // module's existing embed convention (`../quotes/actions.ts`'s
-  // `QUOTE_SELECT`/`QUOTE_LINE_ITEM_SELECT`).
-  const { data: quoteRow, error: quoteError } = await supabase
+  const { data: quote, error: quoteError } = await supabase
     .from("quotes")
-    .select(
-      "id, client_id, site_id, name, work_order_id," +
-        " client:clients!quotes_client_id_fkey(id,name,vat_number)," +
-        " work_order:work_orders!quotes_work_order_id_fkey(id,title)",
-    )
+    .select("id, client_id")
     .eq("id", idResult.data)
-    .maybeSingle<{
-      id: string;
-      client_id: string;
-      site_id: string | null;
-      name: string;
-      work_order_id: string | null;
-      client: { id: string; name: string; vat_number: string | null } | null;
-      work_order: { id: string; title: string } | null;
-    }>();
-
+    .maybeSingle<{ id: string; client_id: string }>();
   if (quoteError) return fail(mapDbError(quoteError));
-  if (!quoteRow) return fail("Quote not found, or you do not have permission to view it.");
-  if (!quoteRow.client) {
-    // Defensive only — `client_id` is `not null` and FK-enforced, so this
-    // should be unreachable, but a null client would otherwise crash the PDF
-    // render below rather than fail cleanly.
-    return fail("This quote's client could not be found.");
-  }
+  if (!quote) return fail("Quote not found, or you do not have permission to view it.");
 
-  // 2. Load the quote's line items with their own snapshotted
-  // `article_number` plus the linked article's VAT rate (same embed shape as
-  // `../quotes/actions.ts`'s `QUOTE_LINE_ITEM_SELECT`, trimmed to just the
-  // columns the PDF needs), ordered the same way `listQuoteLineItems` orders
-  // them. Also pulls the raw `asset_id` uuid — deliberately NOT joined here
-  // (no FK embed for that column, same as `quote-line-items-panel.tsx`'s own
-  // resolution): resolved below via a small, targeted-by-id lookup instead,
-  // mirroring that panel's own "raw uuid, resolve against a small directory"
-  // pattern. `engineer_user_id` is no longer selected here at all — the
-  // Engineer column has been removed from the PDF (see `invoice-pdf.tsx`),
-  // so there is nothing left to resolve it for.
-  const { data: lineItemRows, error: lineItemsError } = await supabase
-    .from("quote_line_items")
-    .select(
-      "description, article_number, quantity, unit_price, discount_percent, asset_id," +
-        " article:articles!quote_line_items_article_id_fkey(article_number, vat_rate:reference_list_items!articles_vat_rate_item_id_fkey(value))",
-    )
-    .eq("quote_id", idResult.data)
-    .order("sort_order", { ascending: true });
+  const { data: existing, error: existingError } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("quote_id", quote.id)
+    .maybeSingle<{ id: string }>();
+  if (existingError) return fail(mapDbError(existingError));
+  if (existing) return fail("This quote has already been invoiced.");
 
-  if (lineItemsError) return fail(mapDbError(lineItemsError));
-
-  const lineItemRowsTyped = (lineItemRows ?? []) as unknown as InvoiceQuoteLineItemRow[];
-
-  // 2b. Resolve the small set of distinct assets actually referenced by this
-  // quote's line items — a targeted `.in()` lookup rather than reusing an
-  // org-wide asset list, so this works even for a tenant that never enabled
-  // Planning. `assets`' own org-scoped RLS policy already restricts this to
-  // the caller's own org, same "RLS is the real backstop" posture as every
-  // other query in this file. `.in("id", [])` returns an empty result set
-  // (not an error) in PostgREST/supabase-js, so this runs unconditionally
-  // rather than branching on `assetIds.length`.
-  const assetIds = Array.from(new Set(lineItemRowsTyped.map((row) => row.asset_id).filter((id): id is string => Boolean(id))));
-
-  const { data: assetLabelRowsData, error: assetLabelRowsError } = await supabase
-    .from("assets")
-    .select("id, serial_number, asset_model:asset_models!assets_model_id_fkey(name)")
-    .in("id", assetIds);
-
-  if (assetLabelRowsError) return fail(mapDbError(assetLabelRowsError));
-
-  const assetLabelById = new Map<string, string | null>(
-    (assetLabelRowsData as unknown as InvoiceAssetLabelRow[]).map((asset) => [asset.id, formatAssetLabel(asset)]),
-  );
-
-  // 3. The tenant's own company data (issue #120) — required for the "VAN"
-  // block. Fails clean rather than generating a PDF with a blank sender.
+  // Fail early (before burning an invoice number) when the PDF could never be
+  // rendered because the tenant's own company details are missing.
   const companySettings = await getOrganizationCompanySettings();
   if (!companySettings.data) return fail(companySettings.error ?? "Could not load organization settings.");
-  const ownClient = companySettings.data.ownClient;
-  if (!ownClient) {
-    return fail(
-      "Configure your own company details in Settings → Company before generating an invoice.",
-    );
+  if (!companySettings.data.ownClient) {
+    return fail("Configure your own company details in Settings → Company before generating an invoice.");
   }
 
-  const [senderAddress, recipientAddress] = await Promise.all([
-    resolveClientAddress(supabase, ownClient.id),
-    resolveClientAddress(supabase, quoteRow.client_id),
-  ]);
-
-  const computed = computeInvoiceLineItems(lineItemRowsTyped, assetLabelById);
-
-  // 4. Regenerate = delete the existing invoice (row + Storage object) first,
-  // since `invoices` has no UPDATE grant/policy at all and `quote_id` is
-  // `unique` (see the module comment above).
-  const { data: existingInvoice, error: existingError } = await supabase
-    .from("invoices")
-    .select("id, pdf_path")
-    .eq("quote_id", idResult.data)
-    .maybeSingle<{ id: string; pdf_path: string }>();
-  if (existingError) return fail(mapDbError(existingError));
-
-  if (existingInvoice) {
-    const { error: deleteRowError } = await supabase.from("invoices").delete().eq("id", existingInvoice.id);
-    if (deleteRowError) return fail(mapDbError(deleteRowError));
-    await supabase.storage.from("invoices").remove([existingInvoice.pdf_path]);
-  }
-
-  // 5. Mint the sequential invoice number (race-safe per-org counter,
-  // `next_invoice_number()` re-checks owner/administratie itself server-side
-  // — see the migration's design note 4).
   const { data: invoiceNumber, error: numberError } = await supabase.rpc("next_invoice_number", {
     p_organization_id: organizationId,
   });
   if (numberError) return fail(mapDbError(numberError));
   if (!invoiceNumber) return fail("Could not generate an invoice number.");
 
-  // 6. Render the PDF.
-  const invoiceDate = new Date();
-  const dueDate = addDays(invoiceDate, 30);
-
-  const pdfElement = createElement(InvoiceDocument, {
-    invoiceNumber,
-    invoiceDateLabel: dateFormatter.format(invoiceDate),
-    dueDateLabel: dateFormatter.format(dueDate),
-    reference: quoteRow.name,
-    workOrderReference: quoteRow.work_order?.title ?? null,
-    sender: {
-      name: ownClient.name,
-      kvkNumber: ownClient.kvkNumber,
-      vatNumber: ownClient.vatNumber,
-      address: senderAddress,
-      logoUrl: ownClient.logoUrl,
-    },
-    recipient: {
-      name: quoteRow.client.name,
-      vatNumber: quoteRow.client.vat_number,
-      address: recipientAddress,
-    },
-    lineItems: computed.lineItems,
-    subtotal: computed.subtotal,
-    vatBreakdown: computed.vatBreakdown,
-    vatTotal: computed.vatTotal,
-    total: computed.total,
-    iban: ownClient.iban,
-  }) as unknown as ReactElement<DocumentProps>;
-
-  let pdfBuffer: Buffer;
-  try {
-    pdfBuffer = await renderToBuffer(pdfElement);
-  } catch {
-    return fail("Could not render the invoice PDF.");
-  }
-
-  // 7. Upload to the private "invoices" bucket at the fixed path convention
-  // (migration design note 5), then insert the pointer row.
-  const pdfPath = `${organizationId}/${idResult.data}/invoice.pdf`;
-  const { error: uploadError } = await supabase.storage.from("invoices").upload(pdfPath, pdfBuffer, {
-    upsert: true,
-    contentType: "application/pdf",
-  });
-  if (uploadError) return fail(uploadError.message);
-
-  const { data: insertedInvoice, error: insertError } = await supabase
+  const { data: invoice, error: insertError } = await supabase
     .from("invoices")
-    .insert({ quote_id: idResult.data, invoice_number: invoiceNumber, pdf_path: pdfPath })
+    .insert({ quote_id: quote.id, invoice_number: invoiceNumber })
     .select("id")
     .single<{ id: string }>();
-
   if (insertError) {
-    // Best-effort cleanup of the just-uploaded object so a failed INSERT
-    // doesn't leave an orphaned PDF with no pointer row.
-    await supabase.storage.from("invoices").remove([pdfPath]);
+    if (insertError.code === "23505") return fail("This quote has already been invoiced.");
     return fail(mapDbError(insertError));
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-    .from("invoices")
-    .createSignedUrl(pdfPath, SIGNED_URL_TTL_SECONDS);
-  if (signedUrlError || !signedUrlData) {
-    return fail(signedUrlError?.message ?? "Invoice was generated, but the preview link could not be created.");
-  }
+  // The DB trigger on invoices sets the quote status to 'invoiced'; re-read to report it.
+  const { data: statusRow } = await supabase
+    .from("quotes")
+    .select("quote_status:reference_list_items!quotes_status_id_fkey(value)")
+    .eq("id", quote.id)
+    .maybeSingle<{ quote_status: { value: string } | null }>();
+  const statusUpdated = statusRow?.quote_status?.value === "invoiced";
 
-  return ok({ invoiceId: insertedInvoice.id, invoiceNumber, signedUrl: signedUrlData.signedUrl });
+  const email = await sendInvoiceEmail(
+    supabase,
+    organizationId,
+    session.organization?.name ?? "",
+    quote.id,
+    quote.client_id,
+  );
+
+  return ok({ invoiceId: invoice.id, invoiceNumber, statusUpdated, email });
 }
 
 // ---------------------------------------------------------------------------
-// getInvoiceForQuote / getInvoiceSignedUrl / deleteInvoice
+// getInvoiceForQuote
 // ---------------------------------------------------------------------------
 
 export interface InvoiceSummary {
   id: string;
   invoiceNumber: string;
   generatedAt: string;
+  emailedTo: string | null;
+  emailedAt: string | null;
+  emailError: string | null;
 }
 
-/** Whether `quoteId` already has an invoice — drives the Quote detail page's
- * "Generate" vs. "View" / "Regenerate" button state. */
+/** Whether `quoteId` already has an invoice (drives "Generate invoice" vs.
+ * "Open PDF" on the Quote detail page). The PDF itself is served by
+ * `GET /quotes/[id]/invoice`. */
 export async function getInvoiceForQuote(
   quoteId: string,
 ): Promise<ActionResult<{ invoice: InvoiceSummary | null }>> {
@@ -482,81 +300,28 @@ export async function getInvoiceForQuote(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("invoices")
-    .select("id, invoice_number, generated_at")
+    .select("id, invoice_number, generated_at, emailed_to, emailed_at, email_error")
     .eq("quote_id", idResult.data)
-    .maybeSingle<{ id: string; invoice_number: string; generated_at: string }>();
+    .maybeSingle<{
+      id: string;
+      invoice_number: string;
+      generated_at: string;
+      emailed_to: string | null;
+      emailed_at: string | null;
+      email_error: string | null;
+    }>();
 
   if (error) return fail(mapDbError(error));
   if (!data) return ok({ invoice: null });
 
-  return ok({ invoice: { id: data.id, invoiceNumber: data.invoice_number, generatedAt: data.generated_at } });
-}
-
-/** Mints a fresh short-lived signed URL for an existing invoice — called each
- * time the frontend opens the "view PDF" popup, rather than reusing a
- * possibly-expired URL from generation time. */
-export async function getInvoiceSignedUrl(invoiceId: string): Promise<ActionResult<{ signedUrl: string }>> {
-  const idResult = uuidSchema.safeParse(invoiceId);
-  if (!idResult.success) return fail("Invalid invoice id.");
-
-  const ctx = await requireModuleContext("invoicing");
-  if (!ctx.ok) return fail(ctx.error);
-
-  if (!can(ctx.context.actor, "invoicing", "read")) {
-    return fail("You do not have permission to view invoices.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .select("pdf_path")
-    .eq("id", idResult.data)
-    .maybeSingle<{ pdf_path: string }>();
-
-  if (error) return fail(mapDbError(error));
-  if (!invoice) return fail("Invoice not found, or you do not have permission to view it.");
-
-  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-    .from("invoices")
-    .createSignedUrl(invoice.pdf_path, SIGNED_URL_TTL_SECONDS);
-
-  if (signedUrlError || !signedUrlData) {
-    return fail(signedUrlError?.message ?? "Could not create a preview link for this invoice.");
-  }
-
-  return ok({ signedUrl: signedUrlData.signedUrl });
-}
-
-/** Deletes an invoice: removes the DB row, then its Storage object. Either
- * order is safe (neither row is the other's FK parent) — DB row first so a
- * caller who somehow lacks Storage delete rights (shouldn't happen, both
- * RLS boundaries match) still loses the pointer row rather than being left
- * with a dangling reference to a removed file. */
-export async function deleteInvoice(invoiceId: string): Promise<ActionResult<{ success: true }>> {
-  const idResult = uuidSchema.safeParse(invoiceId);
-  if (!idResult.success) return fail("Invalid invoice id.");
-
-  const ctx = await requireModuleContext("invoicing");
-  if (!ctx.ok) return fail(ctx.error);
-
-  if (!can(ctx.context.actor, "invoicing", "delete")) {
-    return fail("Only an owner or administratie member can delete invoices.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const { data: invoice, error: lookupError } = await supabase
-    .from("invoices")
-    .select("pdf_path")
-    .eq("id", idResult.data)
-    .maybeSingle<{ pdf_path: string }>();
-
-  if (lookupError) return fail(mapDbError(lookupError));
-  if (!invoice) return fail("Invoice not found, or you do not have permission to delete it.");
-
-  const { error: deleteError } = await supabase.from("invoices").delete().eq("id", idResult.data);
-  if (deleteError) return fail(mapDbError(deleteError));
-
-  await supabase.storage.from("invoices").remove([invoice.pdf_path]);
-
-  return ok({ success: true });
+  return ok({
+    invoice: {
+      id: data.id,
+      invoiceNumber: data.invoice_number,
+      generatedAt: data.generated_at,
+      emailedTo: data.emailed_to,
+      emailedAt: data.emailed_at,
+      emailError: data.email_error,
+    },
+  });
 }

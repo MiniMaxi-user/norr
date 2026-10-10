@@ -122,6 +122,9 @@ export {
 // same ".js" re-export requirement as ThemeProvider/Tabs above (see
 // tsup.config.ts's top-of-file comment).
 export { Combobox, type ComboboxProps, type ComboboxOption } from "./combobox.js";
+// MultiSelect (issues #210/#211) - checkbox-popover filter; same dedicated
+// "use client" entry treatment as Combobox.
+export { MultiSelect, type MultiSelectProps, type MultiSelectOption } from "./multi-select.js";
 export { Skeleton, type SkeletonProps } from "./components/skeleton";
 export { Spinner, type SpinnerProps } from "./components/spinner";
 export {

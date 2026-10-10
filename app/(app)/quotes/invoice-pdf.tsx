@@ -86,6 +86,8 @@ export interface InvoicePdfProps {
    * set) — `null`/omitted otherwise. See the module comment above for why
    * this is plain title text, not a formatted work-order number. */
   workOrderReference: string | null;
+  /** The quote's notes (issue #210: contract + covered-asset details for contract quotes), rendered verbatim as a "Notes" block. */
+  notes?: string | null;
   sender: {
     name: string;
     kvkNumber: string | null;
@@ -104,7 +106,7 @@ export interface InvoicePdfProps {
   vatTotal: number;
   total: number;
   /** Tenant's own IBAN, shown in the footer. `null` renders a blank instead
-   * of a broken payment instruction — `generateInvoice` in `invoice-actions.ts`
+   * of a broken payment instruction — `invoiceQuote` in `invoice-actions.ts`
    * doesn't hard-require this, only `ownClient` presence itself, so a tenant
    * that hasn't filled in an IBAN yet can still generate an invoice. */
   iban: string | null;
@@ -282,6 +284,15 @@ const styles = StyleSheet.create({
     borderTopColor: "#dddddd",
     paddingTop: 8,
   },
+  notesBlock: {
+    marginTop: 20,
+    marginBottom: 70,
+  },
+  notesText: {
+    fontSize: 8,
+    color: "#333333",
+    lineHeight: 1.4,
+  },
   footerNoteBlock: {
     marginBottom: 12,
   },
@@ -437,6 +448,13 @@ export function InvoiceDocument(props: InvoicePdfProps) {
             <Text style={styles.totalsValueFinal}>{formatCurrency(props.total)}</Text>
           </View>
         </View>
+
+        {props.notes && props.notes.trim() !== "" ? (
+          <View style={styles.notesBlock}>
+            <Text style={styles.sectionTitle}>Notes</Text>
+            <Text style={styles.notesText}>{props.notes}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.footer} fixed>
           <View style={styles.footerNoteBlock}>

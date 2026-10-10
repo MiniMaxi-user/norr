@@ -15,6 +15,7 @@ import { listAssets } from "@/app/(app)/assets/actions";
 import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions";
 import { ContractScreen } from "../components/contract-screen";
 
 export const metadata = { title: "Contract details" };
@@ -54,6 +55,9 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
   if (!contractResult.data) notFound();
   const contract = contractResult.data.contract;
 
+  // Quotes panel (issue #211) - only for callers who can see the Quotes module.
+  const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
+
   const [
     clientResult,
     clientsResult,
@@ -68,6 +72,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
     slaTiersResult,
     billingTermsResult,
     billingPeriodsResult,
+    quotesResult,
   ] = await Promise.all([
     getClient(contract.client_id),
     listClients({ limit: 200 }),
@@ -82,6 +87,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
     listReferenceItems("sla_tier"),
     listReferenceItems("billing_terms"),
     listReferenceItems("billing_period"),
+    canSeeQuotes ? listQuotesForContract(contract.id) : Promise.resolve(null),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -99,6 +105,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
   const slaTiers = slaTiersResult.data?.items ?? [];
   const billingTerms = billingTermsResult.data?.items ?? [];
   const billingPeriods = billingPeriodsResult.data?.items ?? [];
+  const contractQuotes = quotesResult?.data?.quotes ?? null;
 
   const canCreate = can(actor, "contracts", "create");
   const canUpdate = can(actor, "contracts", "update");
@@ -128,6 +135,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
       contractAssets={contractAssets}
       clientAssets={clientAssets}
       siteLabelById={siteLabelById}
+      quotes={contractQuotes}
     />
   );
 }

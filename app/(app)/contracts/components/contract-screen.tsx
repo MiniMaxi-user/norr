@@ -35,6 +35,8 @@ import { ContractNotesSection } from "./contract-notes-section";
 import { ContractLineItemsSection } from "./contract-line-items-section";
 import { ContractArticleCoverageSection } from "./contract-article-coverage-section";
 import { ContractAssetsPanel } from "../[id]/contract-assets-panel";
+import { ContractQuotesPanel } from "../[id]/contract-quotes-panel";
+import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-actions";
 import { DeleteContractDialog } from "./delete-contract-dialog";
 import { ContractClientDialog } from "./contract-client-dialog";
 
@@ -70,6 +72,9 @@ export interface ContractScreenProps {
   contractAssets?: ContractAssetRecord[];
   clientAssets?: AssetRecord[];
   siteLabelById?: Map<string, string | null>;
+  /** Quotes generated for this contract (issue #211); `null` hides the
+   * panel for a caller without Quotes access. */
+  quotes?: ContractQuoteRecord[] | null;
 }
 
 /**
@@ -117,6 +122,7 @@ export function ContractScreen({
   contractAssets = [],
   clientAssets = [],
   siteLabelById = new Map(),
+  quotes = null,
 }: ContractScreenProps) {
   const router = useRouter();
 
@@ -313,6 +319,7 @@ export function ContractScreen({
               canLink={canCreate}
               canUnlink={canDelete}
             />
+            {quotes && <ContractQuotesPanel quotes={quotes} />}
           </Stack>
         }
         right={
