@@ -4,6 +4,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { TenantRole } from "@yourorg/rbac";
+import { getAvatarUrl } from "@/lib/profile/avatar-url";
 
 export interface CurrentEngineerOrganization {
   id: string;
@@ -15,6 +16,9 @@ export interface CurrentEngineerSession {
   userId: string;
   email: string;
   fullName: string | null;
+  /** Public URL of the engineer's profile photo (uploaded via the web app's
+   * profile page), or `null` when none — see `lib/profile/avatar-url.ts`. */
+  avatarUrl: string | null;
   role: TenantRole | null;
   organization: CurrentEngineerOrganization | null;
 }
@@ -48,7 +52,7 @@ async function resolveCurrentEngineerSession(): Promise<CurrentEngineerSession |
   if (!user) return null;
 
   const [profileResult, membershipResult] = await Promise.all([
-    supabase.from("users").select("full_name").eq("id", user.id).maybeSingle(),
+    supabase.from("users").select("full_name, avatar_path, avatar_updated_at").eq("id", user.id).maybeSingle(),
     supabase
       .from("memberships")
       .select("role, organization:organizations(id, name, slug)")
@@ -62,12 +66,15 @@ async function resolveCurrentEngineerSession(): Promise<CurrentEngineerSession |
     | { role: TenantRole; organization: CurrentEngineerOrganization | null }
     | null;
 
-  const profile = profileResult.data as { full_name: string | null } | null;
+  const profile = profileResult.data as
+    | { full_name: string | null; avatar_path: string | null; avatar_updated_at: string | null }
+    | null;
 
   return {
     userId: user.id,
     email: user.email ?? "",
     fullName: profile?.full_name ?? null,
+    avatarUrl: getAvatarUrl(profile?.avatar_path ?? null, profile?.avatar_updated_at ?? null),
     organization: membership?.organization ?? null,
     role: membership?.role ?? null,
   };

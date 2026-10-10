@@ -5464,6 +5464,18 @@ a.ui-relation-card-title:hover {
 .ui-pwa-topbar-avatar:hover {
   background: var(--ui-surface-hover);
 }
+/* The engineer's own profile photo inside the topbar avatar / profile sheet
+   header (apps/pwa `_nav/profile-photo.tsx`), cropped to the circle. */
+.ui-pwa-topbar-avatar {
+  overflow: hidden;
+  padding: 0;
+}
+.ui-pwa-avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 /* Timer card "start/stop" (product feedback, 2026-09-13, new design per
    `docs/designinstructieskanweg/startstoppng.png`, see `work-orders/[id]/

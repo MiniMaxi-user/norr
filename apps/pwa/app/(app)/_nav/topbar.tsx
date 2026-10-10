@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Logo } from "@yourorg/ui";
-import { initialsOf, ProfileSheet } from "./profile-sheet";
+import { ProfileSheet } from "./profile-sheet";
+import { ProfilePhoto } from "./profile-photo";
 
 /**
  * The field PWA's other permanent nav chrome (product feedback, 2026-09-13),
@@ -23,10 +24,12 @@ import { initialsOf, ProfileSheet } from "./profile-sheet";
 export function Topbar({
   fullName,
   email,
+  avatarUrl,
   currentUserId,
 }: {
   fullName: string | null;
   email: string;
+  avatarUrl: string | null;
   currentUserId: string;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -42,7 +45,7 @@ export function Topbar({
           onClick={() => setProfileOpen(true)}
           className="ui-pwa-topbar-avatar"
         >
-          {initialsOf(fullName, email)}
+          <ProfilePhoto avatarUrl={avatarUrl} fullName={fullName} email={email} />
         </button>
       </div>
 
@@ -51,6 +54,7 @@ export function Topbar({
         onOpenChange={setProfileOpen}
         fullName={fullName}
         email={email}
+        avatarUrl={avatarUrl}
         currentUserId={currentUserId}
         isOnline={isOnline}
       />

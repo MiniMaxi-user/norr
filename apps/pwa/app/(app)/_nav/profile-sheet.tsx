@@ -6,11 +6,13 @@ import { ChevronRight, LogOut, Moon, Sun } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
 import { StockSheet } from "./stock-sheet";
+import { ProfilePhoto } from "./profile-photo";
 
 export interface ProfileSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fullName: string | null;
+  avatarUrl: string | null;
   email: string;
   currentUserId: string;
   /** Drives this sheet's "Offline data" row (IMPLEMENTATION.md §6:
@@ -67,7 +69,7 @@ const APP_VERSION = "0.1.0";
  * `AppearanceSection`), just defaulting to dark here (`app/layout.tsx`)
  * instead of that app's `"system"`.
  */
-export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserId, isOnline }: ProfileSheetProps) {
+export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, currentUserId, isOnline }: ProfileSheetProps) {
   const [weekMinutes, setWeekMinutes] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   // Issue #182's Stock drill-in — this sheet closes itself the moment it's
@@ -142,9 +144,10 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, currentUserI
                   fontWeight: 600,
                   fontSize: "var(--ui-text-lg)",
                   flexShrink: 0,
+                  overflow: "hidden",
                 }}
               >
-                {initialsOf(fullName, email)}
+                <ProfilePhoto avatarUrl={avatarUrl} fullName={fullName} email={email} />
               </span>
               <Stack gap="xs">
                 <Text style={{ fontFamily: "var(--ui-font-serif)", fontSize: "var(--ui-text-xl)" }}>

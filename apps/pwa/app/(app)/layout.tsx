@@ -31,7 +31,12 @@ export default async function AppRouteLayout({ children }: { children: ReactNode
   const session = await requireEngineerSession();
   return (
     <div className="ui-pwa-shell">
-      <Topbar fullName={session.fullName} email={session.email} currentUserId={session.userId} />
+      <Topbar
+        fullName={session.fullName}
+        email={session.email}
+        avatarUrl={session.avatarUrl}
+        currentUserId={session.userId}
+      />
       <div className="ui-pwa-page-content">{children}</div>
       <BottomBar />
     </div>
