@@ -42,6 +42,8 @@ export interface ReferenceItemFormDialogProps {
    * `ReferenceListManager`'s own prop of the same name, threaded straight
    * through. Defaults to `false`. */
   showDefaultDuration?: boolean;
+  /** Shows the "Invoice interval (months)" field (issue #209) — `billing_terms` only. */
+  showInvoiceInterval?: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export function ReferenceItemFormDialog({
   parentListTitle,
   parentItems,
   showDefaultDuration = false,
+  showInvoiceInterval = false,
 }: ReferenceItemFormDialogProps) {
   const isEdit = Boolean(item);
   const isDependent = Boolean(parentListKey);
@@ -108,6 +111,9 @@ export function ReferenceItemFormDialog({
   const [defaultDurationMinutes, setDefaultDurationMinutes] = useState(
     item?.default_duration_minutes != null ? String(item.default_duration_minutes) : "",
   );
+  const [intervalMonths, setIntervalMonths] = useState(
+    item?.interval_months != null ? String(item.interval_months) : "",
+  );
 
   async function action(): Promise<FormState> {
     const input = {
@@ -118,6 +124,8 @@ export function ReferenceItemFormDialog({
       parentItemId: isDependent ? parentItemId || undefined : undefined,
       isActive,
       defaultDurationMinutes: showDefaultDuration ? defaultDurationMinutes || undefined : undefined,
+      // "" (not undefined) so an edit clears a previously-set interval.
+      intervalMonths: showInvoiceInterval ? intervalMonths : undefined,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -274,6 +282,27 @@ export function ReferenceItemFormDialog({
                   Optional. Used later to size work items for this type in Planning.
                 </Text>
                 {state.fieldErrors?.defaultDurationMinutes?.map((message) => (
+                  <Text key={message} tone="danger">
+                    {message}
+                  </Text>
+                ))}
+              </Stack>
+            )}
+
+            {showInvoiceInterval && (
+              <Stack gap="xs">
+                <Label htmlFor="ref-item-interval-months">Invoice interval (months)</Label>
+                <Input
+                  id="ref-item-interval-months"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={intervalMonths}
+                  onChange={(event) => setIntervalMonths(event.target.value)}
+                  placeholder="e.g. 3"
+                />
+                <Text tone="muted">Leave empty for non-recurring terms such as per-visit or one-time.</Text>
+                {state.fieldErrors?.intervalMonths?.map((message) => (
                   <Text key={message} tone="danger">
                     {message}
                   </Text>

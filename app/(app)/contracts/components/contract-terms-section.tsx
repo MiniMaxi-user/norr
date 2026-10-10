@@ -9,21 +9,19 @@ import {
   EditableSection,
   FormGrid,
   Inline,
-  Input,
   KeyValueList,
   Label,
   Select,
   Stack,
   Text,
 } from "@yourorg/ui";
-import { Receipt } from "@yourorg/ui/icons";
+import { ShieldCheck } from "@yourorg/ui/icons";
 import type { ContractRecord } from "../actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import { formatCurrency } from "@/lib/format/currency";
 import type { ContractDraft } from "./contract-draft";
 
 export interface ContractTermsSectionProps {
-  draft: Pick<ContractDraft, "typeId" | "slaTierId" | "billingTermsId" | "billingPeriodId" | "value" | "autoRenew">;
+  draft: Pick<ContractDraft, "typeId" | "slaTierId" | "autoRenew">;
   /** The read view's Type/SLA Tier/Billing terms/Billing period badges
    * source their label/color straight from this already-resolved record. */
   contract: ContractRecord;
@@ -33,14 +31,12 @@ export interface ContractTermsSectionProps {
    * Tier `<CascadingSelect>` below filters against this section's own local
    * `typeId` state. */
   slaTiers: ReferenceListItemRecord[];
-  billingTerms: ReferenceListItemRecord[];
-  billingPeriods: ReferenceListItemRecord[];
   editing: boolean;
   onEditToggle?: (editing: boolean) => void;
   readOnly?: boolean;
   loadingOptions?: boolean;
   onSave: (
-    patch: Pick<ContractDraft, "typeId" | "slaTierId" | "billingTermsId" | "billingPeriodId" | "value" | "autoRenew">,
+    patch: Pick<ContractDraft, "typeId" | "slaTierId" | "autoRenew">,
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -68,8 +64,6 @@ export function ContractTermsSection({
   contract,
   contractTypes,
   slaTiers,
-  billingTerms,
-  billingPeriods,
   editing,
   onEditToggle,
   readOnly,
@@ -78,9 +72,6 @@ export function ContractTermsSection({
 }: ContractTermsSectionProps) {
   const [typeId, setTypeId] = useState(draft.typeId);
   const [slaTierId, setSlaTierId] = useState(draft.slaTierId);
-  const [billingTermsId, setBillingTermsId] = useState(draft.billingTermsId);
-  const [billingPeriodId, setBillingPeriodId] = useState(draft.billingPeriodId);
-  const [value, setValue] = useState(draft.value);
   const [autoRenew, setAutoRenew] = useState(draft.autoRenew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +80,6 @@ export function ContractTermsSection({
     if (!editing) return;
     setTypeId(draft.typeId);
     setSlaTierId(draft.slaTierId);
-    setBillingTermsId(draft.billingTermsId);
-    setBillingPeriodId(draft.billingPeriodId);
-    setValue(draft.value);
     setAutoRenew(draft.autoRenew);
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,9 +100,6 @@ export function ContractTermsSection({
   function handleCancel() {
     setTypeId(draft.typeId);
     setSlaTierId(draft.slaTierId);
-    setBillingTermsId(draft.billingTermsId);
-    setBillingPeriodId(draft.billingPeriodId);
-    setValue(draft.value);
     setAutoRenew(draft.autoRenew);
     setError(null);
     onEditToggle?.(false);
@@ -123,7 +108,7 @@ export function ContractTermsSection({
   async function handleSave() {
     setError(null);
     setSaving(true);
-    const result = await onSave({ typeId, slaTierId, billingTermsId, billingPeriodId, value, autoRenew });
+    const result = await onSave({ typeId, slaTierId, autoRenew });
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");
@@ -134,7 +119,7 @@ export function ContractTermsSection({
 
   return (
     <EditableSection
-      icon={Receipt}
+      icon={ShieldCheck}
       title="Terms"
       editing={editing}
       onEdit={readOnly ? undefined : () => onEditToggle?.(true)}
@@ -171,57 +156,6 @@ export function ContractTermsSection({
                 emptyParentPlaceholder="Set a contract type first…"
                 disabled={loadingOptions}
                 onChange={(event) => setSlaTierId(event.target.value)}
-              />
-            </Stack>
-            <Stack gap="xs">
-              <Label htmlFor="contract-terms-billing-terms">Billing terms</Label>
-              <Select
-                id="contract-terms-billing-terms"
-                value={billingTermsId}
-                onChange={(event) => setBillingTermsId(event.target.value)}
-                disabled={loadingOptions}
-              >
-                <option value="">No billing terms</option>
-                {billingTerms.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </Select>
-            </Stack>
-          </FormGrid>
-
-          <Stack gap="xs">
-            <Label htmlFor="contract-terms-billing-period">Billing period</Label>
-            <Select
-              id="contract-terms-billing-period"
-              value={billingPeriodId}
-              onChange={(event) => setBillingPeriodId(event.target.value)}
-              disabled={loadingOptions}
-            >
-              <option value="">No billing period</option>
-              {billingPeriods.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-            <Text tone="muted">
-              Billing terms is how often this contract is invoiced; billing period is how the contract&rsquo;s own
-              value accrues (e.g. a monthly value invoiced annually).
-            </Text>
-          </Stack>
-
-          <FormGrid columns={2}>
-            <Stack gap="xs">
-              <Label htmlFor="contract-terms-value">Value</Label>
-              <Input
-                id="contract-terms-value"
-                type="number"
-                step="0.01"
-                min="0"
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
               />
             </Stack>
             <Stack gap="xs">
@@ -270,9 +204,6 @@ export function ContractTermsSection({
               <Text tone="muted">—</Text>
             ),
           },
-          { key: "billing-terms", label: "Billing terms", value: <Text>{contract?.billing_terms?.label ?? "—"}</Text> },
-          { key: "billing-period", label: "Billing period", value: <Text>{contract?.billing_period?.label ?? "—"}</Text> },
-          { key: "value", label: "Value", value: <Text>{formatCurrency(contract?.value ?? null)}</Text> },
           { key: "auto-renew", label: "Auto-renews", value: <Text>{contract?.auto_renew ? "Yes" : "No"}</Text> },
         ]}
       />

@@ -67,6 +67,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
               <Table.HeaderCell>Billing terms</Table.HeaderCell>
               <Table.HeaderCell>Start date</Table.HeaderCell>
               <Table.HeaderCell>End date</Table.HeaderCell>
+              <Table.HeaderCell>Next invoice</Table.HeaderCell>
               <Table.HeaderCell>Value</Table.HeaderCell>
               {showActionsColumn && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
             </Table.Row>
@@ -93,6 +94,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
                 <Table.Cell>{contract.billing_terms?.label ?? "—"}</Table.Cell>
                 <Table.Cell>{formatDate(contract.start_date)}</Table.Cell>
                 <Table.Cell>{formatDate(contract.end_date)}</Table.Cell>
+                <Table.Cell>{contract.next_invoice_date ? formatDate(contract.next_invoice_date) : "—"}</Table.Cell>
                 <Table.Cell>{formatCurrency(contract.value)}</Table.Cell>
                 {showActionsColumn && (
                   <Table.Cell align="center">

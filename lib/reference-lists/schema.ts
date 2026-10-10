@@ -110,6 +110,19 @@ export const referenceItemDefaultDurationMinutesSchema = z.preprocess(
     .optional(),
 );
 
+/** Generic optional per-item attribute: recurrence interval in months, matches
+ * `reference_list_items.interval_months`'s `> 0` CHECK (issue #209). Used by
+ * the `billing_terms` list; empty means non-recurring (null). */
+export const referenceItemIntervalMonthsSchema = z.preprocess(
+  emptyToUndefined,
+  z.coerce
+    .number()
+    .int("Interval must be a whole number of months.")
+    .min(1, "Interval must be at least 1 month.")
+    .max(1200, "Interval is too long.")
+    .optional(),
+);
+
 export const referenceItemCreateSchema = z.object({
   value: referenceItemValueSchema,
   label: z.string().trim().min(1, "Label is required.").max(200, "Label is too long."),
@@ -119,12 +132,26 @@ export const referenceItemCreateSchema = z.object({
   description: z.preprocess(emptyToUndefined, z.string().trim().max(500).optional()),
   isActive: z.boolean().optional(),
   defaultDurationMinutes: referenceItemDefaultDurationMinutesSchema,
+  intervalMonths: referenceItemIntervalMonthsSchema,
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;
 
 /** All fields optional for update — same "partial of create" shape as every
  * other module's `*UpdateSchema` (see `app/(app)/assets/schema.ts`). */
-export const referenceItemUpdateSchema = referenceItemCreateSchema.partial();
+export const referenceItemUpdateSchema = referenceItemCreateSchema.partial().extend({
+  // Clearable on update: key absent = leave unchanged; null or "" = set to null.
+  intervalMonths: z
+    .preprocess(
+      (v) => (v === "" || v === null ? null : v),
+      z.coerce
+        .number()
+        .int("Interval must be a whole number of months.")
+        .min(1, "Interval must be at least 1 month.")
+        .max(1200, "Interval is too long.")
+        .nullable(),
+    )
+    .optional(),
+});
 
 export type ReferenceItemUpdateInput = z.infer<typeof referenceItemUpdateSchema>;

@@ -92,6 +92,10 @@ export interface ReferenceListItemRecord {
    * lists that opt in (today: `activity_type`, issue #165) — see
    * `REFERENCE_LIST_SECTIONS`' `showDefaultDuration` flag. */
   default_duration_minutes: number | null;
+  /** Generic optional recurrence interval in months (issue #209; used by
+   * `billing_terms`: monthly=1, quarterly=3, annually=12). `null` means
+   * non-recurring. */
+  interval_months: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -318,7 +322,7 @@ export async function listReferenceItems(
         const { data, error } = await supabase
           .from("reference_list_items")
           .select(
-            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes",
+            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes, interval_months",
           )
           .eq("reference_list_id", listResult.id)
           .order("sort_order", { ascending: true });
@@ -432,6 +436,7 @@ export async function createReferenceItem(
     parent_item_id: parsed.data.parentItemId ?? null,
     description: parsed.data.description ?? null,
     default_duration_minutes: parsed.data.defaultDurationMinutes ?? null,
+    interval_months: parsed.data.intervalMonths ?? null,
   };
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
@@ -479,6 +484,9 @@ export async function updateReferenceItem(
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
   if (parsed.data.defaultDurationMinutes !== undefined) {
     row.default_duration_minutes = parsed.data.defaultDurationMinutes ?? null;
+  }
+  if (parsed.data.intervalMonths !== undefined) {
+    row.interval_months = parsed.data.intervalMonths ?? null;
   }
 
   const supabase = await createSupabaseServerClient();

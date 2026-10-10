@@ -29,6 +29,7 @@ import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { draftFromContract, draftToInput, type ContractDraft } from "./contract-draft";
 import { ContractTermsSection } from "./contract-terms-section";
+import { ContractBillingSection } from "./contract-billing-section";
 import { ContractDatesSection } from "./contract-dates-section";
 import { ContractNotesSection } from "./contract-notes-section";
 import { ContractLineItemsSection } from "./contract-line-items-section";
@@ -126,6 +127,7 @@ export function ContractScreen({
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [termsEditing, setTermsEditing] = useState(false);
+  const [billingEditing, setBillingEditing] = useState(false);
   const [datesEditing, setDatesEditing] = useState(false);
   const [notesEditing, setNotesEditing] = useState(false);
 
@@ -330,10 +332,18 @@ export function ContractScreen({
               contract={contract}
               contractTypes={contractTypes}
               slaTiers={slaTiers}
-              billingTerms={billingTerms}
-              billingPeriods={billingPeriods}
               editing={termsEditing}
               onEditToggle={setTermsEditing}
+              readOnly={readOnly}
+              onSave={commitPatch}
+            />
+            <ContractBillingSection
+              draft={draft}
+              contract={contract}
+              billingTerms={billingTerms}
+              billingPeriods={billingPeriods}
+              editing={billingEditing}
+              onEditToggle={setBillingEditing}
               readOnly={readOnly}
               onSave={commitPatch}
             />

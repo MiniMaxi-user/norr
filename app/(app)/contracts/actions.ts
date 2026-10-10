@@ -76,6 +76,12 @@ export interface ContractRecord {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** DB-derived, read-only (issue #209): trigger-computed from start_date,
+   * end_date, billing terms interval and `invoiced_period_count`. `null` when
+   * fully invoiced / beyond end_date. Never sent on create/update. */
+  next_invoice_date: string | null;
+  /** DB-managed, read-only (issue #209): billing periods already invoiced. */
+  invoiced_period_count: number;
   /** Embedded via `reference_list_items!contracts_type_id_fkey(...)` — see
    * `CONTRACT_SELECT` below. Postgres's default FK naming for an unnamed
    * column FK is `<table>_<column>_fkey` (same reasoning
@@ -86,7 +92,7 @@ export interface ContractRecord {
   sla_tier: ResolvedReferenceItem | null;
   /** Embedded via `reference_list_items!contracts_billing_terms_id_fkey(...)`.
    * `null` whenever `billing_terms_id` is `null`. */
-  billing_terms: ResolvedReferenceItem | null;
+  billing_terms: (ResolvedReferenceItem & { interval_months: number | null }) | null;
   /** Embedded via `reference_list_items!contracts_billing_period_id_fkey(...)`.
    * `null` whenever `billing_period_id` is `null`. Independent sibling of
    * `billing_terms` — see `billing_period_id`'s own migration comment
@@ -177,7 +183,7 @@ export interface ContractAssetRecord {
  * in one round trip instead of N+1-ing a lookup per row per column — same
  * reasoning as `WORK_ORDER_SELECT` in `app/(app)/work-orders/actions.ts`. */
 const CONTRACT_SELECT =
-  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color)";
+  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color,interval_months), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color)";
 
 /** Shared select shape for every query returning a `ContractAssetRecord`. */
 const CONTRACT_ASSET_SELECT = "*, asset:assets(id, name, client_id, site_id)";

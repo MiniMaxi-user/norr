@@ -25,6 +25,7 @@ export const REFERENCE_LIST_SECTIONS = [
     title: "Asset Type",
     description: "Equipment categories used across your assets — e.g. HVAC, Electrical, Generator.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   // Activity Type (issue #165, "Op activity subtypes wordt ook Activity type
   // getoond"): a root-level, non-dependent list (Activity Subtypes hang off
@@ -41,12 +42,14 @@ export const REFERENCE_LIST_SECTIONS = [
     description:
       "Top-level categories used to classify each Activity — e.g. Preventive Maintenance, Repair, Inspection. Each value can carry a default work-item duration and a color, both reused later by the Planning module.",
     showDefaultDuration: true,
+    showInvoiceInterval: false,
   },
   {
     key: "asset_status",
     title: "Asset Status",
     description: "Lifecycle states an asset can be in — e.g. Active, In Repair, Decommissioned.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "asset_subtype",
@@ -54,36 +57,42 @@ export const REFERENCE_LIST_SECTIONS = [
     description:
       "Finer-grained equipment categories, each scoped to one Asset Type — e.g. Compressor, Thermostat, and Ductwork all belong under HVAC.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "asset_brand",
     title: "Asset Brand",
     description: "Manufacturer brands used across your assets — e.g. Kyocera, Canon, Ricoh, Xerox.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "contact_role",
     title: "Contact Role",
     description: "Roles a client contact can have — e.g. Primary, Billing, Site manager, Technical.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "work_order_status",
     title: "Work Order Status",
     description: "Lifecycle stages a work order moves through — e.g. New, Scheduled, En Route, In Progress, Completed, Invoiced.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "work_order_priority",
     title: "Work Order Priority",
     description: "Urgency levels for a work order — e.g. Low, Normal, High, Urgent.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "contract_type",
     title: "Contract Type",
     description: "Kinds of service agreement — e.g. Maintenance, Service, Installation, Warranty.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "sla_tier",
@@ -91,18 +100,21 @@ export const REFERENCE_LIST_SECTIONS = [
     description:
       "Service level tiers, each scoped to one Contract Type — e.g. Standard, Priority, and Premium all belong under Maintenance.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "billing_terms",
     title: "Billing Terms",
     description: "How a contract is billed — e.g. Monthly, Quarterly, Annually, Per-visit, One-time.",
     showDefaultDuration: false,
+    showInvoiceInterval: true,
   },
   {
     key: "quote_status",
     title: "Quote Status",
     description: "Lifecycle stages a quote moves through — e.g. Draft, Sent, Accepted, Rejected, Expired.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   // Articles (issue #92, "Artikel database"): three plain, non-dependent
   // picklists — `article_unit`/`article_manufacturer`/`vat_rate` — need
@@ -114,18 +126,21 @@ export const REFERENCE_LIST_SECTIONS = [
     title: "Article Unit",
     description: "Units of measure for an article — e.g. Piece, Meter, Kilogram, Hour, Liter.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "article_manufacturer",
     title: "Article Manufacturer",
     description: "Manufacturer brands used across your article catalog — e.g. Bosch, Grohe, Danfoss.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   {
     key: "vat_rate",
     title: "VAT Rate",
     description: "VAT percentages available on an article — e.g. 0%, 9%, 21%.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   // Volume (issue #131, "Beheren 'Volume'"): a dependent list scoped to
   // `article_unit`, exactly like `asset_subtype` -> `asset_type` and
@@ -137,6 +152,7 @@ export const REFERENCE_LIST_SECTIONS = [
     description:
       "Pre-agreed usage allowances or bundles that can be linked to a contract line item — e.g. 10,000 cups of coffee per year, or 1,000 B/W prints. Each Volume value is scoped to one Article Unit.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
   // Service Area (issue #192, "Manage Service Areas via Settings"): a
   // root-level, non-dependent list, same `region` `list_key` already used by
@@ -151,6 +167,7 @@ export const REFERENCE_LIST_SECTIONS = [
     description:
       "Geographic regions or fixed locations — e.g. an internal workshop — where work gets carried out. Used to assign engineers and group the Planning scheduler board.",
     showDefaultDuration: false,
+    showInvoiceInterval: false,
   },
 ] as const;
 

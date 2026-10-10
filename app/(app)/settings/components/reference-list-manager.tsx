@@ -43,6 +43,8 @@ export interface ReferenceListManagerProps {
    * doc comment for why this is per-list rather than shown for every list.
    * Defaults to `false`. */
   showDefaultDuration?: boolean;
+  /** Opts this list into the "Invoice interval" column/field (issue #209) — `billing_terms` only. */
+  showInvoiceInterval?: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export function ReferenceListManager({
   parentListTitle,
   parentItems,
   showDefaultDuration = false,
+  showInvoiceInterval = false,
 }: ReferenceListManagerProps) {
   const router = useRouter();
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
@@ -149,6 +152,7 @@ export function ReferenceListManager({
               <Table.HeaderCell>Label</Table.HeaderCell>
               <Table.HeaderCell>Value</Table.HeaderCell>
               {showDefaultDuration && <Table.HeaderCell align="center">Default duration</Table.HeaderCell>}
+              {showInvoiceInterval && <Table.HeaderCell align="center">Invoice interval</Table.HeaderCell>}
               <Table.HeaderCell align="center">Default</Table.HeaderCell>
               <Table.HeaderCell align="center">Active</Table.HeaderCell>
               {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
@@ -201,6 +205,13 @@ export function ReferenceListManager({
                     </Text>
                   </Table.Cell>
                 )}
+                {showInvoiceInterval && (
+                  <Table.Cell align="center">
+                    <Text tone="muted">
+                      {item.interval_months != null ? `Every ${item.interval_months} mo` : "—"}
+                    </Text>
+                  </Table.Cell>
+                )}
                 <Table.Cell align="center">
                   {item.is_default ? <Badge variant="accent">Default</Badge> : <Text tone="muted">—</Text>}
                 </Table.Cell>
@@ -235,6 +246,7 @@ export function ReferenceListManager({
               parentListTitle={parentListTitle}
               parentItems={parentItems}
               showDefaultDuration={showDefaultDuration}
+              showInvoiceInterval={showInvoiceInterval}
             />
           )}
           <DeleteReferenceItemDialog

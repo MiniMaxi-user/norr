@@ -89,7 +89,9 @@ export function ContractDatesSection({
             <Stack gap="xs">
               <Label htmlFor="contract-dates-end">End date</Label>
               <Input id="contract-dates-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
-              <Text tone="muted">Leave blank for an open-ended contract.</Text>
+              <Text tone="muted">
+                Leave blank for an open-ended contract. The next invoice date never goes past the end date.
+              </Text>
             </Stack>
           </FormGrid>
           <Inline gap="sm" justify="end">
