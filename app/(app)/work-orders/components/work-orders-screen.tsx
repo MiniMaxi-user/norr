@@ -1,26 +1,53 @@
 import Link from "next/link";
 import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
 import { CalendarDays } from "@yourorg/ui/icons";
-import { listWorkOrders } from "../actions";
+import { listWorkOrders, type ListWorkOrdersOptions } from "../actions";
+import { COMPLETED_STATUS_VALUES, REVIEW_STATUS_VALUES, WORK_ORDERS_TABS, type WorkOrdersTab } from "../tabs";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listClients, type ClientRecord } from "@/app/(app)/clients/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { CreateWorkOrderButton } from "./create-work-order-button";
 import { WorkOrdersTable } from "./work-orders-table";
+import { WorkOrdersTabs } from "./work-orders-tabs";
 
 const LIST_PAGE_SIZE = 20;
 
+const EMPTY_HEADINGS: Record<WorkOrdersTab, string> = {
+  review: "No work orders to review",
+  orders: "No open work orders",
+  completed: "No completed work orders yet",
+};
+
 export interface WorkOrdersScreenProps {
+  tab: WorkOrdersTab;
   page: number;
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
 }
 
-function buildPageHref(page: number): string {
-  const qs = new URLSearchParams();
+function buildPageHref(tab: WorkOrdersTab, page: number): string {
+  const qs = new URLSearchParams({ tab });
   if (page > 0) qs.set("page", String(page));
   const query = qs.toString();
   return query ? `/work-orders?${query}` : "/work-orders";
+}
+
+/** Status filter per overview tab (issue #207), resolved from the org's
+ * `work_order_status` list by its fixed item values. */
+function buildTabFilters(statusIdsByValue: Map<string, string>): Record<WorkOrdersTab, ListWorkOrdersOptions> {
+  const idsFor = (values: readonly string[]) =>
+    values.flatMap((value) => {
+      const id = statusIdsByValue.get(value);
+      return id ? [id] : [];
+    });
+  const reviewIds = idsFor(REVIEW_STATUS_VALUES);
+  const completedIds = idsFor(COMPLETED_STATUS_VALUES);
+  return {
+    review: { statusIds: reviewIds },
+    orders: { excludeStatusIds: [...reviewIds, ...completedIds] },
+    completed: { statusIds: completedIds },
+  };
 }
 
 /**
@@ -36,14 +63,25 @@ function buildPageHref(page: number): string {
  * their assigned rows via RLS (see `app/(app)/work-orders/actions.ts`'s
  * module comment) — no extra app-layer filter needed here.
  */
-export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: WorkOrdersScreenProps) {
+export async function WorkOrdersScreen({ tab, page, canCreate, canEdit, canDelete }: WorkOrdersScreenProps) {
   const offset = page * LIST_PAGE_SIZE;
 
-  const [clientsResult, workOrdersResult, membersResult] = await Promise.all([
+  const statusResult = await listReferenceItems("work_order_status");
+  const statusIdsByValue = new Map((statusResult.data?.items ?? []).map((item) => [item.value, item.id]));
+  const tabFilters = buildTabFilters(statusIdsByValue);
+  const otherTabs = WORK_ORDERS_TABS.filter((other) => other !== tab);
+
+  const [clientsResult, workOrdersResult, membersResult, ...otherTabResults] = await Promise.all([
     listClients({ limit: 200 }),
-    listWorkOrders({ limit: LIST_PAGE_SIZE, offset }),
+    listWorkOrders({ ...tabFilters[tab], limit: LIST_PAGE_SIZE, offset }),
     listOrgMembers(),
+    ...otherTabs.map((other) => listWorkOrders({ ...tabFilters[other], limit: 1 })),
   ]);
+
+  const counts: Partial<Record<WorkOrdersTab, number>> = { [tab]: workOrdersResult.data?.count };
+  otherTabs.forEach((other, index) => {
+    counts[other] = otherTabResults[index]?.data?.count;
+  });
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
   const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
@@ -63,12 +101,12 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
 
   if (!workOrdersResult.data) {
     return (
-      <>
+      <WorkOrdersTabs tab={tab} counts={counts}>
         {toolbar}
         <Card>
           <Text tone="danger">{workOrdersResult.error ?? "Could not load work orders."}</Text>
         </Card>
-      </>
+      </WorkOrdersTabs>
     );
   }
 
@@ -76,15 +114,15 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
 
   if (workOrders.length === 0) {
     return (
-      <>
+      <WorkOrdersTabs tab={tab} counts={counts}>
         {toolbar}
         <EmptyState
           icon={<CalendarDays />}
-          heading="No work orders yet"
-          text="Create your first job to start dispatching work to your team."
-          action={canCreate ? <CreateWorkOrderButton /> : undefined}
+          heading={EMPTY_HEADINGS[tab]}
+          text={tab === "orders" ? "Create your first job to start dispatching work to your team." : undefined}
+          action={canCreate && tab === "orders" ? <CreateWorkOrderButton /> : undefined}
         />
-      </>
+      </WorkOrdersTabs>
     );
   }
 
@@ -92,7 +130,7 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
   const hasNext = offset + workOrders.length < count;
 
   return (
-    <>
+    <WorkOrdersTabs tab={tab} counts={counts}>
       {toolbar}
       <WorkOrdersTable
         workOrders={workOrders}
@@ -107,7 +145,7 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
         </Text>
         <span>
           {hasPrev ? (
-            <Link href={buildPageHref(page - 1)}>
+            <Link href={buildPageHref(tab, page - 1)}>
               <Button type="button" variant="outline" size="sm">
                 Previous
               </Button>
@@ -118,7 +156,7 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
             </Button>
           )}{" "}
           {hasNext ? (
-            <Link href={buildPageHref(page + 1)}>
+            <Link href={buildPageHref(tab, page + 1)}>
               <Button type="button" variant="outline" size="sm">
                 Next
               </Button>
@@ -130,6 +168,6 @@ export async function WorkOrdersScreen({ page, canCreate, canEdit, canDelete }: 
           )}
         </span>
       </Stack>
-    </>
+    </WorkOrdersTabs>
   );
 }

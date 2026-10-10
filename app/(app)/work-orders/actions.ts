@@ -263,6 +263,13 @@ export interface ListWorkOrdersOptions {
    * #164, Planning module's Backlog panel — items not yet
    * placed on the scheduler grid). */
   unscheduled?: boolean;
+  /** Filters to work orders whose `status_id` is one of these (issue #207,
+   * the Work Orders overview's Review/Completed tabs). An empty array
+   * matches nothing. */
+  statusIds?: string[];
+  /** Filters OUT work orders whose `status_id` is one of these (issue #207,
+   * the overview's catch-all Orders tab). An empty array excludes nothing. */
+  excludeStatusIds?: string[];
   limit?: number;
   offset?: number;
 }
@@ -309,6 +316,9 @@ export async function listWorkOrders(
       return fail(`Invalid ${label}.`);
     }
   }
+  for (const id of [...(options.statusIds ?? []), ...(options.excludeStatusIds ?? [])]) {
+    if (!uuidSchema.safeParse(id).success) return fail("Invalid status id filter.");
+  }
 
   const ctx = await requireModuleContext("planning");
   if (!ctx.ok) return fail(ctx.error);
@@ -316,6 +326,8 @@ export async function listWorkOrders(
   if (!canAny(ctx.context.actor, "planning", ["read", "read_own"])) {
     return fail("You do not have permission to view work orders.");
   }
+
+  if (options.statusIds?.length === 0) return ok({ workOrders: [], count: 0 });
 
   const limit = clampLimit(options.limit, 50, 200);
   const offset = clampOffset(options.offset);
@@ -331,6 +343,10 @@ export async function listWorkOrders(
   if (options.scheduledFrom) query = query.gte("scheduled_at", options.scheduledFrom);
   if (options.scheduledTo) query = query.lt("scheduled_at", options.scheduledTo);
   if (options.unscheduled) query = query.is("scheduled_at", null);
+  if (options.statusIds) query = query.in("status_id", options.statusIds);
+  if (options.excludeStatusIds?.length) {
+    query = query.not("status_id", "in", `(${options.excludeStatusIds.join(",")})`);
+  }
   query = query
     .order("scheduled_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })

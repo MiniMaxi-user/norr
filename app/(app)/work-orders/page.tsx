@@ -6,11 +6,12 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
 import { WorkOrdersScreen } from "./components/work-orders-screen";
 import { WorkOrdersScreenSkeleton } from "./components/work-orders-screen-skeleton";
+import { parseWorkOrdersTab } from "./tabs";
 
 export const metadata = { title: "Work Orders" };
 
 interface WorkOrdersPageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ tab?: string; page?: string }>;
 }
 
 /**
@@ -39,14 +40,16 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
   if (!canAccessModule(actor, "planning")) notFound();
 
   const params = await searchParams;
+  const tab = parseWorkOrdersTab(params.tab);
   const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
 
   return (
     <Stack gap="lg">
       <OverviewHeroBand title="Work Orders" subtitle="Jobs dispatched to your team, across every client and site." />
 
-      <Suspense key={`${page}`} fallback={<WorkOrdersScreenSkeleton />}>
+      <Suspense key={`${tab}-${page}`} fallback={<WorkOrdersScreenSkeleton />}>
         <WorkOrdersScreen
+          tab={tab}
           page={page}
           canCreate={can(actor, "planning", "create")}
           canEdit={canAny(actor, "planning", ["update", "update_own"])}
