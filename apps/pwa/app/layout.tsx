@@ -71,6 +71,7 @@ export default function RootLayout({
         <ThemeScript attribute="class" defaultTheme="dark" />
         <script dangerouslySetInnerHTML={{ __html: LAUNCH_SCRIPT }} />
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="theme-color" content="#14252c" />
       </head>
       <body>
