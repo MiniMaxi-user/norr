@@ -3,7 +3,6 @@
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
-import { getContractCoveredArticleIds } from "@/lib/contracts/coverage";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./schema";
@@ -75,40 +74,58 @@ export interface WorkOrderArticleRecord {
     sale_price: number | null;
     purchase_price: number | null;
   } | null;
-  /** Issue #208: `true` when the work order's contract covers this article
-   * (Included, not overruled by an Excluded rule) — its sales price is then
-   * 0 on the work order and its quote. See `effectiveSalePrice`. */
+  /** Issue #208: the sales price frozen on this row's synced quote line
+   * when it was logged/changed (`quote_line_items.unit_price`, written by the
+   * auto-draft sync trigger, which applies the contract's article coverage
+   * at that moment). `null` when no synced line exists (e.g. a legacy work
+   * order without auto-draft) — see `effectiveSalePrice`. Deliberately read
+   * back, never recomputed on view: coverage is only evaluated when the row
+   * is created or changed. */
+  quoted_unit_price: number | null;
+  /** Issue #208: the frozen price is 0 while the article itself has a price,
+   * i.e. the contract covered it when it was logged. */
   covered_by_contract: boolean;
 }
 
-type WorkOrderArticleRow = Omit<WorkOrderArticleRecord, "covered_by_contract">;
+type WorkOrderArticleRow = Omit<WorkOrderArticleRecord, "quoted_unit_price" | "covered_by_contract">;
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-/** Tags each row with `covered_by_contract` against its work order's
- * `contract_id` (issue #208) — one contract lookup + one batched coverage
- * RPC, all rows here always belong to the same work order. */
-async function attachContractCoverage(
+/** Attaches each row's frozen quote-line price (issue #208) — one batched
+ * `quote_line_items` read by `source_work_order_article_id` (at most one
+ * line per source row, `quote_line_items_source_work_order_article_id`'s
+ * partial unique index). */
+async function attachQuotedPrices(
   supabase: SupabaseServerClient,
-  workOrderId: string,
   rows: WorkOrderArticleRow[],
 ): Promise<ActionResult<WorkOrderArticleRecord[]>> {
   if (rows.length === 0) return ok([]);
 
-  const { data: workOrder, error: workOrderError } = await supabase
-    .from("work_orders")
-    .select("contract_id")
-    .eq("id", workOrderId)
-    .maybeSingle<{ contract_id: string | null }>();
-  if (workOrderError) return fail(mapDbError(workOrderError));
-
-  const { coveredIds, error } = await getContractCoveredArticleIds(
-    supabase,
-    workOrder?.contract_id,
-    rows.map((row) => row.article_id),
-  );
+  const { data, error } = await supabase
+    .from("quote_line_items")
+    .select("source_work_order_article_id, unit_price")
+    .in(
+      "source_work_order_article_id",
+      rows.map((row) => row.id),
+    );
   if (error) return fail(mapDbError(error));
 
-  return ok(rows.map((row) => ({ ...row, covered_by_contract: coveredIds.has(row.article_id) })));
+  const priceBySource = new Map(
+    ((data ?? []) as { source_work_order_article_id: string; unit_price: number | string }[]).map((line) => [
+      line.source_work_order_article_id,
+      Number(line.unit_price),
+    ]),
+  );
+
+  return ok(
+    rows.map((row) => {
+      const quoted = priceBySource.get(row.id) ?? null;
+      return {
+        ...row,
+        quoted_unit_price: quoted,
+        covered_by_contract: quoted === 0 && (row.article?.sale_price ?? 0) > 0,
+      };
+    }),
+  );
 }
 
 /** Shared select shape for every query returning a `WorkOrderArticleRecord`
@@ -179,8 +196,8 @@ export async function listWorkOrderArticles(
 
   if (error) return fail(mapDbError(error));
 
-  const covered = await attachContractCoverage(supabase, idResult.data, (data ?? []) as WorkOrderArticleRow[]);
-  if (!covered.data) return fail(covered.error ?? "Could not load contract coverage.");
+  const covered = await attachQuotedPrices(supabase, (data ?? []) as WorkOrderArticleRow[]);
+  if (!covered.data) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticles: covered.data });
 }
 
@@ -237,8 +254,8 @@ export async function createWorkOrderArticle(
 
   if (error) return fail(mapDbError(error));
   const saved = data as WorkOrderArticleRow;
-  const covered = await attachContractCoverage(supabase, saved.work_order_id, [saved]);
-  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load contract coverage.");
+  const covered = await attachQuotedPrices(supabase, [saved]);
+  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticle: covered.data[0] });
 }
 
@@ -295,8 +312,8 @@ export async function updateWorkOrderArticle(
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Consumed article not found, or you do not have permission to update it.");
   const saved = data as WorkOrderArticleRow;
-  const covered = await attachContractCoverage(supabase, saved.work_order_id, [saved]);
-  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load contract coverage.");
+  const covered = await attachQuotedPrices(supabase, [saved]);
+  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticle: covered.data[0] });
 }
 
