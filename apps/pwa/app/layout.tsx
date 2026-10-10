@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { ThemeProvider, ThemeScript } from "@yourorg/ui";
+import { PwaSplash, ThemeProvider, ThemeScript } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — this
 // app never defines its own tokens or a local globals.css.
@@ -52,6 +52,14 @@ export const viewport: Viewport = {
 // import above, and definitely ahead of `children`) and its `attribute`/
 // `defaultTheme` props must match `ThemeProvider`'s own below exactly — see
 // that component's own doc comment (`@yourorg/ui`) for why.
+// Launch splash (product feedback, 2026-10-10): `PwaSplash` plays once per
+// app launch. Offline navigations are genuine full document reloads (see
+// public/sw.js), so this runs synchronously in <head> — before first paint —
+// and marks every later load of the same launch with `html.ui-pwa-launched`,
+// which hides the splash outright. sessionStorage lives exactly as long as
+// the app's own browsing session, i.e. resets on a real relaunch.
+const LAUNCH_SCRIPT = `try{var k="norr-pwa-launched";if(sessionStorage.getItem(k)){document.documentElement.classList.add("ui-pwa-launched")}else{sessionStorage.setItem(k,"1")}}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -61,10 +69,12 @@ export default function RootLayout({
     <html lang="en" className="ui-pwa-html" suppressHydrationWarning>
       <head>
         <ThemeScript attribute="class" defaultTheme="dark" />
+        <script dangerouslySetInnerHTML={{ __html: LAUNCH_SCRIPT }} />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#14252c" />
       </head>
       <body>
+        <PwaSplash />
         <ThemeProvider attribute="class" defaultTheme="dark">
           {children}
         </ThemeProvider>

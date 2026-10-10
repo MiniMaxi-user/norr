@@ -42,6 +42,7 @@ export {
 } from "./components/nav";
 export { Badge, resolveColor, type BadgeProps, type BadgeVariant } from "./components/badge";
 export { Logo, type LogoProps, Logomark, type LogomarkProps } from "./components/logo";
+export { PwaSplash, PwaLoginLayout, type PwaLoginLayoutProps } from "./components/pwa-splash";
 export { NordicScene, type NordicSceneProps } from "./components/nordic-scene";
 export { BackLink, type BackLinkProps } from "./components/back-link";
 export { Separator, type SeparatorProps } from "./components/separator";

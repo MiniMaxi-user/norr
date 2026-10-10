@@ -97,7 +97,7 @@
 // `today-screen.tsx`'s `sync()` also now calls `prefetchShell("/today")` on
 // every successful authenticated load, so the entry keeps healing itself
 // during normal use even if it was ever poisoned before this fix shipped.
-const CACHE_VERSION = "v7";
+const CACHE_VERSION = "v8";
 const SHELL_CACHE = `norr-pwa-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `norr-pwa-static-${CACHE_VERSION}`;
 const SHELL_URLS = ["/login", "/today"];
