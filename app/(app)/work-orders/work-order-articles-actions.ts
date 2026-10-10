@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
+import { getContractCoveredArticleIds } from "@/lib/contracts/coverage";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./schema";
@@ -74,6 +75,40 @@ export interface WorkOrderArticleRecord {
     sale_price: number | null;
     purchase_price: number | null;
   } | null;
+  /** Issue #208: `true` when the work order's contract covers this article
+   * (Included, not overruled by an Excluded rule) — its sales price is then
+   * 0 on the work order and its quote. See `effectiveSalePrice`. */
+  covered_by_contract: boolean;
+}
+
+type WorkOrderArticleRow = Omit<WorkOrderArticleRecord, "covered_by_contract">;
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/** Tags each row with `covered_by_contract` against its work order's
+ * `contract_id` (issue #208) — one contract lookup + one batched coverage
+ * RPC, all rows here always belong to the same work order. */
+async function attachContractCoverage(
+  supabase: SupabaseServerClient,
+  workOrderId: string,
+  rows: WorkOrderArticleRow[],
+): Promise<ActionResult<WorkOrderArticleRecord[]>> {
+  if (rows.length === 0) return ok([]);
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("contract_id")
+    .eq("id", workOrderId)
+    .maybeSingle<{ contract_id: string | null }>();
+  if (workOrderError) return fail(mapDbError(workOrderError));
+
+  const { coveredIds, error } = await getContractCoveredArticleIds(
+    supabase,
+    workOrder?.contract_id,
+    rows.map((row) => row.article_id),
+  );
+  if (error) return fail(mapDbError(error));
+
+  return ok(rows.map((row) => ({ ...row, covered_by_contract: coveredIds.has(row.article_id) })));
 }
 
 /** Shared select shape for every query returning a `WorkOrderArticleRecord`
@@ -143,7 +178,10 @@ export async function listWorkOrderArticles(
     .order("created_at", { ascending: false });
 
   if (error) return fail(mapDbError(error));
-  return ok({ workOrderArticles: (data ?? []) as WorkOrderArticleRecord[] });
+
+  const covered = await attachContractCoverage(supabase, idResult.data, (data ?? []) as WorkOrderArticleRow[]);
+  if (!covered.data) return fail(covered.error ?? "Could not load contract coverage.");
+  return ok({ workOrderArticles: covered.data });
 }
 
 /**
@@ -198,7 +236,10 @@ export async function createWorkOrderArticle(
     .single();
 
   if (error) return fail(mapDbError(error));
-  return ok({ workOrderArticle: data as WorkOrderArticleRecord });
+  const saved = data as WorkOrderArticleRow;
+  const covered = await attachContractCoverage(supabase, saved.work_order_id, [saved]);
+  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load contract coverage.");
+  return ok({ workOrderArticle: covered.data[0] });
 }
 
 /**
@@ -253,7 +294,10 @@ export async function updateWorkOrderArticle(
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Consumed article not found, or you do not have permission to update it.");
-  return ok({ workOrderArticle: data as WorkOrderArticleRecord });
+  const saved = data as WorkOrderArticleRow;
+  const covered = await attachContractCoverage(supabase, saved.work_order_id, [saved]);
+  if (!covered.data?.[0]) return fail(covered.error ?? "Could not load contract coverage.");
+  return ok({ workOrderArticle: covered.data[0] });
 }
 
 /** Owner/planner only (per the RBAC matrix + RLS DELETE policy, both agree —

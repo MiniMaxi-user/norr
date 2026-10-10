@@ -7,6 +7,7 @@ import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import { formatCurrency } from "@/lib/format/currency";
+import { effectiveSalePrice } from "./work-order-article-price";
 
 interface WorkOrderHeroStatsContextValue {
   materialStat: StatStripItem | null;
@@ -130,7 +131,7 @@ export function WorkOrderMaterialStatsReporter({
   reportToInvoice: boolean;
 }) {
   const materialTotal = useMemo(
-    () => workOrderArticles.reduce((sum, row) => sum + row.quantity * (row.article?.sale_price ?? 0), 0),
+    () => workOrderArticles.reduce((sum, row) => sum + row.quantity * (effectiveSalePrice(row) ?? 0), 0),
     [workOrderArticles],
   );
   const materialStat = useMemo<StatStripItem>(

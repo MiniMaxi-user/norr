@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Badge,
   Button,
   Callout,
   Combobox,
@@ -23,6 +24,7 @@ import { createWorkOrderArticle, updateWorkOrderArticle, type WorkOrderArticleRe
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import { formatCurrency } from "@/lib/format/currency";
 import { DeleteWorkOrderArticleDialog } from "./delete-work-order-article-dialog";
+import { effectiveSalePrice } from "./work-order-article-price";
 
 export interface WorkOrderMaterialSectionProps {
   mode: "create" | "edit";
@@ -68,7 +70,7 @@ export function WorkOrderMaterialSection({
   const [editingRow, setEditingRow] = useState<WorkOrderArticleRecord | null>(null);
   const [deletingRow, setDeletingRow] = useState<WorkOrderArticleRecord | null>(null);
 
-  const total = workOrderArticles.reduce((sum, row) => sum + row.quantity * (row.article?.sale_price ?? 0), 0);
+  const total = workOrderArticles.reduce((sum, row) => sum + row.quantity * (effectiveSalePrice(row) ?? 0), 0);
 
   return (
     <Stack gap="md">
@@ -120,12 +122,13 @@ export function WorkOrderMaterialSection({
                     <Text tone="muted" className="ui-row-code">
                       {row.article?.article_number}
                     </Text>
+                    {row.covered_by_contract && <Badge variant="muted">Covered by contract</Badge>}
                   </div>
                   <Text tone="muted" className="ui-row-mid ui-tabular-nums">
-                    {row.quantity} × {formatCurrency(row.article?.sale_price ?? null)}
+                    {row.quantity} × {formatCurrency(effectiveSalePrice(row))}
                   </Text>
                   <Text className="ui-row-trailing ui-tabular-nums">
-                    {formatCurrency(row.quantity * (row.article?.sale_price ?? 0))}
+                    {formatCurrency(row.quantity * (effectiveSalePrice(row) ?? 0))}
                   </Text>
                   <span className="ui-row-actions ui-row-actions-reserved">
                     {canEditRow && (

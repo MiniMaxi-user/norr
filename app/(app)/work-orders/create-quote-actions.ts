@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { findAutoDraftQuoteId, computeUnresolvedTimeEntryIds } from "@/lib/quotes/auto-draft";
+import { getContractCoveredArticleIds } from "@/lib/contracts/coverage";
 import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 
 /**
@@ -88,6 +89,7 @@ interface SourceWorkOrder {
   id: string;
   client_id: string;
   site_id: string | null;
+  contract_id: string | null;
   title: string;
 }
 
@@ -413,6 +415,15 @@ async function createBrandNewQuoteFromWorkOrder(
     );
   }
 
+  // Issue #208: articles covered by the work order's contract (travel/work
+  // rate articles and consumed material alike) are priced at 0 — same rule
+  // the auto-draft sync triggers apply, via the same SQL function.
+  const { coveredIds, error: coverageError } = await getContractCoveredArticleIds(supabase, workOrder.contract_id, [
+    ...distinctArticleIds,
+    ...workOrderArticles.map((row) => row.article_id),
+  ]);
+  if (coverageError) return fail(mapDbError(coverageError));
+
   const skippedTimeEntryIds: string[] = [];
   const timeEntryLineItems: DraftLineItem[] = [];
 
@@ -446,7 +457,7 @@ async function createBrandNewQuoteFromWorkOrder(
     timeEntryLineItems.push({
       description,
       quantity,
-      unitPrice: resolved.resolved_sale_price ?? 0,
+      unitPrice: coveredIds.has(resolved.resolved_article_id) ? 0 : (resolved.resolved_sale_price ?? 0),
       articleId: resolved.resolved_article_id,
       engineerUserId: entry.user_id,
       sourceStartedAt: entry.started_at,
@@ -466,7 +477,7 @@ async function createBrandNewQuoteFromWorkOrder(
       ? `${row.article.article_number} — ${row.article.description}`
       : "Consumed article",
     quantity: Math.round(Number(row.quantity) * 100) / 100,
-    unitPrice: row.article?.sale_price ?? 0,
+    unitPrice: coveredIds.has(row.article_id) ? 0 : (row.article?.sale_price ?? 0),
     articleId: row.article_id,
   }));
 
@@ -542,7 +553,7 @@ export async function createQuoteFromWorkOrder(
 
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select("id, client_id, site_id, title")
+    .select("id, client_id, site_id, contract_id, title")
     .eq("id", idResult.data)
     .maybeSingle<SourceWorkOrder>();
   if (workOrderError) return fail(mapDbError(workOrderError));
