@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Avatar, Badge, Button, Inline, Stack, Table, Text } from "@yourorg/ui";
+import { Avatar, Badge, Button, CompanyLogo, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { MapPin, Phone } from "@yourorg/ui/icons";
+import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import type { ClientRecord, SiteRecord } from "../actions";
 
 /**
@@ -12,7 +13,7 @@ import type { ClientRecord, SiteRecord } from "../actions";
  * exposes.
  *
  * Rows are compound cells rather than one-value-per-column plain text —
- * an initials avatar + "client since" meta under the name, contact info
+ * the client logo (initials avatar when none is uploaded) + "client since" meta under the name, contact info
  * grouped with its icon, the primary site's city/country combined into one
  * location cell (with a "Primary" badge — issue #41 redo, "Primary adres
  * is zichtbaar in alle standaardoverzichten"), and an at-a-glance "profile"
@@ -59,12 +60,17 @@ export function ClientsTable({
           const primarySite = primarySiteByClientId[client.id] ?? null;
           const location = primarySite ? [primarySite.city, primarySite.country].filter(Boolean).join(", ") : "";
           const hasAddress = Boolean(primarySite);
+          const logoUrl = getClientLogoUrl(client.logo_path, client.logo_updated_at);
 
           return (
             <Table.Row key={client.id} onClick={() => router.push(`/clients/${client.id}`)}>
               <Table.Cell>
                 <Inline gap="sm">
-                  <Avatar name={client.name} size="sm" />
+                  {logoUrl ? (
+                    <CompanyLogo size="sm" logoUrl={logoUrl} alt={`${client.name} logo`} />
+                  ) : (
+                    <Avatar name={client.name} size="sm" />
+                  )}
                   <Stack gap="xs">
                     <Text>{client.name}</Text>
                     <Text tone="muted">{formatClientSince(client.created_at)}</Text>
