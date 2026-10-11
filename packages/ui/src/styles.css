@@ -6535,3 +6535,297 @@ button.ui-barlist-main:focus-visible {
 .ui-record-list-meta-warning {
   color: var(--ui-warning-strong);
 }
+
+/* Dashboard redesign: compact KPI strip in a hero band (StatStrip compact/
+   trend/spark/group, OverviewHeroBand compact/children), ChartPanel,
+   Grid 2-1-1, StackedBar, compact Donut. */
+.ui-overview-hero-band-compact {
+  padding: 1rem 1.5rem 1.125rem;
+  gap: 0.875rem;
+}
+.ui-overview-hero-band-compact .ui-overview-hero-band-title {
+  font-size: 1.5rem;
+}
+.ui-overview-hero-band-compact .ui-overview-hero-band-main {
+  gap: 1rem;
+}
+.ui-overview-hero-band-compact .ui-overview-hero-band-left {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.ui-overview-hero-band-below {
+  min-width: 0;
+}
+/* Active period pill on the dark band: Massing fill, Fjord text. */
+.ui-overview-hero-band-actions .ui-view-switcher .ui-button-primary {
+  background: var(--ui-brand-massing);
+  border-color: var(--ui-brand-massing);
+  color: var(--ui-brand-fjord);
+}
+.ui-overview-hero-band-actions .ui-view-switcher .ui-button-outline {
+  color: var(--ui-brand-snow);
+}
+
+.ui-stat-strip-compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-radius: var(--ui-radius-lg);
+}
+.ui-stat-strip-compact .ui-stat-strip-tile {
+  padding: 0.625rem 0.875rem;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+.ui-stat-strip-compact .ui-stat-strip-value {
+  font-size: 1.375rem;
+  line-height: 1.15;
+}
+.ui-stat-strip-group {
+  font-size: 0.5625rem;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-accent-300);
+  min-height: 0.5625rem;
+}
+.ui-stat-strip-tile-group-start {
+  box-shadow: inset 2px 0 0 rgba(223, 228, 224, 0.4);
+}
+.ui-stat-strip-value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ui-stat-strip-value-row .ui-stat-strip-value {
+  min-width: 0;
+  white-space: nowrap;
+}
+.ui-stat-strip-spark {
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--ui-accent-300);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.ui-stat-strip-compact .ui-stat-strip-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+}
+.ui-stat-strip-trend {
+  font-weight: 650;
+}
+.ui-stat-strip-trend-good {
+  color: #b0d6a8;
+}
+.ui-stat-strip-trend-bad {
+  color: #eba99e;
+}
+
+.ui-grid-2-1-1 {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 1100px) {
+  .ui-grid-2-1-1 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ui-grid-2-1-1 > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 700px) {
+  .ui-grid-2-1-1 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ui-chart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  min-width: 0;
+}
+.ui-chart-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.ui-chart-panel-heading {
+  min-width: 0;
+}
+.ui-chart-panel-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ui-fg);
+  line-height: 1.3;
+}
+.ui-chart-panel-subtitle {
+  font-size: 0.75rem;
+  color: var(--ui-muted);
+  margin-top: 0.0625rem;
+}
+.ui-chart-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.ui-chart-panel-body {
+  min-width: 0;
+  flex: 1;
+}
+.ui-chart-panel-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ui-accent-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ui-chart-panel-link:hover {
+  text-decoration: underline;
+}
+.ui-chart-panel-footer-link {
+  align-self: flex-start;
+}
+.ui-chart-panel .ui-chart-legend {
+  gap: 0.125rem 0.5rem;
+}
+.ui-chart-panel .ui-chart-legend-button {
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+}
+.ui-chart-panel .ui-barlist-main {
+  padding: 0.3125rem 0.375rem;
+  row-gap: 0.25rem;
+}
+.ui-chart-panel .ui-record-list-row {
+  padding: 0.4375rem 0.375rem;
+}
+
+.ui-chart-partial .ui-chart-bar {
+  opacity: 0.5;
+}
+
+.ui-donut-compact {
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+.ui-donut-compact .ui-donut-legend {
+  min-width: 0;
+}
+.ui-donut-compact .ui-chart-legend-button {
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+}
+.ui-donut-compact .ui-donut-center-value {
+  font-size: var(--ui-text-lg);
+}
+
+.ui-stacked-bar {
+  gap: 0.5rem;
+}
+.ui-stacked-bar-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ui-fg-secondary);
+}
+.ui-stacked-bar-total {
+  color: var(--ui-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ui-stacked-bar-track {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: var(--ui-radius-full);
+  overflow: hidden;
+  background: var(--ui-surface-2);
+}
+.ui-stacked-bar-segment {
+  flex-basis: 0;
+  min-width: 3px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  transition: opacity var(--ui-duration-base) var(--ui-ease), filter var(--ui-duration-base) var(--ui-ease);
+}
+.ui-stacked-bar-segment:disabled {
+  cursor: default;
+}
+.ui-stacked-bar-segment:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.ui-stacked-bar-segment:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: -2px;
+}
+.ui-stacked-bar-empty {
+  flex: 1;
+  font-size: 0.625rem;
+  line-height: 14px;
+  text-align: center;
+  color: var(--ui-muted);
+}
+.ui-stacked-bar-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ui-stacked-bar-legend .ui-chart-legend-button {
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+}
+
+.ui-barlist-compact .ui-barlist-main {
+  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr) auto;
+  grid-template-areas: "text track value";
+  column-gap: 0.625rem;
+}
+.ui-barlist-compact .ui-barlist-rank,
+.ui-barlist-compact .ui-barlist-secondary {
+  display: none;
+}
+.ui-barlist-inline-secondary .ui-barlist-text {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.ui-barlist-inline-secondary .ui-barlist-label {
+  flex-shrink: 0;
+  max-width: 60%;
+}
+.ui-barlist-inline-secondary .ui-barlist-secondary {
+  min-width: 0;
+}
+
+.ui-record-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.ui-record-list-footer-link {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ui-accent-strong);
+  text-decoration: none;
+}
+.ui-record-list-footer-link:hover {
+  text-decoration: underline;
+}
