@@ -297,52 +297,6 @@ export function DashboardView({ dataset, initialFilters, links }: DashboardViewP
         </Callout>
       ) : null}
 
-      {visible.finance ? (
-        <Grid columns="2-1">
-          <ChartPanel
-            title={`Revenue per ${showTimeLabel}`}
-            subtitle={`${compact(totals.revenue)} total · invoiced quotes by invoice date`}
-            actions={
-              <ChartLegend
-                items={[
-                  { key: "default", label: "Standard", color: chartColor(0) },
-                  { key: "contract", label: "Contract", color: chartColor(1) },
-                ]}
-              />
-            }
-          >
-            <ColumnChart
-              hideLegend
-              height={260}
-              ariaLabel={`Revenue per ${showTimeLabel}`}
-              points={model.revenueSeries}
-              series={[
-                { key: "default", label: "Standard", color: chartColor(0) },
-                { key: "contract", label: "Contract", color: chartColor(1) },
-              ]}
-              formatValue={money}
-              formatAxis={compact}
-              selectedKey={filters.bucket}
-              onSelect={bucketSelect}
-            />
-          </ChartPanel>
-          <ChartPanel
-            title="Top clients by revenue"
-            {...(links.clients ? { link: { label: "All clients", href: "/clients" } } : {})}
-          >
-            <BarList
-              ariaLabel="Top clients by revenue"
-              items={rankedItems(model.topClients, links.clients ? "/clients" : null)}
-              formatValue={money}
-              selectedKey={filters.clientId}
-              onSelect={(key) => setValue("clientId", key)}
-              emptyLabel="No invoiced revenue in this range"
-              color={chartColor(0)}
-            />
-          </ChartPanel>
-        </Grid>
-      ) : null}
-
       {visible.workOrders ? (
         <Grid columns="2-1-1">
           <ChartPanel
@@ -392,6 +346,52 @@ export function DashboardView({ dataset, initialFilters, links }: DashboardViewP
               onSelect={(key) => setValue("engineerId", key)}
               emptyLabel="No assigned work orders"
               color={chartColor(2)}
+            />
+          </ChartPanel>
+        </Grid>
+      ) : null}
+
+      {visible.finance ? (
+        <Grid columns="2-1">
+          <ChartPanel
+            title={`Revenue per ${showTimeLabel}`}
+            subtitle={`${compact(totals.revenue)} total · invoiced quotes by invoice date`}
+            actions={
+              <ChartLegend
+                items={[
+                  { key: "default", label: "Standard", color: chartColor(0) },
+                  { key: "contract", label: "Contract", color: chartColor(1) },
+                ]}
+              />
+            }
+          >
+            <ColumnChart
+              hideLegend
+              height={260}
+              ariaLabel={`Revenue per ${showTimeLabel}`}
+              points={model.revenueSeries}
+              series={[
+                { key: "default", label: "Standard", color: chartColor(0) },
+                { key: "contract", label: "Contract", color: chartColor(1) },
+              ]}
+              formatValue={money}
+              formatAxis={compact}
+              selectedKey={filters.bucket}
+              onSelect={bucketSelect}
+            />
+          </ChartPanel>
+          <ChartPanel
+            title="Top clients by revenue"
+            {...(links.clients ? { link: { label: "All clients", href: "/clients" } } : {})}
+          >
+            <BarList
+              ariaLabel="Top clients by revenue"
+              items={rankedItems(model.topClients, links.clients ? "/clients" : null)}
+              formatValue={money}
+              selectedKey={filters.clientId}
+              onSelect={(key) => setValue("clientId", key)}
+              emptyLabel="No invoiced revenue in this range"
+              color={chartColor(0)}
             />
           </ChartPanel>
         </Grid>
