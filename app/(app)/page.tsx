@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -33,15 +32,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const params: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(raw)) params[key] = Array.isArray(value) ? value[0] : value;
 
+  // The hero band (title, period switcher, KPI strip) is rendered by the client
+  // view itself so it can share the filter state; the skeleton includes a
+  // same-shaped band.
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Dashboard"
-        subtitle="Revenue, work orders and malfunctions at a glance. Click any chart or ranking to filter everything."
-      />
-      <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardScreen session={session} actor={actor} initialFilters={parseFilters(params)} />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardScreen session={session} actor={actor} initialFilters={parseFilters(params)} />
+    </Suspense>
   );
 }

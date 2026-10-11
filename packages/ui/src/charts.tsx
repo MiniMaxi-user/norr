@@ -183,6 +183,8 @@ export interface ChartPoint {
   label: string;
   /** Longer label for the tooltip/aria (e.g. "October 2026"). */
   longLabel?: string;
+  /** Still-running bucket (month or day to date): drawn dimmed. */
+  partial?: boolean;
   values: Record<string, number>;
 }
 
@@ -384,7 +386,7 @@ export function ColumnChart({ stacked = true, ...props }: ColumnChartProps) {
               return (
                 <g
                   key={point.key}
-                  className={cx("ui-chart-column", dim && "ui-chart-dim", hovered === index && "ui-chart-hot")}
+                  className={cx("ui-chart-column", dim && "ui-chart-dim", point.partial && "ui-chart-partial", hovered === index && "ui-chart-hot")}
                 >
                   {selectedKey === point.key ? (
                     <rect
@@ -549,6 +551,8 @@ export interface DonutChartProps {
   onSelect?: (key: string | null) => void;
   /** Diameter in px (default 168). */
   size?: number;
+  /** Legend beside the ring (no wrapping) with tighter rows. */
+  compact?: boolean;
   className?: string;
 }
 
@@ -561,6 +565,7 @@ export function DonutChart({
   selectedKey = null,
   onSelect,
   size = 168,
+  compact,
   className,
 }: DonutChartProps) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
@@ -581,7 +586,7 @@ export function DonutChart({
   const toggle = (key: string) => onSelect?.(selectedKey === key ? null : key);
 
   return (
-    <div className={cx("ui-chart ui-donut", className)}>
+    <div className={cx("ui-chart ui-donut", compact && "ui-donut-compact", className)}>
       <div className="ui-donut-figure" style={{ width: size, height: size }}>
         <svg viewBox="0 0 200 200" width={size} height={size} role="img" aria-label={ariaLabel}>
           <circle className="ui-donut-track" cx={100} cy={100} r={radius} />
@@ -690,6 +695,10 @@ export interface BarListProps {
   emptyLabel?: string;
   /** Default bar color (CSS color); falls back to `--ui-chart-1`. */
   color?: string;
+  /** One line per row: name | bar | value (secondary text hidden). */
+  compact?: boolean;
+  /** Show the secondary text on the label line, after the name. */
+  secondaryInline?: boolean;
   className?: string;
 }
 
@@ -702,6 +711,8 @@ export function BarList({
   onSelect,
   emptyLabel = "Nothing to show yet",
   color,
+  compact,
+  secondaryInline,
   className,
 }: BarListProps) {
   if (items.length === 0) {
@@ -710,7 +721,7 @@ export function BarList({
   const max = Math.max(...items.map((item) => item.value), 1);
   const total = items.reduce((sum, item) => sum + item.value, 0);
   return (
-    <ol className={cx("ui-barlist", className)} aria-label={ariaLabel}>
+    <ol className={cx("ui-barlist", compact && "ui-barlist-compact", secondaryInline && "ui-barlist-inline-secondary", className)} aria-label={ariaLabel}>
       {items.map((item, index) => {
         const dim = selectedKey !== null && selectedKey !== item.key;
         const valueText = item.valueLabel ?? formatValue(item.value);
@@ -761,5 +772,95 @@ export function BarList({
         );
       })}
     </ol>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * StackedBar
+ * ------------------------------------------------------------------ */
+
+export interface StackedBarProps {
+  slices: DonutSlice[];
+  ariaLabel: string;
+  /** Caption above the bar (the dimension, e.g. "Work orders"). */
+  title?: string;
+  formatValue?: (value: number) => string;
+  selectedKey?: string | null;
+  onSelect?: (key: string | null) => void;
+  className?: string;
+}
+
+/** 100%-stacked horizontal bar (14px) with a two-column legend of label +
+ * count. Segments and legend items are toggle buttons when `onSelect` is set. */
+export function StackedBar({
+  slices,
+  ariaLabel,
+  title,
+  formatValue = defaultValueFormat,
+  selectedKey = null,
+  onSelect,
+  className,
+}: StackedBarProps) {
+  const colored = slices.map((slice, index) => ({ ...slice, color: slice.color ?? chartColor(index) }));
+  const total = colored.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
+  const toggle = (key: string) => onSelect?.(selectedKey === key ? null : key);
+  return (
+    <div className={cx("ui-chart ui-stacked-bar", className)}>
+      {title ? (
+        <div className="ui-stacked-bar-title">
+          <span>{title}</span>
+          <span className="ui-stacked-bar-total">{formatValue(total)}</span>
+        </div>
+      ) : null}
+      <div className="ui-stacked-bar-track" role="group" aria-label={ariaLabel}>
+        {total === 0 ? <span className="ui-stacked-bar-empty">No data</span> : null}
+        {colored.map((slice) => {
+          if (slice.value <= 0) return null;
+          const percent = Math.round((slice.value / total) * 100);
+          const dim = selectedKey !== null && selectedKey !== slice.key;
+          return (
+            <button
+              key={slice.key}
+              type="button"
+              className={cx("ui-stacked-bar-segment", dim && "ui-chart-dim")}
+              style={{ flexGrow: slice.value, background: slice.color }}
+              title={`${slice.label}: ${formatValue(slice.value)} (${percent}%)`}
+              aria-label={`${slice.label}: ${formatValue(slice.value)}, ${percent}%`}
+              aria-pressed={onSelect ? selectedKey === slice.key : undefined}
+              disabled={!onSelect}
+              onClick={() => toggle(slice.key)}
+            />
+          );
+        })}
+      </div>
+      <ul className="ui-stacked-bar-legend">
+        {colored.map((slice) => {
+          const dim = selectedKey !== null && selectedKey !== slice.key;
+          const content = (
+            <>
+              <span className="ui-chart-legend-swatch" style={{ background: slice.color }} />
+              <span className="ui-chart-legend-label">{slice.label}</span>
+              <span className="ui-chart-legend-value">{formatValue(slice.value)}</span>
+            </>
+          );
+          return (
+            <li key={slice.key} className={cx(dim && "ui-chart-dim")}>
+              {onSelect ? (
+                <button
+                  type="button"
+                  className="ui-chart-legend-button"
+                  aria-pressed={selectedKey === slice.key}
+                  onClick={() => toggle(slice.key)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <span className="ui-chart-legend-button">{content}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

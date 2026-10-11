@@ -185,7 +185,7 @@ export {
 } from "./components/radio-group";
 export { Progress, type ProgressProps, type ProgressTone } from "./components/progress";
 export { StatCard, type StatCardProps, type StatCardTrend, type StatCardTone } from "./components/stat-card";
-export { StatStrip, type StatStripProps, type StatStripItem } from "./components/stat-strip";
+export { StatStrip, type StatStripProps, type StatStripItem, type StatStripTrend } from "./components/stat-strip";
 export { SectionHeader, type SectionHeaderProps } from "./components/section-header";
 export { RelationCard, type RelationCardProps } from "./components/relation-card";
 export { RowCard, type RowCardProps, type RowCardTone } from "./components/row-card";
@@ -237,6 +237,7 @@ export {
   ColumnChart,
   TrendChart,
   DonutChart,
+  StackedBar,
   BarList,
   type ChartLegendItem,
   type ChartLegendProps,
@@ -246,9 +247,11 @@ export {
   type TrendChartProps,
   type DonutSlice,
   type DonutChartProps,
+  type StackedBarProps,
   type BarListItem,
   type BarListProps,
 } from "./charts.js";
 export { Grid, type GridProps, type GridColumns } from "./components/grid";
 export { FilterChip, type FilterChipProps } from "./components/filter-chip";
 export { RecordList, type RecordListProps, type RecordListItem } from "./components/record-list";
+export { ChartPanel, type ChartPanelProps, type ChartPanelLink } from "./components/chart-panel";

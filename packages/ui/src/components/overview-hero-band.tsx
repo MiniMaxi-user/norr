@@ -16,6 +16,10 @@ export interface OverviewHeroBandProps {
   /** Right-aligned controls — typically a `ViewToggle` plus a primary
    * "Add …" button. */
   actions?: ReactNode;
+  /** Full-width content under the title row (e.g. a `StatStrip` of KPIs). */
+  children?: ReactNode;
+  /** Tighter padding and a smaller title, for dashboard-style bands. */
+  compact?: boolean;
   className?: string;
 }
 
@@ -50,9 +54,9 @@ export interface OverviewHeroBandProps {
  * Fixed dark surface, not theme-toggle-aware — matches `RecordHeroBand` and
  * `.ui-sidebar`'s own permanent "ink" treatment.
  */
-export function OverviewHeroBand({ title, subtitle, stats, actions, className }: OverviewHeroBandProps) {
+export function OverviewHeroBand({ title, subtitle, stats, actions, children, compact, className }: OverviewHeroBandProps) {
   return (
-    <div className={cx("ui-overview-hero-band", className)}>
+    <div className={cx("ui-overview-hero-band", compact && "ui-overview-hero-band-compact", className)}>
       <div className="ui-overview-hero-band-main">
         <div className="ui-overview-hero-band-left">
           <h1 className="ui-overview-hero-band-title">{title}</h1>
@@ -65,6 +69,7 @@ export function OverviewHeroBand({ title, subtitle, stats, actions, className }:
           </div>
         )}
       </div>
+      {children ? <div className="ui-overview-hero-band-below">{children}</div> : null}
     </div>
   );
 }

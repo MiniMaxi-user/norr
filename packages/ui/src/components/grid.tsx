@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
 
-export type GridColumns = 1 | 2 | 3 | 4 | "2-1" | "1-2";
+export type GridColumns = 1 | 2 | 3 | 4 | "2-1" | "1-2" | "2-1-1";
 
 export interface GridProps extends HTMLAttributes<HTMLDivElement> {
   /** Column layout; collapses on narrower viewports. `"2-1"` / `"1-2"` are a
