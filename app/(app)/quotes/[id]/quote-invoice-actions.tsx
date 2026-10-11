@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Stack, Text, toast, useEscapeToClose } from "@yourorg/ui";
-import { invoiceQuote, type InvoiceSummary } from "../invoice-actions";
+import { invoiceQuote, sendInvoiceEmailForQuote, type InvoiceSummary } from "../invoice-actions";
 
 export interface QuoteInvoiceActionsProps {
   quoteId: string;
@@ -44,7 +44,9 @@ function computePopupFeatures(width: number, height: number): string {
  * the invoice, flips the quote to Invoiced and e-mails the PDF to the
  * client's invoice contact when one is set; the PDF itself is rendered on
  * demand by `GET /quotes/[id]/invoice` when "Open PDF" is clicked - there is
- * no separate Generate PDF / Regenerate / Delete step any more.
+ * no separate Generate PDF / Regenerate / Delete step any more. While the
+ * invoice hasn't been e-mailed yet (`emailedAt` empty: skipped or failed),
+ * "Send invoice" lets the caller send it manually.
  *
  * Entirely absent (not just disabled) for a caller with no invoicing access
  * (docs/ARCHITECTURE.md feature-flag rule).
@@ -53,6 +55,7 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [isGenerating, startGenerating] = useTransition();
+  const [isSending, startSending] = useTransition();
 
   useEscapeToClose(confirming, (next) => {
     if (!isGenerating) setConfirming(next);
@@ -94,6 +97,28 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
     });
   }
 
+  function handleSend() {
+    startSending(async () => {
+      const result = await sendInvoiceEmailForQuote(quoteId);
+      if (!result.data) {
+        toast({ tone: "danger", title: "Could not send invoice", description: result.error ?? "Something went wrong.", duration: 0 });
+        return;
+      }
+      const { email } = result.data;
+      if (email.status === "sent") {
+        toast({ tone: "success", title: "Invoice sent", description: `Emailed to ${email.to}.` });
+      } else {
+        toast({
+          tone: "danger",
+          title: "Invoice not sent",
+          description: email.status === "skipped" ? `${email.reason}.` : email.error,
+          duration: 0,
+        });
+      }
+      router.refresh();
+    });
+  }
+
   function handleOpenPdf() {
     // The PDF is rendered on demand by GET /quotes/[id]/invoice.
     const popup = window.open(`/quotes/${quoteId}/invoice`, "_blank", computePopupFeatures(POPUP_WIDTH, POPUP_HEIGHT));
@@ -109,9 +134,16 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
   return (
     <>
       {invoice ? (
-        <Button type="button" variant="outline" onClick={handleOpenPdf}>
-          Open PDF
-        </Button>
+        <>
+          {canGenerate && !invoice.emailedAt && (
+            <Button type="button" variant="primary" onClick={handleSend} disabled={isSending}>
+              {isSending ? "Sending…" : "Send invoice"}
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={handleOpenPdf}>
+            Open PDF
+          </Button>
+        </>
       ) : (
         canGenerate && (
           <Button type="button" variant="primary" onClick={() => setConfirming(true)}>

@@ -269,6 +269,50 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
 }
 
 // ---------------------------------------------------------------------------
+// sendInvoiceEmailForQuote
+// ---------------------------------------------------------------------------
+
+/** "Send invoice": manually (re)sends the invoice e-mail for an invoiced quote
+ * whose e-mail was never delivered (skipped or failed at invoicing time, e.g.
+ * missing invoice contact or sender settings, since fixed). Refuses once the
+ * invoice has been sent (`emailed_at` set). Same recipient/recording rules as
+ * `sendInvoiceEmail`. */
+export async function sendInvoiceEmailForQuote(quoteId: string): Promise<ActionResult<{ email: InvoiceEmailOutcome }>> {
+  const idResult = uuidSchema.safeParse(quoteId);
+  if (!idResult.success) return fail("Invalid quote id.");
+
+  const ctx = await requireModuleContext("invoicing");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId, session } = ctx.context;
+
+  if (!can(actor, "invoicing", "create")) {
+    return fail("Only an owner or administratie member can send invoices.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: quote, error: quoteError } = await supabase
+    .from("quotes")
+    .select("id, client_id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string; client_id: string }>();
+  if (quoteError) return fail(mapDbError(quoteError));
+  if (!quote) return fail("Quote not found, or you do not have permission to view it.");
+
+  const { data: invoice, error: invoiceError } = await supabase
+    .from("invoices")
+    .select("id, emailed_at")
+    .eq("quote_id", quote.id)
+    .maybeSingle<{ id: string; emailed_at: string | null }>();
+  if (invoiceError) return fail(mapDbError(invoiceError));
+  if (!invoice) return fail("This quote has not been invoiced yet.");
+  if (invoice.emailed_at) return fail("This invoice has already been sent.");
+
+  const email = await sendInvoiceEmail(supabase, organizationId, session.organization?.name ?? "", quote.id, quote.client_id);
+  return ok({ email });
+}
+
+// ---------------------------------------------------------------------------
 // getInvoiceForQuote
 // ---------------------------------------------------------------------------
 
