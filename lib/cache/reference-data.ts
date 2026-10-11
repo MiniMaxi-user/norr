@@ -26,12 +26,13 @@ import { unstable_cache, revalidateTag } from "next/cache";
  * directive/Cache Components model, since this app enables neither
  * `dynamicIO` nor `cacheLife` anywhere today, and `unstable_cache` is the
  * smallest primitive that does exactly what this needs: cache a value under
- * an explicit tag, invalidate that exact tag on mutation, nothing else. No
- * `revalidate` option is set below, so an entry is cached indefinitely —
- * correctness relies entirely on every create/update/delete path for a given
- * org+kind(+listKey) calling `invalidateReferenceDataCache` for that same
- * tag on success, not on a caching window ever expiring naturally (an edit
- * must be visible immediately, not "eventually within N seconds").
+ * an explicit tag, invalidate that exact tag on mutation, nothing else.
+ * Correctness for app edits relies on every create/update/delete path for a
+ * given org+kind(+listKey) calling `invalidateReferenceDataCache` for that
+ * same tag on success (an edit must be visible immediately). Writes that
+ * bypass the app (migrations) are covered by `REFERENCE_DATA_CACHE_VERSION`
+ * (bump it in the same commit) and, as a last resort, the
+ * `REFERENCE_DATA_SAFETY_TTL_SECONDS` expiry.
  *
  * SECURITY (non-negotiable, see CLAUDE.md + this repo's RLS rule): every tag
  * below is a function of BOTH `organizationId` AND `kind` (and `listKey` for
@@ -71,6 +72,23 @@ export type ReferenceDataCacheKind =
   | "activity_subtypes"
   | "solution_subtypes";
 
+/**
+ * Bump whenever a migration changes reference data directly in the DB
+ * (seed/backfill/delete of reference_list_items etc.): such writes bypass
+ * `invalidateReferenceDataCache`, so without a bump every org keeps serving
+ * the pre-migration rows until the safety TTL below expires. Part of the cache
+ * key, so a bump orphans all existing entries on the next deploy.
+ */
+const REFERENCE_DATA_CACHE_VERSION = "2";
+
+/**
+ * Safety net for out-of-band DB changes (migrations, manual SQL) that don't go
+ * through the app's mutation paths: entries expire after this window even
+ * without a tag invalidation. App edits are still visible immediately via
+ * `revalidateTag`.
+ */
+const REFERENCE_DATA_SAFETY_TTL_SECONDS = 3600;
+
 function referenceDataCacheTag(
   organizationId: string,
   kind: ReferenceDataCacheKind,
@@ -98,9 +116,11 @@ export async function readThroughReferenceDataCache<T>(
   listKey?: string,
 ): Promise<T> {
   const tag = referenceDataCacheTag(organizationId, kind, listKey);
-  const cached = unstable_cache(fetcher, ["refdata", organizationId, kind, listKey ?? "_"], {
-    tags: [tag],
-  });
+  const cached = unstable_cache(
+    fetcher,
+    ["refdata", REFERENCE_DATA_CACHE_VERSION, organizationId, kind, listKey ?? "_"],
+    { tags: [tag], revalidate: REFERENCE_DATA_SAFETY_TTL_SECONDS },
+  );
   return cached();
 }
 
