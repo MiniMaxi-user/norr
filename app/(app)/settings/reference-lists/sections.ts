@@ -112,7 +112,7 @@ export const REFERENCE_LIST_SECTIONS = [
   {
     key: "quote_status",
     title: "Quote Status",
-    description: "Lifecycle stages a quote moves through — e.g. Draft, Sent, Accepted, Rejected, Expired.",
+    description: "Lifecycle stages a quote moves through — Draft and Invoiced by default.",
     showDefaultDuration: false,
     showInvoiceInterval: false,
   },
