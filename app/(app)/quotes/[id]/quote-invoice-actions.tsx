@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Stack, Text, toast, useEscapeToClose } from "@yourorg/ui";
 import { invoiceQuote, sendInvoiceEmailForQuote, type InvoiceSummary } from "../invoice-actions";
+import { formatDateTime } from "@/lib/format/date";
 
 export interface QuoteInvoiceActionsProps {
   quoteId: string;
@@ -44,9 +45,9 @@ function computePopupFeatures(width: number, height: number): string {
  * the invoice, flips the quote to Invoiced and e-mails the PDF to the
  * client's invoice contact when one is set; the PDF itself is rendered on
  * demand by `GET /quotes/[id]/invoice` when "Open PDF" is clicked - there is
- * no separate Generate PDF / Regenerate / Delete step any more. While the
- * invoice hasn't been e-mailed yet (`emailedAt` empty: skipped or failed),
- * "Send invoice" lets the caller send it manually.
+ * no separate Generate PDF / Regenerate / Delete step any more. Once invoiced,
+ * "Send invoice" (not sent yet) / "Resend invoice" (already sent - confirms
+ * first, showing when and to whom) e-mails it again on demand.
  *
  * Entirely absent (not just disabled) for a caller with no invoicing access
  * (docs/ARCHITECTURE.md feature-flag rule).
@@ -56,6 +57,11 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
   const [confirming, setConfirming] = useState(false);
   const [isGenerating, startGenerating] = useTransition();
   const [isSending, startSending] = useTransition();
+  const [confirmingResend, setConfirmingResend] = useState(false);
+
+  useEscapeToClose(confirmingResend, (next) => {
+    if (!isSending) setConfirmingResend(next);
+  });
 
   useEscapeToClose(confirming, (next) => {
     if (!isGenerating) setConfirming(next);
@@ -100,6 +106,7 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
   function handleSend() {
     startSending(async () => {
       const result = await sendInvoiceEmailForQuote(quoteId);
+      setConfirmingResend(false);
       if (!result.data) {
         toast({ tone: "danger", title: "Could not send invoice", description: result.error ?? "Something went wrong.", duration: 0 });
         return;
@@ -135,9 +142,14 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
     <>
       {invoice ? (
         <>
-          {canGenerate && !invoice.emailedAt && (
-            <Button type="button" variant="primary" onClick={handleSend} disabled={isSending}>
-              {isSending ? "Sending…" : "Send invoice"}
+          {canGenerate && (
+            <Button
+              type="button"
+              variant={invoice.emailedAt ? "outline" : "primary"}
+              onClick={invoice.emailedAt ? () => setConfirmingResend(true) : handleSend}
+              disabled={isSending}
+            >
+              {isSending ? "Sending…" : invoice.emailedAt ? "Resend invoice" : "Send invoice"}
             </Button>
           )}
           <Button type="button" variant="outline" onClick={handleOpenPdf}>
@@ -150,6 +162,34 @@ export function QuoteInvoiceActions({ quoteId, invoice, canGenerate }: QuoteInvo
             Generate invoice
           </Button>
         )
+      )}
+
+      {confirmingResend && invoice?.emailedAt && (
+        <Dialog open onOpenChange={(next) => !isSending && setConfirmingResend(next)} size="sm">
+          <Dialog.Header>
+            <Text>Resend invoice</Text>
+          </Dialog.Header>
+          <Dialog.Body>
+            <Stack gap="sm">
+              <Text>
+                This invoice was already sent to {invoice.emailedTo ?? "the invoice contact"} on{" "}
+                {formatDateTime(invoice.emailedAt)}.
+              </Text>
+              <Text tone="muted">
+                It will be sent again to the client&rsquo;s current invoice contact. To use a different address, change
+                the invoice contact on the client&rsquo;s invoice address first.
+              </Text>
+            </Stack>
+          </Dialog.Body>
+          <Dialog.Footer>
+            <Button type="button" variant="outline" onClick={() => setConfirmingResend(false)} disabled={isSending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={handleSend} disabled={isSending}>
+              {isSending ? "Sending…" : "Send again"}
+            </Button>
+          </Dialog.Footer>
+        </Dialog>
       )}
 
       {confirming && (

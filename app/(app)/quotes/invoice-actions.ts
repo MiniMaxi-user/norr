@@ -273,10 +273,11 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
 // ---------------------------------------------------------------------------
 
 /** "Send invoice": manually (re)sends the invoice e-mail for an invoiced quote
- * whose e-mail was never delivered (skipped or failed at invoicing time, e.g.
- * missing invoice contact or sender settings, since fixed). Refuses once the
- * invoice has been sent (`emailed_at` set). Same recipient/recording rules as
- * `sendInvoiceEmail`. */
+ * — e.g. it was skipped or failed at invoicing time, or the client wants it at
+ * a different address (change the invoice contact, then resend). Allowed any
+ * number of times; the UI confirms first when it was already sent. Same
+ * recipient/recording rules as `sendInvoiceEmail` (a successful resend
+ * overwrites emailed_to/emailed_at). */
 export async function sendInvoiceEmailForQuote(quoteId: string): Promise<ActionResult<{ email: InvoiceEmailOutcome }>> {
   const idResult = uuidSchema.safeParse(quoteId);
   if (!idResult.success) return fail("Invalid quote id.");
@@ -301,12 +302,11 @@ export async function sendInvoiceEmailForQuote(quoteId: string): Promise<ActionR
 
   const { data: invoice, error: invoiceError } = await supabase
     .from("invoices")
-    .select("id, emailed_at")
+    .select("id")
     .eq("quote_id", quote.id)
-    .maybeSingle<{ id: string; emailed_at: string | null }>();
+    .maybeSingle<{ id: string }>();
   if (invoiceError) return fail(mapDbError(invoiceError));
   if (!invoice) return fail("This quote has not been invoiced yet.");
-  if (invoice.emailed_at) return fail("This invoice has already been sent.");
 
   const email = await sendInvoiceEmail(supabase, organizationId, session.organization?.name ?? "", quote.id, quote.client_id);
   return ok({ email });
