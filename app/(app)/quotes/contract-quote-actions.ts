@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import {
   computeContractPeriod,
   describeContractAssets,
@@ -84,7 +85,7 @@ interface ContractRow {
       name: string;
       serial_number: string | null;
       external_reference: string | null;
-      site: { name: string } | null;
+      site: { address_line1: string | null; city: string | null } | null;
       asset_model: { name: string } | null;
     } | null;
   }[];
@@ -97,7 +98,7 @@ const CONTRACT_SELECT =
   " billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,interval_months)," +
   " contract_line_items(article_id,article_number,description,quantity,unit_price,sort_order," +
   "article:articles(article_number,description))," +
-  " contract_assets(asset:assets(name,serial_number,external_reference,site:sites(name)," +
+  " contract_assets(asset:assets(name,serial_number,external_reference,site:sites(address_line1,city)," +
   "asset_model:asset_models!assets_model_id_fkey(name)))";
 
 const MAX_CONTRACTS_PER_RUN = 500;
@@ -190,7 +191,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
         serialNumber: asset.serial_number,
         externalReference: asset.external_reference,
         model: asset.asset_model?.name ?? null,
-        siteName: asset.site?.name ?? null,
+        siteName: formatSiteAddressShort(asset.site),
       }));
 
     const notes = [
