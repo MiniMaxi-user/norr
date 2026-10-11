@@ -89,6 +89,7 @@ const clientBoundaryModules = [
   "./confirm-delete-dialog.js",
   "./use-escape-to-close.js",
   "./nav-item-icon.js",
+  "./charts.js",
 ];
 const externalPeers = ["react", "react-dom", "react/jsx-runtime", "next", "next/link"];
 
@@ -114,6 +115,7 @@ export default defineConfig([
       "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
       "use-escape-to-close": "src/use-escape-to-close.ts",
       "nav-item-icon": "src/components/nav-item-icon.tsx",
+      charts: "src/charts.tsx",
     },
     format: ["esm"],
     dts: true,
@@ -136,6 +138,7 @@ export default defineConfig([
       "multi-select": "src/multi-select.tsx",
       "confirm-delete-dialog": "src/confirm-delete-dialog.tsx",
       "use-escape-to-close": "src/use-escape-to-close.ts",
+      charts: "src/charts.tsx",
     },
     format: ["cjs"],
     dts: false,

@@ -229,3 +229,26 @@ export {
   type TabsTabProps,
   type TabsPanelProps,
 } from "./tabs.js";
+// Chart primitives (dashboard) - hover/selection state, so the same dedicated
+// "use client" entry treatment as Combobox (see tsup.config.ts).
+export {
+  chartColor,
+  ChartLegend,
+  ColumnChart,
+  TrendChart,
+  DonutChart,
+  BarList,
+  type ChartLegendItem,
+  type ChartLegendProps,
+  type ChartSeries,
+  type ChartPoint,
+  type ColumnChartProps,
+  type TrendChartProps,
+  type DonutSlice,
+  type DonutChartProps,
+  type BarListItem,
+  type BarListProps,
+} from "./charts.js";
+export { Grid, type GridProps, type GridColumns } from "./components/grid";
+export { FilterChip, type FilterChipProps } from "./components/filter-chip";
+export { RecordList, type RecordListProps, type RecordListItem } from "./components/record-list";
