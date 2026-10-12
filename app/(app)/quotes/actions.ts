@@ -45,9 +45,7 @@ import {
  * `linkContractAsset`/`contract_assets` trust boundary, NOT
  * `assets.subtypeId`'s app-layer shape pre-check) — the check is left
  * entirely to the `validate_quote_line_item_relations` DB trigger, whose
- * `23503`/`23514` is mapped to a clean message by `mapDbError`. Same
- * reasoning applies to `quotes.siteId`'s client-match check
- * (`validate_quote_relations`).
+ * `23503`/`23514` is mapped to a clean message by `mapDbError`.
  *
  * **Total computation (no stored column, no N+1):** `quotes` deliberately has
  * no `total` column (see the migration's design note 2) — a quote's total is
@@ -261,7 +259,6 @@ function toQuoteRecord(row: Record<string, unknown>): QuoteRecord {
 function toQuoteInsertRow(input: ReturnType<typeof quoteCreateSchema.parse>) {
   const row: Record<string, unknown> = {
     client_id: input.clientId,
-    site_id: input.siteId ?? null,
     name: input.name,
     valid_until: input.validUntil ?? null,
     notes: input.notes ?? null,
@@ -277,8 +274,12 @@ function toQuoteInsertRow(input: ReturnType<typeof quoteCreateSchema.parse>) {
 
 function toQuoteUpdateRow(input: ReturnType<typeof quoteUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
-  if (input.clientId !== undefined) row.client_id = input.clientId;
-  if (input.siteId !== undefined) row.site_id = input.siteId ?? null;
+  // Quotes are no longer linked to a site; clearing any legacy site_id on a
+  // client change keeps `validate_quote_relations` from rejecting the move.
+  if (input.clientId !== undefined) {
+    row.client_id = input.clientId;
+    row.site_id = null;
+  }
   if (input.name !== undefined) row.name = input.name;
   if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.validUntil !== undefined) row.valid_until = input.validUntil ?? null;

@@ -35,17 +35,13 @@ const ALL_CLIENT_ASSETS_LIMIT = 500;
  * *** Pattern A migration (docs/ARCHITECTURE.md "Two detail-page header
  * patterns") *** — Quotes moved off `DetailHero`/`DetailLayout` (Pattern B)
  * onto `RecordHeroBand` + flat sections (Pattern A), the same shape Work
- * Orders/Assets/Contracts already use. This is also why the real `sites`
- * list (not just a pre-resolved label string) and the quote's own linked
+ * Orders/Assets/Contracts already use. This is also why the quote's own linked
  * work order (when it has one, issue #109's `work_order_id` traceability
- * column) are now fetched here: a `RelationCard` needs the real `SiteRecord`/
- * `WorkOrderRecord`, not a formatted string.
+ * column) is fetched here: a `RelationCard` needs the real `WorkOrderRecord`,
+ * not a formatted string. A quote has no site.
  *
  * Fetches, in one `Promise.all`:
- *  - the quote's own client + its sites (client for its own `RelationCard`,
- *    sites resolved against `quote.site_id` for the Site `RelationCard`, and
- *    the full list threaded into `QuoteRelationsDialog`'s own Client -> Site
- *    cascade);
+ *  - the quote's own client (for its own `RelationCard`);
  *  - this org's clients (`listClients`, issue #95 redesign — the relations
  *    dialog's Client `<Select>`, same list `quote-form.tsx` already uses);
  *  - the quote's line items (embedding each one's linked article — see
@@ -117,8 +113,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   ]);
 
   const client = clientResult.data?.client ?? null;
-  const sites = clientResult.data?.sites ?? [];
-  const site = quote.site_id ? (sites.find((candidate) => candidate.id === quote.site_id) ?? null) : null;
   const clients = clientsResult.data?.clients ?? [];
   const lineItems = lineItemsResult.data?.lineItems ?? [];
   const clientAssets = clientAssetsResult.data?.assets ?? [];
@@ -138,7 +132,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     <QuoteDetail
       quote={quote}
       client={client}
-      site={site}
       clients={clients}
       sourceWorkOrder={sourceWorkOrder}
       lineItems={lineItems}

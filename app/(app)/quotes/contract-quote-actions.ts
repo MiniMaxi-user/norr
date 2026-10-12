@@ -34,9 +34,8 @@ import {
  *    terms (per visit / one time) or no terms: end = contract end_date when
  *    set, else the start date itself (a one-off charge). The end is always
  *    capped at the contract's end_date.
- *  - Quote: quote_type 'contract', client = contract's client, site = the
- *    client's first `is_invoice_address` site (none otherwise), default
- *    (draft) status, name "<contract name> — <period>", no valid_until.
+ *  - Quote: quote_type 'contract', client = contract's client, no site,
+ *    default (draft) status, name "<contract name> — <period>", no valid_until.
  *  - Lines come from contract_line_items. Their prices are per billing PERIOD
  *    (contracts.billing_period_id) while billing TERMS is the invoicing
  *    frequency, so multiplier = terms.interval_months / period.interval_months
@@ -147,20 +146,6 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
     (existingData ?? []).map((q) => `${q.contract_id as string}|${q.contract_period_start as string}`),
   );
 
-  // Invoice-address site per client (first one wins), loaded in one query.
-  const clientIds = Array.from(new Set(contracts.map((c) => c.client_id)));
-  const { data: siteData, error: siteError } = await supabase
-    .from("sites")
-    .select("id, client_id")
-    .in("client_id", clientIds)
-    .eq("is_invoice_address", true)
-    .order("created_at", { ascending: true });
-  if (siteError) return fail(mapDbError(siteError));
-  const invoiceSiteByClient = new Map<string, string>();
-  for (const site of siteData ?? []) {
-    if (!invoiceSiteByClient.has(site.client_id as string)) invoiceSiteByClient.set(site.client_id as string, site.id as string);
-  }
-
   for (const contract of contracts) {
     const start = contract.next_invoice_date;
     if (existing.has(`${contract.id}|${start}`)) {
@@ -215,7 +200,6 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       .from("quotes")
       .insert({
         client_id: contract.client_id,
-        site_id: invoiceSiteByClient.get(contract.client_id) ?? null,
         name,
         notes,
         quote_type: "contract",

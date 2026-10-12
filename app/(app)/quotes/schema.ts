@@ -50,12 +50,6 @@ const optionalIsoDateSchema = z.preprocess(emptyToUndefined, requiredIsoDateSche
 
 export const quoteCreateSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
-  /** Nullable at the DB layer (`quotes.site_id`) — a quote may or may not be
-   * tied to one specific location. When set, must belong to `clientId`;
-   * that cross-field check is left entirely to the `validate_quote_relations`
-   * DB trigger (not re-validated here), same trust boundary
-   * `work_orders.siteId`/`contracts`' reference-list FKs use. */
-  siteId: optionalUuid("Invalid site."),
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   /** FK into this org's `quote_status` reference list. Optional on create —
    * the `derive_quote_organization_id` DB trigger fills in the org's default
