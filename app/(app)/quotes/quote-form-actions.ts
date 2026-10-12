@@ -24,7 +24,7 @@ function readField(formData: FormData, key: string): string | undefined {
 }
 
 /** Same as `readField`, but an empty string (a placeholder option left
- * selected, e.g. "No specific site"/"Use default (Draft)") is also treated
+ * selected, e.g. "Use default (Draft)") is also treated
  * as absent — needed for every optional field below whose `<Select>`/`<input>`
  * has a blank/placeholder state. */
 function readOptionalField(formData: FormData, key: string): string | undefined {
@@ -35,7 +35,6 @@ function readOptionalField(formData: FormData, key: string): string | undefined 
 function formDataToQuoteInput(formData: FormData) {
   return {
     clientId: readField(formData, "clientId"),
-    siteId: readOptionalField(formData, "siteId"),
     name: readField(formData, "name"),
     // Optional — the `derive_quote_organization_id` DB trigger fills in the
     // organization's default `quote_status` item ("Draft") when omitted,

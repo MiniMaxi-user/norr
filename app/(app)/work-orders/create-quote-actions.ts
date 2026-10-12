@@ -88,7 +88,6 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
 interface SourceWorkOrder {
   id: string;
   client_id: string;
-  site_id: string | null;
   contract_id: string | null;
   title: string;
 }
@@ -489,7 +488,6 @@ async function createBrandNewQuoteFromWorkOrder(
     .from("quotes")
     .insert({
       client_id: workOrder.client_id,
-      site_id: workOrder.site_id,
       work_order_id: workOrder.id,
       name: quoteName,
     })
@@ -553,7 +551,7 @@ export async function createQuoteFromWorkOrder(
 
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select("id, client_id, site_id, contract_id, title")
+    .select("id, client_id, contract_id, title")
     .eq("id", idResult.data)
     .maybeSingle<SourceWorkOrder>();
   if (workOrderError) return fail(mapDbError(workOrderError));

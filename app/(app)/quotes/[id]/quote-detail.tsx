@@ -6,6 +6,7 @@ import {
   Badge,
   Breadcrumbs,
   Card,
+  DetailColumns,
   IconButton,
   Input,
   Inline,
@@ -20,7 +21,7 @@ import {
 import { CalendarDays, FileText, Pencil } from "@yourorg/ui/icons";
 import { usePageHeader } from "@/components/shell/page-header-context";
 import { updateQuote, type QuoteRecord, type QuoteLineItemRecord } from "../actions";
-import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -37,7 +38,6 @@ import { QuoteLineItemsPanel } from "./quote-line-items-panel";
 export interface QuoteDetailProps {
   quote: QuoteRecord;
   client: ClientRecord | null;
-  site: SiteRecord | null;
   /** This org's clients — the relations dialog's Client `<Select>` source
    * (same list `quote-form.tsx` already uses). */
   clients: ClientRecord[];
@@ -74,11 +74,11 @@ export interface QuoteDetailProps {
 /**
  * Quote detail — moved onto Pattern A (`docs/ARCHITECTURE.md` "Two
  * detail-page header patterns"): a full-bleed `RecordHeroBand` (inline-
- * editable title, status badge, "Valid until …" meta), Client/Site
- * `RelationCard`s (+ an optional "Source" card when this quote traces back
- * to a work order, issue #109), a flat `SectionHeader`-led "Details" section
- * for the click-to-edit Valid-until field, an always-rendered editable Notes
- * `Card`, and `QuoteLineItemsPanel` as the dominant element — same shape
+ * editable title, status badge, "Valid until …" meta), a Client
+ * `RelationCard` (+ an optional "Source" card when this quote traces back
+ * to a work order, issue #109; a quote has no site), a "Details" card (the
+ * click-to-edit Valid-until field) beside an always-rendered editable Notes
+ * card via `DetailColumns`, and `QuoteLineItemsPanel` as the dominant element — same shape
  * `app/(app)/work-orders/components/work-order-hero.tsx`/`work-order-
  * screen.tsx` establish, scaled down (no assignee block, no `StatStrip` —
  * Quotes doesn't have Work Orders' Hours/Material/Checklist KPI content).
@@ -110,7 +110,6 @@ export interface QuoteDetailProps {
 export function QuoteDetail({
   quote,
   client,
-  site,
   clients,
   sourceWorkOrder,
   lineItems,
@@ -203,11 +202,8 @@ export function QuoteDetail({
     router.refresh();
   }
 
-  async function handleRelationsSave(patch: {
-    clientId: string;
-    siteId: string | null;
-  }): Promise<{ ok: boolean; error?: string }> {
-    const result = await updateQuote(quote.id, { clientId: patch.clientId, siteId: patch.siteId ?? "" });
+  async function handleRelationsSave(patch: { clientId: string }): Promise<{ ok: boolean; error?: string }> {
+    const result = await updateQuote(quote.id, { clientId: patch.clientId });
     if (!result.data) return { ok: false, error: result.error };
     router.refresh();
     return { ok: true };
@@ -254,6 +250,7 @@ export function QuoteDetail({
           </>
         }
         meta={meta}
+        noStats
         actions={
           <QuoteDetailActions
             quote={quote}
@@ -270,7 +267,6 @@ export function QuoteDetail({
 
       <QuoteRelationCards
         client={client}
-        site={site}
         sourceWorkOrder={sourceWorkOrder}
         contract={contract}
         contractPeriod={
@@ -282,17 +278,24 @@ export function QuoteDetail({
         onEdit={() => setRelationsOpen(true)}
       />
 
-      <Stack gap="sm">
-        <SectionHeader icon={CalendarDays} title="Details" />
-        <KeyValueList items={detailsItems} />
-      </Stack>
-
-      <Card>
-        <Stack gap="sm">
-          <SectionHeader icon={FileText} title="Notes" />
-          <NotesField value={notes} canEdit={canEdit} onSave={handleNotesSave} />
-        </Stack>
-      </Card>
+      <DetailColumns
+        left={
+          <Card>
+            <Stack gap="sm">
+              <SectionHeader icon={CalendarDays} title="Details" />
+              <KeyValueList items={detailsItems} />
+            </Stack>
+          </Card>
+        }
+        right={
+          <Card>
+            <Stack gap="sm">
+              <SectionHeader icon={FileText} title="Notes" />
+              <NotesField value={notes} canEdit={canEdit} onSave={handleNotesSave} />
+            </Stack>
+          </Card>
+        }
+      />
 
       <QuoteLineItemsPanel
         quoteId={quote.id}
@@ -310,7 +313,6 @@ export function QuoteDetail({
           open
           onOpenChange={setRelationsOpen}
           clientId={client?.id ?? quote.client_id}
-          siteId={quote.site_id}
           clients={clients}
           onSave={handleRelationsSave}
         />
