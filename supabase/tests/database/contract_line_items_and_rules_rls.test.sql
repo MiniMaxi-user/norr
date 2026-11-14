@@ -85,7 +85,7 @@ insert into public.memberships (user_id, organization_id, role) values
 insert into public.clients (id, organization_id, name) values
   ('d3000000-0000-0000-0000-00000000000a', 'd1000000-0000-0000-0000-00000000000a', 'Client A');
 
-insert into public.contracts (id, client_id, name, start_date)
+insert into public.contracts (id, client_id, external_reference, start_date)
 values ('d6000000-0000-0000-0000-00000000000a', 'd3000000-0000-0000-0000-00000000000a', 'Contract A', '2026-01-01');
 
 insert into public.article_groups (id, organization_id, name) values
@@ -135,7 +135,7 @@ select is(
 ); -- 1
 
 select lives_ok(
-  $$ insert into public.contracts (id, client_id, name, start_date, billing_period_id)
+  $$ insert into public.contracts (id, client_id, external_reference, start_date, billing_period_id)
      select 'd6000000-0000-0000-0000-00000000000b', 'd3000000-0000-0000-0000-00000000000a',
        'Contract B', '2026-01-01', rli.id
      from public.reference_list_items rli
@@ -154,7 +154,7 @@ select is(
 ); -- 3
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, billing_period_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, billing_period_id)
      select 'd3000000-0000-0000-0000-00000000000a', 'Wrong List Period', '2026-01-01', rli.id
      from public.reference_list_items rli
      join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -166,7 +166,7 @@ select throws_ok(
 ); -- 4
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, billing_period_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, billing_period_id)
      select 'd3000000-0000-0000-0000-00000000000a', 'Cross Org Period', '2026-01-01', val
      from pg_temp.captured_ids where key = 'org_b_billing_period_monthly_id' $$,
   '23514',

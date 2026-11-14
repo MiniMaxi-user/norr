@@ -14,7 +14,7 @@ import type { ContractRecord } from "../actions";
  */
 export interface ContractDraft {
   clientId: string;
-  name: string;
+  externalReference: string;
   typeId: string;
   slaTierId: string;
   billingTermsId: string;
@@ -29,7 +29,7 @@ export interface ContractDraft {
 export function draftFromContract(contract: ContractRecord): ContractDraft {
   return {
     clientId: contract.client_id,
-    name: contract.name,
+    externalReference: contract.external_reference ?? "",
     typeId: contract.type_id,
     slaTierId: contract.sla_tier_id ?? "",
     billingTermsId: contract.billing_terms_id ?? "",
@@ -49,7 +49,7 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
 export function draftToInput(patch: Partial<ContractDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
-  if (patch.name !== undefined) input.name = patch.name;
+  if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
   if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
   if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId || undefined;
   if (patch.billingTermsId !== undefined) input.billingTermsId = patch.billingTermsId || undefined;

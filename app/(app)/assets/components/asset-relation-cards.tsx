@@ -10,6 +10,7 @@ import type { AssetModelRecord } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { formatDate } from "@/lib/format/date";
+import { contractLabel } from "@/lib/format/contract-label";
 import { resolveRelation } from "@/lib/relation-cards/resolve-relation";
 import type { AssetDraft } from "./asset-draft";
 
@@ -154,7 +155,7 @@ export function AssetRelationCards({
         icon={FileText}
         label="Contract"
         loading={mode === "edit" && assetContracts.loading}
-        title={firstContract ? <Link href={`/contracts/${firstContract.id}`}>{firstContract.name}</Link> : undefined}
+        title={firstContract ? <Link href={`/contracts/${firstContract.id}`}>{contractLabel(firstContract)}</Link> : undefined}
         subtitle={contractSubtitle || undefined}
         emptyText={mode === "create" ? "Save the asset first" : "No contract"}
         onEdit={readOnly || mode === "create" ? undefined : onEditContract}

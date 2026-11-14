@@ -95,7 +95,7 @@ where rl.organization_id = 'e1000000-0000-0000-0000-00000000000a' and rl.list_ke
 
 -- A second contract, under client_a2, used only for the
 -- work_orders.contract_id cross-client check in section 8.
-insert into public.contracts (id, client_id, name, start_date)
+insert into public.contracts (id, client_id, external_reference, start_date)
 values ('e6000000-0000-0000-0000-00000000000c', 'e3000000-0000-0000-0000-00000000000b', 'Client A2 Contract', '2026-01-01');
 
 select pg_temp.act_as('e2666666-6666-6666-6666-666666666666');
@@ -136,7 +136,7 @@ where rl.organization_id = 'e1000000-0000-0000-0000-00000000000b'
 select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.contracts (id, client_id, name, start_date)
+  $$ insert into public.contracts (id, client_id, external_reference, start_date)
      values ('e6000000-0000-0000-0000-00000000000a', 'e3000000-0000-0000-0000-00000000000a',
        'HVAC Maintenance Agreement', '2026-01-01') $$,
   'owner_a can insert a contract under client A (org_a), type_id omitted'
@@ -163,7 +163,7 @@ select is(
 ); -- 4
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, organization_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, organization_id)
      values ('e3000000-0000-0000-0000-00000000000a', 'Spoofed', '2026-01-01', 'e1000000-0000-0000-0000-00000000000a') $$,
   '42501',
   null,
@@ -171,7 +171,7 @@ select throws_ok(
 ); -- 5
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, created_by)
+  $$ insert into public.contracts (client_id, external_reference, start_date, created_by)
      values ('e3000000-0000-0000-0000-00000000000a', 'Spoofed', '2026-01-01', '00000000-0000-0000-0000-000000000000') $$,
   '42501',
   null,
@@ -179,7 +179,7 @@ select throws_ok(
 ); -- 6
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, end_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date, end_date)
      values ('e3000000-0000-0000-0000-00000000000a', 'Backwards Dates', '2026-06-01', '2026-01-01') $$,
   '23514',
   null,
@@ -187,7 +187,7 @@ select throws_ok(
 ); -- 7
 
 select lives_ok(
-  $$ insert into public.contracts (id, client_id, name, start_date, end_date, type_id, sla_tier_id, billing_terms_id)
+  $$ insert into public.contracts (id, client_id, external_reference, start_date, end_date, type_id, sla_tier_id, billing_terms_id)
      select 'e6000000-0000-0000-0000-00000000000b', 'e3000000-0000-0000-0000-00000000000a',
        'Express Service Plan', '2026-02-01', '2027-02-01',
        type_item.id, sla_item.id, billing_item.id
@@ -214,7 +214,7 @@ select is(
 ); -- 9
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, type_id, sla_tier_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, type_id, sla_tier_id)
      select 'e3000000-0000-0000-0000-00000000000a', 'Mismatched Tier', '2026-01-01',
        type_item.id, sla_item.id
      from public.reference_list_items type_item
@@ -231,7 +231,7 @@ select throws_ok(
 ); -- 10
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, sla_tier_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, sla_tier_id)
      select 'e3000000-0000-0000-0000-00000000000a', 'Wrong List Tier', '2026-01-01', rli.id
      from public.reference_list_items rli
      join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -243,7 +243,7 @@ select throws_ok(
 ); -- 11
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, billing_terms_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, billing_terms_id)
      select 'e3000000-0000-0000-0000-00000000000a', 'Wrong List Billing', '2026-01-01', rli.id
      from public.reference_list_items rli
      join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -255,7 +255,7 @@ select throws_ok(
 ); -- 12
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, type_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, type_id)
      select 'e3000000-0000-0000-0000-00000000000a', 'Cross Org Type', '2026-01-01', val
      from pg_temp.captured_ids where key = 'org_b_contract_type_maintenance_id' $$,
   '23514',
@@ -264,7 +264,7 @@ select throws_ok(
 ); -- 13
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, sla_tier_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, sla_tier_id)
      select 'e3000000-0000-0000-0000-00000000000a', 'Cross Org SLA Tier', '2026-01-01', val
      from pg_temp.captured_ids where key = 'org_b_sla_tier_maintenance_standard_id' $$,
   '23514',
@@ -284,17 +284,17 @@ select is(
 ); -- 15
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date)
      values ('e3000000-0000-0000-0000-00000000000a', 'Planner Attempt', '2026-01-01') $$,
   '42501',
   null,
   'planner_a cannot INSERT a contract (RBAC matrix: planner is read-only on contracts)'
 ); -- 16
 
-update public.contracts set name = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
+update public.contracts set external_reference = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
 
 select is(
-  (select name from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
+  (select external_reference from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
   'HVAC Maintenance Agreement',
   'planner_a''s UPDATE is silently excluded by RLS (read-only); name unchanged'
 ); -- 17
@@ -319,17 +319,17 @@ select is(
 ); -- 19
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date)
      values ('e3000000-0000-0000-0000-00000000000a', 'Engineer Attempt', '2026-01-01') $$,
   '42501',
   null,
   'engineer_a cannot INSERT a contract (RBAC matrix: engineer is read-only on contracts)'
 ); -- 20
 
-update public.contracts set name = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
+update public.contracts set external_reference = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
 
 select is(
-  (select name from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
+  (select external_reference from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
   'HVAC Maintenance Agreement',
   'engineer_a''s UPDATE is silently excluded by RLS (read-only); name unchanged'
 ); -- 21
@@ -354,17 +354,17 @@ select is(
 ); -- 23
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date)
      values ('e3000000-0000-0000-0000-00000000000a', 'Administratie Attempt', '2026-01-01') $$,
   '42501',
   null,
   'administratie_a cannot INSERT a contract (RBAC matrix: administratie is read-only on contracts)'
 ); -- 24
 
-update public.contracts set name = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
+update public.contracts set external_reference = 'Hijacked' where id = 'e6000000-0000-0000-0000-00000000000a';
 
 select is(
-  (select name from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
+  (select external_reference from public.contracts where id = 'e6000000-0000-0000-0000-00000000000a'),
   'HVAC Maintenance Agreement',
   'administratie_a''s UPDATE is silently excluded by RLS (read-only); name unchanged'
 ); -- 25
@@ -384,18 +384,18 @@ select is(
 select pg_temp.act_as('e2444444-4444-4444-4444-444444444444');
 
 select lives_ok(
-  $$ insert into public.contracts (id, client_id, name, start_date)
+  $$ insert into public.contracts (id, client_id, external_reference, start_date)
      values ('e6000000-0000-0000-0000-00000000000d', 'e3000000-0000-0000-0000-00000000000a', 'Disposable', '2026-01-01') $$,
   'finance_a can insert a contract in org_a'
 ); -- 27
 
 select lives_ok(
-  $$ update public.contracts set name = 'Renamed by Finance' where id = 'e6000000-0000-0000-0000-00000000000d' $$,
+  $$ update public.contracts set external_reference = 'Renamed by Finance' where id = 'e6000000-0000-0000-0000-00000000000d' $$,
   'finance_a can update any contract in org_a, not just their own'
 ); -- 28
 
 select is(
-  (select name from public.contracts where id = 'e6000000-0000-0000-0000-00000000000d'),
+  (select external_reference from public.contracts where id = 'e6000000-0000-0000-0000-00000000000d'),
   'Renamed by Finance',
   'finance_a''s update took effect'
 ); -- 29
@@ -422,11 +422,11 @@ select is(
 -- ---------------------------------------------------------------------------
 select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
 
-insert into public.contracts (id, client_id, name, start_date)
+insert into public.contracts (id, client_id, external_reference, start_date)
 values ('e6000000-0000-0000-0000-00000000000e', 'e3000000-0000-0000-0000-00000000000a', 'Owner Disposable', '2026-01-01');
 
 select lives_ok(
-  $$ update public.contracts set name = 'Owner Disposable Renamed' where id = 'e6000000-0000-0000-0000-00000000000e' $$,
+  $$ update public.contracts set external_reference = 'Owner Disposable Renamed' where id = 'e6000000-0000-0000-0000-00000000000e' $$,
   'owner_a can directly update a contract in org_a'
 ); -- 32
 
@@ -447,7 +447,7 @@ select is(
 ); -- 34
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date)
      values ('e3000000-0000-0000-0000-00000000000a', 'Hostile Cross Org Insert', '2026-01-01') $$,
   '42501',
   null,

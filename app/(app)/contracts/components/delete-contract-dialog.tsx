@@ -29,7 +29,7 @@ export function DeleteContractDialog({ contract, open, onOpenChange, redirectOnD
       title="Delete contract"
       fallbackMessage={
         <>
-          Are you sure you want to delete <strong>{contract.name}</strong>? This also removes its linked assets.
+          Are you sure you want to delete <strong>{contract.contract_number}</strong>? This also removes its linked assets.
           This cannot be undone.
         </>
       }

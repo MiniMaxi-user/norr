@@ -63,7 +63,10 @@ export interface ContractRecord {
   id: string;
   organization_id: string;
   client_id: string;
-  name: string;
+  /** System-assigned (issue #216), immutable; never sent on insert/update. */
+  contract_number: string;
+  /** Optional free-text reference (formerly `name`). */
+  external_reference: string | null;
   type_id: string;
   sla_tier_id: string | null;
   billing_terms_id: string | null;
@@ -193,7 +196,7 @@ const uuidSchema = z.string().uuid("Invalid id.");
 function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse>) {
   const row: Record<string, unknown> = {
     client_id: input.clientId,
-    name: input.name,
+    external_reference: input.externalReference ?? null,
     sla_tier_id: input.slaTierId ?? null,
     billing_terms_id: input.billingTermsId ?? null,
     billing_period_id: input.billingPeriodId ?? null,
@@ -219,7 +222,7 @@ function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse
 function toContractUpdateRow(input: ReturnType<typeof contractUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
   if (input.clientId !== undefined) row.client_id = input.clientId;
-  if (input.name !== undefined) row.name = input.name;
+  if (input.externalReference !== undefined) row.external_reference = input.externalReference;
   if (input.typeId !== undefined) row.type_id = input.typeId;
   if (input.slaTierId !== undefined) row.sla_tier_id = input.slaTierId ?? null;
   if (input.billingTermsId !== undefined) row.billing_terms_id = input.billingTermsId ?? null;

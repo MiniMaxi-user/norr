@@ -153,11 +153,11 @@ export interface WorkOrderRecord {
    * reasoning as `work_order_status`/`work_order_priority` above. `null`
    * whenever `type_id` is `null` (no type set). */
   work_order_type: ResolvedReferenceItem | null;
-  /** Embedded via `contracts(id, name)` (issue #33) — a plain FK embed (not
+  /** Embedded via `contracts(id, contract_number, external_reference)` (issue #33) — a plain FK embed (not
    * `reference_list_items`, so no `!fkey` disambiguator is needed: `contract_id`
    * is the only FK from `work_orders` into `contracts`). `null` whenever
    * `contract_id` is `null` (no contract linked). */
-  contract: { id: string; name: string } | null;
+  contract: { id: string; contract_number: string; external_reference: string | null } | null;
   /** Embedded via `assets!work_orders_asset_id_fkey(...)`, with a nested
    * `asset_model:asset_models!assets_model_id_fkey(...)` embed — same
    * two-level pattern `ASSET_SELECT` in `app/(app)/assets/actions.ts` already
@@ -172,11 +172,11 @@ export interface WorkOrderRecord {
 
 /** Shared select shape for every query returning a `WorkOrderRecord`, so the
  * frontend gets the resolved status/priority value/label/color, plus the
- * linked contract's name, in one round trip instead of N+1-ing a lookup per
+ * linked contract's number/external reference, in one round trip instead of N+1-ing a lookup per
  * row per column — same reasoning as `ASSET_SELECT` in
  * `app/(app)/assets/actions.ts`. */
 const WORK_ORDER_SELECT =
-  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, name), asset:assets!work_orders_asset_id_fkey(id, name, asset_model:asset_models!assets_model_id_fkey(name))";
+  "*, work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), contract:contracts(id, contract_number, external_reference), asset:assets!work_orders_asset_id_fkey(id, name, asset_model:asset_models!assets_model_id_fkey(name))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 /** Same shape as `optionalIsoDateTime` in `./schema.ts` (offset-aware ISO

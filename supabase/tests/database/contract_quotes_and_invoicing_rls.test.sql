@@ -47,7 +47,7 @@ as $$
     and rl.list_key = 'billing_terms' and rli.value = 'monthly'
 $$;
 
-insert into public.contracts (id, client_id, name, start_date, billing_terms_id) values
+insert into public.contracts (id, client_id, external_reference, start_date, billing_terms_id) values
   ('d6000000-0000-0000-0000-000000000001', 'd3000000-0000-0000-0000-00000000000a', 'Contract A1', '2026-01-15', pg_temp.monthly_id()),
   ('d6000000-0000-0000-0000-000000000002', 'd3000000-0000-0000-0000-00000000000c', 'Contract A2 (other client)', '2026-01-15', pg_temp.monthly_id());
 
@@ -58,7 +58,7 @@ insert into public.memberships (user_id, organization_id, role)
 values ('d1444444-4444-4444-4444-444444444444', 'd2000000-0000-0000-0000-00000000000b', 'owner');
 insert into public.clients (id, organization_id, name)
 values ('d3000000-0000-0000-0000-00000000000b', 'd2000000-0000-0000-0000-00000000000b', 'Client CQ B');
-insert into public.contracts (id, client_id, name, start_date)
+insert into public.contracts (id, client_id, external_reference, start_date)
 values ('d6000000-0000-0000-0000-00000000000b', 'd3000000-0000-0000-0000-00000000000b', 'Contract B', '2026-01-01');
 
 -- ---------------------------------------------------------------------------

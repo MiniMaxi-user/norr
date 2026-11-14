@@ -52,7 +52,7 @@ select is(
 
 -- Insert: next_invoice_date = start_date (no billing terms).
 select lives_ok(
-  $$ insert into public.contracts (id, client_id, name, start_date)
+  $$ insert into public.contracts (id, client_id, external_reference, start_date)
      values ('f6000000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-00000000000a', 'No terms', '2026-01-31') $$,
   'insert contract without billing terms'
 );
@@ -64,7 +64,7 @@ select is(
 
 -- Quarterly contract.
 select lives_ok(
-  format($$ insert into public.contracts (id, client_id, name, start_date, billing_terms_id)
+  format($$ insert into public.contracts (id, client_id, external_reference, start_date, billing_terms_id)
      values ('f6000000-0000-0000-0000-000000000002', 'f3000000-0000-0000-0000-00000000000a', 'Quarterly', '2026-01-15', %L) $$,
      pg_temp.terms_id('quarterly')),
   'insert quarterly contract'
@@ -85,12 +85,12 @@ select throws_ok(
   '42501', null, 'authenticated cannot update invoiced_period_count'
 );
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, invoiced_period_count)
+  $$ insert into public.contracts (client_id, external_reference, start_date, invoiced_period_count)
      values ('f3000000-0000-0000-0000-00000000000a', 'Hostile', '2026-01-01', 3) $$,
   '42501', null, 'authenticated cannot insert invoiced_period_count'
 );
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, next_invoice_date)
+  $$ insert into public.contracts (client_id, external_reference, start_date, next_invoice_date)
      values ('f3000000-0000-0000-0000-00000000000a', 'Hostile', '2026-01-01', '2027-01-01') $$,
   '42501', null, 'authenticated cannot insert next_invoice_date'
 );
@@ -113,7 +113,7 @@ select is(
 );
 
 -- one_time with count 1 -> null; with count 0 -> start_date.
-insert into public.contracts (id, organization_id, client_id, name, start_date, billing_terms_id)
+insert into public.contracts (id, organization_id, client_id, external_reference, start_date, billing_terms_id)
 values ('f6000000-0000-0000-0000-000000000003', 'f1000000-0000-0000-0000-00000000000a',
   'f3000000-0000-0000-0000-00000000000a', 'One time', '2026-03-01', pg_temp.terms_id('one_time'));
 select is(

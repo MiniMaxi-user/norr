@@ -4,6 +4,7 @@ import { Label, Select, Stack } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { contractLabel } from "@/lib/format/contract-label";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 
 export interface RelationFieldsScoped {
@@ -152,7 +153,7 @@ export function WorkOrderRelationFields({
           </option>
           {clientScoped.contracts.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
-              {candidate.name}
+              {contractLabel(candidate)}
             </option>
           ))}
         </Select>

@@ -35,7 +35,7 @@ import {
  *    set, else the start date itself (a one-off charge). The end is always
  *    capped at the contract's end_date.
  *  - Quote: quote_type 'contract', client = contract's client, no site,
- *    default (draft) status, name "<contract name> — <period>", no valid_until.
+ *    default (draft) status, name "<contract number> — <period>", no valid_until.
  *  - Lines come from contract_line_items. Their prices are per billing PERIOD
  *    (contracts.billing_period_id) while billing TERMS is the invoicing
  *    frequency, so multiplier = terms.interval_months / period.interval_months
@@ -54,7 +54,7 @@ import {
 export interface GenerateContractQuotesResult {
   created: number;
   skipped: number;
-  errors: { contractId: string; contractName: string; error: string }[];
+  errors: { contractId: string; contractNumber: string; error: string }[];
 }
 
 const BILLING_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, annually: 12 };
@@ -62,7 +62,8 @@ const BILLING_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3
 interface ContractRow {
   id: string;
   client_id: string;
-  name: string;
+  contract_number: string;
+  external_reference: string | null;
   start_date: string;
   end_date: string | null;
   next_invoice_date: string;
@@ -91,7 +92,7 @@ interface ContractRow {
 }
 
 const CONTRACT_SELECT =
-  "id, client_id, name, start_date, end_date, next_invoice_date, invoiced_period_count," +
+  "id, client_id, contract_number, external_reference, start_date, end_date, next_invoice_date, invoiced_period_count," +
   " contract_type:reference_list_items!contracts_type_id_fkey(label)," +
   " billing_terms:reference_list_items!contracts_billing_terms_id_fkey(label,interval_months)," +
   " billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,interval_months)," +
@@ -180,7 +181,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       }));
 
     const notes = [
-      `Contract: ${contract.name}`,
+      `Contract: ${contract.contract_number}${contract.external_reference ? ` — ${contract.external_reference}` : ""}`,
       contract.contract_type ? `Type: ${contract.contract_type.label}` : null,
       contract.billing_terms ? `Billing terms: ${contract.billing_terms.label}` : null,
       contract.billing_period ? `Billing period: ${contract.billing_period.label}` : null,
@@ -194,7 +195,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       .join("\n")
       .trim();
 
-    const name = `${contract.name} — ${periodLabel}`.slice(0, 200);
+    const name = `${contract.contract_number} — ${periodLabel}`.slice(0, 200);
 
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")
@@ -214,7 +215,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       if (quoteError.code === "23505") {
         result.skipped += 1;
       } else {
-        result.errors.push({ contractId: contract.id, contractName: contract.name, error: mapDbError(quoteError) });
+        result.errors.push({ contractId: contract.id, contractNumber: contract.contract_number, error: mapDbError(quoteError) });
       }
       continue;
     }
@@ -240,7 +241,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       if (linesError) {
         // Roll back the half-built quote so the next run can retry cleanly.
         await supabase.from("quotes").delete().eq("id", quote.id);
-        result.errors.push({ contractId: contract.id, contractName: contract.name, error: mapDbError(linesError) });
+        result.errors.push({ contractId: contract.id, contractNumber: contract.contract_number, error: mapDbError(linesError) });
         continue;
       }
     }

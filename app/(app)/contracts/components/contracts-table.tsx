@@ -34,7 +34,8 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
     if (!q) return contracts;
     return contracts.filter((contract) =>
       [
-        contract.name,
+        contract.contract_number,
+        contract.external_reference,
         clientNameById.get(contract.client_id),
         contract.contract_type?.label,
         contract.sla_tier?.label,
@@ -52,7 +53,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
       <Stack gap="md">
         <Input
           aria-label="Search contracts on this page"
-          placeholder="Search by name, client, type, SLA tier…"
+          placeholder="Search by number, client, type, SLA tier…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -60,7 +61,7 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
         <Table stickyHeader maxHeight="65vh">
           <Table.Head>
             <Table.Row>
-              <Table.HeaderCell>Name</Table.HeaderCell>
+              <Table.HeaderCell>Number</Table.HeaderCell>
               <Table.HeaderCell>Client</Table.HeaderCell>
               <Table.HeaderCell align="center">Type</Table.HeaderCell>
               <Table.HeaderCell align="center">SLA Tier</Table.HeaderCell>
@@ -75,7 +76,10 @@ export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }
           <Table.Body>
             {filtered.map((contract) => (
               <Table.Row key={contract.id} onClick={() => router.push(`/contracts/${contract.id}`)}>
-                <Table.Cell>{contract.name}</Table.Cell>
+                <Table.Cell>
+                  {contract.contract_number}
+                  {contract.external_reference && <Text tone="muted">{contract.external_reference}</Text>}
+                </Table.Cell>
                 <Table.Cell>{clientNameById.get(contract.client_id) ?? "—"}</Table.Cell>
                 <Table.Cell align="center">
                   <Badge color={contract.contract_type?.color} variant="muted">

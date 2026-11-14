@@ -56,7 +56,8 @@ export interface WorkOrderDetailAsset {
 
 export interface WorkOrderDetailContract {
   id: string;
-  name: string;
+  contractNumber: string;
+  externalReference: string | null;
   type: string | null;
   startDate: string;
   endDate: string | null;

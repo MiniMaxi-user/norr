@@ -92,6 +92,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // under Contracts (its actual usage domain) rather than Articles, even
       // though it's a *dependent* list on article_unit under the hood.
       { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume" },
+      // Issue #216 - per-tenant contract number prefix + next number.
+      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering" },
     ],
   },
   {

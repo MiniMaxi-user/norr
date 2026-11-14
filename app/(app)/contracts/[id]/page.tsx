@@ -111,7 +111,7 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
   const canUpdate = can(actor, "contracts", "update");
   const canDelete = can(actor, "contracts", "delete");
 
-  const breadcrumbItems = [{ label: "Contracts", href: "/contracts" }, { label: contract.name }];
+  const breadcrumbItems = [{ label: "Contracts", href: "/contracts" }, { label: contract.contract_number }];
 
   return (
     <ContractScreen

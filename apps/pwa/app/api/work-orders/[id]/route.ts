@@ -69,7 +69,8 @@ interface WorkOrderDetailRow {
   } | null;
   contract: {
     id: string;
-    name: string;
+    contract_number: string;
+    external_reference: string | null;
     start_date: string;
     end_date: string | null;
     contract_type: { label: string } | null;
@@ -88,7 +89,7 @@ const WORK_ORDER_DETAIL_SELECT = `
     asset_model:asset_models!assets_model_id_fkey(name)
   ),
   contract:contracts(
-    id, name, start_date, end_date,
+    id, contract_number, external_reference, start_date, end_date,
     contract_type:reference_list_items!contracts_type_id_fkey(label)
   )
 `;
@@ -263,7 +264,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     contract: row.contract
       ? {
           id: row.contract.id,
-          name: row.contract.name,
+          contractNumber: row.contract.contract_number,
+          externalReference: row.contract.external_reference,
           type: row.contract.contract_type?.label ?? null,
           startDate: row.contract.start_date,
           endDate: row.contract.end_date,

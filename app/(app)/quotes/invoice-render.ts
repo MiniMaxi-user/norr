@@ -235,7 +235,8 @@ export async function renderInvoicePdfForQuote(
   const { data: quoteRow, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, client_id, site_id, name, notes, work_order_id," +
+      "id, client_id, site_id, name, notes, work_order_id, quote_type," +
+        " contract:contracts(contract_number, external_reference)," +
         " client:clients!quotes_client_id_fkey(id,name,vat_number)," +
         " work_order:work_orders!quotes_work_order_id_fkey(id,title)",
     )
@@ -247,6 +248,8 @@ export async function renderInvoicePdfForQuote(
       name: string;
       notes: string | null;
       work_order_id: string | null;
+      quote_type: string;
+      contract: { contract_number: string; external_reference: string | null } | null;
       client: { id: string; name: string; vat_number: string | null } | null;
       work_order: { id: string; title: string } | null;
     }>();
@@ -300,7 +303,13 @@ export async function renderInvoicePdfForQuote(
     invoiceNumber: invoiceRow.invoice_number,
     invoiceDateLabel,
     dueDateLabel,
-    reference: quoteRow.name,
+    // Contract quotes (issue #216): "Contract CON100 — <external reference>"
+    // (external reference only when set); other quotes keep the quote name.
+    reference: quoteRow.quote_type === "contract" && quoteRow.contract
+      ? `Contract ${quoteRow.contract.contract_number}${
+          quoteRow.contract.external_reference ? ` — ${quoteRow.contract.external_reference}` : ""
+        }`
+      : quoteRow.name,
     workOrderReference: quoteRow.work_order?.title ?? null,
     notes: quoteRow.notes,
     sender: {

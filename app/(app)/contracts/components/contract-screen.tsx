@@ -85,11 +85,11 @@ export interface ContractScreenProps {
  * Notes) via `DetailColumns ratio="rail"`.
  *
  * There is no `/contracts/new` create form anymore — `CreateContractButton`
- * (`create-contract-button.tsx`) creates a bare contract (name "New
- * contract", today's start date) immediately and navigates straight here;
+ * (`create-contract-button.tsx`) creates a bare contract (today's start date) immediately and navigates straight here;
  * every field is then edited inline on this screen exactly like any other
- * existing contract. `ContractDetailsSection` doesn't exist: Name edits via
- * the hero title input (same pattern as work orders), Type lives in
+ * existing contract. `ContractDetailsSection` doesn't exist: the hero title is the read-only,
+ * system-assigned contract number, External reference edits in
+ * `ContractTermsSection`, Type lives in
  * `ContractTermsSection`, and Client lives in the rail's own `RelationCard`
  * — its pencil opens `ContractClientDialog` (`./contract-client-dialog.tsx`,
  * a small re-pick popup, mirroring `WorkOrderRelationsDialog`'s own
@@ -150,17 +150,6 @@ export function ContractScreen({
     return { ok: true };
   }
 
-  function handleNameChange(value: string) {
-    setDraft((prev) => ({ ...prev, name: value }));
-  }
-
-  function handleNameBlur(value: string) {
-    const trimmed = value.trim();
-    if (trimmed && trimmed !== contract.name) {
-      void commitPatch({ name: trimmed });
-    }
-  }
-
   // The Client relation card (in the rail below) resolves "just-picked-
   // locally vs. already-persisted" via the shared `resolveRelation` (issue
   // #130) — same helper `WorkOrderRelationCards` uses for its own cards.
@@ -209,6 +198,9 @@ export function ContractScreen({
       )}
     </span>,
   ];
+  if (contract.external_reference) {
+    meta.push(<span key="external-reference">{contract.external_reference}</span>);
+  }
   if (resolvedClient) {
     meta.push(
       <>
@@ -271,20 +263,7 @@ export function ContractScreen({
   return (
     <Stack gap="lg">
       <RecordHeroBand
-        title={
-          readOnly ? (
-            <h1 className="ui-record-hero-band-title">{draft.name || "—"}</h1>
-          ) : (
-            <input
-              className="ui-record-hero-band-title-input"
-              value={draft.name}
-              placeholder="Untitled contract — click to name it"
-              aria-label="Contract name"
-              onChange={(event) => handleNameChange(event.target.value)}
-              onBlur={(event) => handleNameBlur(event.target.value)}
-            />
-          )
-        }
+        title={<h1 className="ui-record-hero-band-title">{contract.contract_number}</h1>}
         meta={meta}
         actions={heroActions}
         stats={<StatStrip items={stats} />}

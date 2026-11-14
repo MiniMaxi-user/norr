@@ -9,6 +9,7 @@ import type { ActivityRecord } from "../actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import type { ContactRecord } from "@/app/(app)/clients/contacts-actions";
+import { contractLabel } from "@/lib/format/contract-label";
 import type { AssetContractCoverage, ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDate, formatDurationSince } from "@/lib/format/date";
@@ -241,7 +242,7 @@ export function ActivityHero({
           icon={FileText}
           label="Contract"
           loading={contractLoading}
-          title={resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{resolvedContract.name}</Link> : undefined}
+          title={resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{contractLabel(resolvedContract)}</Link> : undefined}
           subtitle={contractSubtitle}
           emptyText="No contract"
         />

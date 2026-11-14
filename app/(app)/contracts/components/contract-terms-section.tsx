@@ -9,6 +9,7 @@ import {
   EditableSection,
   FormGrid,
   Inline,
+  Input,
   KeyValueList,
   Label,
   Select,
@@ -21,7 +22,7 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { ContractDraft } from "./contract-draft";
 
 export interface ContractTermsSectionProps {
-  draft: Pick<ContractDraft, "typeId" | "slaTierId" | "autoRenew">;
+  draft: Pick<ContractDraft, "externalReference" | "typeId" | "slaTierId" | "autoRenew">;
   /** The read view's Type/SLA Tier/Billing terms/Billing period badges
    * source their label/color straight from this already-resolved record. */
   contract: ContractRecord;
@@ -36,7 +37,7 @@ export interface ContractTermsSectionProps {
   readOnly?: boolean;
   loadingOptions?: boolean;
   onSave: (
-    patch: Pick<ContractDraft, "typeId" | "slaTierId" | "autoRenew">,
+    patch: Pick<ContractDraft, "externalReference" | "typeId" | "slaTierId" | "autoRenew">,
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -70,6 +71,7 @@ export function ContractTermsSection({
   loadingOptions,
   onSave,
 }: ContractTermsSectionProps) {
+  const [externalReference, setExternalReference] = useState(draft.externalReference);
   const [typeId, setTypeId] = useState(draft.typeId);
   const [slaTierId, setSlaTierId] = useState(draft.slaTierId);
   const [autoRenew, setAutoRenew] = useState(draft.autoRenew);
@@ -78,6 +80,7 @@ export function ContractTermsSection({
 
   useEffect(() => {
     if (!editing) return;
+    setExternalReference(draft.externalReference);
     setTypeId(draft.typeId);
     setSlaTierId(draft.slaTierId);
     setAutoRenew(draft.autoRenew);
@@ -98,6 +101,7 @@ export function ContractTermsSection({
   }
 
   function handleCancel() {
+    setExternalReference(draft.externalReference);
     setTypeId(draft.typeId);
     setSlaTierId(draft.slaTierId);
     setAutoRenew(draft.autoRenew);
@@ -108,7 +112,7 @@ export function ContractTermsSection({
   async function handleSave() {
     setError(null);
     setSaving(true);
-    const result = await onSave({ typeId, slaTierId, autoRenew });
+    const result = await onSave({ externalReference: externalReference.trim(), typeId, slaTierId, autoRenew });
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? "Could not save.");
@@ -127,6 +131,16 @@ export function ContractTermsSection({
       editContent={
         <Stack gap="md">
           {error && <Text tone="danger">{error}</Text>}
+          <Stack gap="xs">
+            <Label htmlFor="contract-terms-external-reference">External reference</Label>
+            <Input
+              id="contract-terms-external-reference"
+              value={externalReference}
+              maxLength={200}
+              onChange={(event) => setExternalReference(event.target.value)}
+            />
+            <Text tone="muted">Shown on invoices so the recipient knows what it&apos;s about</Text>
+          </Stack>
           <Stack gap="xs">
             <Label htmlFor="contract-terms-type">Type</Label>
             <Select
@@ -184,6 +198,11 @@ export function ContractTermsSection({
     >
       <KeyValueList
         items={[
+          {
+            key: "external-reference",
+            label: "External reference",
+            value: contract?.external_reference || "—",
+          },
           {
             key: "type",
             label: "Type",

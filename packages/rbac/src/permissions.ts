@@ -60,6 +60,7 @@ export type Module =
   | "dashboard"
   | "billing"
   | "settings"
+  | "contract_numbering"
   | "platform";
 
 /**
@@ -331,6 +332,19 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Contract numbering settings (issue #216): prefix + next number for the
+  // per-tenant contract number sequence. Own key (not `settings`, where
+  // administratie is read-only, and not `contracts`, where finance has CRUD)
+  // because the DB RPCs get/update_contract_numbering_settings
+  // (20261013090000_contract_numbering.sql) allow exactly owner +
+  // administratie for both read and write. `update` = change prefix/next number.
+  contract_numbering: {
+    owner: READ_UPDATE,
+    planner: NONE,
+    engineer: NONE,
+    finance: NONE,
+    administratie: READ_UPDATE,
+  },
   // Platform (issue #45): Platform Admin's own cross-tenant settings area
   // (app/(app)/platform-settings/page.tsx) — never a tenant-role concern
   // (docs/ARCHITECTURE.md / CLAUDE.md: `is_platform_admin` is a separate,
@@ -398,6 +412,8 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // cross-tenant Platform Admin concern (no "Read (support only)" carve-out
   // documented for it the way Clients has) — NONE, same shape as `planning`.
   settings: NONE,
+  // Contract numbering (issue #216): tenant-only admin setting, same NONE shape as `settings`.
+  contract_numbering: NONE,
   // Platform (issue #45): the only module Platform Admin gets on its own
   // account, matching `app/(app)/platform-settings/page.tsx`'s gate
   // (`canAccessModule(actor, "platform")`). Read-only per this file's own

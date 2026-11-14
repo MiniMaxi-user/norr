@@ -5,6 +5,7 @@ import { FormGrid, RelationCard } from "@yourorg/ui";
 import { Building2, ClipboardList, FileText } from "@yourorg/ui/icons";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
+import { contractLabel } from "@/lib/format/contract-label";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 
 export interface QuoteRelationCardsProps {
@@ -70,7 +71,7 @@ export function QuoteRelationCards({
         <RelationCard
           icon={FileText}
           label="Contract"
-          title={<Link href={`/contracts/${contract.id}`}>{contract.name}</Link>}
+          title={<Link href={`/contracts/${contract.id}`}>{contractLabel(contract)}</Link>}
           subtitle={contractPeriod ? `Period ${contractPeriod}` : undefined}
         />
       )}

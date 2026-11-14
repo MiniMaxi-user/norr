@@ -89,7 +89,7 @@ export function HomeSection({ workOrder }: { workOrder: WorkOrderDetail }) {
         <Card tone="accent">
           <Stack gap="xs">
             <Text style={{ fontSize: "11px", letterSpacing: "0.13em", textTransform: "uppercase" }}>Contract</Text>
-            <Heading level={3}>{contract.name}</Heading>
+            <Heading level={3}>{contract.contractNumber}</Heading>
             <Text>
               {contract.type ?? "Contract"} · from {new Date(contract.startDate).toLocaleDateString("en-GB")}
               {contract.endDate ? ` to ${new Date(contract.endDate).toLocaleDateString("en-GB")}` : ""}

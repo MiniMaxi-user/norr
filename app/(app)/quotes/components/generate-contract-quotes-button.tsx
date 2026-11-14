@@ -72,7 +72,7 @@ export function GenerateContractQuotesButton() {
                     <Stack gap="xs">
                       {result.errors.map((entry) => (
                         <Text key={entry.contractId} tone="danger">
-                          {entry.contractName}: {entry.error}
+                          {entry.contractNumber}: {entry.error}
                         </Text>
                       ))}
                     </Stack>

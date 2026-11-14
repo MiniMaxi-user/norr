@@ -11,6 +11,7 @@ import {
   type ContractRecord,
 } from "@/app/(app)/contracts/actions";
 import { formatDate } from "@/lib/format/date";
+import { contractLabel } from "@/lib/format/contract-label";
 
 export interface AssetContractsDialogProps {
   open: boolean;
@@ -69,7 +70,7 @@ export function AssetContractsDialog({
     () =>
       clientContracts
         .filter((contract) => !linkedIds.has(contract.id))
-        .map((contract) => ({ value: contract.id, label: contract.name })),
+        .map((contract) => ({ value: contract.id, label: contractLabel(contract) })),
     [clientContracts, linkedIds],
   );
 
@@ -118,7 +119,7 @@ export function AssetContractsDialog({
                 <Inline key={contract.id} justify="between" align="center" gap="sm">
                   <Stack gap="xs">
                     <Inline align="center" gap="xs">
-                      <Link href={`/contracts/${contract.id}`}>{contract.name}</Link>
+                      <Link href={`/contracts/${contract.id}`}>{contractLabel(contract)}</Link>
                       {source.type === "inherited" && <Badge variant="muted">Inherited</Badge>}
                     </Inline>
                     <Text tone="muted">
@@ -136,7 +137,7 @@ export function AssetContractsDialog({
                   {source.type === "direct" ? (
                     <IconButton
                       variant="ghost"
-                      aria-label={`Unlink ${contract.name}`}
+                      aria-label={`Unlink ${contract.contract_number}`}
                       onClick={() => handleUnlink(contract.id)}
                       disabled={pending}
                     >

@@ -55,7 +55,13 @@ const optionalMoneySchema = z.preprocess(
 
 export const contractCreateSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
-  name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
+  /** Optional free-text reference shown on invoices (issue #216, formerly
+   * `name`). Empty string clears it (-> `null`). The contract number itself
+   * is system-assigned and never accepted as input. */
+  externalReference: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().trim().max(200, "External reference is too long.").nullable().optional(),
+  ),
   /** FK into this org's `contract_type` reference list. Optional on create —
    * the `derive_contract_organization_id` DB trigger fills in the org's
    * default `contract_type` item ("Maintenance") when omitted, same UX as

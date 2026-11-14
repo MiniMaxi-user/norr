@@ -607,13 +607,13 @@ select throws_ok(
 --    contract (the brand-new validate_contract_relations trigger).
 -- ---------------------------------------------------------------------------
 select lives_ok(
-  $$ insert into public.contracts (client_id, name, start_date, source_quote_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Contract From Accepted Quote', '2026-01-01', 'f6000000-0000-0000-0000-00000000000c') $$,
   'owner_a can insert a contract under client A with source_quote_id set to the Client A quote (same client)'
 ); -- 56
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, source_quote_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Wrong Quote Client Contract', '2026-01-01', 'f6000000-0000-0000-0000-00000000000d') $$,
   '23514',
   null,
@@ -629,7 +629,7 @@ select throws_ok(
 ); -- 58
 
 select throws_ok(
-  $$ insert into public.contracts (client_id, name, start_date, source_quote_id)
+  $$ insert into public.contracts (client_id, external_reference, start_date, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Nonexistent Quote Contract', '2026-01-01', '00000000-0000-0000-0000-000000000000') $$,
   '23503',
   null,

@@ -6,6 +6,7 @@ import { FileText } from "@yourorg/ui/icons";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import { CreateContractButton } from "@/app/(app)/contracts/components/create-contract-button";
 import { formatDate } from "@/lib/format/date";
+import { contractLabel } from "@/lib/format/contract-label";
 
 export interface ContractsPanelProps {
   clientId: string;
@@ -49,7 +50,7 @@ export function ContractsPanel({ clientId, contracts, canCreate }: ContractsPane
         emptyHeading="No contracts yet"
         emptyText="Service agreements for this client will show up here."
         columns={[
-          { header: "Name", render: (contract) => contract.name },
+          { header: "Number", render: (contract) => contractLabel(contract) },
           {
             header: "Type",
             align: "center",

@@ -42,9 +42,8 @@ function todayIso(): string {
 /**
  * Owner/finance "New contract" trigger — rendered only when
  * `can(actor, "contracts", "create")`, matching `createContract`'s own RBAC
- * gate. Creates the contract immediately (name "New contract", start date
- * today) and navigates straight to `/contracts/[id]`, where every field
- * (name, client, type, dates, notes, …) is edited inline exactly like any
+ * gate. Creates the contract immediately (start date today; the number is assigned automatically) and navigates straight to `/contracts/[id]`, where every field
+ * (external reference, client, type, dates, notes, …) is edited inline exactly like any
  * other existing contract — there is no `/contracts/new` form page anymore.
  *
  * Two entry shapes:
@@ -65,7 +64,6 @@ export function CreateContractButton({ clientId, clients, label, size }: CreateC
     setCreating(true);
     const result = await createContract({
       clientId: targetClientId,
-      name: "New contract",
       startDate: todayIso(),
     });
     setCreating(false);

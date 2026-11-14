@@ -6,6 +6,7 @@ import { FormGrid, RelationCard, Stack, Text } from "@yourorg/ui";
 import { Boxes, Building2, FileText, MapPin } from "@yourorg/ui/icons";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import { contractLabel } from "@/lib/format/contract-label";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import { formatSiteAddress } from "@/app/(app)/clients/format-site-address";
 import { formatCurrency } from "@/lib/format/currency";
@@ -208,7 +209,7 @@ export function WorkOrderRelationCards({
         label="Contract"
         loading={clientScoped.loadingContracts && Boolean(draft.contractId) && !resolvedContract}
         title={
-          resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{resolvedContract.name}</Link> : undefined
+          resolvedContract ? <Link href={`/contracts/${resolvedContract.id}`}>{contractLabel(resolvedContract)}</Link> : undefined
         }
         subtitle={
           contractFacts
