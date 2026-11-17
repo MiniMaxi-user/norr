@@ -85,7 +85,7 @@ export function ContractNumberingForm({ initial, canWrite }: ContractNumberingFo
                 maxLength={10}
                 onChange={(event) => setPrefix(event.target.value.toUpperCase())}
               />
-              <Text tone="muted">1-10 characters, capital letters and digits. Changing the prefix does not renumber existing contracts.</Text>
+              <Text tone="muted">1-10 characters: capital letters, digits and - _ . /. Changing the prefix does not renumber existing contracts.</Text>
               {errors.prefix?.map((message) => (
                 <Text key={message} tone="danger">{message}</Text>
               ))}

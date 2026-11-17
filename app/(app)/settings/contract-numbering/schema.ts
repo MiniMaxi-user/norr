@@ -17,7 +17,7 @@ export const contractNumberingSettingsSchema = z.object({
     .pipe(
       z
         .string()
-        .regex(/^[A-Z0-9]{1,10}$/, "Prefix must be 1-10 characters: letters A-Z and digits 0-9 only."),
+        .regex(/^[A-Z0-9._/-]{1,10}$/, "Prefix must be 1-10 characters: letters A-Z, digits 0-9 and - _ . / only."),
     ),
   nextNumber: z.coerce
     .number({ invalid_type_error: "Next number must be a number." })
