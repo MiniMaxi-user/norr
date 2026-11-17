@@ -85,7 +85,7 @@ export const NAV_ITEMS: NavItem[] = [
   // ONLY in practice: `requiredPermission` requires the FULL `update` action
   // (not `update_own`, which an engineer also holds on this module for their
   // own assigned work) so an engineer never sees this entry at all, while
-  // still seeing the Work Orders entry right below for their own assignments.
+  // still seeing the Work Orders entry below for their own assignments.
   {
     moduleKey: "planning",
     label: "Planning",
@@ -94,6 +94,14 @@ export const NAV_ITEMS: NavItem[] = [
     group: "Operations",
     requiredPermission: { module: "planning", action: "update" },
   },
+  // Activities / "Meldingen" (issue #59) — the ticket-like entity that
+  // precedes a Work Order (call-back, breakdown, maintenance, appointment,
+  // email follow-up). Grouped with the other operational entities that
+  // precede/feed a Work Order (Clients/Assets/Contracts/Work Orders), not
+  // "Insights". Label moved to English on product request (issue #196,
+  // 2026-09-14). Sits directly above Work Orders (issue #219), since an
+  // Activity is what turns into a Work Order.
+  { moduleKey: "activities", label: "Activities", href: "/activities", icon: Bell, group: "Operations" },
   // Route is `/work-orders` (the Work Order entity, issue #13) rather than
   // `/planning` — the fuller multi-view (list/kanban/calendar/map,
   // drag-and-drop) Planning/Dispatch board named in docs/ROADMAP.md is
@@ -105,13 +113,6 @@ export const NAV_ITEMS: NavItem[] = [
   // matches the `quotes` feature key/RBAC module both already registered in
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
   { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
-  // Activities / "Meldingen" (issue #59) — the ticket-like entity that
-  // precedes a Work Order (call-back, breakdown, maintenance, appointment,
-  // email follow-up). Grouped with the other operational entities that
-  // precede/feed a Work Order (Clients/Assets/Contracts/Work Orders), not
-  // "Insights". Label moved to English on product request (issue #196,
-  // 2026-09-14).
-  { moduleKey: "activities", label: "Activities", href: "/activities", icon: Bell, group: "Operations" },
   // Inventory (issue #181) — an overview of every engineer's per-engineer
   // warehouse (one row per engineer), for admins (Owner/Planner/
   // Administratie/Finance) only. `icon: Boxes`
