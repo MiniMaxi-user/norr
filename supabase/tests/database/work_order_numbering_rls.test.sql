@@ -1,5 +1,5 @@
 -- pgTAP tests for work order numbering (issue #218,
--- 20261013090000_work_order_numbering.sql).
+-- 20261117100000_work_order_numbering.sql).
 --
 -- Run with the Supabase CLI's local test runner (requires Docker):
 --   supabase test db
