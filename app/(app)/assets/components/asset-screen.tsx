@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, DetailColumns, Inline, Stack, Text, type BreadcrumbItem, type StatStripItem } from "@yourorg/ui";
+import { Breadcrumbs, Button, DetailColumns, Inline, Stack, Tabs, Text, type BreadcrumbItem, type StatStripItem } from "@yourorg/ui";
+import { BarChart3, CreditCard } from "@yourorg/ui/icons";
+import type { AssetVolumesData } from "@/lib/asset-volumes/actions";
 import { createAsset, updateAsset, type AssetRecord } from "../actions";
 import { getClient, listClients, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -19,6 +21,7 @@ import { AssetNotesSection } from "./asset-notes-section";
 import { AssetRecentActivities, type RecentAssetActivityItem } from "./asset-recent-activities";
 import { useAssetContracts } from "./use-asset-contracts";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
+import { AssetVolumesPanel } from "./asset-volumes-panel";
 import { AssetCompositeSection } from "./asset-composite-section";
 
 export interface AssetScreenProps {
@@ -56,6 +59,10 @@ export interface AssetScreenProps {
    * comment for why `/assets/[id]` itself can't be it). Omitted when there's
    * truly nowhere to send it. */
   viewAllHref?: string;
+  /** Volumes tab data (issue #221); null/absent = the actor cannot read
+   * asset volumes, so the tab does not render at all. */
+  volumes?: AssetVolumesData | null;
+  defaultTab?: "details" | "volumes";
 }
 
 /**
@@ -113,8 +120,11 @@ export function AssetScreen({
   activityCount = 0,
   recentItems = [],
   viewAllHref,
+  volumes = null,
+  defaultTab = "details",
 }: AssetScreenProps) {
   const router = useRouter();
+  const [tab, setTab] = useState<"details" | "volumes">(defaultTab);
 
   const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
   usePageHeader(breadcrumbNode);
@@ -404,6 +414,8 @@ export function AssetScreen({
         }
       />
 
+      {(() => {
+        const details = (
       <DetailColumns
         left={
           <Stack gap="lg">
@@ -461,6 +473,25 @@ export function AssetScreen({
           </Stack>
         }
       />
+        );
+        if (mode !== "edit" || !volumes) return details;
+        return (
+          <Tabs value={tab} onValueChange={(next) => setTab(next as "details" | "volumes")}>
+            <Tabs.List aria-label="Asset detail">
+              <Tabs.Tab value="details" icon={<CreditCard />}>
+                Details
+              </Tabs.Tab>
+              <Tabs.Tab value="volumes" icon={<BarChart3 />}>
+                Volumes
+              </Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="details">{details}</Tabs.Panel>
+            <Tabs.Panel value="volumes">
+              <AssetVolumesPanel volumes={volumes} />
+            </Tabs.Panel>
+          </Tabs>
+        );
+      })()}
 
       {mode === "edit" && asset && deleting && (
         <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button, EmptyState, Stack, Table, Text } from "@yourorg/ui";
+import { Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
 import { Settings } from "@yourorg/ui/icons";
-import type { AssetModelRecord } from "@/lib/asset-models/actions";
+import type { AssetModelRecord, VolumeCounterOption } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { AssetModelFormDialog } from "./asset-model-form-dialog";
 import { DeleteAssetModelDialog } from "./delete-asset-model-dialog";
@@ -21,6 +21,8 @@ export interface AssetModelManagerProps {
   brandItems: ReferenceListItemRecord[];
   typeItems: ReferenceListItemRecord[];
   subtypeItems: ReferenceListItemRecord[];
+  /** Counters (Volume list items) selectable per model. */
+  volumeOptions: VolumeCounterOption[];
 }
 
 /**
@@ -37,12 +39,15 @@ export function AssetModelManager({
   brandItems,
   typeItems,
   subtypeItems,
+  volumeOptions,
 }: AssetModelManagerProps) {
   const [formState, setFormState] = useState<{ open: boolean; model: AssetModelRecord | null }>({
     open: false,
     model: null,
   });
   const [deleteTarget, setDeleteTarget] = useState<AssetModelRecord | null>(null);
+
+  const volumeLabels = new Map(volumeOptions.map((option) => [option.id, option.label]));
 
   function openAdd() {
     setFormState({ open: true, model: null });
@@ -85,6 +90,7 @@ export function AssetModelManager({
               <Table.HeaderCell>Brand</Table.HeaderCell>
               <Table.HeaderCell>Type</Table.HeaderCell>
               <Table.HeaderCell>Sub-type</Table.HeaderCell>
+              <Table.HeaderCell>Volumes</Table.HeaderCell>
               <Table.HeaderCell align="center">Default warranty</Table.HeaderCell>
               {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
             </Table.Row>
@@ -103,6 +109,19 @@ export function AssetModelManager({
                 </Table.Cell>
                 <Table.Cell>
                   <Text tone="muted">{model.subtype?.label ?? "—"}</Text>
+                </Table.Cell>
+                <Table.Cell>
+                  {model.volumeItemIds.length === 0 ? (
+                    <Text tone="muted">—</Text>
+                  ) : (
+                    <Inline gap="xs" wrap>
+                      {model.volumeItemIds.map((id) => (
+                        <Badge key={id} variant="muted">
+                          {volumeLabels.get(id) ?? "Unknown counter"}
+                        </Badge>
+                      ))}
+                    </Inline>
+                  )}
                 </Table.Cell>
                 <Table.Cell align="center">
                   <Text tone="muted">
@@ -134,6 +153,7 @@ export function AssetModelManager({
             brandItems={brandItems}
             typeItems={typeItems}
             subtypeItems={subtypeItems}
+            volumeOptions={volumeOptions}
           />
           <DeleteAssetModelDialog
             open={Boolean(deleteTarget)}

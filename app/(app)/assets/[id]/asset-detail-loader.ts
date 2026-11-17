@@ -9,6 +9,7 @@ import { countContractsForAsset } from "@/app/(app)/contracts/actions";
 import { listActivities } from "@/app/(app)/activities/actions";
 import type { RecentAssetActivityItem } from "../components/asset-recent-activities";
 import type { AssetScreenProps } from "../components/asset-screen";
+import { getAssetVolumes } from "@/lib/asset-volumes/actions";
 import { workOrderLabel } from "@/lib/format/work-order-label";
 
 /** Both the "Recent activities" feed's row count and the per-source fetch
@@ -66,10 +67,15 @@ export async function loadAssetScreenProps(
   const canSeeActivities =
     activitiesEnabled && canAccessModule(actor, "activities") && canAny(actor, "activities", ["read", "read_own"]);
 
-  const [workOrdersResult, contractCountResult, activitiesResult] = await Promise.all([
+  // Volumes tab (issue #221): part of the `assets` feature (checked above);
+  // only rendered when the actor can read asset_volumes.
+  const canSeeVolumes = canAny(actor, "asset_volumes", ["read", "read_own"]);
+
+  const [workOrdersResult, contractCountResult, activitiesResult, volumesResult] = await Promise.all([
     canSeeWorkOrders ? listWorkOrders({ assetId: asset.id, limit: RECENT_ITEMS_LIMIT }) : Promise.resolve(null),
     canSeeContracts ? countContractsForAsset(asset.id) : Promise.resolve(null),
     canSeeActivities ? listActivities({ assetId: asset.id, limit: RECENT_ITEMS_LIMIT }) : Promise.resolve(null),
+    canSeeVolumes ? getAssetVolumes(asset.id) : Promise.resolve(null),
   ]);
 
   const recentItems: RecentAssetActivityItem[] = [
@@ -103,6 +109,7 @@ export async function loadAssetScreenProps(
     contractCount: contractCountResult?.data?.count ?? 0,
     activityCount: activitiesResult?.data?.count ?? 0,
     recentItems,
+    volumes: volumesResult?.data ?? null,
     // The asset's own client's Activities tab isn't asset-filtered (that tab
     // has no `?assetId=` scoping of its own today), but it's the closest
     // honest destination — `/assets/[id]` itself has no tabs to link into,

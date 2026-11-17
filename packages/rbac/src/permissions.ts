@@ -48,6 +48,7 @@ export function isTenantRole(value: string): value is TenantRole {
 export type Module =
   | "clients"
   | "assets"
+  | "asset_volumes"
   | "contracts"
   | "planning"
   | "checklists"
@@ -66,7 +67,7 @@ export type Module =
 
 /**
  * Actions a role can be granted on a module. The `_own` suffix actions
- * (`create_own` / `read_own` / `update_own`) correspond to matrix cells like
+ * (`create_own` / `read_own` / `update_own` / `delete_own`) correspond to matrix cells like
  * "Read (assigned)" / "Read/Update own" / "Create (own work orders)" — they
  * mean the actor may act on resources scoped to them specifically (e.g.
  * `assigned_to = auth.uid()` or `work_orders.created_by = auth.uid()`), NOT
@@ -85,7 +86,8 @@ export type Action =
   | "configure"
   | "create_own"
   | "read_own"
-  | "update_own";
+  | "update_own"
+  | "delete_own";
 
 export function isSelfScoped(action: Action): boolean {
   return action.endsWith("_own");
@@ -94,6 +96,7 @@ export function isSelfScoped(action: Action): boolean {
 const CRUD: readonly Action[] = ["create", "read", "update", "delete"] as const;
 const READ_ONLY: readonly Action[] = ["read"] as const;
 const READ_UPDATE: readonly Action[] = ["read", "update"] as const;
+const CREATE_READ_DELETE: readonly Action[] = ["create", "read", "delete"] as const;
 const NONE: readonly Action[] = [] as const;
 
 /**
@@ -142,6 +145,23 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     owner: CRUD,
     planner: READ_UPDATE,
     engineer: ["read_own", "update_own"],
+    finance: READ_ONLY,
+    administratie: READ_ONLY,
+  },
+  // Asset volumes (issue #221): meter readings (`asset_volume_readings`) per
+  // asset. Own key (not `assets`, where planner is read/update and engineer has
+  // no create/delete) because readings are immutable (no `update` at all) and
+  // engineers add/delete their own readings from a work order in the PWA
+  // ("own" = readings the engineer recorded themselves). Engineers get plain
+  // `read` (RLS lets every org member read all readings; they need the previous
+  // reading to enter a valid next one) plus create_own/delete_own. owner/planner:
+  // create/read/delete (all rows); finance/administratie: plain read.
+  // Entitlement is the `assets` feature (no separate flag). Which counters
+  // belong to an asset MODEL is gated by `settings`, not this module.
+  asset_volumes: {
+    owner: CREATE_READ_DELETE,
+    planner: CREATE_READ_DELETE,
+    engineer: ["read", "create_own", "delete_own"],
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
@@ -383,6 +403,8 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
 const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   clients: READ_ONLY,
   assets: READ_ONLY,
+  // Asset volumes (issue #221): mirrors `assets`.
+  asset_volumes: READ_ONLY,
   contracts: READ_ONLY,
   planning: NONE,
   // No "Read (support only)"-style cross-tenant carve-out documented for

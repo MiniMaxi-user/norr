@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { z } from "zod";
 import { assetModelCreateSchema, assetModelUpdateSchema } from "./schema";
 
@@ -64,6 +65,22 @@ export interface AssetModelRecord {
   /** Embedded via `reference_list_items!asset_models_subtype_item_id_fkey(...)`.
    * `null` whenever `subtype_item_id` is `null`. */
   subtype: ResolvedReferenceItem | null;
+  /** Counters (ids of `volume` reference list items, issue #221) configured
+   * on this model, in display order (`asset_model_volumes.sort_order`). */
+  volumeItemIds: string[];
+}
+
+/** Counter option for the model's counter picker (items of the `volume`
+ * reference list). */
+export interface VolumeCounterOption {
+  id: string;
+  label: string;
+  description: string | null;
+  /** `false` = retired counter: show it only when it is already configured
+   * on the model being edited, never as a new choice. */
+  isActive: boolean;
+  /** Label of the parent `article_unit` item (the counter's unit), if any. */
+  unitLabel: string | null;
 }
 
 /**
@@ -74,7 +91,20 @@ export interface AssetModelRecord {
  * own `ASSET_SELECT` comment documents for `assets_type_id_fkey` etc.
  */
 const ASSET_MODEL_SELECT =
-  "*, brand:reference_list_items!asset_models_brand_item_id_fkey(value,label,color), type:reference_list_items!asset_models_type_item_id_fkey(value,label,color), subtype:reference_list_items!asset_models_subtype_item_id_fkey(value,label,color)";
+  "*, brand:reference_list_items!asset_models_brand_item_id_fkey(value,label,color), volumes:asset_model_volumes(volume_item_id,sort_order), type:reference_list_items!asset_models_type_item_id_fkey(value,label,color), subtype:reference_list_items!asset_models_subtype_item_id_fkey(value,label,color)";
+
+type AssetModelRow = Omit<AssetModelRecord, "volumeItemIds"> & {
+  volumes?: { volume_item_id: string; sort_order: number }[] | null;
+};
+
+/** Folds the `volumes` embed into `volumeItemIds` (sorted by sort_order). */
+function toAssetModelRecord(row: unknown): AssetModelRecord {
+  const { volumes, ...rest } = row as AssetModelRow;
+  const volumeItemIds = [...(volumes ?? [])]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((v) => v.volume_item_id);
+  return { ...rest, volumeItemIds };
+}
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -195,7 +225,94 @@ export async function listAssetModels(
 
   const { data, error } = await query.order("name", { ascending: true });
   if (error) return fail(mapDbError(error));
-  return ok({ models: (data ?? []) as unknown as AssetModelRecord[] });
+  return ok({ models: (data ?? []).map(toAssetModelRecord) });
+}
+
+/**
+ * Options for the Settings asset-model counter picker: every item of the
+ * tenant `volume` reference list (cached read via `listReferenceItems`),
+ * with its unit label resolved from the parent `article_unit` item. Includes
+ * inactive items (flagged `isActive: false`) so an already-configured retired
+ * counter stays visible. Any org member with settings read.
+ */
+export async function listVolumeCounterOptions(): Promise<ActionResult<{ items: VolumeCounterOption[] }>> {
+  const [volumes, units] = await Promise.all([listReferenceItems("volume"), listReferenceItems("article_unit")]);
+  if (volumes.error || !volumes.data) return fail(volumes.error ?? "Could not load counters.");
+  const unitLabels = new Map((units.data?.items ?? []).map((u) => [u.id, u.label]));
+  return ok({
+    items: volumes.data.items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      description: item.description,
+      isActive: item.is_active,
+      unitLabel: item.parent_item_id ? (unitLabels.get(item.parent_item_id) ?? null) : null,
+    })),
+  });
+}
+
+/** Every id must be an item of this org's `volume` list (RLS scopes the lookup
+ * to the org; the DB trigger re-checks). */
+async function validateVolumeItemIds(
+  supabase: SupabaseServerClient,
+  ids: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (ids.length === 0) return { ok: true };
+  const { data, error } = await supabase
+    .from("reference_list_items")
+    .select("id, reference_list:reference_lists(list_key)")
+    .in("id", ids);
+  if (error) return { ok: false, error: mapDbError(error) };
+  const rows = (data ?? []) as unknown as { id: string; reference_list: { list_key: string } | null }[];
+  const valid = new Set(rows.filter((r) => r.reference_list?.list_key === "volume").map((r) => r.id));
+  if (ids.some((id) => !valid.has(id))) {
+    return { ok: false, error: "Invalid counter — it must be a value from the Volume list." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Makes `asset_model_volumes` for `modelId` equal `ids`: deletes removed
+ * counters, inserts missing ones, and keeps `sort_order` = array index.
+ * Not transactional (separate statements); each step is idempotent so a retry
+ * converges. Readings are never touched: removing a counter from a model only
+ * stops new readings (history stays visible on the asset).
+ */
+async function syncModelVolumes(
+  supabase: SupabaseServerClient,
+  modelId: string,
+  ids: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: existing, error: selectError } = await supabase
+    .from("asset_model_volumes")
+    .select("id, volume_item_id, sort_order")
+    .eq("asset_model_id", modelId);
+  if (selectError) return { ok: false, error: mapDbError(selectError) };
+
+  const current = new Map((existing ?? []).map((r) => [r.volume_item_id as string, r]));
+  const wanted = new Set(ids);
+
+  const removeIds = (existing ?? []).filter((r) => !wanted.has(r.volume_item_id as string)).map((r) => r.id as string);
+  if (removeIds.length > 0) {
+    const { error } = await supabase.from("asset_model_volumes").delete().in("id", removeIds);
+    if (error) return { ok: false, error: mapDbError(error) };
+  }
+
+  const inserts = ids
+    .map((volume_item_id, sort_order) => ({ asset_model_id: modelId, volume_item_id, sort_order }))
+    .filter((row) => !current.has(row.volume_item_id));
+  if (inserts.length > 0) {
+    const { error } = await supabase.from("asset_model_volumes").insert(inserts);
+    if (error) return { ok: false, error: mapDbError(error) };
+  }
+
+  for (const [sort_order, volume_item_id] of ids.entries()) {
+    const row = current.get(volume_item_id);
+    if (row && row.sort_order !== sort_order) {
+      const { error } = await supabase.from("asset_model_volumes").update({ sort_order }).eq("id", row.id);
+      if (error) return { ok: false, error: mapDbError(error) };
+    }
+  }
+  return { ok: true };
 }
 
 /** Owner only (per the `settings` RBAC entry + RLS, both agree). */
@@ -219,6 +336,10 @@ export async function createAssetModel(input: unknown): Promise<ActionResult<{ m
     return fail(refCheck.error, { [refCheck.field]: [refCheck.error] });
   }
 
+  const volumeItemIds = parsed.data.volumeItemIds ?? [];
+  const volumeCheck = await validateVolumeItemIds(supabase, volumeItemIds);
+  if (!volumeCheck.ok) return fail(volumeCheck.error, { volumeItemIds: [volumeCheck.error] });
+
   const row = {
     organization_id: ctx.context.organizationId,
     brand_item_id: parsed.data.brandItemId,
@@ -231,7 +352,18 @@ export async function createAssetModel(input: unknown): Promise<ActionResult<{ m
   const { data, error } = await supabase.from("asset_models").insert(row).select(ASSET_MODEL_SELECT).single();
 
   if (error) return fail(mapDbError(error));
-  return ok({ model: data as unknown as AssetModelRecord });
+
+  const model = toAssetModelRecord(data);
+  if (volumeItemIds.length > 0) {
+    const sync = await syncModelVolumes(supabase, model.id, volumeItemIds);
+    if (!sync.ok) {
+      // Don't leave a half-configured model behind.
+      await supabase.from("asset_models").delete().eq("id", model.id);
+      return fail(sync.error);
+    }
+    model.volumeItemIds = volumeItemIds;
+  }
+  return ok({ model });
 }
 
 /**
@@ -270,6 +402,12 @@ export async function updateAssetModel(
     return fail(refCheck.error, { [refCheck.field]: [refCheck.error] });
   }
 
+  const volumeItemIds = parsed.data.volumeItemIds;
+  if (volumeItemIds !== undefined) {
+    const volumeCheck = await validateVolumeItemIds(supabase, volumeItemIds);
+    if (!volumeCheck.ok) return fail(volumeCheck.error, { volumeItemIds: [volumeCheck.error] });
+  }
+
   const row = {
     brand_item_id: parsed.data.brandItemId,
     type_item_id: parsed.data.typeItemId,
@@ -287,7 +425,14 @@ export async function updateAssetModel(
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Asset model not found, or you do not have permission to edit it.");
-  return ok({ model: data as unknown as AssetModelRecord });
+
+  const model = toAssetModelRecord(data);
+  if (volumeItemIds !== undefined) {
+    const sync = await syncModelVolumes(supabase, model.id, volumeItemIds);
+    if (!sync.ok) return fail(sync.error);
+    model.volumeItemIds = volumeItemIds;
+  }
+  return ok({ model });
 }
 
 /**

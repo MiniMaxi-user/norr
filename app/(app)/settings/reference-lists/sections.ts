@@ -150,7 +150,7 @@ export const REFERENCE_LIST_SECTIONS = [
     key: "volume",
     title: "Volume",
     description:
-      "Pre-agreed usage allowances or bundles that can be linked to a contract line item — e.g. 10,000 cups of coffee per year, or 1,000 B/W prints. Each Volume value is scoped to one Article Unit.",
+      "Counters/meters such as B/W prints, color prints or cups of coffee. Configure which counters apply per Asset Model (Settings → Asset Models); readings are then recorded on each asset. Later these can be linked to contract line items for invoicing. Each Volume value is scoped to one Article Unit.",
     showDefaultDuration: false,
     showInvoiceInterval: false,
   },

@@ -3,8 +3,8 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Combobox, Dialog, Heading, Input, Label, Stack, Text } from "@yourorg/ui";
-import { createAssetModel, updateAssetModel, type AssetModelRecord } from "@/lib/asset-models/actions";
+import { Button, Checkbox, Combobox, Dialog, Heading, Inline, Input, Label, Stack, Text } from "@yourorg/ui";
+import { createAssetModel, updateAssetModel, type AssetModelRecord, type VolumeCounterOption } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 
 interface FormState {
@@ -28,6 +28,9 @@ export interface AssetModelFormDialogProps {
    * completeness"'s cascading-select pattern), re-filtered whenever the
    * Type field changes. */
   subtypeItems: ReferenceListItemRecord[];
+  /** Counters (Volume list items). Retired ones are only offered when
+   * already configured on this model. */
+  volumeOptions: VolumeCounterOption[];
 }
 
 /**
@@ -51,6 +54,7 @@ export function AssetModelFormDialog({
   brandItems,
   typeItems,
   subtypeItems,
+  volumeOptions,
 }: AssetModelFormDialogProps) {
   const isEdit = Boolean(model);
   const router = useRouter();
@@ -58,12 +62,23 @@ export function AssetModelFormDialog({
   const [brandItemId, setBrandItemId] = useState(model?.brand_item_id ?? "");
   const [typeItemId, setTypeItemId] = useState(model?.type_item_id ?? "");
   const [subtypeItemId, setSubtypeItemId] = useState(model?.subtype_item_id ?? "");
+  const [volumeItemIds, setVolumeItemIds] = useState<string[]>(model?.volumeItemIds ?? []);
 
   useEffect(() => {
     setBrandItemId(model?.brand_item_id ?? "");
     setTypeItemId(model?.type_item_id ?? "");
     setSubtypeItemId(model?.subtype_item_id ?? "");
+    setVolumeItemIds(model?.volumeItemIds ?? []);
   }, [model]);
+
+  const selectableVolumes = useMemo(
+    () => volumeOptions.filter((option) => option.isActive || volumeItemIds.includes(option.id)),
+    [volumeOptions, volumeItemIds],
+  );
+
+  function toggleVolume(id: string, checked: boolean) {
+    setVolumeItemIds((current) => (checked ? [...current, id] : current.filter((value) => value !== id)));
+  }
 
   const brandOptions = useMemo(
     () => brandItems.map((item) => ({ value: item.id, label: item.label })),
@@ -98,6 +113,7 @@ export function AssetModelFormDialog({
       subtypeItemId: formData.get("subtypeItemId") || undefined,
       name: formData.get("name"),
       defaultWarrantyMonths: formData.get("defaultWarrantyMonths"),
+      volumeItemIds,
     };
     const result = isEdit ? await updateAssetModel(model!.id, input) : await createAssetModel(input);
     if (result.error || !result.data) {
@@ -215,6 +231,36 @@ export function AssetModelFormDialog({
                 required
               />
               {state.fieldErrors?.defaultWarrantyMonths?.map((message) => (
+                <Text key={message} tone="danger">
+                  {message}
+                </Text>
+              ))}
+            </Stack>
+
+            <Stack gap="xs">
+              <Text>Volumes (counters)</Text>
+              {selectableVolumes.length === 0 ? (
+                <Text tone="muted">No counters yet — add one under Settings, Reference Lists, Volume first.</Text>
+              ) : (
+                <Stack gap="xs" role="group" aria-label="Volumes (counters)">
+                  {selectableVolumes.map((option) => (
+                    <Inline key={option.id} gap="sm" align="center">
+                      <Checkbox
+                        id={`asset-model-volume-${option.id}`}
+                        checked={volumeItemIds.includes(option.id)}
+                        onChange={(event) => toggleVolume(option.id, event.target.checked)}
+                      />
+                      <Label htmlFor={`asset-model-volume-${option.id}`}>
+                        {option.label}
+                        {option.unitLabel ? ` (${option.unitLabel})` : ""}
+                        {option.isActive ? "" : " — retired"}
+                      </Label>
+                    </Inline>
+                  ))}
+                </Stack>
+              )}
+              <Text tone="muted">Counters whose readings can be recorded on assets of this model.</Text>
+              {state.fieldErrors?.volumeItemIds?.map((message) => (
                 <Text key={message} tone="danger">
                   {message}
                 </Text>

@@ -368,7 +368,7 @@ export function WorkOrderDetailScreen({
       </Stack>
 
       {section === "home" && <HomeSection workOrder={workOrder} />}
-      {section === "work" && <WorkSection workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
+      {section === "work" && <WorkSection workOrderId={workOrderId} workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
       {section === "hours" && (
         <>
           {/* Start/stop only shows on the Hours tab (product feedback,

@@ -1,7 +1,7 @@
 import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
-import { listAssetModels } from "@/lib/asset-models/actions";
+import { listAssetModels, listVolumeCounterOptions } from "@/lib/asset-models/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { AssetModelManager } from "../components/asset-model-manager";
 
@@ -21,11 +21,12 @@ export default async function AssetModelsPage() {
   const actor: PermissionActor = { role: session?.role ?? null, isPlatformAdmin: session?.isPlatformAdmin ?? false };
   const canWrite = can(actor, "settings", "create");
 
-  const [modelsResult, brandResult, typeResult, subtypeResult] = await Promise.all([
+  const [modelsResult, brandResult, typeResult, subtypeResult, volumeResult] = await Promise.all([
     listAssetModels(),
     listReferenceItems("asset_brand"),
     listReferenceItems("asset_type"),
     listReferenceItems("asset_subtype"),
+    listVolumeCounterOptions(),
   ]);
 
   return (
@@ -41,6 +42,7 @@ export default async function AssetModelsPage() {
         brandItems={brandResult.data?.items ?? []}
         typeItems={typeResult.data?.items ?? []}
         subtypeItems={subtypeResult.data?.items ?? []}
+        volumeOptions={volumeResult.data?.items ?? []}
       />
     </Stack>
   );

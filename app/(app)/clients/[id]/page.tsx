@@ -11,6 +11,7 @@ import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { getTenantAccessStatus } from "../platform-access-actions";
 import { listActivities } from "@/app/(app)/activities/actions";
+import { getClientVolumeTotals } from "@/lib/asset-volumes/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listContracts } from "@/app/(app)/contracts/actions";
@@ -107,6 +108,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     (await hasFeature(session.organization, "assets")) &&
     canAccessModule(actor, "assets");
 
+  const volumesTabVisible = assetsModuleVisible && canAny(actor, "asset_volumes", ["read", "read_own"]);
+
   // The Work Orders tab is likewise a view onto a separately-entitled module
   // (issue #13) — gated server-side the same way as Assets above, before any
   // work order data is fetched, so a tenant/role without Planning access
@@ -175,6 +178,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     lastUsedTab,
     accountManagersResult,
     articlesResult,
+    volumeTotalsResult,
   ] = await Promise.all([
     assetsModuleVisible ? listAssets({ clientId: id, limit: ALL_CLIENT_ASSETS_LIMIT }) : Promise.resolve(null),
     listContacts(id),
@@ -197,6 +201,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     // Issue #93: the Details tab's Rate section article pickers, same
     // "fetch once, pass down" convention as `listAccountManagers` above.
     listArticlesForSelect(),
+    // Issue #221: Volumes tab — part of the assets feature, needs asset_volumes read.
+    volumesTabVisible ? getClientVolumeTotals(id) : Promise.resolve(null),
   ]);
 
   // Access-status lookup (issue #45): only run once the "Access" tab could
@@ -236,6 +242,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         return "details";
       case "assets":
         return assetsModuleVisible ? "assets" : null;
+      case "volumes":
+        return volumesTabVisible ? "volumes" : null;
       case "contacts":
         return "contacts";
       case "workOrders":
@@ -266,6 +274,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         assetsModuleVisible && (can(actor, "assets", "update") || can(actor, "assets", "update_own"))
       }
       canDeleteAssets={assetsModuleVisible && can(actor, "assets", "delete")}
+      volumeTotals={volumeTotalsResult?.data ?? null}
       contacts={contactsResult.data?.contacts ?? []}
       contactRoles={contactRolesResult.data?.items ?? []}
       workOrders={workOrdersResult?.data?.workOrders ?? []}

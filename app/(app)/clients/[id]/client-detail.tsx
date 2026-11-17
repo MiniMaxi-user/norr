@@ -21,13 +21,14 @@ import {
   Text,
   type StatStripItem,
 } from "@yourorg/ui";
-import { Bell, Boxes, Building2, ClipboardList, CreditCard, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
+import { BarChart3, Bell, Boxes, Building2, ClipboardList, CreditCard, FileText, MapPin, Pencil, Receipt, Settings, ShieldCheck, Users } from "@yourorg/ui/icons";
 import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import type { ClientVolumeTotalsData } from "@/lib/asset-volumes/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
 import { activateAsTenant, type ClientRecord, type SiteRecord } from "../actions";
@@ -51,6 +52,7 @@ import { ModulesPanel } from "./modules-panel";
 import { QuotesPanel } from "./quotes-panel";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
 import { SitesPanel } from "./sites-panel";
+import { VolumesPanel } from "./volumes-panel";
 import { WorkOrdersPanel } from "./work-orders-panel";
 import { ClientLogoUploader } from "../components/client-logo-uploader";
 
@@ -58,6 +60,7 @@ export type ClientDetailTab =
   | "details"
   | "sites"
   | "assets"
+  | "volumes"
   | "contacts"
   | "workOrders"
   | "contracts"
@@ -87,6 +90,9 @@ export interface ClientDetailProps {
   canCreateAssets: boolean;
   canEditAssets: boolean;
   canDeleteAssets: boolean;
+  /** Client volume totals (issue #221); null = the Volumes tab is not
+   * entitled/readable for this actor, so it does not render. */
+  volumeTotals: ClientVolumeTotalsData | null;
   contacts: ContactRecord[];
   contactRoles: ReferenceListItemRecord[];
   workOrders: WorkOrderRecord[];
@@ -216,6 +222,7 @@ export function ClientDetail({
   canCreateAssets,
   canEditAssets,
   canDeleteAssets,
+  volumeTotals,
   contacts,
   contactRoles,
   workOrders,
@@ -613,6 +620,11 @@ export function ClientDetail({
                 Assets{assets.length > 0 ? ` (${assets.length})` : ""}
               </Tabs.Tab>
             )}
+            {volumeTotals && (
+              <Tabs.Tab value="volumes" icon={<BarChart3 />}>
+                Volumes
+              </Tabs.Tab>
+            )}
             <Tabs.Tab value="contacts" icon={<Users />}>
               Contacts{contacts.length > 0 ? ` (${contacts.length})` : ""}
             </Tabs.Tab>
@@ -672,6 +684,12 @@ export function ClientDetail({
                 focusSiteId={focusSite.siteId}
                 focusToken={focusSite.token}
               />
+            </Tabs.Panel>
+          )}
+
+          {volumeTotals && (
+            <Tabs.Panel value="volumes">
+              <VolumesPanel data={volumeTotals} />
             </Tabs.Panel>
           )}
 

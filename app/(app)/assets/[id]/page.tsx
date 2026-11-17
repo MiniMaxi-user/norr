@@ -5,6 +5,8 @@ export const metadata = { title: "Asset details" };
 
 interface AssetDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=volumes` deep-links straight to the Volumes tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /**
@@ -16,13 +18,15 @@ interface AssetDetailPageProps {
  * gets the exact same layout with the pencil omitted instead of a separate
  * read-only component.
  */
-export default async function AssetDetailPage({ params }: AssetDetailPageProps) {
+export default async function AssetDetailPage({ params, searchParams }: AssetDetailPageProps) {
   const { id } = await params;
+  const { tab } = await searchParams;
   const props = await loadAssetScreenProps(id);
 
   return (
     <AssetScreen
       {...props}
+      defaultTab={tab === "volumes" && props.volumes ? "volumes" : "details"}
       breadcrumbItems={[{ label: "Assets", href: "/assets" }, { label: props.asset!.name }]}
     />
   );

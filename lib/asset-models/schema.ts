@@ -42,6 +42,18 @@ export const assetModelWarrantyMonthsSchema = z.coerce
   .min(1, "Warranty must be at least 1 month.")
   .max(600, "Warranty is too long.");
 
+/**
+ * Counters (items of the tenant `volume` reference list, issue #221)
+ * configured on the model, in display order (array order = `sort_order`).
+ * Duplicates are collapsed. Optional on both schemas: on create omitted = no
+ * counters; on update omitted = leave the configured counters untouched,
+ * `[]` = remove all of them.
+ */
+export const assetModelVolumeItemIdsSchema = z
+  .array(uuidSchema)
+  .max(50, "Too many counters.")
+  .transform((ids) => Array.from(new Set(ids)));
+
 const subtypeItemIdField = z.preprocess(emptyToUndefined, uuidSchema.optional());
 
 /** `defaultWarrantyMonths` optional here (and only here) — `createAssetModel`
@@ -52,6 +64,7 @@ export const assetModelCreateSchema = z.object({
   subtypeItemId: subtypeItemIdField,
   name: assetModelNameSchema,
   defaultWarrantyMonths: z.preprocess(emptyToUndefined, assetModelWarrantyMonthsSchema.optional()),
+  volumeItemIds: assetModelVolumeItemIdsSchema.optional(),
 });
 
 export type AssetModelCreateInput = z.infer<typeof assetModelCreateSchema>;
@@ -66,6 +79,7 @@ export const assetModelUpdateSchema = z.object({
   subtypeItemId: subtypeItemIdField,
   name: assetModelNameSchema,
   defaultWarrantyMonths: assetModelWarrantyMonthsSchema,
+  volumeItemIds: assetModelVolumeItemIdsSchema.optional(),
 });
 
 export type AssetModelUpdateInput = z.infer<typeof assetModelUpdateSchema>;
