@@ -68,8 +68,10 @@ export interface ClientRecord {
    * points at — see migration `20260826120000_organizations_is_active.sql`.
    * `null` when this client has never been activated as a tenant
    * (`represents_organization_id` is `null`), in which case "active" isn't a
-   * meaningful question. Populated only by `getClient` below, via an
-   * embedded join on `organizations` — `listClients`/`createClient`/
+   * meaningful question. Populated by `getClient` below, and by
+   * `listClients({ includePrimarySite: true })` for a Platform Admin only
+   * (issue #220, List/Kanban tenant badge), via an
+   * embedded join on `organizations` — `createClient`/
    * `updateClient`/`activateAsTenant` don't render the tenant-status UI and
    * would otherwise pay for a join whose result is never read, so they leave
    * this `undefined` on the objects they return (harmless: this field is
@@ -354,7 +356,11 @@ export interface ListClientsOptions {
  * element. Peeled off into `primarySiteByClientId` before the rows are cast
  * to plain `ClientRecord`s below — `ClientRecord` itself never carries a
  * `sites` field. */
-type ClientRowWithPrimarySite = ClientRecord & { sites: SiteRecord[] };
+type ClientRowWithPrimarySite = ClientRecord & {
+  sites: SiteRecord[];
+  /** Only present for a Platform Admin (issue #220) — see `listClients`. */
+  organizations?: { is_active: boolean } | null;
+};
 
 export async function listClients(
   options: ListClientsOptions = {},
@@ -409,10 +415,19 @@ export async function listClients(
   // "Filtering through embedded resources" docs. That matters here: a client
   // with zero sites (or none marked primary yet) must still come back with
   // an empty `sites: []`, not be excluded from the page/count.
+  //
+  // Issue #220: for a Platform Admin only, also embed the linked tenant's
+  // `is_active` (same disambiguated `organizations!represents_organization_id`
+  // embed `getClient` uses) so the List/Kanban can badge which clients are
+  // tenants. Every other actor skips the join and gets
+  // `organization_is_active: undefined` -> no badge rendered.
+  const tenantEmbed = ctx.context.actor.isPlatformAdmin
+    ? ", represents_organization_id, organizations!represents_organization_id(is_active)"
+    : "";
   const { data, error, count } = await supabase
     .from("clients")
     .select(
-      "id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at, sites(id, client_id, city, country, phone)",
+      `id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at, sites(id, client_id, city, country, phone)${tenantEmbed}`,
       { count: "exact" },
     )
     .eq("sites.is_primary", true)
@@ -424,8 +439,12 @@ export async function listClients(
   const primarySiteByClientId: Record<string, SiteRecord | null> = {};
   const clients: ClientRecord[] = [];
   for (const row of (data ?? []) as unknown as ClientRowWithPrimarySite[]) {
-    const { sites, ...clientRow } = row;
-    clients.push(clientRow);
+    const { sites, organizations: linkedOrganization, ...clientRow } = row;
+    clients.push(
+      linkedOrganization === undefined
+        ? clientRow
+        : { ...clientRow, organization_is_active: linkedOrganization?.is_active ?? null },
+    );
     primarySiteByClientId[clientRow.id] = sites?.[0] ?? null;
   }
   return ok({ clients, count: count ?? 0, primarySiteByClientId });

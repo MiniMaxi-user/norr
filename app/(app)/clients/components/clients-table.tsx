@@ -5,6 +5,7 @@ import { Avatar, Badge, Button, CompanyLogo, Inline, Stack, Table, Text } from "
 import { MapPin, Phone } from "@yourorg/ui/icons";
 import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import type { ClientRecord, SiteRecord } from "../actions";
+import { ClientTenantBadge } from "./client-tenant-badge";
 
 /**
  * Plain data table for a list of clients — used both by the List view
@@ -72,7 +73,10 @@ export function ClientsTable({
                     <Avatar name={client.name} size="sm" />
                   )}
                   <Stack gap="xs">
-                    <Text>{client.name}</Text>
+                    <Inline gap="xs" align="center">
+                      <Text>{client.name}</Text>
+                      <ClientTenantBadge client={client} />
+                    </Inline>
                     <Text tone="muted">{formatClientSince(client.created_at)}</Text>
                   </Stack>
                 </Inline>

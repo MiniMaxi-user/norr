@@ -7,6 +7,7 @@ import { MapPin } from "@yourorg/ui/icons";
 import type { AccountManagerRecord } from "@/lib/account-managers/actions";
 import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import { updateClient, type ClientRecord, type SiteRecord } from "../actions";
+import { ClientTenantBadge } from "./client-tenant-badge";
 import {
   CLIENT_STATUS_BADGE_VARIANT,
   CLIENT_STATUS_OPTIONS,
@@ -211,7 +212,10 @@ function ClientKanbanCard({
         <Inline gap="sm" align="center">
           <Avatar name={client.name} photoUrl={getClientLogoUrl(client.logo_path, client.logo_updated_at)} />
           <Stack gap="xs">
-            <Text className="ui-client-card-name">{client.name}</Text>
+            <Inline gap="xs" align="center">
+              <Text className="ui-client-card-name">{client.name}</Text>
+              <ClientTenantBadge client={client} />
+            </Inline>
             {city && (
               <Inline gap="xs" align="center">
                 <MapPin aria-hidden />
