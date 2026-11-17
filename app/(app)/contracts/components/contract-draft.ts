@@ -48,7 +48,6 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
  * that would fail the schema's `uuid()`/date shape checks. */
 export function draftToInput(patch: Partial<ContractDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
-  if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
   if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
   if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId || undefined;

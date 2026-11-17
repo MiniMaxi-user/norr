@@ -104,11 +104,9 @@ export const contractCreateSchema = z.object({
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
 
 /** Every field optional for update (partial edit); still validated the same
- * way when present. `clientId` stays updatable (re-parenting a contract to a
- * different client of the *same* organization is a legitimate edit, same
- * reasoning as `siteUpdateSchema.clientId`/`workOrderUpdateSchema.clientId`);
- * cross-organization re-parenting is blocked at the DB trigger layer
- * regardless (`derive_contract_organization_id`). */
-export const contractUpdateSchema = contractCreateSchema.partial();
+ * way when present. `clientId` is NOT updatable (issue #217): a contract's
+ * client is fixed at creation. `.omit()` drops it and `.strict()` rejects a
+ * payload that still sends it, rather than silently ignoring it. */
+export const contractUpdateSchema = contractCreateSchema.omit({ clientId: true }).partial().strict();
 
 export type ContractUpdateInput = z.infer<typeof contractUpdateSchema>;

@@ -38,7 +38,6 @@ import { ContractAssetsPanel } from "../[id]/contract-assets-panel";
 import { ContractQuotesPanel } from "../[id]/contract-quotes-panel";
 import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-actions";
 import { DeleteContractDialog } from "./delete-contract-dialog";
-import { ContractClientDialog } from "./contract-client-dialog";
 
 export interface ContractScreenProps {
   /** Built by the server `page.tsx` and pushed into the Topbar via
@@ -48,7 +47,7 @@ export interface ContractScreenProps {
 
   contract: ContractRecord;
   client: ClientRecord | null;
-  /** Org's clients, for the Client relation card's re-pick dialog. */
+  /** Org's clients, used to resolve the Client relation card. */
   clients: ClientRecord[];
 
   contractTypes: ReferenceListItemRecord[];
@@ -91,9 +90,8 @@ export interface ContractScreenProps {
  * system-assigned contract number, External reference edits in
  * `ContractTermsSection`, Type lives in
  * `ContractTermsSection`, and Client lives in the rail's own `RelationCard`
- * — its pencil opens `ContractClientDialog` (`./contract-client-dialog.tsx`,
- * a small re-pick popup, mirroring `WorkOrderRelationsDialog`'s own
- * "RelationCard pencil -> Dialog" shape).
+ * — read-only, no pencil: a contract's client is fixed at creation
+ * (issue #217, see `contractUpdateSchema`).
  *
  * Owns one flat `ContractDraft` (`./contract-draft.ts`) as the source of
  * truth for every editable field; every section reads from it and writes
@@ -131,7 +129,6 @@ export function ContractScreen({
 
   const [draft, setDraft] = useState<ContractDraft>(() => draftFromContract(contract));
 
-  const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [termsEditing, setTermsEditing] = useState(false);
   const [billingEditing, setBillingEditing] = useState(false);
   const [datesEditing, setDatesEditing] = useState(false);
@@ -310,7 +307,6 @@ export function ContractScreen({
               title={resolvedClient ? <Link href={`/clients/${resolvedClient.id}`}>{resolvedClient.name}</Link> : undefined}
               subtitle={clientFacts || undefined}
               emptyText="No client selected yet"
-              onEdit={readOnly ? undefined : () => setClientDialogOpen(true)}
               expandedContent={clientExpanded}
             />
             <ContractTermsSection
@@ -351,16 +347,6 @@ export function ContractScreen({
           </Stack>
         }
       />
-
-      {clientDialogOpen && (
-        <ContractClientDialog
-          open
-          onOpenChange={setClientDialogOpen}
-          clientId={draft.clientId}
-          clients={clients}
-          onSave={(clientId) => commitPatch({ clientId })}
-        />
-      )}
 
       {deleting && <DeleteContractDialog contract={contract} open onOpenChange={setDeleting} redirectOnDelete />}
     </Stack>

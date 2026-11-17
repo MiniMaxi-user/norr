@@ -221,7 +221,6 @@ function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse
 
 function toContractUpdateRow(input: ReturnType<typeof contractUpdateSchema.parse>) {
   const row: Record<string, unknown> = {};
-  if (input.clientId !== undefined) row.client_id = input.clientId;
   if (input.externalReference !== undefined) row.external_reference = input.externalReference;
   if (input.typeId !== undefined) row.type_id = input.typeId;
   if (input.slaTierId !== undefined) row.sla_tier_id = input.slaTierId ?? null;
