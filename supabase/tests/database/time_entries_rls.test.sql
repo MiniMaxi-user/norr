@@ -71,7 +71,7 @@ insert into public.memberships (user_id, organization_id, role) values
 insert into public.clients (id, organization_id, name) values
   ('d3000000-0000-0000-0000-00000000000a', 'd1000000-0000-0000-0000-00000000000a', 'Client A');
 
-insert into public.work_orders (id, client_id, title, assigned_to) values
+insert into public.work_orders (id, client_id, external_reference, assigned_to) values
   ('d4000000-0000-0000-0000-00000000000a', 'd3000000-0000-0000-0000-00000000000a', 'WO A', 'd2333333-3333-3333-3333-333333333333'),
   ('d4000000-0000-0000-0000-00000000000b', 'd3000000-0000-0000-0000-00000000000a', 'WO A2', 'd2444444-4444-4444-4444-444444444444');
 
@@ -86,7 +86,7 @@ values ('d2777777-7777-7777-7777-777777777777', 'd1000000-0000-0000-0000-0000000
 insert into public.clients (id, organization_id, name)
 values ('d3000000-0000-0000-0000-00000000000c', 'd1000000-0000-0000-0000-00000000000b', 'Client B');
 
-insert into public.work_orders (id, client_id, title)
+insert into public.work_orders (id, client_id, external_reference)
 values ('d4000000-0000-0000-0000-00000000000c', 'd3000000-0000-0000-0000-00000000000c', 'WO B');
 
 -- Capture org_b's seeded time_entry_type "labor" item id, needed later (while

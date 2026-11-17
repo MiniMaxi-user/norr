@@ -163,6 +163,11 @@ function formatTodayDateLabel(date: Date): string {
   return `${weekday} ${dayMonth}`;
 }
 
+/** "WO100 · external reference" - the work order number, then the optional reference. */
+function workItemLabel(item: Pick<CachedWorkItem, "workOrderNumber" | "externalReference">): string {
+  return item.externalReference ? `${item.workOrderNumber} · ${item.externalReference}` : item.workOrderNumber;
+}
+
 function locationLabel(site: CachedWorkItem["site"]): string | null {
   if (!site) return null;
   const parts = [site.addressLine1, site.city].filter((part): part is string => Boolean(part));
@@ -574,7 +579,7 @@ function TodayWorkItemCard({
 
         <Stack gap="xs">
           <Text style={{ fontSize: "var(--ui-text-xl)", fontWeight: 650 }}>{clientName}</Text>
-          <Text tone="muted">{item.title}</Text>
+          <Text tone="muted">{workItemLabel(item)}</Text>
           {location && (
             <Inline gap="xs" align="center">
               <MapPin aria-hidden width={14} height={14} />
@@ -613,7 +618,7 @@ function TodayWorkItemCard({
           <Text tone="muted">
             {signed && totalMs !== undefined
               ? `Signed · ${formatClockHoursMinutes(totalMs)}`
-              : [item.title, location].filter(Boolean).join(" — ")}
+              : [workItemLabel(item), location].filter(Boolean).join(" — ")}
           </Text>
         </Stack>
         <Inline gap="xs" align="center" style={{ flexShrink: 0 }}>

@@ -9,6 +9,7 @@ import { countContractsForAsset } from "@/app/(app)/contracts/actions";
 import { listActivities } from "@/app/(app)/activities/actions";
 import type { RecentAssetActivityItem } from "../components/asset-recent-activities";
 import type { AssetScreenProps } from "../components/asset-screen";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 /** Both the "Recent activities" feed's row count and the per-source fetch
  * limit — five of each source is plenty to always have five real rows after
@@ -83,7 +84,7 @@ export async function loadAssetScreenProps(
       key: `workorder-${workOrder.id}`,
       kind: "workorder" as const,
       href: `/work-orders/${workOrder.id}`,
-      title: workOrder.title,
+      title: workOrderLabel(workOrder),
       date: workOrder.scheduled_at ?? workOrder.created_at,
     })),
   ]

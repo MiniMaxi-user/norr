@@ -54,7 +54,8 @@ export function WorkOrdersPanel({ clientId, workOrders, canCreate }: WorkOrdersP
         emptyHeading="No work orders yet"
         emptyText="Jobs dispatched for this client will show up here."
         columns={[
-          { header: "Title", render: (workOrder) => workOrder.title },
+          { header: "Number", render: (workOrder) => workOrder.work_order_number },
+          { header: "External reference", render: (workOrder) => workOrder.external_reference ?? "—" },
           {
             header: "Status",
             align: "center",

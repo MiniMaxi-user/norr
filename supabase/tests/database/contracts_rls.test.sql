@@ -568,13 +568,13 @@ select throws_ok(
 select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.work_orders (client_id, title, contract_id)
+  $$ insert into public.work_orders (client_id, external_reference, contract_id)
      values ('e3000000-0000-0000-0000-00000000000a', 'Scheduled Maintenance Visit', 'e6000000-0000-0000-0000-00000000000a') $$,
   'owner_a can insert a work order under client A with contract_id set to contract_a (same client)'
 ); -- 47
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, contract_id)
+  $$ insert into public.work_orders (client_id, external_reference, contract_id)
      values ('e3000000-0000-0000-0000-00000000000a', 'Wrong Contract Client', 'e6000000-0000-0000-0000-00000000000c') $$,
   '23514',
   null,

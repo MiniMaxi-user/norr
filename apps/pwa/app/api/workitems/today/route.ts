@@ -37,7 +37,8 @@ interface ResolvedReferenceItem {
 
 interface TodayWorkOrderRow {
   id: string;
-  title: string;
+  work_order_number: string;
+  external_reference: string | null;
   scheduled_at: string | null;
   client: { id: string; name: string } | null;
   // `sites` has no `name` column (dropped by
@@ -62,7 +63,7 @@ interface TodayWorkOrderRow {
 }
 
 const TODAY_WORK_ORDER_SELECT =
-  "id, title, scheduled_at, client:clients(id,name), site:sites(id,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color)";
+  "id, work_order_number, external_reference, scheduled_at, client:clients(id,name), site:sites(id,address_line1,city), work_order_status:reference_list_items!work_orders_status_id_fkey(value,label,color), work_order_type:reference_list_items!work_orders_type_id_fkey(value,label,color), work_order_priority:reference_list_items!work_orders_priority_id_fkey(value,label,color)";
 
 /** Issue #198: the six `organizations` columns behind `timeRoundingSettings`
  * — same direct, minimal-column query as `/api/work-orders/[id]`'s own copy
@@ -150,7 +151,8 @@ export async function GET() {
   return NextResponse.json({
     items: rows.map((row) => ({
       id: row.id,
-      title: row.title,
+      workOrderNumber: row.work_order_number,
+      externalReference: row.external_reference,
       scheduledAt: row.scheduled_at,
       client: row.client ? { id: row.client.id, name: row.client.name } : null,
       site: row.site

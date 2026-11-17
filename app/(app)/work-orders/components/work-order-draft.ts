@@ -10,7 +10,7 @@ import type { WorkOrderRecord } from "../actions";
  * slice of local form state the way the old per-`Card` form did.
  */
 export interface WorkOrderDraft {
-  title: string;
+  externalReference: string;
   description: string;
   notes: string;
   clientId: string;
@@ -37,7 +37,7 @@ export interface WorkOrderDraft {
 
 export function draftFromWorkOrder(workOrder: WorkOrderRecord): WorkOrderDraft {
   return {
-    title: workOrder.title,
+    externalReference: workOrder.external_reference ?? "",
     description: workOrder.description ?? "",
     notes: workOrder.notes ?? "",
     clientId: workOrder.client_id,
@@ -71,15 +71,15 @@ export function emptyDraft(options: {
    * completely blank when created from one. */
   initialDescription?: string;
   /** Issue #103 — the source activity's own type label ("Storing"/
-   * "Onderhoud"/…), so a work order created from an activity doesn't start
-   * with a blank (easy-to-miss) title. Still fully editable. */
-  initialTitle?: string;
+   * "Onderhoud"/…), pre-filled as the optional external reference. Still
+   * fully editable. */
+  initialExternalReference?: string;
   /** Issue #103 — the source activity's own `action_holder_id`, pre-filling
    * (never locking) `assignedTo`. */
   initialAssignedTo?: string;
 }): WorkOrderDraft {
   return {
-    title: options.initialTitle ?? "",
+    externalReference: options.initialExternalReference ?? "",
     description: options.initialDescription ?? "",
     notes: "",
     clientId: options.lockedClientId ?? options.initialClientId ?? "",
@@ -101,7 +101,7 @@ export function emptyDraft(options: {
  * that would fail the schema's `uuid()` shape check. */
 export function draftToInput(patch: Partial<WorkOrderDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
-  if (patch.title !== undefined) input.title = patch.title;
+  if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
   if (patch.description !== undefined) input.description = patch.description;
   if (patch.notes !== undefined) input.notes = patch.notes;
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;

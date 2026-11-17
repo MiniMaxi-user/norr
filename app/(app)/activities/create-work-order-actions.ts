@@ -63,7 +63,7 @@ export async function createWorkOrderFromActivity(
     siteId,
     assetId: activity.asset_id ?? undefined,
     sourceActivityId: activity.id,
-    title: activity.activity_type?.label ?? "Work order",
+    externalReference: activity.activity_type?.label,
     description: activity.description || undefined,
     assignedTo: activity.action_holder_id ?? undefined,
   });

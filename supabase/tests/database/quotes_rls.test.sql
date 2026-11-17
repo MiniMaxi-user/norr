@@ -589,13 +589,13 @@ select throws_ok(
 select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.work_orders (client_id, title, source_quote_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Install From Accepted Quote', 'f6000000-0000-0000-0000-00000000000c') $$,
   'owner_a can insert a work order under client A with source_quote_id set to the Client A quote (same client)'
 ); -- 54
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, source_quote_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Wrong Quote Client', 'f6000000-0000-0000-0000-00000000000d') $$,
   '23514',
   null,
@@ -621,7 +621,7 @@ select throws_ok(
 ); -- 57
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, source_quote_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_quote_id)
      values ('f3000000-0000-0000-0000-00000000000a', 'Nonexistent Quote', '00000000-0000-0000-0000-000000000000') $$,
   '23503',
   null,

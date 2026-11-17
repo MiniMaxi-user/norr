@@ -44,7 +44,8 @@ interface ResolvedReferenceRow {
 
 interface WorkOrderDetailRow {
   id: string;
-  title: string;
+  work_order_number: string;
+  external_reference: string | null;
   description: string | null;
   solution: string | null;
   scheduled_at: string | null;
@@ -78,7 +79,7 @@ interface WorkOrderDetailRow {
 }
 
 const WORK_ORDER_DETAIL_SELECT = `
-  id, title, description, solution, scheduled_at,
+  id, work_order_number, external_reference, description, solution, scheduled_at,
   work_order_status:reference_list_items!work_orders_status_id_fkey(label,color),
   work_order_priority:reference_list_items!work_orders_priority_id_fkey(label,color),
   client:clients(id,name),
@@ -232,7 +233,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const workOrder: WorkOrderDetail = {
     id: row.id,
-    title: row.title,
+    workOrderNumber: row.work_order_number,
+    externalReference: row.external_reference,
     description: row.description,
     solution: row.solution,
     scheduledAt: row.scheduled_at,

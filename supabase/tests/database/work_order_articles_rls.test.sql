@@ -61,7 +61,7 @@ insert into public.clients (id, organization_id, name) values
   ('e3000000-0000-0000-0000-00000000000a', 'e1000000-0000-0000-0000-00000000000a', 'Client A'),
   ('e3000000-0000-0000-0000-00000000000d', 'e1000000-0000-0000-0000-00000000000a', 'Client A2');
 
-insert into public.work_orders (id, client_id, title, assigned_to) values
+insert into public.work_orders (id, client_id, external_reference, assigned_to) values
   ('e4000000-0000-0000-0000-00000000000a', 'e3000000-0000-0000-0000-00000000000a', 'WO A', 'e2333333-3333-3333-3333-333333333333'),
   ('e4000000-0000-0000-0000-00000000000b', 'e3000000-0000-0000-0000-00000000000a', 'WO A2', 'e2444444-4444-4444-4444-444444444444');
 
@@ -80,7 +80,7 @@ values ('e2777777-7777-7777-7777-777777777777', 'e1000000-0000-0000-0000-0000000
 insert into public.clients (id, organization_id, name)
 values ('e3000000-0000-0000-0000-00000000000c', 'e1000000-0000-0000-0000-00000000000b', 'Client B');
 
-insert into public.work_orders (id, client_id, title)
+insert into public.work_orders (id, client_id, external_reference)
 values ('e4000000-0000-0000-0000-00000000000c', 'e3000000-0000-0000-0000-00000000000c', 'WO B');
 
 insert into public.articles (id, organization_id, article_number, description)

@@ -28,7 +28,7 @@ export function DeleteWorkOrderDialog({ workOrder, open, onOpenChange, redirectO
       title="Delete work order"
       fallbackMessage={
         <>
-          Are you sure you want to delete <strong>{workOrder.title}</strong>? This cannot be undone.
+          Are you sure you want to delete <strong>{workOrder.work_order_number}</strong>? This cannot be undone.
         </>
       }
       onConfirm={async () => {

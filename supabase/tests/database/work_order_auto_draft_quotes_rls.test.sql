@@ -129,7 +129,7 @@ values ('f6000000-0000-0000-0000-000000000009', 'f1000000-0000-0000-0000-0000000
 select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.work_orders (id, client_id, title, assigned_to)
+  $$ insert into public.work_orders (id, client_id, external_reference, assigned_to)
      values ('f4000000-0000-0000-0000-00000000000a', 'f3000000-0000-0000-0000-00000000000a', 'WO Custom Client', 'f2333333-3333-3333-3333-333333333333') $$,
   'owner_a can create a work order under Client Custom'
 ); -- 1
@@ -142,8 +142,8 @@ select is(
 
 select is(
   (select name from public.quotes where work_order_id = 'f4000000-0000-0000-0000-00000000000a' and is_auto_draft),
-  'Quote — WO Custom Client',
-  'the auto-draft quote''s name mirrors the "Quote — {title}" pattern'
+  'Quote — WO100',
+  'the auto-draft quote''s name mirrors the "Quote — {work_order_number}" pattern'
 ); -- 3
 
 select is(
@@ -158,10 +158,10 @@ select isnt(
   'the auto-draft quote''s status_id was filled in with the org''s default quote_status item'
 ); -- 5
 
-insert into public.work_orders (id, client_id, title, assigned_to)
+insert into public.work_orders (id, client_id, external_reference, assigned_to)
 values ('f4000000-0000-0000-0000-00000000000b', 'f3000000-0000-0000-0000-00000000000b', 'WO Plain Engineer', 'f2444444-4444-4444-4444-444444444444');
 
-insert into public.work_orders (id, client_id, title, assigned_to)
+insert into public.work_orders (id, client_id, external_reference, assigned_to)
 values ('f4000000-0000-0000-0000-00000000000c', 'f3000000-0000-0000-0000-00000000000b', 'WO Unresolved', 'f2333333-3333-3333-3333-333333333333');
 
 insert into pg_temp.captured_ids (key, val)
@@ -347,7 +347,7 @@ select is(
 -- actually exercise layer 2's resolution.
 select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
 
-insert into public.work_orders (id, client_id, title, assigned_to)
+insert into public.work_orders (id, client_id, external_reference, assigned_to)
 values ('f4000000-0000-0000-0000-00000000000d', 'f3000000-0000-0000-0000-00000000000b', 'WO Plain Engineer 2', 'f2444444-4444-4444-4444-444444444444');
 
 select pg_temp.act_as('f2444444-4444-4444-4444-444444444444');

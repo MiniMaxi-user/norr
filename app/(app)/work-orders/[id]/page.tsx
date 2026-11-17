@@ -301,7 +301,7 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     <WorkOrderScreen
       key={workOrder.updated_at}
       mode="edit"
-      breadcrumbItems={[{ label: "Work Orders", href: "/work-orders" }, { label: workOrder.title }]}
+      breadcrumbItems={[{ label: "Work Orders", href: "/work-orders" }, { label: workOrder.work_order_number }]}
       workOrder={workOrder}
       readOnly={!canEdit || locked}
       locked={locked}

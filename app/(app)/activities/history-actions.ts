@@ -50,7 +50,7 @@ export type ActivityEventType = "created" | "action_holder_changed" | "work_orde
  * that actually exists on `work_orders`. */
 export interface ShallowWorkOrderRecord {
   id: string;
-  title: string;
+  work_order_number: string;
 }
 
 /** Shallow embed shape for the `related_quote_id` FK — mirrors
@@ -87,7 +87,7 @@ export interface ActivityEventRecord {
 }
 
 const ACTIVITY_EVENT_SELECT =
-  "*, actor:users!activity_events_actor_id_fkey(id,email,full_name), related_work_order:work_orders!activity_events_related_work_order_id_fkey(id,title), related_quote:quotes!activity_events_related_quote_id_fkey(id,name)";
+  "*, actor:users!activity_events_actor_id_fkey(id,email,full_name), related_work_order:work_orders!activity_events_related_work_order_id_fkey(id,work_order_number), related_quote:quotes!activity_events_related_quote_id_fkey(id,name)";
 
 /**
  * Lists an activity's history/audit events, **ascending** `occurred_at` (the

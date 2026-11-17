@@ -350,7 +350,7 @@ select is(
 select pg_temp.act_as('e2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.work_orders (id, client_id, title, source_activity_id)
+  $$ insert into public.work_orders (id, client_id, external_reference, source_activity_id)
      values ('e9000000-0000-0000-0000-00000000000a', 'e3000000-0000-0000-0000-00000000000a',
        'Werkbon vanuit melding', 'e7000000-0000-0000-0000-00000000000a') $$,
   'owner_a can insert a work order with source_activity_id pointing at activity A'

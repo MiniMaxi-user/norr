@@ -39,7 +39,8 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
     if (!q) return workOrders;
     return workOrders.filter((workOrder) =>
       [
-        workOrder.title,
+        workOrder.work_order_number,
+        workOrder.external_reference,
         clientNameById.get(workOrder.client_id),
         workOrder.work_order_status?.label,
         workOrder.work_order_priority?.label,
@@ -57,7 +58,7 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
       <Stack gap="md">
         <Input
           aria-label="Search work orders on this page"
-          placeholder="Search by title, client, status, assignee…"
+          placeholder="Search by number, reference, client, status, assignee…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -65,7 +66,8 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
         <Table stickyHeader maxHeight="65vh">
           <Table.Head>
             <Table.Row>
-              <Table.HeaderCell>Title</Table.HeaderCell>
+              <Table.HeaderCell>Number</Table.HeaderCell>
+              <Table.HeaderCell>External reference</Table.HeaderCell>
               <Table.HeaderCell>Client</Table.HeaderCell>
               <Table.HeaderCell align="center">Status</Table.HeaderCell>
               <Table.HeaderCell align="center">Priority</Table.HeaderCell>
@@ -77,7 +79,8 @@ export function WorkOrdersTable({ workOrders, clientNameById, memberById, canEdi
           <Table.Body>
             {filtered.map((workOrder) => (
               <Table.Row key={workOrder.id} onClick={() => router.push(`/work-orders/${workOrder.id}`)}>
-                <Table.Cell>{workOrder.title}</Table.Cell>
+                <Table.Cell>{workOrder.work_order_number}</Table.Cell>
+                <Table.Cell>{workOrder.external_reference ?? "—"}</Table.Cell>
                 <Table.Cell>{clientNameById.get(workOrder.client_id) ?? "—"}</Table.Cell>
                 <Table.Cell align="center">
                   <Badge color={workOrder.work_order_status?.color} variant="muted">

@@ -65,7 +65,10 @@ export interface WorkOrderDetailContract {
 
 export interface WorkOrderDetail {
   id: string;
-  title: string;
+  /** System-assigned work order number (issue #218), e.g. "WO100". */
+  workOrderNumber: string;
+  /** Optional free-text reference (formerly `title`). */
+  externalReference: string | null;
   description: string | null;
   /** Free-text record of how this work order was resolved
    * (`work_orders.solution`) — parallel to `activities.solution`, but this

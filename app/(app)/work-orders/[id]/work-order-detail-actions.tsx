@@ -66,7 +66,7 @@ export function WorkOrderDetailActions({
           duration: 0,
         });
       } else {
-        toast({ tone: "success", title: "Quote created", description: workOrder.title });
+        toast({ tone: "success", title: "Quote created", description: workOrder.work_order_number });
       }
       router.push(`/quotes/${quoteId}`);
     });

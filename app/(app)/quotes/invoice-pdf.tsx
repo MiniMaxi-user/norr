@@ -19,13 +19,10 @@ import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/render
  * forever. No actual i18n infrastructure exists yet; this comment is only a
  * pointer for whoever builds that.
  *
- * Deliberately does NOT render a formatted work-order number the way the
- * reference PDF does — there is no human-facing Work Order display number
- * anywhere in this schema (only Assets have one). When `workOrderReference`
- * is provided (the linked work order's own `title`, fetched by
- * `invoice-actions.ts`), it's shown under a plain "WORK ORDER" label instead
- * of implying a formatted number; the meta row is simply omitted when there
- * is no linked work order.
+ * When `workOrderReference` is provided (the linked work order's number,
+ * plus its optional external reference — issue #218), it's shown under a
+ * "WORK ORDER" label; the meta row is simply omitted when there is no linked
+ * work order.
  *
  * Pagination: `Page`'s default `wrap` behavior automatically flows content
  * (including the line-items table) onto additional pages when it overflows
@@ -82,9 +79,8 @@ export interface InvoicePdfProps {
   dueDateLabel: string;
   /** The quote's own `name`, shown as "REFERENCE". */
   reference: string;
-  /** The linked work order's `title`, when the quote has one (`work_order_id`
-   * set) — `null`/omitted otherwise. See the module comment above for why
-   * this is plain title text, not a formatted work-order number. */
+  /** The linked work order's label ("WO100 · external reference"), when the
+   * quote has one (`work_order_id` set) — `null`/omitted otherwise. */
   workOrderReference: string | null;
   /** The quote's notes (issue #210: contract + covered-asset details for contract quotes), rendered verbatim as a "Notes" block. */
   notes?: string | null;

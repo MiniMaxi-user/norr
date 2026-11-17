@@ -64,6 +64,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         label: findTitle("work_order_priority"),
         href: "/settings/reference-lists/work_order_priority",
       },
+      // Issue #218 - per-tenant work order number prefix + next number.
+      { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering" },
     ],
   },
   {

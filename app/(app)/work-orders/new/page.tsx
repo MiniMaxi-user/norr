@@ -44,7 +44,7 @@ interface NewWorkOrderPageProps {
  * #102's "then everything known on the activity gets filled in" (issue #103
  * widened this) — used to pre-fill (never lock) the activity's own
  * `client_id`/`asset_id`/`description`/`activity_type`/`action_holder_id`
- * via `initialClientId`/`initialAssetId`/`initialDescription`/`initialTitle`/
+ * via `initialClientId`/`initialAssetId`/`initialDescription`/`initialExternalReference`/
  * `initialAssignedTo`. `assetId`/`siteId` query params still win over the
  * activity's own asset when both are somehow present. `ActivityRecord`
  * (`app/(app)/activities/actions.ts`) has no `site_id`/`priority_id`/
@@ -62,7 +62,7 @@ interface NewWorkOrderPageProps {
  * inferred value, same precedence `assetId` already had over the activity's
  * own asset.
  *
- * When arriving via `?activityId=...` and client/site/asset/title all
+ * When arriving via `?activityId=...` and client/site/asset all
  * resolve (see `resolvedClientId`/`resolvedAssetId`/`resolvedSiteId` below),
  * the work order is created immediately server-side (the exact same
  * `createWorkOrder` action + RBAC gate `WorkOrderScreen`'s manual "Create
@@ -139,7 +139,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   const resolvedSiteId = siteId ?? resolvedAsset?.site_id ?? undefined;
 
   // Issue #106, Task 2 — arriving via `?activityId=...` with client/site/
-  // asset/title all resolved skips the manual review/save step entirely: the
+  // asset all resolved skips the manual review/save step entirely: the
   // work order is created immediately (through the same `createWorkOrder`
   // action + RBAC gate the manual "Create work order" button uses) and this
   // route redirects straight to the real detail page. Anything short of a
@@ -147,14 +147,13 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
   // can be inferred) falls through to today's manual create screen below.
   if (activity) {
     const resolvedClientId = lockedClient?.id ?? activity.client_id;
-    const resolvedTitle = activity.activity_type?.label;
-    if (resolvedClientId && resolvedAssetId && resolvedSiteId && resolvedTitle) {
+    if (resolvedClientId && resolvedAssetId && resolvedSiteId) {
       const createResult = await createWorkOrder({
         clientId: resolvedClientId,
         siteId: resolvedSiteId,
         assetId: resolvedAssetId,
         sourceActivityId: activity.id,
-        title: resolvedTitle,
+        externalReference: activity.activity_type?.label,
         description: activity.description || undefined,
         assignedTo: activity.action_holder_id || undefined,
       });
@@ -189,7 +188,7 @@ export default async function NewWorkOrderPage({ searchParams }: NewWorkOrderPag
       initialAssetId={resolvedAssetId}
       initialContractId={contractId}
       initialDescription={activity?.description}
-      initialTitle={activity?.activity_type?.label}
+      initialExternalReference={activity?.activity_type?.label}
       initialAssignedTo={activity?.action_holder_id ?? undefined}
       sourceActivityId={sourceActivityId}
       statuses={statuses}

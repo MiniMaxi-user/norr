@@ -77,7 +77,7 @@ insert into public.articles (id, organization_id, article_number, description) v
   ('e6000000-0000-0000-0000-00000000000a', 'e1000000-0000-0000-0000-00000000000a', 'ART-A-001', 'Filter A'),
   ('e6000000-0000-0000-0000-00000000000b', 'e1000000-0000-0000-0000-00000000000a', 'ART-A-002', 'Filter B');
 
-insert into public.work_orders (id, client_id, title, assigned_to) values
+insert into public.work_orders (id, client_id, external_reference, assigned_to) values
   ('e4000000-0000-0000-0000-00000000000a', 'e3000000-0000-0000-0000-00000000000a', 'WO engineer_a', 'e2333333-3333-3333-3333-333333333333'),
   ('e4000000-0000-0000-0000-00000000000b', 'e3000000-0000-0000-0000-00000000000a', 'WO unassigned', null),
   ('e4000000-0000-0000-0000-00000000000c', 'e3000000-0000-0000-0000-00000000000a', 'WO planner-assigned', 'e2222222-2222-2222-2222-222222222222'),
@@ -312,7 +312,7 @@ values ('e3000000-0000-0000-0000-00000000000b', 'e1000000-0000-0000-0000-0000000
 insert into public.articles (id, organization_id, article_number, description)
 values ('e6000000-0000-0000-0000-00000000000c', 'e1000000-0000-0000-0000-00000000000b', 'ART-B-001', 'Filter B (org B)');
 
-insert into public.work_orders (id, client_id, title, assigned_to)
+insert into public.work_orders (id, client_id, external_reference, assigned_to)
 values ('e4000000-0000-0000-0000-00000000000e', 'e3000000-0000-0000-0000-00000000000b', 'WO engineer_b', 'e2aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 
 select lives_ok(

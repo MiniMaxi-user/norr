@@ -5,6 +5,7 @@ import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 import type { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrganizationCompanySettings } from "../settings/company-actions";
 import { InvoiceDocument, type InvoicePdfAddress, type InvoicePdfLineItem, type InvoicePdfVatBreakdownEntry } from "./invoice-pdf";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 /**
  * Shared invoice PDF rendering (issues #119/#211). NOT a "use server" file:
@@ -238,7 +239,7 @@ export async function renderInvoicePdfForQuote(
       "id, client_id, site_id, name, notes, work_order_id, quote_type," +
         " contract:contracts(contract_number, external_reference)," +
         " client:clients!quotes_client_id_fkey(id,name,vat_number)," +
-        " work_order:work_orders!quotes_work_order_id_fkey(id,title)",
+        " work_order:work_orders!quotes_work_order_id_fkey(id,work_order_number,external_reference)",
     )
     .eq("id", quoteId)
     .maybeSingle<{
@@ -251,7 +252,7 @@ export async function renderInvoicePdfForQuote(
       quote_type: string;
       contract: { contract_number: string; external_reference: string | null } | null;
       client: { id: string; name: string; vat_number: string | null } | null;
-      work_order: { id: string; title: string } | null;
+      work_order: { id: string; work_order_number: string; external_reference: string | null } | null;
     }>();
   if (quoteError) return { error: quoteError.message, code: "failed" };
   if (!quoteRow) return { error: "Quote not found, or you do not have permission to view it.", code: "not_found" };
@@ -310,7 +311,7 @@ export async function renderInvoicePdfForQuote(
           quoteRow.contract.external_reference ? ` — ${quoteRow.contract.external_reference}` : ""
         }`
       : quoteRow.name,
-    workOrderReference: quoteRow.work_order?.title ?? null,
+    workOrderReference: quoteRow.work_order ? workOrderLabel(quoteRow.work_order) : null,
     notes: quoteRow.notes,
     sender: {
       name: ownClient.name,

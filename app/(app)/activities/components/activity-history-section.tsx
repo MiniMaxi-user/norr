@@ -35,7 +35,7 @@ export function ActivityHistorySection({ events }: ActivityHistorySectionProps) 
   const items: KeyValueListItem[] = events.map((event) => {
     let value = <Text>{memberDisplayName(event.actor)}</Text>;
     if (event.event_type === "work_order_linked" && event.related_work_order) {
-      value = <Link href={`/work-orders/${event.related_work_order.id}`}>{event.related_work_order.title}</Link>;
+      value = <Link href={`/work-orders/${event.related_work_order.id}`}>{event.related_work_order.work_order_number}</Link>;
     } else if (event.event_type === "quote_created" && event.related_quote) {
       value = <Link href={`/quotes/${event.related_quote.id}`}>{event.related_quote.name}</Link>;
     }

@@ -55,13 +55,13 @@ async function fetchPaged<T>(
 }
 
 const WORK_ORDER_COLUMNS =
-  "id, title, client_id, asset_id, assigned_to, created_at, scheduled_at, completed_at, duration_minutes";
+  "id, work_order_number, client_id, asset_id, assigned_to, created_at, scheduled_at, completed_at, duration_minutes";
 const WORK_ORDER_EMBEDS =
   "type:reference_list_items!work_orders_type_id_fkey(value,label,color), asset:assets!work_orders_asset_id_fkey(id,name)";
 
 interface WorkOrderRow {
   id: string;
-  title: string;
+  work_order_number: string;
   client_id: string | null;
   asset_id: string | null;
   assigned_to: string | null;
@@ -119,7 +119,7 @@ function toWorkOrder(
   const isOpen = !isDone && statusValue !== "to_review";
   return {
     id: row.id,
-    title: row.title,
+    title: row.work_order_number,
     clientId: row.client_id,
     clientName: (row.client_id && clients.get(row.client_id)) || "Unknown client",
     assetId: row.asset_id,

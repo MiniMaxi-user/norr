@@ -113,7 +113,8 @@ export interface CachedWorkItemSite {
  * nothing extra added for the cache. */
 export interface CachedWorkItem {
   id: string;
-  title: string;
+  workOrderNumber: string;
+  externalReference: string | null;
   scheduledAt: string | null;
   client: CachedWorkItemParty | null;
   site: CachedWorkItemSite | null;

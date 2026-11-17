@@ -3,6 +3,7 @@
 import { Button, Dialog, Heading, Stack, Text } from "@yourorg/ui";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 export interface WorkOrderQuickViewSite {
   address_line1: string | null;
@@ -31,7 +32,7 @@ export function WorkOrderQuickView({ workOrder, clientName, site, onOpenChange }
       {workOrder && (
         <>
           <Dialog.Header>
-            <Heading level={3}>{workOrder.title}</Heading>
+            <Heading level={3}>{workOrderLabel(workOrder)}</Heading>
           </Dialog.Header>
           <Dialog.Body>
             <Stack gap="md">

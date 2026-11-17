@@ -8,6 +8,7 @@ import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
 import { groupBacklogByRegion } from "../grouping";
 import { formatDurationHours } from "../date-utils";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 export interface PlanningBacklogProps {
   workOrders: WorkOrderRecord[];
@@ -241,7 +242,7 @@ function BacklogCard({
       data-selected={selected || undefined}
     >
       <Inline justify="between" align="start" gap="sm">
-        <Text className="ui-planning-backlog-card-title">{workOrder.title}</Text>
+        <Text className="ui-planning-backlog-card-title">{workOrderLabel(workOrder)}</Text>
         <Inline gap="xs" align="center">
           {workOrder.work_order_type && <Badge color={workOrder.work_order_type.color}>{workOrder.work_order_type.label}</Badge>}
           <IconButton

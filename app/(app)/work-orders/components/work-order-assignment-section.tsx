@@ -46,7 +46,7 @@ export interface WorkOrderAssignmentSectionProps {
   members: OrgMemberRecord[];
   readOnly?: boolean;
   onSave: (
-    patch: Pick<WorkOrderDraft, "description" | "notes" | "assignedTo" | "scheduledAt">,
+    patch: Pick<WorkOrderDraft, "externalReference" | "description" | "notes" | "assignedTo" | "scheduledAt">,
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -78,6 +78,11 @@ export function WorkOrderAssignmentSection({
   const createdByMember = workOrder?.created_by ? memberById.get(workOrder.created_by) : undefined;
 
   const assignmentItems: KeyValueListItem[] = [
+    {
+      key: "external-reference",
+      label: "External reference",
+      value: draft.externalReference ? <Text>{draft.externalReference}</Text> : <Text tone="muted">—</Text>,
+    },
     {
       key: "assigned-to",
       label: "Assigned to",
@@ -194,6 +199,7 @@ function WorkOrderAssignmentDialog({
   members: OrgMemberRecord[];
   onSave: WorkOrderAssignmentSectionProps["onSave"];
 }) {
+  const [externalReference, setExternalReference] = useState(draft.externalReference);
   const [description, setDescription] = useState(draft.description);
   const [notes, setNotes] = useState(draft.notes);
   const [assignedTo, setAssignedTo] = useState(draft.assignedTo);
@@ -207,6 +213,7 @@ function WorkOrderAssignmentDialog({
     setError(null);
     setSaving(true);
     const result = await onSave({
+      externalReference: externalReference.trim(),
       description,
       notes,
       assignedTo,
@@ -228,6 +235,15 @@ function WorkOrderAssignmentDialog({
       <Dialog.Body>
         <Stack gap="md">
           {error && <Text tone="danger">{error}</Text>}
+          <Stack gap="sm">
+            <Label htmlFor="wo-external-reference">External reference</Label>
+            <Input
+              id="wo-external-reference"
+              value={externalReference}
+              maxLength={200}
+              onChange={(event) => setExternalReference(event.target.value)}
+            />
+          </Stack>
           <Stack gap="sm">
             <Label htmlFor="wo-description">Description</Label>
             <Textarea

@@ -69,8 +69,6 @@ export interface WorkOrderHeroProps {
   /** `WorkOrderDetailActions` in edit mode, or a Cancel/Create pair in create
    * mode — owned by `WorkOrderScreen`, just slotted in here. */
   actions?: ReactNode;
-  onTitleChange: (value: string) => void;
-  onTitleBlur: (value: string) => void;
   onClientChange: (clientId: string) => void;
   onRelationsSave: (
     patch: Pick<WorkOrderDraft, "clientId" | "siteId" | "assetId" | "contractId">,
@@ -139,8 +137,6 @@ export function WorkOrderHero({
   canApproveReview,
   stats,
   actions,
-  onTitleChange,
-  onTitleBlur,
   onClientChange,
   onRelationsSave,
   onStatusPrioritySave,
@@ -220,6 +216,9 @@ export function WorkOrderHero({
   if (approveError) {
     meta.push(<Text tone="danger">{approveError}</Text>);
   }
+  if (draft.externalReference) {
+    meta.push(<span key="external-reference">{draft.externalReference}</span>);
+  }
   if (resolvedSite) {
     meta.push(
       <>
@@ -239,18 +238,9 @@ export function WorkOrderHero({
     <>
       <RecordHeroBand
         title={
-          readOnly ? (
-            <h1 className="ui-record-hero-band-title">{draft.title || "Untitled work order"}</h1>
-          ) : (
-            <input
-              className="ui-record-hero-band-title-input"
-              value={draft.title}
-              placeholder="Untitled work order — click to name it"
-              aria-label="Work order title"
-              onChange={(event) => onTitleChange(event.target.value)}
-              onBlur={(event) => onTitleBlur(event.target.value)}
-            />
-          )
+          <h1 className="ui-record-hero-band-title">
+            {mode === "edit" && workOrder ? workOrder.work_order_number : "New work order"}
+          </h1>
         }
         meta={meta}
         actions={actions}

@@ -19,6 +19,7 @@ import {
   startOfWeek,
 } from "../date-utils";
 import type { PlanningGroup, PlanningView } from "../types";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 export interface PlanningGridProps {
   view: PlanningView;
@@ -73,10 +74,10 @@ function isLockedWorkOrder(workOrder: WorkOrderRecord): boolean {
  * `.ui-timeline-block-title`'s existing `white-space: nowrap; text-overflow:
  * ellipsis` truncation instead of breaking it with a nested flex child. */
 function blockTitle(workOrder: WorkOrderRecord): ReactNode {
-  if (!isLockedWorkOrder(workOrder)) return workOrder.title;
+  if (!isLockedWorkOrder(workOrder)) return workOrderLabel(workOrder);
   return (
     <>
-      <Lock aria-hidden /> {workOrder.title}
+      <Lock aria-hidden /> {workOrderLabel(workOrder)}
     </>
   );
 }

@@ -89,7 +89,7 @@ interface SourceWorkOrder {
   id: string;
   client_id: string;
   contract_id: string | null;
-  title: string;
+  work_order_number: string;
 }
 
 /** Minimal shape read off `time_entries` for the fallback path, with its
@@ -482,7 +482,7 @@ async function createBrandNewQuoteFromWorkOrder(
 
   const orderedLineItems = [...timeEntryLineItems, ...articleLineItems];
 
-  const quoteName = `Quote — ${workOrder.title}`;
+  const quoteName = `Quote — ${workOrder.work_order_number}`;
 
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")
@@ -551,7 +551,7 @@ export async function createQuoteFromWorkOrder(
 
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select("id, client_id, contract_id, title")
+    .select("id, client_id, contract_id, work_order_number")
     .eq("id", idResult.data)
     .maybeSingle<SourceWorkOrder>();
   if (workOrderError) return fail(mapDbError(workOrderError));

@@ -7,6 +7,7 @@ import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import { contractLabel } from "@/lib/format/contract-label";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 
 export interface QuoteRelationCardsProps {
   client: ClientRecord | null;
@@ -63,7 +64,7 @@ export function QuoteRelationCards({
         <RelationCard
           icon={ClipboardList}
           label="Source"
-          title={<Link href={`/work-orders/${sourceWorkOrder.id}`}>{sourceWorkOrder.title}</Link>}
+          title={<Link href={`/work-orders/${sourceWorkOrder.id}`}>{workOrderLabel(sourceWorkOrder)}</Link>}
           subtitle={sourceWorkOrder.work_order_status?.label ?? undefined}
         />
       )}

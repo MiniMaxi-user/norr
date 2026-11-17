@@ -70,7 +70,13 @@ export const workOrderCreateSchema = z.object({
   /** Nullable; when set, must be a member of the work order's own
    * organization — validated by `validate_work_order_relations`. */
   assignedTo: optionalUuid("Invalid assignee."),
-  title: z.string().trim().min(1, "Title is required.").max(200, "Title is too long."),
+  /** Optional free-text reference (issue #218, formerly `title`). Empty
+   * string clears it (-> `null`). The work order number itself is
+   * system-assigned and never accepted as input. */
+  externalReference: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().trim().max(200, "External reference is too long.").nullable().optional(),
+  ),
   description: optionalText(5000),
   notes: optionalText(5000),
   /** FK into this org's `work_order_status` reference list. Optional on

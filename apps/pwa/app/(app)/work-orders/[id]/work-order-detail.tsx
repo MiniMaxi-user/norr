@@ -358,8 +358,9 @@ export function WorkOrderDetailScreen({
 
       <Stack gap="xs">
         <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)" }}>
-          {workOrder.title}
+          {workOrder.workOrderNumber}
         </Heading>
+        {workOrder.externalReference && <Text tone="muted">{workOrder.externalReference}</Text>}
         <Text tone="muted">
           {workOrder.client?.name ?? "Unknown client"}
           {addressParts.length > 0 ? ` · ${addressParts.join(", ")}` : ""}

@@ -61,6 +61,7 @@ export type Module =
   | "billing"
   | "settings"
   | "contract_numbering"
+  | "work_order_numbering"
   | "platform";
 
 /**
@@ -345,6 +346,16 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: NONE,
     administratie: READ_UPDATE,
   },
+  // Work order numbering settings (issue #218): same owner + administratie
+  // shape as contract_numbering (get/update_work_order_numbering_settings,
+  // 20261117100000_work_order_numbering.sql).
+  work_order_numbering: {
+    owner: READ_UPDATE,
+    planner: NONE,
+    engineer: NONE,
+    finance: NONE,
+    administratie: READ_UPDATE,
+  },
   // Platform (issue #45): Platform Admin's own cross-tenant settings area
   // (app/(app)/platform-settings/page.tsx) — never a tenant-role concern
   // (docs/ARCHITECTURE.md / CLAUDE.md: `is_platform_admin` is a separate,
@@ -414,6 +425,8 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   settings: NONE,
   // Contract numbering (issue #216): tenant-only admin setting, same NONE shape as `settings`.
   contract_numbering: NONE,
+  // Work order numbering (issue #218): tenant-only admin setting.
+  work_order_numbering: NONE,
   // Platform (issue #45): the only module Platform Admin gets on its own
   // account, matching `app/(app)/platform-settings/page.tsx`'s gate
   // (`canAccessModule(actor, "platform")`). Read-only per this file's own

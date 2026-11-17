@@ -137,7 +137,7 @@ where rl.organization_id = 'c1000000-0000-0000-0000-00000000000b'
 select pg_temp.act_as('c2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.work_orders (id, client_id, site_id, asset_id, assigned_to, title)
+  $$ insert into public.work_orders (id, client_id, site_id, asset_id, assigned_to, external_reference)
      values ('c6000000-0000-0000-0000-00000000000a', 'c3000000-0000-0000-0000-00000000000a',
        'c4000000-0000-0000-0000-00000000000a', 'c5000000-0000-0000-0000-00000000000a',
        'c2333333-3333-3333-3333-333333333333', 'Fix AC') $$,
@@ -165,7 +165,7 @@ select is(
 ); -- 4
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, organization_id)
+  $$ insert into public.work_orders (client_id, external_reference, organization_id)
      values ('c3000000-0000-0000-0000-00000000000a', 'Spoofed', 'c1000000-0000-0000-0000-00000000000a') $$,
   '42501',
   null,
@@ -173,7 +173,7 @@ select throws_ok(
 ); -- 5
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, created_by)
+  $$ insert into public.work_orders (client_id, external_reference, created_by)
      values ('c3000000-0000-0000-0000-00000000000a', 'Spoofed', '00000000-0000-0000-0000-000000000000') $$,
   '42501',
   null,
@@ -181,7 +181,7 @@ select throws_ok(
 ); -- 6
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, site_id, title)
+  $$ insert into public.work_orders (client_id, site_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'c4000000-0000-0000-0000-00000000000b', 'Wrong Site Client') $$,
   '23514',
   null,
@@ -189,7 +189,7 @@ select throws_ok(
 ); -- 7
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, asset_id, title)
+  $$ insert into public.work_orders (client_id, asset_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'c5000000-0000-0000-0000-00000000000b', 'Wrong Asset Client') $$,
   '23514',
   null,
@@ -197,7 +197,7 @@ select throws_ok(
 ); -- 8
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, site_id, asset_id, title)
+  $$ insert into public.work_orders (client_id, site_id, asset_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'c4000000-0000-0000-0000-00000000000a',
        'c5000000-0000-0000-0000-00000000000c', 'Wrong Asset Site') $$,
   '23514',
@@ -206,7 +206,7 @@ select throws_ok(
 ); -- 9
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, assigned_to, title)
+  $$ insert into public.work_orders (client_id, assigned_to, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'c2777777-7777-7777-7777-777777777777', 'Cross Org Assignee') $$,
   '23514',
   null,
@@ -214,7 +214,7 @@ select throws_ok(
 ); -- 10
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, status_id)
+  $$ insert into public.work_orders (client_id, external_reference, status_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Wrong Status List',
        (select rli.id from public.reference_list_items rli
           join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -226,7 +226,7 @@ select throws_ok(
 ); -- 11
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, priority_id)
+  $$ insert into public.work_orders (client_id, external_reference, priority_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Wrong Priority List',
        (select rli.id from public.reference_list_items rli
           join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -238,7 +238,7 @@ select throws_ok(
 ); -- 12
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, status_id)
+  $$ insert into public.work_orders (client_id, external_reference, status_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Cross Org Status', val
      from pg_temp.captured_ids where key = 'org_b_work_order_status_new_id' $$,
   '23514',
@@ -251,7 +251,7 @@ select throws_ok(
 -- above (tests 11-13) — wrong list_key, cross-org, and a positive same-org
 -- case.
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, type_id)
+  $$ insert into public.work_orders (client_id, external_reference, type_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Wrong Type List',
        (select rli.id from public.reference_list_items rli
           join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -263,7 +263,7 @@ select throws_ok(
 ); -- 14
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, type_id)
+  $$ insert into public.work_orders (client_id, external_reference, type_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Cross Org Type', val
      from pg_temp.captured_ids where key = 'org_b_activity_type_afspraak_id' $$,
   '23514',
@@ -272,7 +272,7 @@ select throws_ok(
 ); -- 15
 
 select lives_ok(
-  $$ insert into public.work_orders (client_id, title, type_id)
+  $$ insert into public.work_orders (client_id, external_reference, type_id)
      select 'c3000000-0000-0000-0000-00000000000a', 'Valid Type Onderhoud', rli.id
      from public.reference_list_items rli
      join public.reference_lists rl on rl.id = rli.reference_list_id
@@ -287,25 +287,25 @@ select lives_ok(
 select pg_temp.act_as('c2222222-2222-2222-2222-222222222222');
 
 select lives_ok(
-  $$ insert into public.work_orders (id, client_id, title, assigned_to)
+  $$ insert into public.work_orders (id, client_id, external_reference, assigned_to)
      values ('c6000000-0000-0000-0000-00000000000b', 'c3000000-0000-0000-0000-00000000000a', 'Replace Filter',
        'c2444444-4444-4444-4444-444444444444') $$,
   'planner_a can insert a work order (assigned to engineer_a2)'
 ); -- 17
 
 select lives_ok(
-  $$ update public.work_orders set title = 'Fix AC Unit' where id = 'c6000000-0000-0000-0000-00000000000a' $$,
+  $$ update public.work_orders set external_reference = 'Fix AC Unit' where id = 'c6000000-0000-0000-0000-00000000000a' $$,
   'planner_a can update any work order in org_a, not just their own'
 ); -- 18
 
 select is(
-  (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
+  (select external_reference from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   'Fix AC Unit',
   'planner_a''s update took effect'
 ); -- 19
 
 select lives_ok(
-  $$ insert into public.work_orders (id, client_id, title)
+  $$ insert into public.work_orders (id, client_id, external_reference)
      values ('c6000000-0000-0000-0000-00000000000c', 'c3000000-0000-0000-0000-00000000000a', 'Disposable') $$,
   'planner_a can insert a disposable work order for the delete test below'
 ); -- 20
@@ -346,7 +346,7 @@ select is(
 ); -- 25
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, assigned_to)
+  $$ insert into public.work_orders (client_id, external_reference, assigned_to)
      values ('c3000000-0000-0000-0000-00000000000a', 'Engineer Self Assign', 'c2333333-3333-3333-3333-333333333333') $$,
   '42501',
   null,
@@ -364,12 +364,12 @@ select is(
   'engineer_a''s update to their own work order took effect'
 ); -- 28
 
-update public.work_orders set title = 'Hijacked' where id = 'c6000000-0000-0000-0000-00000000000b';
+update public.work_orders set external_reference = 'Hijacked' where id = 'c6000000-0000-0000-0000-00000000000b';
 
 select is(
-  (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000b'),
+  (select external_reference from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000b'),
   'Replace Filter',
-  'engineer_a''s UPDATE on engineer_a2''s work order is silently excluded by RLS (USING); title unchanged'
+  'engineer_a''s UPDATE on engineer_a2''s work order is silently excluded by RLS (USING); external_reference unchanged'
 ); -- 29
 
 delete from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a';
@@ -400,19 +400,19 @@ select is(
 ); -- 32
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title)
+  $$ insert into public.work_orders (client_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'Finance Attempt') $$,
   '42501',
   null,
   'finance_a cannot INSERT a work order (read-only)'
 ); -- 33
 
-update public.work_orders set title = 'Finance Hijack' where id = 'c6000000-0000-0000-0000-00000000000a';
+update public.work_orders set external_reference = 'Finance Hijack' where id = 'c6000000-0000-0000-0000-00000000000a';
 
 select is(
-  (select title from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
+  (select external_reference from public.work_orders where id = 'c6000000-0000-0000-0000-00000000000a'),
   'Fix AC Unit',
-  'finance_a''s UPDATE is silently excluded by RLS (read-only); title unchanged'
+  'finance_a''s UPDATE is silently excluded by RLS (read-only); external_reference unchanged'
 ); -- 34
 
 select pg_temp.act_as('c2666666-6666-6666-6666-666666666666');
@@ -424,7 +424,7 @@ select is(
 ); -- 35
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title)
+  $$ insert into public.work_orders (client_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'Administratie Attempt') $$,
   '42501',
   null,
@@ -443,7 +443,7 @@ select is(
 ); -- 37
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title)
+  $$ insert into public.work_orders (client_id, external_reference)
      values ('c3000000-0000-0000-0000-00000000000a', 'Hostile Cross Org Insert') $$,
   '42501',
   null,
@@ -476,13 +476,13 @@ where rl.organization_id = 'c1000000-0000-0000-0000-00000000000a'
   and rl.list_key = 'activity_type' and rli.value = 'afspraak';
 
 select lives_ok(
-  $$ insert into public.work_orders (client_id, title, source_activity_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_activity_id)
      values ('c3000000-0000-0000-0000-00000000000a', 'Werkbon Vanuit Melding', 'c7000000-0000-0000-0000-00000000000a') $$,
   'owner_a can insert a work order under client A with source_activity_id set to the Client A activity (same client)'
 ); -- 39
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, source_activity_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_activity_id)
      values ('c3000000-0000-0000-0000-00000000000a', 'Wrong Activity Client', 'c7000000-0000-0000-0000-00000000000b') $$,
   '23514',
   null,
@@ -490,7 +490,7 @@ select throws_ok(
 ); -- 40
 
 select throws_ok(
-  $$ insert into public.work_orders (client_id, title, source_activity_id)
+  $$ insert into public.work_orders (client_id, external_reference, source_activity_id)
      values ('c3000000-0000-0000-0000-00000000000a', 'Nonexistent Activity', '00000000-0000-0000-0000-000000000000') $$,
   '23503',
   null,

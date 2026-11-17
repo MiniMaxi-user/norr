@@ -90,11 +90,9 @@ export interface WorkOrderScreenProps {
   /** Same activity pre-fill as `initialClientId` — the activity's own
    * `description`, so `mode: "create"` doesn't start fully blank. */
   initialDescription?: string;
-  /** Issue #103 — defaults the (still fully editable, see #6's title-input
-   * fix) title to the source activity's own type label ("Storing"/
-   * "Onderhoud"/…) instead of starting blank, since a blank title with no
-   * visible affordance was exactly the bug users hit. */
-  initialTitle?: string;
+  /** Issue #103 — pre-fills the optional (editable) external reference with
+   * the source activity's own type label ("Storing"/"Onderhoud"/…). */
+  initialExternalReference?: string;
   /** Issue #103 — the source activity's own `action_holder_id` ("Behandelaar"),
    * pre-filling (never locking) `assignedTo` the same way `initialClientId`/
    * `initialAssetId` pre-fill without locking. The only other Activity field
@@ -261,7 +259,7 @@ export function WorkOrderScreen({
   initialAssetId,
   initialContractId,
   initialDescription,
-  initialTitle,
+  initialExternalReference,
   initialAssignedTo,
   sourceActivityId,
   statuses,
@@ -315,7 +313,7 @@ export function WorkOrderScreen({
           initialAssetId,
           initialContractId,
           initialDescription,
-          initialTitle,
+          initialExternalReference,
           initialAssignedTo,
         }),
   );
@@ -352,22 +350,7 @@ export function WorkOrderScreen({
     return { ok: true };
   }
 
-  function handleTitleChange(value: string) {
-    setDraft((prev) => ({ ...prev, title: value }));
-  }
-
-  function handleTitleBlur(value: string) {
-    const trimmed = value.trim();
-    if (mode === "edit" && workOrder && trimmed && trimmed !== workOrder.title) {
-      void commitPatch({ title: trimmed });
-    }
-  }
-
   async function handleCreate() {
-    if (!draft.title.trim()) {
-      setCreateError("Title is required.");
-      return;
-    }
     if (!draft.clientId) {
       setCreateError("Select a client.");
       return;
@@ -440,8 +423,6 @@ export function WorkOrderScreen({
         materialSlot={materialSlot}
         checklistSlot={checklistSlot}
         heroActions={heroActions}
-        onTitleChange={handleTitleChange}
-        onTitleBlur={handleTitleBlur}
         onClientChange={setScopingClientId}
         onRelationsSave={commitPatch}
         onStatusPrioritySave={commitPatch}
@@ -499,8 +480,6 @@ interface WorkOrderScreenBodyProps {
   materialSlot?: ReactNode;
   checklistSlot?: ReactNode;
   heroActions: ReactNode;
-  onTitleChange: (value: string) => void;
-  onTitleBlur: (value: string) => void;
   onClientChange: (clientId: string) => void;
   /** All three of these are `WorkOrderScreen`'s own `commitPatch` — same
    * broad `Partial<WorkOrderDraft>` signature threaded through to `WorkOrderHero`'s
@@ -567,8 +546,6 @@ function WorkOrderScreenBody({
   materialSlot,
   checklistSlot,
   heroActions,
-  onTitleChange,
-  onTitleBlur,
   onClientChange,
   onRelationsSave,
   onStatusPrioritySave,
@@ -679,8 +656,6 @@ function WorkOrderScreenBody({
         canApproveReview={canApproveReview}
         stats={stats}
         actions={heroActions}
-        onTitleChange={onTitleChange}
-        onTitleBlur={onTitleBlur}
         onClientChange={onClientChange}
         onRelationsSave={onRelationsSave}
         onStatusPrioritySave={onStatusPrioritySave}

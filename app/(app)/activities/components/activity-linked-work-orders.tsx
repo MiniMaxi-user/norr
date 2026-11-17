@@ -8,6 +8,7 @@ import { ClipboardList } from "@yourorg/ui/icons";
 import type { ActivityRecord } from "../actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { createWorkOrderFromActivity } from "../create-work-order-actions";
+import { workOrderLabel } from "@/lib/format/work-order-label";
 import { formatDateTime } from "@/lib/format/date";
 
 export interface ActivityLinkedWorkOrdersProps {
@@ -60,7 +61,7 @@ export function ActivityLinkedWorkOrders({ activity, workOrders, canCreateWorkOr
         });
         return;
       }
-      toast({ tone: "success", title: "Work order created", description: result.data.workOrder.title });
+      toast({ tone: "success", title: "Work order created", description: result.data.workOrder.work_order_number });
       router.refresh();
     });
   }
@@ -96,7 +97,7 @@ export function ActivityLinkedWorkOrders({ activity, workOrders, canCreateWorkOr
               <div className="ui-row-main">
                 <Stack gap="xs">
                   <Link href={`/work-orders/${workOrder.id}`} className="ui-row-title">
-                    {workOrder.title}
+                    {workOrderLabel(workOrder)}
                   </Link>
                   <Text tone="muted">
                     {`WO-${workOrder.id.slice(0, 8).toUpperCase()}`} ·{" "}

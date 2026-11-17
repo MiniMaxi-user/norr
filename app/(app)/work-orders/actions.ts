@@ -110,7 +110,10 @@ export interface WorkOrderRecord {
    * — see `workOrderCreateSchema.sourceActivityId` in `./schema.ts`. */
   source_activity_id: string | null;
   assigned_to: string | null;
-  title: string;
+  /** System-assigned (issue #218), immutable; never sent on insert/update. */
+  work_order_number: string;
+  /** Optional free-text reference (formerly `title`). */
+  external_reference: string | null;
   description: string | null;
   /** Free-text write-up of how the job was resolved (issue #170 PWA sign-off)
    * — set by the field-engineer PWA's `POST /api/work-orders/[id]/finish`
@@ -194,7 +197,7 @@ function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.par
     contract_id: input.contractId ?? null,
     source_activity_id: input.sourceActivityId ?? null,
     assigned_to: input.assignedTo ?? null,
-    title: input.title,
+    external_reference: input.externalReference ?? null,
     description: input.description ?? null,
     notes: input.notes ?? null,
     priority_id: input.priorityId ?? null,
@@ -224,7 +227,7 @@ function toWorkOrderUpdateRow(input: ReturnType<typeof workOrderUpdateSchema.par
   if (input.assetId !== undefined) row.asset_id = input.assetId ?? null;
   if (input.contractId !== undefined) row.contract_id = input.contractId ?? null;
   if (input.assignedTo !== undefined) row.assigned_to = input.assignedTo ?? null;
-  if (input.title !== undefined) row.title = input.title;
+  if (input.externalReference !== undefined) row.external_reference = input.externalReference;
   if (input.description !== undefined) row.description = input.description ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   if (input.statusId !== undefined) row.status_id = input.statusId;
