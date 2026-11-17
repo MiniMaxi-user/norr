@@ -165,7 +165,10 @@ function formatTodayDateLabel(date: Date): string {
 
 /** "WO100 · external reference" - the work order number, then the optional reference. */
 function workItemLabel(item: Pick<CachedWorkItem, "workOrderNumber" | "externalReference">): string {
-  return item.externalReference ? `${item.workOrderNumber} · ${item.externalReference}` : item.workOrderNumber;
+  // Items cached before #218 lack workOrderNumber until the next sync.
+  const number = item.workOrderNumber ?? "";
+  if (!item.externalReference) return number;
+  return number ? `${number} · ${item.externalReference}` : item.externalReference;
 }
 
 function locationLabel(site: CachedWorkItem["site"]): string | null {

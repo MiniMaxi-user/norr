@@ -42,12 +42,8 @@ const uuidSchema = z.string().uuid("Invalid id.");
 export type ActivityEventType = "created" | "action_holder_changed" | "work_order_linked" | "quote_created";
 
 /** Shallow embed shape for the `related_work_order_id` FK — just enough for a
- * "WO-…" style link (`id` for the `/work-orders/[id]` href, `title` for the
- * label). `work_orders` has no separate human-readable code/number column
- * (see `WorkOrderRecord` in `app/(app)/work-orders/actions.ts`) — `title` is
- * the only displayable field beyond `id`, so that's what this mirrors
- * `ShallowNamedRecord`'s `{ id, name }` shape with, renamed to the column
- * that actually exists on `work_orders`. */
+ * link (`id` for the `/work-orders/[id]` href, `work_order_number` for the
+ * label, issue #218). */
 export interface ShallowWorkOrderRecord {
   id: string;
   work_order_number: string;
@@ -56,7 +52,7 @@ export interface ShallowWorkOrderRecord {
 /** Shallow embed shape for the `related_quote_id` FK — mirrors
  * `ShallowWorkOrderRecord` above, just enough for a "Q-…"-style link
  * (`id` for the `/quotes/[id]` href, `name` for the label — `quotes` has no
- * separate human-readable number column either, same as `work_orders.title`). */
+ * separate human-readable number column). */
 export interface ShallowQuoteRecord {
   id: string;
   name: string;
