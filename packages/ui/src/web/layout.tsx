@@ -1,6 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
 import { cx } from "../cx";
+import { WebBadge, WebBreadcrumb } from "./primitives";
 
 /**
  * Detail-page skeleton (issue #222): `WebPage` (full-bleed canvas),
@@ -206,5 +207,156 @@ export function WebDetailLayout({ header, children, rail, timeline, locked, main
         </aside>
       </div>
     </>
+  );
+}
+
+/* ---------------------------------------------------------------------- *
+ * List page
+ * ---------------------------------------------------------------------- */
+
+export interface WebListPageProps {
+  /** Module name: the single breadcrumb level ("Clients"). */
+  module: string;
+  /** The H1 (usually the same as `module`, or a longer name). */
+  title: string;
+  /** Total number of records, shown as a mono count badge next to the title.
+   * Omit while it is unknown. */
+  count?: number | null;
+  /** Secondary actions, left of the primary one: `[Export]`, a
+   * `WebViewSwitcher`. Only add what really exists. */
+  actions?: ReactNode;
+  /** The ONE navy primary button: `<WebLinkButton variant="primary"
+   * href="/clients/new">New client</WebLinkButton>`. Omit when the user may
+   * not create. */
+  primary?: ReactNode;
+  /** The page body: normally ONE `WebDataTableCard` (FilterBar + table), or
+   * a different view of the same data (board, map). No tabs, no rail. */
+  children: ReactNode;
+}
+
+function ListHeader({
+  module,
+  title,
+  count,
+  actions,
+  primary,
+}: Omit<WebListPageProps, "children">) {
+  return (
+    <header className="web-page-header" data-mode="read" data-kind="list">
+      <WebBreadcrumb items={[{ label: module }]} />
+      <div className="web-page-header-row">
+        <div className="web-page-header-left">
+          <div className="web-page-header-text">
+            <h1 className="web-page-title" title={title}>
+              {title}
+            </h1>
+          </div>
+          {typeof count === "number" ? (
+            <WebBadge variant="mono" aria-label={`${count} records`}>
+              {count}
+            </WebBadge>
+          ) : null}
+        </div>
+        {actions || primary ? (
+          <div className="web-page-header-actions">
+            <div className="web-page-header-buttons">
+              {actions}
+              {primary}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Skeleton of the list-page shell of the web design system (issue #222),
+ * for lists of every module. Use it as the whole page of a module list:
+ *
+ * ```tsx
+ * // page.tsx (Server Component) — resolve session / hasFeature / RBAC first
+ * <Suspense fallback={<WebListSkeleton module="Clients" title="Clients" />}>
+ *   <ClientsList searchParams={...} />   // async: fetches, then renders
+ * </Suspense>
+ *
+ * // ClientsList
+ * <WebListPage module="Clients" title="Clients" count={total}
+ *   primary={canCreate ? <WebLinkButton variant="primary" href="/clients/new">New client</WebLinkButton> : undefined}>
+ *   <ClientsTable ... />   // a `WebDataTableCard` in server mode
+ * </WebListPage>
+ * ```
+ *
+ * Layout: the topbar, a white page header (breadcrumb with the module name,
+ * H1, optional count badge, `[actions] [primary]` on the right), and below
+ * it one full-width scroll area holding the card. The browser page never
+ * scrolls; the FilterBar and the column headers stay stuck to the top of that
+ * area. No tabs, no right rail.
+ *
+ * Do NOT key the `Suspense` on the filter params: `WebDataTableCard` (server
+ * mode) changes the URL inside a transition, so the table stays on screen
+ * (dimmed) while the new page streams in, and the search box keeps focus.
+ */
+export function WebListPage({ children, ...header }: WebListPageProps) {
+  return (
+    <WebPage>
+      <ListHeader {...header} />
+      <div className="web-list-main" data-web-main="">
+        {children}
+      </div>
+    </WebPage>
+  );
+}
+
+export interface WebListSkeletonProps {
+  module: string;
+  title: string;
+  /** Rows of the placeholder table (default 8). */
+  rows?: number;
+  /** Placeholder columns (default 5). */
+  columns?: number;
+}
+
+/** Suspense / `loading.tsx` fallback shaped like `WebListPage`: the real
+ * header (so the H1 paints at once), a FilterBar and a table of skeleton
+ * bars. Never a bare spinner. */
+export function WebListSkeleton({ module, title, rows = 8, columns = 5 }: WebListSkeletonProps) {
+  return (
+    <WebPage aria-busy="true">
+      <ListHeader module={module} title={title} />
+      <div className="web-list-main" data-web-main="">
+        <section className="web-card" aria-hidden="true">
+          <div className="web-filterbar">
+            <span className="web-skeleton-bar" style={{ width: 260, height: 30 }} />
+            <span className="web-skeleton-bar" style={{ width: 120, height: 30 }} />
+            <span className="web-skeleton-bar" style={{ width: 120, height: 30 }} />
+          </div>
+          <div className="web-table-wrap">
+            <table className="web-table">
+              <thead>
+                <tr>
+                  {Array.from({ length: columns }).map((_, index) => (
+                    <th key={index} scope="col">
+                      <span className="web-skeleton-bar" />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: rows }).map((_, row) => (
+                  <tr key={row}>
+                    {Array.from({ length: columns }).map((__, cell) => (
+                      <td key={cell}>
+                        <span className="web-skeleton-bar" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </WebPage>
   );
 }

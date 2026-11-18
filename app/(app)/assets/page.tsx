@@ -1,35 +1,29 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
+import { WebListSkeleton } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { AssetsScreen } from "./components/assets-screen";
-import { AssetsScreenSkeleton } from "./components/assets-screen-skeleton";
+import type { AssetsSearchParams } from "./components/assets-query";
 import type { AssetsView } from "./components/assets-view-switcher";
 
 export const metadata = { title: "Assets" };
-
-interface AssetsPageProps {
-  searchParams: Promise<{
-    clientId?: string;
-    siteId?: string;
-    view?: string;
-    page?: string;
-  }>;
-}
 
 function parseView(raw: string | undefined): AssetsView | undefined {
   return raw === "list" || raw === "map" ? raw : undefined;
 }
 
 /**
- * Assets module entry point (issue #9 frontend half). Server Component:
- * resolves session/entitlement/RBAC once here, then hands everything data-
- * dependent to `AssetsScreen` behind a `Suspense` boundary so the page shell
- * (heading) paints immediately and the list/map/toolbar stream in behind a
- * shaped skeleton (docs/ARCHITECTURE.md "Premium UX requirements").
+ * Assets module entry point (issue #9 frontend half, list-page shell of
+ * issue #222). Server Component: resolves session/entitlement/RBAC once
+ * here, then hands everything data-dependent to `AssetsScreen` behind a
+ * `Suspense` boundary so the page header paints immediately and the
+ * table/map streams in behind a shaped skeleton (docs/ARCHITECTURE.md
+ * "Premium UX requirements"). The `Suspense` is deliberately not keyed on the
+ * filter params: the table changes the URL in a transition, keeping the old
+ * rows on screen while the new page loads.
  *
  * Per the same doc ("a module/view that isn't entitled for the tenant must
  * not render, not just be disabled"): `hasFeature()` is checked here, before
@@ -37,7 +31,7 @@ function parseView(raw: string | undefined): AssetsView | undefined {
  * gate `app/(app)/assets/actions.ts` applies server-action-side via
  * `requireModuleContext`.
  */
-export default async function AssetsPage({ searchParams }: AssetsPageProps) {
+export default async function AssetsPage({ searchParams }: { searchParams: Promise<AssetsSearchParams> }) {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
   if (!(await hasFeature(session.organization, "assets"))) notFound();
@@ -46,29 +40,20 @@ export default async function AssetsPage({ searchParams }: AssetsPageProps) {
   if (!canAccessModule(actor, "assets")) notFound();
 
   const params = await searchParams;
-  const requestedView = parseView(params.view);
   const view: AssetsView =
-    requestedView ?? (parseView((await preferencesStore.getLastUsedView(session.userId, "assets")) ?? undefined) ?? "list");
-  const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
+    parseView(params.view) ??
+    parseView((await preferencesStore.getLastUsedView(session.userId, "assets")) ?? undefined) ??
+    "list";
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand title="Assets" subtitle="Equipment installed at your clients&rsquo; sites." />
-
-      <Suspense
-        key={`${view}:${params.clientId ?? ""}:${params.siteId ?? ""}:${page}`}
-        fallback={<AssetsScreenSkeleton view={view} />}
-      >
-        <AssetsScreen
-          view={view}
-          clientId={params.clientId}
-          siteId={params.siteId}
-          page={page}
-          canCreate={can(actor, "assets", "create")}
-          canEdit={can(actor, "assets", "update") || can(actor, "assets", "update_own")}
-          canDelete={can(actor, "assets", "delete")}
-        />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<WebListSkeleton module="Assets" title="Assets" columns={6} />}>
+      <AssetsScreen
+        view={view}
+        params={params}
+        canCreate={can(actor, "assets", "create")}
+        canEdit={can(actor, "assets", "update") || can(actor, "assets", "update_own")}
+        canDelete={can(actor, "assets", "delete")}
+      />
+    </Suspense>
   );
 }

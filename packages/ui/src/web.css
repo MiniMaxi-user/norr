@@ -135,6 +135,7 @@ html:has(.web-shell) body {
 .web-shell .ui-app-layout-content,
 .web-detail-main,
 .web-detail-rail,
+.web-list-main,
 .web-table-wrap,
 .web-tabs,
 .web-tree-scroll {
@@ -144,6 +145,7 @@ html:has(.web-shell) body {
 .web-shell .ui-app-layout-content::-webkit-scrollbar,
 .web-detail-main::-webkit-scrollbar,
 .web-detail-rail::-webkit-scrollbar,
+.web-list-main::-webkit-scrollbar,
 .web-table-wrap::-webkit-scrollbar,
 .web-tabs::-webkit-scrollbar,
 .web-tree-scroll::-webkit-scrollbar {
@@ -153,6 +155,7 @@ html:has(.web-shell) body {
 .web-shell .ui-app-layout-content::-webkit-scrollbar-thumb,
 .web-detail-main::-webkit-scrollbar-thumb,
 .web-detail-rail::-webkit-scrollbar-thumb,
+.web-list-main::-webkit-scrollbar-thumb,
 .web-table-wrap::-webkit-scrollbar-thumb,
 .web-tabs::-webkit-scrollbar-thumb,
 .web-tree-scroll::-webkit-scrollbar-thumb {
@@ -162,6 +165,7 @@ html:has(.web-shell) body {
 .web-shell .ui-app-layout-content::-webkit-scrollbar-track,
 .web-detail-main::-webkit-scrollbar-track,
 .web-detail-rail::-webkit-scrollbar-track,
+.web-list-main::-webkit-scrollbar-track,
 .web-table-wrap::-webkit-scrollbar-track,
 .web-tabs::-webkit-scrollbar-track,
 .web-tree-scroll::-webkit-scrollbar-track {
@@ -2122,4 +2126,47 @@ a.web-tree-id:hover {
 }
 .web-table-checkbox:disabled {
   cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- *
+ * List page (WebListPage) — header like a detail page without tabs, one
+ * scroll area below it holding a single card.
+ * ---------------------------------------------------------------------- */
+.web-page-header[data-kind="list"] {
+  padding-bottom: 14px;
+}
+.web-page-header[data-kind="list"] .web-page-header-left {
+  gap: 10px;
+}
+.web-page-header[data-kind="list"] .web-page-header-text {
+  flex: 0 1 auto;
+}
+.web-page-header[data-kind="list"] .web-page-header-actions {
+  max-width: none;
+}
+.web-list-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: var(--space-page-y) var(--space-page-x);
+  background: var(--surface-page);
+}
+/* A server-driven table is refreshing: keep the old rows, dimmed. */
+.web-table-wrap[data-pending="true"] {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+/* A cascading dropdown waiting for its parent. */
+.web-filter-select[data-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Board view inside a list card (kanban): padded, scrolls sideways itself. */
+.web-list-board {
+  padding: var(--space-card-x);
+  overflow-x: auto;
 }

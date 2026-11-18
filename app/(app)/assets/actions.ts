@@ -301,6 +301,27 @@ export interface ListAssetsOptions {
   siteId?: string;
   limit?: number;
   offset?: number;
+  /**
+   * List-page filters (web design system list shell). All optional.
+   * `search` matches name, serial number, external reference, the type/brand
+   * label, the model name and the client name.
+   */
+  search?: string;
+  typeId?: string;
+  statusId?: string;
+  /** `active` = warranty_until is today or later, `expired` = earlier.
+   * Assets without a warranty date match neither. */
+  warranty?: "active" | "expired";
+  /** Sort column; unknown values fall back to `name`. */
+  sort?: "name" | "serial_number" | "installed_at" | "warranty_until";
+  direction?: "asc" | "desc";
+}
+
+const ASSET_SORT_COLUMNS = new Set(["name", "serial_number", "installed_at", "warranty_until"]);
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/ +/g, " ").trim().slice(0, 80);
 }
 
 /** List assets, org-scoped via RLS automatically. Supports filtering by
@@ -310,7 +331,16 @@ export interface ListAssetsOptions {
  * this site". */
 export async function listAssets(
   options: ListAssetsOptions = {},
-): Promise<ActionResult<{ assets: AssetRecord[]; count: number }>> {
+): Promise<
+  ActionResult<{
+    assets: AssetRecord[];
+    count: number;
+    /** Only set when a list filter (search/type/status/warranty) was
+     * applied: the total before those filters (still scoped by client/site),
+     * for the "3 of 12" count. */
+    unfilteredCount?: number;
+  }>
+> {
   if (options.clientId !== undefined) {
     const clientIdResult = uuidSchema.safeParse(options.clientId);
     if (!clientIdResult.success) return fail("Invalid client id filter.");
@@ -318,6 +348,12 @@ export async function listAssets(
   if (options.siteId !== undefined) {
     const siteIdResult = uuidSchema.safeParse(options.siteId);
     if (!siteIdResult.success) return fail("Invalid site id filter.");
+  }
+  for (const [value, message] of [
+    [options.typeId, "Invalid type filter."],
+    [options.statusId, "Invalid status filter."],
+  ] as const) {
+    if (value !== undefined && !uuidSchema.safeParse(value).success) return fail(message);
   }
 
   const ctx = await requireModuleContext("assets");
@@ -334,11 +370,60 @@ export async function listAssets(
   let query = supabase.from("assets").select(ASSET_SELECT, { count: "exact" });
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.siteId) query = query.eq("site_id", options.siteId);
-  query = query.order("name", { ascending: true }).range(offset, offset + limit - 1);
+  // Postgrest builders mutate in place, so the unfiltered count (still scoped
+  // by client/site) is its own query.
+  let countScoped = supabase.from("assets").select("id", { count: "exact", head: true });
+  if (options.clientId) countScoped = countScoped.eq("client_id", options.clientId);
+  if (options.siteId) countScoped = countScoped.eq("site_id", options.siteId);
 
-  const { data, error, count } = await query;
+  const term = sanitizeSearchTerm(options.search ?? "");
+  const filtered = Boolean(term || options.typeId || options.statusId || options.warranty);
+  if (term) {
+    // Client / type / brand / model are other tables: resolve their matches
+    // first and fold the ids into the same `or()`.
+    const [clientMatches, itemMatches, modelMatches] = await Promise.all([
+      supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(100),
+      supabase.from("reference_list_items").select("id").ilike("label", `%${term}%`).limit(100),
+      supabase.from("asset_models").select("id").ilike("name", `%${term}%`).limit(100),
+    ]);
+    const ids = (rows: { id: string }[] | null) => (rows ?? []).map((row) => row.id);
+    const clientIds = ids(clientMatches.data);
+    const itemIds = ids(itemMatches.data);
+    const modelIds = ids(modelMatches.data);
+    query = query.or(
+      [
+        `name.ilike.%${term}%`,
+        `serial_number.ilike.%${term}%`,
+        `external_reference.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+        ...(itemIds.length > 0
+          ? [`type_id.in.(${itemIds.join(",")})`, `brand_item_id.in.(${itemIds.join(",")})`]
+          : []),
+        ...(modelIds.length > 0 ? [`model_id.in.(${modelIds.join(",")})`] : []),
+      ].join(","),
+    );
+  }
+  if (options.typeId) query = query.eq("type_id", options.typeId);
+  if (options.statusId) query = query.eq("status_id", options.statusId);
+  if (options.warranty) {
+    const today = new Date().toISOString().slice(0, 10);
+    query = options.warranty === "active" ? query.gte("warranty_until", today) : query.lt("warranty_until", today);
+  }
+
+  const sortColumn = options.sort && ASSET_SORT_COLUMNS.has(options.sort) ? options.sort : "name";
+  query = query.order(sortColumn, { ascending: options.direction !== "desc", nullsFirst: false });
+  if (sortColumn !== "name") query = query.order("name", { ascending: true });
+
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query.range(offset, offset + limit - 1),
+    filtered ? countScoped : Promise.resolve(null),
+  ]);
   if (error) return fail(mapDbError(error));
-  return ok({ assets: (data ?? []) as AssetRecord[], count: count ?? 0 });
+  return ok({
+    assets: (data ?? []) as AssetRecord[],
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+  });
 }
 
 export async function getAsset(id: string): Promise<ActionResult<{ asset: AssetRecord }>> {

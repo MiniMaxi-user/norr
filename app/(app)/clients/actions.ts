@@ -347,6 +347,31 @@ export interface ListClientsOptions {
    * function is shared and stays lean by default.
    */
   includePrimarySite?: boolean;
+  /**
+   * List-page filters (web design system list shell). Only honoured together
+   * with `includePrimarySite` — the Clients list is the one caller. Every
+   * other caller passes none and is unaffected.
+   *
+   * `search` matches the client's name or KvK number, or the phone/city of
+   * its primary site (same fields the old client-side search covered).
+   */
+  search?: string;
+  /** Exact `clients.status` (`lead` | `qualified` | `proposal` | `won`). */
+  status?: string;
+  /** Exact `clients.account_manager_id`. */
+  accountManagerId?: string;
+  /** `set` = potential value filled in, `unset` = not. */
+  potential?: "set" | "unset";
+  /** Sort column; unknown values fall back to `name`. */
+  sort?: "name" | "status" | "potential_value" | "created_at";
+  direction?: "asc" | "desc";
+}
+
+const CLIENT_SORT_COLUMNS = new Set(["name", "status", "potential_value", "created_at"]);
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/[\s]+/g, " ").trim().slice(0, 80);
 }
 
 /** Row shape only used internally when `includePrimarySite` is set — the
@@ -364,7 +389,16 @@ type ClientRowWithPrimarySite = ClientRecord & {
 
 export async function listClients(
   options: ListClientsOptions = {},
-): Promise<ActionResult<{ clients: ClientRecord[]; count: number; primarySiteByClientId?: Record<string, SiteRecord | null> }>> {
+): Promise<
+  ActionResult<{
+    clients: ClientRecord[];
+    count: number;
+    /** Only set when a list filter was applied: the unfiltered total, for
+     * the "3 of 12" count. */
+    unfilteredCount?: number;
+    primarySiteByClientId?: Record<string, SiteRecord | null>;
+  }>
+> {
   const ctx = await requireModuleContext("clients");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -424,15 +458,44 @@ export async function listClients(
   const tenantEmbed = ctx.context.actor.isPlatformAdmin
     ? ", represents_organization_id, organizations!represents_organization_id(is_active)"
     : "";
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("clients")
     .select(
       `id, name, kvk_number, vat_number, iban, notes, status, account_manager_id, potential_value, won_at, logo_path, logo_updated_at, created_at, sites(id, client_id, city, country, phone)${tenantEmbed}`,
       { count: "exact" },
     )
-    .eq("sites.is_primary", true)
-    .order("name", { ascending: true })
-    .range(offset, offset + limit - 1);
+    .eq("sites.is_primary", true);
+
+  const term = sanitizeSearchTerm(options.search ?? "");
+  const filtered = Boolean(term || options.status || options.accountManagerId || options.potential);
+  if (term) {
+    // Phone/city live on the primary site, so resolve those matches first and
+    // fold their client ids into the same `or()`.
+    const { data: siteMatches } = await supabase
+      .from("sites")
+      .select("client_id")
+      .eq("is_primary", true)
+      .or(`city.ilike.%${term}%,phone.ilike.%${term}%`)
+      .limit(200);
+    const ids = (siteMatches ?? []).map((row) => row.client_id as string);
+    query = query.or(
+      [`name.ilike.%${term}%`, `kvk_number.ilike.%${term}%`, ...(ids.length > 0 ? [`id.in.(${ids.join(",")})`] : [])].join(","),
+    );
+  }
+  if (options.status) query = query.eq("status", options.status);
+  if (options.accountManagerId) query = query.eq("account_manager_id", options.accountManagerId);
+  if (options.potential === "set") query = query.not("potential_value", "is", null);
+  if (options.potential === "unset") query = query.is("potential_value", null);
+
+  const sortColumn = options.sort && CLIENT_SORT_COLUMNS.has(options.sort) ? options.sort : "name";
+  const ascending = options.direction !== "desc";
+  query = query.order(sortColumn, { ascending, nullsFirst: false });
+  if (sortColumn !== "name") query = query.order("name", { ascending: true });
+
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query.range(offset, offset + limit - 1),
+    filtered ? supabase.from("clients").select("id", { count: "exact", head: true }) : Promise.resolve(null),
+  ]);
 
   if (error) return fail(mapDbError(error));
 
@@ -447,7 +510,12 @@ export async function listClients(
     );
     primarySiteByClientId[clientRow.id] = sites?.[0] ?? null;
   }
-  return ok({ clients, count: count ?? 0, primarySiteByClientId });
+  return ok({
+    clients,
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+    primarySiteByClientId,
+  });
 }
 
 export async function getClient(

@@ -1,68 +1,36 @@
 import { Suspense } from "react";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
+import { WebListSkeleton } from "@yourorg/ui/web";
 import { requireSession } from "@/lib/auth/session";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
-import { can, type PermissionActor } from "@/lib/rbac/permissions";
-import { ClientsBoard } from "./components/clients-board";
-import { ClientsHeroActions } from "./components/clients-hero-actions";
-import { ClientsHeroProvider, type ClientsView } from "./components/clients-hero-context";
-import { ClientsHeroStats } from "./components/clients-hero-stats";
-import { ClientsSkeleton } from "./components/clients-skeleton";
+import type { PermissionActor } from "@/lib/rbac/permissions";
+import { ClientsList } from "./components/clients-list";
+import type { ClientsSearchParams } from "./components/clients-query";
+import type { ClientsView } from "./components/clients-view-switcher";
 
 /**
- * Clients module — list/kanban entry point (issue #8). This module's
- * `enabled` state in the sidebar/command palette already comes from a real
- * `hasFeature()` check (`components/shell/nav-items.ts` ->
- * `resolveNavItems`), and `"clients"` is already in `SHIPPED_FEATURES`
- * (`lib/rbac/features.ts`) — no nav-item flag needed for this to show up.
+ * Clients module list page (issue #8, list-page shell of issue #222). The
+ * module's `enabled` state in the sidebar/command palette already comes from
+ * a real `hasFeature()` check (`components/shell/nav-items.ts`), and
+ * `listClients()` re-checks feature + permission server-side.
  *
- * `requireSession()` here (in addition to the one `app/(app)/layout.tsx`
- * already ran) just resolves the actor/user id this page needs; it's cheap
- * and every module page in this codebase does the same (see
- * `lib/actions/module-context.ts`, called again inside `listClients()`).
- *
- * `OverviewHeroBand` renders as a direct sibling BEFORE `<Suspense>` (issue
- * #142 — performance finding on #139) so its `h1` streams to the browser
- * immediately, matching every other module's list page
- * (`app/(app)/articles/page.tsx` etc.) instead of waiting on
- * `listClients`/`listAccountManagers`/`listPrimarySitesForClients` to
- * resolve. Unlike those modules, Clients' band has a stateful `ViewToggle` +
- * "Add client" (`actions`) and a kanban-only stat readout (`stats`) that
- * depend on client data still being fetched inside `Suspense` — both are
- * bridged across the boundary by `ClientsHeroProvider` (see
- * `clients-hero-context.tsx`) rather than living inside `ClientsExplorer` as
- * before.
+ * The view (`?view=list|kanban`, default: the user's last-used view) is
+ * resolved here; everything data-dependent streams in behind the shaped
+ * `WebListSkeleton` (its header paints at once). The `Suspense` is NOT keyed
+ * on the filter params on purpose: the table changes the URL in a
+ * transition, keeping the old rows on screen (dimmed) and the search box
+ * focused while the new page loads.
  */
-export default async function ClientsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string }>;
-}) {
-  // `searchParams` and `requireSession()` don't depend on each other's
-  // result (issue #148) — started together rather than one after the other.
-  // `getLastUsedView` genuinely can't join them: it needs `session.userId`,
-  // so it stays sequential after `session` resolves.
-  const [{ page: pageParam }, session] = await Promise.all([searchParams, requireSession()]);
+export default async function ClientsPage({ searchParams }: { searchParams: Promise<ClientsSearchParams> }) {
+  const [params, session] = await Promise.all([searchParams, requireSession()]);
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
-  const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 
-  const lastUsedView = await preferencesStore.getLastUsedView(session.userId, "clients");
-  const defaultView: ClientsView = lastUsedView === "kanban" ? "kanban" : "list";
-  const canWrite = can(actor, "clients", "create");
+  const requested = params.view === "list" || params.view === "kanban" ? params.view : null;
+  const view: ClientsView =
+    requested ?? ((await preferencesStore.getLastUsedView(session.userId, "clients")) === "kanban" ? "kanban" : "list");
 
   return (
-    <ClientsHeroProvider defaultView={defaultView}>
-      <Stack gap="lg">
-        <OverviewHeroBand
-          title="Customer overview"
-          actions={<ClientsHeroActions canWrite={canWrite} />}
-          stats={<ClientsHeroStats />}
-        />
-
-        <Suspense key={page} fallback={<ClientsSkeleton />}>
-          <ClientsBoard page={page} actor={actor} defaultView={defaultView} />
-        </Suspense>
-      </Stack>
-    </ClientsHeroProvider>
+    <Suspense fallback={<WebListSkeleton module="Clients" title="Clients" columns={7} />}>
+      <ClientsList view={view} params={params} actor={actor} />
+    </Suspense>
   );
 }

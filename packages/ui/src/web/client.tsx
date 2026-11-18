@@ -31,6 +31,8 @@ export { useEditMode } from "./edit-mode";
 export { WebMenu } from "./menu";
 export { scrollMainToTop } from "./scroll";
 export { LivePanel } from "./live-panel";
+export { WebListFilterBar } from "./list-filter-bar";
+export type { WebListFilterBarProps } from "./list-filter-bar";
 export type { LivePanelAction, LivePanelData, LivePanelVariant } from "./live-panel";
 export { StructureTree } from "./structure-tree";
 export type { StructureTreeNode, StructureTreeProps } from "./structure-tree";
@@ -39,6 +41,7 @@ export {
   FilterBar,
   StatusText,
   WebDataTableCard,
+  WebViewSwitcher,
   toneFromColor,
 } from "./data-table";
 export type {
@@ -51,6 +54,7 @@ export type {
   WebDataTableCardProps,
   WebDropdownDef,
   WebSegmentDef,
+  WebServerListState,
 } from "./data-table";
 export type {
   ConfirmState,

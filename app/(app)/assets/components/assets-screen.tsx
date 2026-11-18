@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
-import { Boxes } from "@yourorg/ui/icons";
+import { WebCard, WebDataTableEmpty, WebLinkButton, WebListPage } from "@yourorg/ui/web";
 import { listAssets, type AssetRecord } from "../actions";
 import {
   listClients,
@@ -10,37 +8,21 @@ import {
   type SiteRecord,
 } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
-import { AssetsFilters } from "./assets-filters";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { AssetMapLoader, type MapPin } from "./asset-map-loader";
+import { AssetsMapFilters } from "./assets-map-filters";
+import { parseAssetsQuery, type AssetsSearchParams } from "./assets-query";
 import { AssetsTable } from "./assets-table";
 import { AssetsViewSwitcher, type AssetsView } from "./assets-view-switcher";
-import { CreateAssetButton } from "./create-asset-button";
-import { AssetMapLoader, type MapPin } from "./asset-map-loader";
 
-const LIST_PAGE_SIZE = 20;
 const MAP_FETCH_LIMIT = 200;
 
 export interface AssetsScreenProps {
   view: AssetsView;
-  clientId?: string;
-  siteId?: string;
-  page: number;
+  params: AssetsSearchParams;
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
-}
-
-function buildPageHref(params: {
-  view: AssetsView;
-  clientId?: string;
-  siteId?: string;
-  page: number;
-}): string {
-  const qs = new URLSearchParams();
-  qs.set("view", params.view);
-  if (params.clientId) qs.set("clientId", params.clientId);
-  if (params.siteId) qs.set("siteId", params.siteId);
-  if (params.page > 0) qs.set("page", String(params.page));
-  return `/assets?${qs.toString()}`;
 }
 
 function buildMapPins(assets: AssetRecord[], sitesById: Map<string, SiteRecord>, clientNameById: Map<string, string>): MapPin[] {
@@ -74,150 +56,122 @@ function buildMapPins(assets: AssetRecord[], sitesById: Map<string, SiteRecord>,
   return Array.from(pinsBySite.values());
 }
 
+/** Distinct `value`/`label` pairs of one embedded reference item over the
+ * given assets: the fallback filter choices when the picklist itself cannot
+ * be read (it needs settings access). */
+function optionsFromAssets(assets: AssetRecord[], pick: (asset: AssetRecord) => { id: string; label: string } | null) {
+  const seen = new Map<string, string>();
+  for (const asset of assets) {
+    const item = pick(asset);
+    if (item && !seen.has(item.id)) seen.set(item.id, item.label);
+  }
+  return [...seen.entries()].map(([value, label]) => ({ value, label }));
+}
+
 /**
  * The data-fetching heart of the Assets module — rendered inside a
- * `Suspense` boundary by `app/(app)/assets/page.tsx` so its shaped skeleton
- * shows while these `await`s resolve (route-level streaming, per
- * docs/ARCHITECTURE.md).
+ * `Suspense` boundary by `app/(app)/assets/page.tsx` (fallback
+ * `WebListSkeleton`, route-level streaming per docs/ARCHITECTURE.md). Renders
+ * the list-page shell (`WebListPage`): header with count, view switcher and
+ * the navy "New asset" button, then either the server-driven table or the map.
+ * List and map share the URL filters (`q`, `clientId`, `siteId`, `type`,
+ * `status`, `seg`), applied server-side by `listAssets`.
  */
-export async function AssetsScreen({
-  view,
-  clientId,
-  siteId,
-  page,
-  canCreate,
-  canEdit,
-  canDelete,
-}: AssetsScreenProps) {
+export async function AssetsScreen({ view, params, canCreate, canEdit, canDelete }: AssetsScreenProps) {
   const isMapView = view === "map";
-  const limit = isMapView ? MAP_FETCH_LIMIT : LIST_PAGE_SIZE;
-  const offset = isMapView ? 0 : page * LIST_PAGE_SIZE;
+  const { page, options } = parseAssetsQuery(params);
+  const listOptions = isMapView ? { ...options, limit: MAP_FETCH_LIMIT, offset: 0 } : options;
 
-  const [clientsResult, assetsResult, currentSitesResult] = await Promise.all([
+  const [clientsResult, assetsResult, currentSitesResult, typesResult, statusesResult] = await Promise.all([
     listClients({ limit: 200 }),
-    listAssets({ clientId, siteId, limit, offset }),
-    clientId ? listSites(clientId) : Promise.resolve(null),
+    listAssets(listOptions),
+    params.clientId ? listSites(params.clientId) : Promise.resolve(null),
+    listReferenceItems("asset_type"),
+    listReferenceItems("asset_status"),
   ]);
 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
   const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
-  const filterSites: SiteRecord[] = currentSitesResult?.data?.sites ?? [];
+  const clientOptions = clients.map((client) => ({ value: client.id, label: client.name }));
+  const siteOptions = (currentSitesResult?.data?.sites ?? []).map((site) => ({
+    value: site.id,
+    label: formatSiteAddressShort(site) ?? "Unnamed site",
+  }));
 
-  const toolbar = (
-    <Toolbar>
-      <Toolbar.Section>
-        <AssetsFilters clients={clients} sites={filterSites} selectedClientId={clientId} selectedSiteId={siteId} />
-      </Toolbar.Section>
-      <Toolbar.Section align="end">
-        <AssetsViewSwitcher view={view} />
-        {canCreate && <CreateAssetButton />}
-      </Toolbar.Section>
-    </Toolbar>
-  );
+  const primary = canCreate ? (
+    <WebLinkButton variant="primary" href="/assets/new">
+      New asset
+    </WebLinkButton>
+  ) : undefined;
+  const actions = <AssetsViewSwitcher view={view} />;
 
   if (!assetsResult.data) {
     return (
-      <>
-        {toolbar}
-        <Card>
-          <Text tone="danger">{assetsResult.error ?? "Could not load assets."}</Text>
-        </Card>
-      </>
+      <WebListPage module="Assets" title="Assets" actions={actions} primary={primary}>
+        <WebCard title="Assets">
+          <WebDataTableEmpty>{assetsResult.error ?? "Could not load assets."}</WebDataTableEmpty>
+        </WebCard>
+      </WebListPage>
     );
   }
 
-  const { assets, count } = assetsResult.data;
-  const hasFilters = Boolean(clientId || siteId);
+  const { assets, count, unfilteredCount } = assetsResult.data;
 
-  if (assets.length === 0) {
-    return (
-      <>
-        {toolbar}
-        <EmptyState
-          icon={<Boxes />}
-          heading={hasFilters ? "No assets match these filters" : "No assets yet"}
-          text={
-            hasFilters
-              ? "Try a different client or site filter."
-              : "Add your first piece of equipment to start tracking it."
-          }
-          action={canCreate && !hasFilters ? <CreateAssetButton /> : undefined}
-        />
-      </>
-    );
-  }
+  const typeOptions = typesResult.data
+    ? typesResult.data.items.map((item) => ({ value: item.id, label: item.label }))
+    : optionsFromAssets(assets, (asset) => (asset.asset_type ? { id: asset.type_id, label: asset.asset_type.label } : null));
+  const statusOptions = statusesResult.data
+    ? statusesResult.data.items.map((item) => ({ value: item.id, label: item.label }))
+    : optionsFromAssets(assets, (asset) => (asset.asset_status ? { id: asset.status_id, label: asset.asset_status.label } : null));
+
+  const filterOptions = { clientOptions, siteOptions, typeOptions, statusOptions };
+  const header = { module: "Assets", title: "Assets", count: unfilteredCount ?? count, actions, primary };
 
   if (isMapView) {
     const distinctClientIds = Array.from(new Set(assets.map((asset) => asset.client_id)));
-    const siteListResult = await listSitesForClientIds(distinctClientIds);
+    const siteListResult = distinctClientIds.length > 0 ? await listSitesForClientIds(distinctClientIds) : null;
     const sitesById = new Map<string, SiteRecord>();
-    for (const site of siteListResult.data?.sites ?? []) {
+    for (const site of siteListResult?.data?.sites ?? []) {
       sitesById.set(site.id, site);
     }
 
     const pins = buildMapPins(assets, sitesById, clientNameById);
     const plottedCount = pins.reduce((sum, pin) => sum + pin.assets.length, 0);
     const unplottedCount = assets.length - plottedCount;
+    const truncated = assets.length < count ? ` · showing ${assets.length} of ${count}` : "";
 
     return (
-      <>
-        {toolbar}
-        <AssetMapLoader pins={pins} />
-        {unplottedCount > 0 && (
-          <Text tone="muted">
-            {unplottedCount} of {assets.length} asset{assets.length === 1 ? "" : "s"} shown here{" "}
-            {assets.length === count ? "" : `(of ${count} total) `}
-            {unplottedCount === 1 ? "has" : "have"} no site coordinates yet and can&rsquo;t be plotted.
-          </Text>
-        )}
-      </>
+      <WebListPage {...header}>
+        <WebCard
+          title="Map"
+          meta={`${plottedCount} plotted${unplottedCount > 0 ? ` · ${unplottedCount} without site coordinates` : ""}${truncated}`}
+        >
+          <AssetsMapFilters {...filterOptions} total={count} unfilteredTotal={unfilteredCount} />
+          {assets.length === 0 ? (
+            <WebDataTableEmpty>
+              {unfilteredCount === undefined ? "No assets yet." : "No assets match these filters."}
+            </WebDataTableEmpty>
+          ) : (
+            <AssetMapLoader pins={pins} />
+          )}
+        </WebCard>
+      </WebListPage>
     );
   }
 
-  const hasPrev = offset > 0;
-  const hasNext = offset + assets.length < count;
-
   return (
-    <>
-      {toolbar}
-      <AssetsTable assets={assets} clientNameById={clientNameById} canEdit={canEdit} canDelete={canDelete} />
-      {/* `Toolbar` is the app shell's sticky top bar (see
-          components/shell/topbar.tsx) — reusing it a second time here for a
-          bottom pagination row would fight its own `position: sticky`.
-          There's no plain horizontal-row primitive in the current
-          `@yourorg/ui` stub for a case like this (flagged for the
-          design-system repo); `Button` is `display: inline-flex` though, so
-          two of them inside a bare `<span>` sit side by side via normal
-          inline flow without any ad-hoc CSS. */}
-      <Stack gap="sm">
-        <Text tone="muted">
-          Showing {offset + 1}–{Math.min(offset + assets.length, count)} of {count}
-        </Text>
-        <span>
-          {hasPrev ? (
-            <Link href={buildPageHref({ view, clientId, siteId, page: page - 1 })}>
-              <Button type="button" variant="outline" size="sm">
-                Previous
-              </Button>
-            </Link>
-          ) : (
-            <Button type="button" variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-          )}{" "}
-          {hasNext ? (
-            <Link href={buildPageHref({ view, clientId, siteId, page: page + 1 })}>
-              <Button type="button" variant="outline" size="sm">
-                Next
-              </Button>
-            </Link>
-          ) : (
-            <Button type="button" variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          )}
-        </span>
-      </Stack>
-    </>
+    <WebListPage {...header}>
+      <AssetsTable
+        assets={assets}
+        clientNameById={clientNameById}
+        {...filterOptions}
+        total={count}
+        unfilteredTotal={unfilteredCount}
+        page={page}
+        canCreate={canCreate}
+        canEdit={canEdit}
+        canDelete={canDelete}
+      />
+    </WebListPage>
   );
 }

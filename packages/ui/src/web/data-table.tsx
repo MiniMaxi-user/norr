@@ -9,13 +9,14 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "../icons";
 import { WebButton, WebCard } from "./primitives";
 import { WebMenu, type WebMenuItem } from "./menu";
@@ -81,6 +82,8 @@ export interface FilterBarDropdown {
   value: string;
   options: FilterOption[];
   onChange: (value: string) => void;
+  /** Cascading child: not selectable until its parent has a value. */
+  disabled?: boolean;
 }
 
 export interface FilterBarSegment {
@@ -101,7 +104,9 @@ export interface FilterBarProps {
    * on one page). */
   searchShortcut?: boolean;
   dropdowns: FilterBarDropdown[];
-  segment: FilterBarSegment;
+  /** Mandatory on every table; only a non-table view of the same data (a
+   * board) may leave it out. */
+  segment?: FilterBarSegment;
   /** Rows after filtering / all rows. */
   shownCount: number;
   totalCount: number;
@@ -117,7 +122,11 @@ const MAX_VISIBLE_DROPDOWNS = 3;
 function Dropdown({ dropdown }: { dropdown: FilterBarDropdown }) {
   const current = dropdown.options.find((option) => option.value === dropdown.value);
   return (
-    <label className="web-filter-select" data-selected={dropdown.value ? "true" : undefined}>
+    <label
+      className="web-filter-select"
+      data-selected={dropdown.value ? "true" : undefined}
+      data-disabled={dropdown.disabled ? "true" : undefined}
+    >
       <span className="web-filter-select-face" aria-hidden="true">
         <span className="web-filter-select-label">{dropdown.label}:</span>
         <span className="web-filter-select-value">{current?.label ?? "All"}</span>
@@ -128,6 +137,7 @@ function Dropdown({ dropdown }: { dropdown: FilterBarDropdown }) {
       <select
         aria-label={dropdown.label}
         value={dropdown.value}
+        disabled={dropdown.disabled}
         onChange={(event) => dropdown.onChange(event.target.value)}
       >
         <option value="">All</option>
@@ -141,7 +151,14 @@ function Dropdown({ dropdown }: { dropdown: FilterBarDropdown }) {
   );
 }
 
-function Segmented({ segment }: { segment: FilterBarSegment }) {
+interface SegmentedProps {
+  label: string;
+  options: readonly FilterOption[];
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function Segmented({ segment }: { segment: SegmentedProps }) {
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"];
     if (!keys.includes(event.key)) return;
@@ -175,6 +192,27 @@ function Segmented({ segment }: { segment: FilterBarSegment }) {
       })}
     </div>
   );
+}
+
+/**
+ * Compact radio-group switch between views of the same data (List / Board,
+ * List / Map) for a list page's header. Same look as the FilterBar's
+ * segmented toggle; the caller owns the state (usually a `?view=` param) and
+ * persists the last-used view. Two or three options.
+ */
+export function WebViewSwitcher({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  /** Accessible name: "Switch view". */
+  label: string;
+  options: readonly FilterOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return <Segmented segment={{ label, options, value, onChange }} />;
 }
 
 /** The bar directly above every table, inside its card: search, dropdowns
@@ -258,7 +296,7 @@ export function FilterBar({
           items={extraItems}
         />
       ) : null}
-      <Segmented segment={segment} />
+      {segment ? <Segmented segment={segment} /> : null}
       <span className="web-filterbar-count" aria-live="polite">
         {filtersActive ? `${shownCount} of ${totalCount}` : String(shownCount)}
       </span>
@@ -307,6 +345,44 @@ function useUrlParams(prefix: string) {
   return { get, set };
 }
 
+/** Server-driven variant of `useUrlParams`: the real, unprefixed search
+ * params (`q`, `seg`, `sort`, `dir`, `page`, one per dropdown id) drive the
+ * Server Component, so a change is a `router.replace` inside a transition:
+ * the old table stays on screen (dimmed via `pending`) until the new page
+ * has streamed in. A local copy answers instantly so toggles and selects
+ * never lag behind the round trip. Other params (`view`, `clientId`...) are
+ * kept untouched. */
+export function useServerParams(enabled: boolean) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [pending, startTransition] = useTransition();
+  const paramsString = searchParams.toString();
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(searchParams.entries()));
+  useEffect(() => {
+    // Follow back/forward navigation, but never overwrite what the user is
+    // typing/choosing while a round trip of their own is still in flight.
+    if (enabled && !pending) setValues(Object.fromEntries(new URLSearchParams(paramsString).entries()));
+  }, [enabled, paramsString, pending]);
+  const get = useCallback((key: string) => values[key] ?? "", [values]);
+  const set = useCallback(
+    (updates: Record<string, string>) => {
+      setValues((previous) => ({ ...previous, ...updates }));
+      const next = new URLSearchParams(window.location.search);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const query = next.toString();
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      });
+    },
+    [router, pathname],
+  );
+  return { get, set, pending };
+}
+
 /* ---------------------------------------------------------------------- *
  * WebDataTableCard
  * ---------------------------------------------------------------------- */
@@ -315,8 +391,11 @@ export interface WebColumn<T> {
   id: string;
   header: string;
   render: (row: T) => ReactNode;
-  /** Present => the header is a sort button. */
+  /** Present => the header is a sort button (client-side sorting). */
   sortValue?: (row: T) => string | number | null;
+  /** Server mode: the header is a sort button; the server sorts by
+   * `?sort=<id>&dir=`. */
+  sortable?: boolean;
   /** Numbers, amounts, durations: right-aligned, tabular-nums. */
   align?: "end";
   /** The record's name/ID: rendered as the row's link/button. */
@@ -329,8 +408,28 @@ export interface WebDropdownDef<T> {
   id: string;
   label: string;
   /** The option(s) a row belongs to; the dropdown's choices are the union
-   * over all rows. */
-  getOptions: (row: T) => FilterOption[];
+   * over all rows. Client mode; not needed when `options` is given. */
+  getOptions?: (row: T) => FilterOption[];
+  /** Fixed choices (server mode, or a known list) instead of deriving them
+   * from the rows. */
+  options?: FilterOption[];
+  /** Ids of dropdowns cleared when this one changes (a parent in a cascade:
+   * Client resets Site). */
+  resets?: string[];
+  /** Cascading child: disabled until its parent dropdown has a value. */
+  disabledWhen?: (values: Record<string, string>) => boolean;
+}
+
+/** Server-driven mode of `WebDataTableCard` (see its JSDoc). */
+export interface WebServerListState {
+  /** Rows matching the current filters, over all pages. */
+  total: number;
+  /** Rows without any filter; drives the `3 of 12` count. Defaults to
+   * `total`. */
+  unfilteredTotal?: number;
+  /** Current page, 1-based. */
+  page: number;
+  pageSize: number;
 }
 
 export interface WebSegmentDef<T> {
@@ -345,20 +444,31 @@ export interface WebSegmentDef<T> {
 }
 
 export interface WebDataTableCardProps<T> {
-  title: string;
+  /** Card head title. Omit on a list page (the page header carries it): the
+   * card then starts with the FilterBar. */
+  title?: string;
   /** Mono meta behind the title ("3 · 1 open"). */
   meta?: ReactNode;
   rows: T[];
   getRowKey: (row: T) => string;
   columns: WebColumn<T>[];
-  /** Text all searches run against. */
-  searchText: (row: T) => string;
+  /** Text all searches run against (client mode). */
+  searchText?: (row: T) => string;
   /** Plural noun for placeholders and empty states: "sites". */
   noun: string;
   dropdowns: WebDropdownDef<T>[];
   segment: WebSegmentDef<T>;
-  /** Namespaces the URL params so tabs/tables don't collide ("sites"). */
-  urlPrefix: string;
+  /** Namespaces the URL params so tabs/tables don't collide ("sites").
+   * Required in client mode; ignored in server mode (plain `q`, `seg`,
+   * `sort`, `dir`, `page` params). */
+  urlPrefix?: string;
+  /** Server-driven mode for a server-paginated list page: `rows` are
+   * ALREADY the filtered, sorted current page. The card only renders them
+   * and writes search/dropdown/segment/sort/page to the URL
+   * (`router.replace` in a transition), which re-runs the Server Component.
+   * Dropdowns need `options`; segment `match` and column `sortValue` are not
+   * used (flag sortable columns with `sortable`). */
+  server?: WebServerListState;
   /** The add button for this tab (secondary 30px, "+ Site"); omit when the
    * user may not create or the table has no add action. */
   add?: ReactNode;
@@ -402,6 +512,12 @@ function compareValues(a: string | number | null, b: string | number | null) {
  * cells, one ··· actions button per row) and a pagination footer for more
  * than one page. Search / dropdowns / segment / sort / page live in the URL
  * under `urlPrefix_*`; changing a filter returns to page 1.
+ *
+ * Two modes. Client mode (default): `rows` is the whole list, the card
+ * filters, sorts and paginates it itself. Server mode (`server` prop, for a
+ * list page that is paginated by the server, see `WebListPage`): `rows` is
+ * the current page as already filtered/sorted by the server from the URL
+ * params, which the card writes with `router.replace`.
  */
 export function WebDataTableCard<T>({
   title,
@@ -413,7 +529,8 @@ export function WebDataTableCard<T>({
   noun,
   dropdowns,
   segment,
-  urlPrefix,
+  urlPrefix = "t",
+  server,
   add,
   rowHref,
   onRowClick,
@@ -430,8 +547,11 @@ export function WebDataTableCard<T>({
   headerAction,
 }: WebDataTableCardProps<T>) {
   const router = useRouter();
-  const pageSize = maxRows ?? pageSizeProp;
-  const url = useUrlParams(urlPrefix);
+  const pageSize = maxRows ?? server?.pageSize ?? pageSizeProp;
+  const clientUrl = useUrlParams(urlPrefix);
+  const serverUrl = useServerParams(Boolean(server));
+  const url = server ? serverUrl : clientUrl;
+  const pending = server ? serverUrl.pending : false;
   const q = url.get("q");
   const segValue = url.get("seg") || segment.defaultValue;
   const sortId = url.get("sort") || defaultSort?.columnId || "";
@@ -454,9 +574,13 @@ export function WebDataTableCard<T>({
   const dropdownOptions = useMemo(() => {
     const result: Record<string, FilterOption[]> = {};
     for (const dropdown of dropdowns) {
+      if (dropdown.options) {
+        result[dropdown.id] = dropdown.options;
+        continue;
+      }
       const seen = new Map<string, string>();
       for (const row of rows) {
-        for (const option of dropdown.getOptions(row)) if (!seen.has(option.value)) seen.set(option.value, option.label);
+        for (const option of dropdown.getOptions?.(row) ?? []) if (!seen.has(option.value)) seen.set(option.value, option.label);
       }
       result[dropdown.id] = [...seen.entries()]
         .map(([value, label]) => ({ value, label }))
@@ -466,15 +590,16 @@ export function WebDataTableCard<T>({
   }, [dropdowns, rows]);
 
   const filtered = useMemo(() => {
+    if (server) return rows;
     const needle = q.trim().toLowerCase();
     const activeSegment = segment.options.find((option) => option.value === segValue);
     let result = rows.filter((row) => {
       if (activeSegment?.match && !activeSegment.match(row)) return false;
       for (const dropdown of dropdowns) {
         const wanted = dropdownValues[dropdown.id];
-        if (wanted && !dropdown.getOptions(row).some((option) => option.value === wanted)) return false;
+        if (wanted && !(dropdown.getOptions?.(row) ?? []).some((option) => option.value === wanted)) return false;
       }
-      if (needle && !searchText(row).toLowerCase().includes(needle)) return false;
+      if (needle && !(searchText?.(row) ?? "").toLowerCase().includes(needle)) return false;
       return true;
     });
     const sortColumn = columns.find((column) => column.id === sortId && column.sortValue);
@@ -485,14 +610,15 @@ export function WebDataTableCard<T>({
     }
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, q, segValue, JSON.stringify(dropdownValues), sortId, sortDir, columns, dropdowns, segment, searchText]);
+  }, [rows, q, segValue, JSON.stringify(dropdownValues), sortId, sortDir, columns, dropdowns, segment, searchText, server]);
 
   const filtersActive =
     Boolean(q) || segValue !== segment.defaultValue || Object.values(dropdownValues).some((value) => Boolean(value));
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const matchCount = server ? server.total : filtered.length;
+  const pageCount = Math.max(1, Math.ceil(matchCount / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageRows = server ? rows : filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const clearFilters = useCallback(() => {
     setSearchInput("");
@@ -505,7 +631,7 @@ export function WebDataTableCard<T>({
   }, [dropdowns, url]);
 
   function toggleSort(column: WebColumn<T>) {
-    if (!column.sortValue) return;
+    if (!column.sortValue && !column.sortable) return;
     if (sortId === column.id) url.set({ sort: column.id, dir: sortDir === "asc" ? "desc" : "asc", page: "" });
     else url.set({ sort: column.id, dir: "asc", page: "" });
   }
@@ -564,10 +690,9 @@ export function WebDataTableCard<T>({
 
   const hasActions = Boolean(rowActions);
   const columnCount = columns.length + (hasActions ? 1 : 0);
-  const emptyUnfiltered = rows.length === 0;
+  const emptyUnfiltered = server ? !filtersActive : rows.length === 0;
 
-  return (
-    <WebCard title={title} meta={meta} action={headerAction}>
+  const body = (
       <div className="web-dt" data-sticky={sticky ? "true" : undefined} ref={rootRef}>
       {note ? <p className="web-card-note">{note}</p> : null}
       <FilterBar
@@ -580,7 +705,13 @@ export function WebDataTableCard<T>({
           label: dropdown.label,
           value: dropdownValues[dropdown.id] ?? "",
           options: dropdownOptions[dropdown.id] ?? [],
-          onChange: (value) => url.set({ [dropdown.id]: value, page: "" }),
+          disabled: dropdown.disabledWhen?.(dropdownValues),
+          onChange: (value) =>
+            url.set({
+              [dropdown.id]: value,
+              ...Object.fromEntries((dropdown.resets ?? []).map((id) => [id, ""])),
+              page: "",
+            }),
         }))}
         segment={{
           label: segment.label,
@@ -588,8 +719,8 @@ export function WebDataTableCard<T>({
           value: segValue,
           onChange: (value) => url.set({ seg: value === segment.defaultValue ? "" : value, page: "" }),
         }}
-        shownCount={filtered.length}
-        totalCount={rows.length}
+        shownCount={matchCount}
+        totalCount={server ? (server.unfilteredTotal ?? server.total) : rows.length}
         filtersActive={filtersActive}
         onClear={clearFilters}
         add={add}
@@ -599,13 +730,16 @@ export function WebDataTableCard<T>({
         className="web-table-wrap"
         ref={wrapRef}
         data-scroll-x={scrollX ? "true" : undefined}
+        data-pending={pending ? "true" : undefined}
+        aria-busy={pending || undefined}
         style={{ "--web-filterbar-h": `${filterBarHeight}px` } as CSSProperties}
       >
       <table className="web-table">
         <thead>
           <tr>
             {columns.map((column) => {
-              const sorted = sortId === column.id && column.sortValue;
+              const sortable = Boolean(column.sortValue || column.sortable);
+              const sorted = sortId === column.id && sortable;
               return (
                 <th
                   key={column.id}
@@ -614,7 +748,7 @@ export function WebDataTableCard<T>({
                   aria-sort={sorted ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
                   data-sorted={sorted ? "true" : undefined}
                 >
-                  {column.sortValue ? (
+                  {sortable ? (
                     <button type="button" className="web-th-sort" onClick={() => toggleSort(column)}>
                       {column.header}
                       {sorted ? <span aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span> : null}
@@ -703,7 +837,7 @@ export function WebDataTableCard<T>({
       </table>
       </div>
 
-      {!loading && filtered.length === 0 ? (
+      {!loading && matchCount === 0 ? (
         <p className="web-table-empty">
           {emptyUnfiltered ? (
             <>
@@ -720,10 +854,10 @@ export function WebDataTableCard<T>({
         </p>
       ) : null}
 
-      {!loading && !maxRows && filtered.length > pageSize ? (
+      {!loading && !maxRows && matchCount > pageSize ? (
         <div className="web-table-footer">
           <span>
-            {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
+            {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, matchCount)} of {matchCount}
           </span>
           <span className="web-table-footer-buttons">
             <WebButton size="sm" disabled={currentPage <= 1} onClick={() => url.set({ page: currentPage - 1 > 1 ? String(currentPage - 1) : "" })}>
@@ -736,6 +870,12 @@ export function WebDataTableCard<T>({
         </div>
       ) : null}
       </div>
+  );
+
+  if (!title) return <section className="web-card">{body}</section>;
+  return (
+    <WebCard title={title} meta={meta} action={headerAction}>
+      {body}
     </WebCard>
   );
 }
