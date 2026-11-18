@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0;background:#eff2ed}
+*{box-sizing:border-box}
+input,select,textarea{font:inherit}
+a{color:#1f3540;text-decoration:none}
+a:hover{color:#8a6522}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid #c79a3e;outline-offset:1px}
+</style></helmet>
+<div style="display:flex;height:100vh;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f3540;font-size:14px">
+  <dc-import name="Norr Sidebar" hint-size="224px,100%" style="flex:none"></dc-import>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+    <dc-import name="Norr Topbar" crumb="AST-28383 · Edit" hint-size="100%,64px" style="flex:none"></dc-import>
+
+    <div style="flex:none;background:#fff;border-bottom:1px solid #dfe4e0;padding:18px 36px;display:flex;align-items:center;gap:18px">
+      <div style="width:44px;height:44px;border-radius:10px;background:#eff2ed;border:1px solid #dfe4e0;display:grid;place-items:center;color:#61716b;flex:none"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"></rect><path d="M8 7V4h8v3"></path><path d="M8 15h8"></path></svg></div>
+      <div style="min-width:0">
+        <h1 style="margin:0;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:25px;font-weight:400">AST-28383</h1>
+        <div style="margin-top:4px;display:flex;align-items:center;gap:12px;font-size:12.5px;color:#82918a">
+          <span style="background:#e8f0e6;border:1px solid #c9dcc4;color:#3c6b41;border-radius:999px;padding:2px 10px;font-size:11.5px">Active</span>
+          <span>Printer / MFP</span>
+          <span style="color:#c7cec7">·</span>
+          <span>Norr — Klein Elsbroek 12, Hillegom</span>
+        </div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="font-size:12.5px;color:#82918a">{{ dirtyLabel }}</span>
+        <button style="background:#fff;border:1px solid #c7cec7;color:#485754;font-size:13.5px;padding:9px 16px;border-radius:8px;cursor:pointer" style-hover="border-color:#82918a">Cancel</button>
+        <button onClick="{{ save }}" style="display:flex;align-items:center;gap:8px;border:0;background:#c79a3e;color:#16262e;font-weight:600;font-size:13.5px;padding:9px 18px;border-radius:8px;cursor:pointer" style-hover="background:#b0872f"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8"></path><path d="M7 3v5h8"></path></svg>Save changes</button>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:24px 36px 40px">
+      <div style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:200px minmax(0,1fr);gap:32px;align-items:start">
+
+        <nav style="position:sticky;top:0;display:flex;flex-direction:column;gap:2px;font-size:13.5px">
+          <a href="#s-rel" style="padding:8px 12px;border-left:2px solid #c79a3e;color:#1f3540;font-weight:600;background:#fff;border-radius:0 8px 8px 0">Relations</a>
+          <a href="#s-eq" style="padding:8px 12px;border-left:2px solid transparent;color:#61716b">Equipment</a>
+          <a href="#s-st" style="padding:8px 12px;border-left:2px solid transparent;color:#61716b">Status &amp; warranty</a>
+          <a href="#s-nt" style="padding:8px 12px;border-left:2px solid transparent;color:#61716b">Notes</a>
+          <a href="#s-rec" style="padding:8px 12px;border-left:2px solid transparent;color:#61716b">Record</a>
+          <div style="margin-top:16px;padding:12px;border:1px dashed #c7cec7;border-radius:10px;color:#82918a;font-size:12px;line-height:1.5">3 of 4 required fields complete.</div>
+        </nav>
+
+        <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+
+          <section id="s-rel" style="background:#fff;border:1px solid #dfe4e0;border-radius:14px;padding:20px 22px">
+            <h2 style="margin:0 0 14px;font-size:15px;font-weight:600">Relations</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div style="border:1px solid #dfe4e0;border-radius:10px;padding:13px 15px;position:relative;background:#fcfdfb">
+                <div style="display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"></path><path d="M15 9h3a2 2 0 0 1 2 2v10"></path><path d="M2 21h20"></path></svg>Client <span style="color:#c4402f">*</span></div>
+                <div style="margin-top:9px;font-size:15px;font-weight:600">Norr</div>
+                <div style="margin-top:3px;font-size:12.5px;color:#82918a">KvK 2892398982 · 9823829898</div>
+                <button title="Change client" style="position:absolute;top:10px;right:10px;width:28px;height:28px;display:grid;place-items:center;background:transparent;border:0;border-radius:7px;color:#82918a;cursor:pointer" style-hover="background:#eff2ed;color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>
+              </div>
+              <div style="border:1px solid #dfe4e0;border-radius:10px;padding:13px 15px;position:relative;background:#fcfdfb">
+                <div style="display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>Site <span style="color:#c4402f">*</span></div>
+                <div style="margin-top:9px;font-size:15px;font-weight:600">Klein Elsbroek 12, 2182TE Hillegom, NL</div>
+                <div style="margin-top:3px;font-size:12.5px;color:#82918a">Primary</div>
+                <button title="Change site" style="position:absolute;top:10px;right:10px;width:28px;height:28px;display:grid;place-items:center;background:transparent;border:0;border-radius:7px;color:#82918a;cursor:pointer" style-hover="background:#eff2ed;color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>
+              </div>
+            </div>
+          </section>
+
+          <section id="s-eq" style="background:#fff;border:1px solid #dfe4e0;border-radius:14px;padding:20px 22px">
+            <h2 style="margin:0 0 4px;font-size:15px;font-weight:600">Equipment</h2>
+            <p style="margin:0 0 16px;font-size:12.5px;color:#82918a">Model fills Type and Manufacturer automatically.</p>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-serial" style="font-size:13px;font-weight:600;color:#485754">Serial number</label>
+                <input id="b-serial" value="R83B838282" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-id" style="font-size:13px;font-weight:600;color:#485754">Asset ID</label>
+                <input id="b-id" value="AST-28383" onChange="{{ markDirty }}" placeholder="Leave blank to auto-generate" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-type" style="font-size:13px;font-weight:600;color:#485754">Type <span style="color:#c4402f">*</span></label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <select id="b-type" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff"><option>Printer</option><option>HVAC</option><option>Pomp</option></select>
+                  <select onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff"><option>MFP</option><option>A3 kleur</option><option>No sub-type</option></select>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-brand" style="font-size:13px;font-weight:600;color:#485754">Manufacturer</label>
+                <select id="b-brand" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff"><option>Kyocera</option><option>HP</option><option>Canon</option></select>
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-model" style="font-size:13px;font-weight:600;color:#485754">Model</label>
+                <select id="b-model" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff"><option>Kyocera ECOSYS M5526cdw</option><option>Kyocera TASKalfa 3554ci</option><option>HP LaserJet E52645</option></select>
+              </div>
+            </div>
+          </section>
+
+          <section id="s-st" style="background:#fff;border:1px solid #dfe4e0;border-radius:14px;padding:20px 22px">
+            <h2 style="margin:0 0 16px;font-size:15px;font-weight:600">Status &amp; warranty</h2>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <span style="font-size:13px;font-weight:600;color:#485754">Status</span>
+                <div style="display:flex;gap:8px">
+                  <button style="border:1px solid #c79a3e;background:#fbf6ea;color:#8a6522;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer">Active</button>
+                  <button style="border:1px solid #dfe4e0;background:#fff;color:#61716b;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer" style-hover="border-color:#82918a">In onderhoud</button>
+                  <button style="border:1px solid #dfe4e0;background:#fff;color:#61716b;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer" style-hover="border-color:#82918a">Afgevoerd</button>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-ext" style="font-size:13px;font-weight:600;color:#485754">External reference</label>
+                <input id="b-ext" value="ERP-4471-B" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:center">
+                <label for="b-inst" style="font-size:13px;font-weight:600;color:#485754">Installed on</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <input id="b-inst" type="date" value="2024-03-14" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                  <input type="date" value="2027-03-14" onChange="{{ markDirty }}" style="height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px">
+                <span></span>
+                <div style="font-size:11.5px;color:#82918a">Left: installed on · Right: warranty until (model default 36 months).</div>
+              </div>
+            </div>
+          </section>
+
+          <section id="s-nt" style="background:#fff;border:1px solid #dfe4e0;border-radius:14px;padding:20px 22px">
+            <h2 style="margin:0 0 12px;font-size:15px;font-weight:600">Notes</h2>
+            <textarea rows="3" maxlength="5000" onChange="{{ markDirty }}" style="width:100%;border:1px solid #c7cec7;border-radius:8px;padding:10px 11px;background:#fff;resize:vertical;line-height:1.5">Toner voorraad staat in de serverruimte. Sleutel bij receptie ophalen.</textarea>
+          </section>
+
+          <section id="s-rec" style="background:#fff;border:1px solid #dfe4e0;border-radius:14px;padding:20px 22px">
+            <h2 style="margin:0 0 12px;font-size:15px;font-weight:600">Record</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:13px">
+              <div style="display:flex;justify-content:space-between;border-bottom:1px solid #eff2ed;padding-bottom:8px"><span style="color:#61716b">Created</span><span>Aug 30, 2026 · Martijn Platform</span></div>
+              <div style="display:flex;justify-content:space-between;border-bottom:1px solid #eff2ed;padding-bottom:8px"><span style="color:#61716b">Last modified</span><span>Aug 31, 2026 at 6:31 PM</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:#61716b">Work orders</span><a href="#">4 linked</a></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:#61716b">Contracts</span><a href="#">1 linked</a></div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { dirty: false };
+  renderVals() {
+    return {
+      dirtyLabel: this.state.dirty ? "Unsaved changes" : "All changes saved",
+      markDirty: () => { if (!this.state.dirty) this.setState({ dirty: true }); },
+      save: () => this.setState({ dirty: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

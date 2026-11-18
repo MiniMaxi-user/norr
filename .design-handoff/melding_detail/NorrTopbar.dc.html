@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div class="ui-toolbar ui-topbar">
+  <div class="ui-toolbar-section">
+    <nav aria-label="Breadcrumb">
+      <ol class="ui-breadcrumbs-list" style="list-style:none;margin:0;padding:0">
+        <li class="ui-breadcrumbs-item"><a href="#meldingen" class="ui-breadcrumbs-link">Meldingen</a><svg class="ui-breadcrumbs-separator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4.5 17 12l-7.5 7.5"></path></svg></li>
+        <li class="ui-breadcrumbs-item"><span class="ui-breadcrumbs-current">Storing</span></li>
+      </ol>
+    </nav>
+  </div>
+  <div class="ui-toolbar-section ui-toolbar-section-end">
+    <span class="ui-badge ui-badge-accent">Platform Admin</span>
+    <button type="button" class="ui-button ui-button-outline ui-button-sm" style="display:inline-flex;align-items:center;gap:0.5rem;min-width:170px">
+      <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.3" y2="16.3"></line></svg>
+      <span style="color:var(--ui-muted)">Search…</span>
+      <kbd class="ui-kbd" style="margin-left:auto">Ctrl K</kbd>
+    </button>
+    <button type="button" class="ui-icon-button ui-icon-button-ghost" aria-label="Theme"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.3A8 8 0 1 1 9.7 4a6.4 6.4 0 0 0 10.3 10.3z"></path></svg></button>
+    <button type="button" class="ui-icon-button ui-icon-button-ghost" aria-label="Help"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.3 9.3a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.2 1-1.2 2"></path><line x1="12" y1="16.7" x2="12" y2="16.7"></line></svg></button>
+    <button type="button" class="ui-icon-button ui-icon-button-ghost" aria-label="Notifications"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5a6 6 0 0 1 12 0c0 4 1.3 5.2 1.3 5.2H4.7S6 13.5 6 9.5z"></path><path d="M10 18.5a2 2 0 0 0 4 0"></path></svg></button>
+    <span class="ui-separator ui-separator-vertical"></span>
+    <span style="display:flex;align-items:center;gap:0.5rem">
+      <span class="ui-avatar ui-avatar-sm">MP</span>
+      <span style="display:flex;flex-direction:column;line-height:1.2">
+        <span style="font-weight:600;font-size:var(--ui-text-sm)">Martijn Platform</span>
+        <span style="font-size:var(--ui-text-xs);color:var(--ui-muted)">Owner</span>
+      </span>
+      <svg width="0.8em" height="0.8em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ui-muted)"><path d="M4.5 9.5 12 17l7.5-7.5"></path></svg>
+    </span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

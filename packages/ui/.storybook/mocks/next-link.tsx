@@ -15,3 +15,11 @@ export default function Link({ href, children, ...rest }: LinkProps) {
     </a>
   );
 }
+
+/** Storybook stand-in for `next/link`'s `useLinkStatus` (issue #140,
+ * `nav-item-icon.tsx`) — the plain anchor above never has a real pending
+ * navigation to report, so this always resolves "not pending", same as every
+ * other Storybook nav-hook mock in this file. */
+export function useLinkStatus(): { pending: boolean } {
+  return { pending: false };
+}

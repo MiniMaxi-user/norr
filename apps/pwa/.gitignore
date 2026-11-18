@@ -2,3 +2,6 @@
 # root and don't match this nested app's build output.
 .next/
 out/
+
+.vercel
+.env*

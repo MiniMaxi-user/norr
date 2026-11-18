@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebe6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#c79a3e;text-decoration:none}a:hover{color:#d8b46c}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(31,53,64,.1)}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1f3540;color:#dfe4e0;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 -apple-system,sans-serif;color:#1f3540}
+.dv-opts{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(31,53,64,.1);color:#1f3540;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.35 -apple-system,sans-serif;color:rgba(31,53,64,.6);max-width:390px}
+.dv-next{margin:24px 0 0;font:12px/1.5 -apple-system,sans-serif;color:rgba(31,53,64,.55)}
+.ph{width:390px;height:844px;border-radius:44px;background:#0b1418;padding:5px;box-shadow:0 18px 50px rgba(31,53,64,.3);flex:none}
+.ph-in{width:100%;height:100%;border-radius:39px;overflow:hidden;position:relative;background:#14252c;display:flex;flex-direction:column}
+.sb{height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font:600 13px/1 -apple-system,sans-serif;background:#14252c;color:#dfe4e0}
+.scr{flex:1;overflow-y:auto;overscroll-behavior:contain;background:#14252c}
+.scr::-webkit-scrollbar{width:0}
+.noscroll{scrollbar-width:none;-ms-overflow-style:none}
+.noscroll::-webkit-scrollbar{width:0;height:0}
+input,button,textarea{font-family:inherit}
+</style></helmet>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Bottom bar — behaviour (wireframe)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Today is a pinned, framed item on the left — always there, visually separate from the rest. The context items only exist inside a work order, sit to the right of a divider, and scroll horizontally so extra sections (Photos, Checklist) can be added without shrinking anything.</div>
+<div style="width:560px;background:#fbfcfa;border:1px solid #dfe4e0;border-radius:16px;padding:22px">
+
+  <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#82918a">State 1 — Today (overview)</div>
+  <div style="margin-top:12px;border:1.5px solid #1f3540;border-radius:12px;background:#fff;display:flex;align-items:stretch;gap:10px;padding:10px">
+    <div style="flex:0 0 auto;width:86px;border:1.5px solid #1f3540;border-radius:10px;background:#f4eeda;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+      <div style="width:20px;height:16px;border:1.5px solid #1f3540;border-radius:3px"></div>
+      <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#1f3540">Today</div>
+    </div>
+    <div style="flex:1;border-left:1px dashed #c7cec7;padding-left:12px;display:flex;align-items:center;font:400 11.5px/1.4 -apple-system,sans-serif;color:#82918a">Empty — no work order open.<br />Hint line explains where the rest lives.</div>
+  </div>
+  <div style="margin-top:9px;font:400 11.5px/1.5 -apple-system,sans-serif;color:#61716b">One item, one meaning: the bar can only take you home. Nothing greyed-out to puzzle over.</div>
+
+  <div style="margin-top:22px;font:600 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#82918a">State 2 — inside a work order</div>
+  <div style="margin-top:12px;border:1.5px solid #1f3540;border-radius:12px;background:#fff;display:flex;align-items:stretch;gap:10px;padding:10px;overflow:hidden">
+    <div style="flex:0 0 auto;width:86px;border:1.5px solid #1f3540;border-radius:10px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+      <div style="width:20px;height:16px;border:1.5px solid #1f3540;border-radius:3px"></div>
+      <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#1f3540">Today</div>
+    </div>
+    <div style="flex:1;min-width:0;border-left:1px dashed #c7cec7;padding-left:12px;display:flex;gap:4px">
+      <div style="flex:0 0 auto;width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+        <div style="width:22px;height:3px;border-radius:999px;background:#c79a3e"></div>
+        <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#8a6522">Work</div>
+      </div>
+      <div style="flex:0 0 auto;width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+        <div style="width:22px;height:3px;border-radius:999px;background:#dfe4e0"></div>
+        <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#82918a">Hours</div>
+      </div>
+      <div style="flex:0 0 auto;width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+        <div style="width:22px;height:3px;border-radius:999px;background:#dfe4e0"></div>
+        <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#82918a">Articles</div>
+      </div>
+      <div style="flex:0 0 auto;width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0">
+        <div style="width:22px;height:3px;border-radius:999px;background:#dfe4e0"></div>
+        <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#82918a">Sign off</div>
+      </div>
+      <div style="flex:0 0 auto;width:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 0;opacity:.45">
+        <div style="width:16px;height:3px;border-radius:999px;background:#dfe4e0"></div>
+        <div style="font:600 10.5px/1 -apple-system,sans-serif;color:#82918a">Pho…</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:9px;display:flex;align-items:center;gap:8px;font:400 11.5px/1.5 -apple-system,sans-serif;color:#61716b">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c79a3e" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h14"></path><path d="m13.5 8 4 4-4 4"></path><circle cx="21" cy="12" r="0.6" fill="#c79a3e"></circle></svg>
+    Context items scroll sideways with snap — Today never scrolls away.
+  </div>
+
+  <div style="margin-top:22px;font:600 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#82918a">Reach</div>
+  <div style="margin-top:12px;display:flex;gap:14px;align-items:flex-start">
+    <div style="flex:0 0 auto;width:112px;height:210px;border:1.5px solid #1f3540;border-radius:18px;position:relative;background:#fff;overflow:hidden">
+      <div style="position:absolute;left:-40px;bottom:-46px;width:190px;height:190px;border-radius:999px;background:rgba(199,154,62,.22)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:1.5px solid #1f3540;background:#f4eeda"></div>
+      <div style="position:absolute;left:8px;bottom:10px;font:600 9.5px/1 -apple-system,sans-serif;color:#1f3540">Today</div>
+    </div>
+    <div style="flex:1;font:400 12px/1.6 -apple-system,sans-serif;color:#61716b">Thumb arc of a right hand on a 6.1" screen. The whole bar sits inside it, all targets 56px tall. Today is placed at the far left — the easiest spot to hit blind, and the only destination you need while walking.</div>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "add Photos and Checklist as real sections" · "swap Today to the right side for right-handed use" · "show the bar while the timer runs"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Norr field PWA — dark, one-handed</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Everything in thumb reach: a five-item bottom bar with Today always first, and a big start/stop timer at the top of the work order. Tapping Hours, Articles or Sign off from Today opens the current job straight on that section.</div>
+<div class="ph"><div class="ph-in">
+  <div class="sb"><span>9:41</span><span style="letter-spacing:2px">●●● ▮</span></div>
+
+  <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+  <div class="scr" style="padding-bottom:104px">
+    <div style="padding:6px 20px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font:400 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6f8078">Friday 12 September</div>
+        <div style="font:400 26px/1.2 Georgia,serif;color:#dfe4e0;margin-top:7px">Today's work</div>
+      </div>
+      <button onClick="{{ openProfile }}" aria-label="Profile" style="width:44px;height:44px;flex:none;border-radius:999px;background:#1a2e36;border:1px solid #2f4952;color:#dfe4e0;font:600 14px/1 -apple-system,sans-serif;cursor:pointer">TB</button>
+    </div>
+
+    <div style="padding:0 16px">
+      <div style="display:flex;gap:10px;align-items:center;background:#0f1d23;border:1px solid #2f4952;border-radius:12px;padding:0 12px;height:46px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6f8078" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.3" y2="16.3"></line></svg>
+        <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search client, address, order" style="flex:1;background:transparent;border:0;outline:none;color:#dfe4e0;font-size:15px" />
+      </div>
+      <div class="noscroll" style="margin-top:12px;display:flex;gap:8px;overflow-x:auto">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.onPick }}" style="{{ f.style }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ showNow }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:20px 20px 8px;font:400 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6f8078">Now</div>
+      <div style="padding:0 16px">
+        <button onClick="{{ openCurrent }}" style="display:block;width:100%;text-align:left;border:1px solid #2f4952;background:#1a2e36;border-radius:20px;padding:18px;cursor:pointer">
+          <div style="font:400 12px/1.4 -apple-system,sans-serif;color:#93a29c">{{ cur.client }} · {{ cur.orderNo }}</div>
+          <div style="font:400 21px/1.3 Georgia,serif;color:#dfe4e0;margin-top:8px">{{ cur.title }}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:10px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6f8078" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.6 7-11.5A7 7 0 0 0 5 9.5C5 14.4 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.25"></circle></svg>
+            <span style="font:400 13px/1.3 -apple-system,sans-serif;color:#93a29c">{{ cur.address }}</span>
+          </div>
+          <div style="{{ nowTimerStyle }}">
+            <div>
+              <div style="font:600 12px/1 -apple-system,sans-serif;opacity:.72">{{ runningLabel }}</div>
+              <div style="font:600 29px/1 -apple-system,sans-serif;margin-top:9px;font-variant-numeric:tabular-nums">{{ bigTimer }}</div>
+            </div>
+            <span style="{{ nowPillStyle }}">{{ nowPillLabel }}</span>
+          </div>
+        </button>
+      </div>
+    </sc-if>
+
+    <div style="padding:22px 20px 8px;font:400 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6f8078">Later today</div>
+    <div style="padding:0 16px;display:flex;flex-direction:column;gap:8px">
+      <sc-for list="{{ items }}" as="it" hint-placeholder-count="3">
+        <button onClick="{{ it.onOpen }}" style="{{ it.rowStyle }}">
+          <div style="font:600 14px/1 -apple-system,sans-serif;color:{{ it.timeColor }};font-variant-numeric:tabular-nums;min-width:42px">{{ it.time }}</div>
+          <div style="flex:1;text-align:left">
+            <div style="font:400 15px/1.3 -apple-system,sans-serif;color:#dfe4e0">{{ it.title }}</div>
+            <div style="font:400 12.5px/1.3 -apple-system,sans-serif;color:#93a29c;margin-top:3px">{{ it.sub }}</div>
+          </div>
+          <span style="{{ it.tagStyle }}">{{ it.tag }}</span>
+        </button>
+      </sc-for>
+      <div style="text-align:center;font:400 12px/1.4 -apple-system,sans-serif;color:#6f8078;padding:16px 0 28px">Synced 09:12 · pull to refresh</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+  <div class="scr" style="padding-bottom:104px">
+    <div style="padding:4px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <span style="{{ statusPill }}">{{ cur.status }}</span>
+      <span style="font:400 12.5px/1 -apple-system,sans-serif;color:#6f8078">{{ cur.orderNo }} · {{ cur.time }}</span>
+    </div>
+    <div style="padding:14px 20px 16px">
+      <div style="font:400 24px/1.28 Georgia,serif;color:#dfe4e0">{{ cur.title }}</div>
+      <div style="font:400 13.5px/1.4 -apple-system,sans-serif;color:#93a29c;margin-top:7px">{{ cur.client }} · {{ cur.address }}</div>
+    </div>
+
+    <div style="padding:0 16px;position:sticky;top:0;z-index:6">
+      <div style="{{ timerCardStyle }}">
+        <div>
+          <div style="font:600 12px/1 -apple-system,sans-serif;opacity:.72">{{ runningLabel }}</div>
+          <div style="font:600 34px/1 -apple-system,sans-serif;margin-top:10px;font-variant-numeric:tabular-nums">{{ bigTimer }}</div>
+          <div style="font:400 12px/1 -apple-system,sans-serif;margin-top:10px;opacity:.72">Travel {{ travelLabel }} · Work {{ workLabel }}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onClick="{{ toggleWork }}" style="{{ workBtn }}">{{ workAction }}</button>
+          <button onClick="{{ toggleTravel }}" style="{{ travelBtn }}">{{ travelAction }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:18px 16px 24px;display:flex;flex-direction:column;gap:12px">
+      <sc-if value="{{ isDetails }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid #2f4952;background:#1a2e36;border-radius:18px;overflow:hidden">
+          <div style="padding:16px;border-bottom:1px solid #22333b">
+            <div style="font:400 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#6f8078">Location</div>
+            <div style="font:400 16px/1.4 -apple-system,sans-serif;color:#dfe4e0;margin-top:7px">{{ cur.address }}</div>
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <a href="#2a" style="flex:1;text-align:center;padding:13px 0;border-radius:12px;background:#c79a3e;color:#1f3540;font:600 14px/1 -apple-system,sans-serif">Navigate</a>
+              <a href="#2a" style="flex:1;text-align:center;padding:13px 0;border-radius:12px;border:1px solid #2f4952;color:#dfe4e0;font:600 14px/1 -apple-system,sans-serif">Call contact</a>
+            </div>
+          </div>
+          <div style="padding:16px;border-bottom:1px solid #22333b">
+            <div style="font:400 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#6f8078">Asset</div>
+            <div style="font:400 16px/1.4 -apple-system,sans-serif;color:#dfe4e0;margin-top:7px">{{ cur.asset }}</div>
+            <div style="font:400 13px/1.4 -apple-system,sans-serif;color:#93a29c;margin-top:3px">{{ cur.assetMeta }}</div>
+          </div>
+          <div style="padding:16px">
+            <div style="font:400 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#6f8078">Description</div>
+            <p style="font:400 15px/1.5 -apple-system,sans-serif;color:#c3cbc6;margin:8px 0 0">{{ cur.description }}</p>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(199,154,62,.34);background:rgba(199,154,62,.1);border-radius:18px;padding:16px">
+          <div style="font:600 13px/1 -apple-system,sans-serif;color:#e2c281">Contract</div>
+          <div style="font:400 14px/1.45 -apple-system,sans-serif;color:#c3cbc6;margin-top:7px">{{ cur.contract }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isHours }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid #2f4952;background:#1a2e36;border-radius:18px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid #22333b">
+            <span style="font:600 15px/1 -apple-system,sans-serif;color:#dfe4e0">Logged time</span>
+            <span style="font:600 15px/1 -apple-system,sans-serif;color:#dfe4e0;font-variant-numeric:tabular-nums">{{ totalLabel }}</span>
+          </div>
+          <sc-for list="{{ entries }}" as="e" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #22333b">
+              <span style="font:600 10.5px/1 -apple-system,sans-serif;padding:5px 8px;border-radius:999px;background:{{ e.bg }};color:{{ e.fg }}">{{ e.kind }}</span>
+              <span style="font:400 14px/1.3 -apple-system,sans-serif;color:#c3cbc6;font-variant-numeric:tabular-nums">{{ e.range }}</span>
+              <span style="margin-left:auto;font:600 14px/1.3 -apple-system,sans-serif;color:#dfe4e0;font-variant-numeric:tabular-nums">{{ e.dur }}</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:24px;padding:14px 16px">
+            <div><div style="font:400 11px/1 -apple-system,sans-serif;color:#6f8078">Travel</div><div style="font:600 15px/1.5 -apple-system,sans-serif;color:#dfe4e0;font-variant-numeric:tabular-nums">{{ travelLabel }}</div></div>
+            <div><div style="font:400 11px/1 -apple-system,sans-serif;color:#6f8078">Work</div><div style="font:600 15px/1.5 -apple-system,sans-serif;color:#dfe4e0;font-variant-numeric:tabular-nums">{{ workLabel }}</div></div>
+          </div>
+        </div>
+        <div style="font:400 13px/1.5 -apple-system,sans-serif;color:#6f8078;padding:0 4px">Times are captured by the timer above — nothing to type in. Tap an entry to correct it.</div>
+      </sc-if>
+
+      <sc-if value="{{ isParts }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid #2f4952;background:#1a2e36;border-radius:18px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid #22333b">
+            <span style="font:600 15px/1 -apple-system,sans-serif;color:#dfe4e0">Articles used</span>
+            <span style="font:600 15px/1 -apple-system,sans-serif;color:#93a29c">{{ partsTotal }}</span>
+          </div>
+          <sc-for list="{{ parts }}" as="p" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #22333b">
+              <span style="min-width:36px;height:36px;border-radius:10px;background:#22333b;color:#dfe4e0;font:600 13px/36px -apple-system,sans-serif;text-align:center">{{ p.qty }}</span>
+              <div style="flex:1">
+                <div style="font:400 15px/1.3 -apple-system,sans-serif;color:#dfe4e0">{{ p.name }}</div>
+                <div style="font:400 12px/1.3 -apple-system,sans-serif;color:#6f8078;margin-top:3px">{{ p.code }}</div>
+              </div>
+              <button onClick="{{ p.onRemove }}" aria-label="Remove" style="border:0;background:transparent;color:#6f8078;cursor:pointer;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg></button>
+            </div>
+          </sc-for>
+          <button onClick="{{ openCatalog }}" style="display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;padding:15px 16px;text-align:left;font:600 14px/1 -apple-system,sans-serif;color:#c79a3e;cursor:pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="4" x2="12" y2="20"></line><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+            Add article
+          </button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPhotos }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid #2f4952;background:#1a2e36;border-radius:18px;padding:16px">
+          <div style="font:600 15px/1 -apple-system,sans-serif;color:#dfe4e0">Photos</div>
+          <div style="font:400 13px/1.5 -apple-system,sans-serif;color:#6f8078;margin-top:7px">Before and after shots are attached to the work receipt.</div>
+          <button onClick="{{ openCamera }}" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:14px;min-height:56px;border-radius:14px;border:1px dashed #3e5c64;background:#0f1d23;color:#c79a3e;font:600 14px/1 -apple-system,sans-serif;cursor:pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.5-2.5h7L17 8.5h3v10H4z"></path><circle cx="12" cy="13" r="3.2"></circle></svg>
+            Take photo
+          </button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isSign }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid #2f4952;background:#1a2e36;border-radius:18px;padding:16px">
+          <div style="font:600 15px/1 -apple-system,sans-serif;color:#dfe4e0">Work receipt</div>
+          <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+            <div style="display:flex;justify-content:space-between;font:400 14px/1.4 -apple-system,sans-serif;color:#93a29c"><span>Hours</span><span style="color:#dfe4e0;font-variant-numeric:tabular-nums">{{ totalLabel }}</span></div>
+            <div style="display:flex;justify-content:space-between;font:400 14px/1.4 -apple-system,sans-serif;color:#93a29c"><span>Articles</span><span style="color:#dfe4e0">{{ partsTotal }}</span></div>
+            <div style="display:flex;justify-content:space-between;font:400 14px/1.4 -apple-system,sans-serif;color:#93a29c"><span>Engineer</span><span style="color:#dfe4e0">Tomas Bakker</span></div>
+          </div>
+          <div style="margin-top:18px;font:400 11px/1 -apple-system,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#6f8078">Signature — client</div>
+          <div style="margin-top:9px;border:1px dashed #3e5c64;border-radius:14px;background:#0f1d23;height:160px;position:relative;touch-action:none">
+            <canvas ref="{{ sigRef }}" width="640" height="320" onPointerDown="{{ sigDown }}" onPointerMove="{{ sigMove }}" onPointerUp="{{ sigUp }}" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
+            <sc-if value="{{ sigEmpty }}" hint-placeholder-val="{{ true }}">
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font:400 13px/1 -apple-system,sans-serif;color:#4b5f67">Sign here</div>
+            </sc-if>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onClick="{{ clearSig }}" style="padding:14px 16px;border-radius:12px;border:1px solid #2f4952;background:transparent;color:#dfe4e0;font:600 14px/1 -apple-system,sans-serif;cursor:pointer">Clear</button>
+            <button onClick="{{ finish }}" style="{{ finishBtn }}">{{ finishLabel }}</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+  </sc-if>
+
+  <nav style="position:absolute;left:0;right:0;bottom:0;z-index:10;background:rgba(15,29,35,.94);backdrop-filter:blur(14px);border-top:1px solid #22333b;padding:8px 0 24px;display:flex;align-items:stretch;gap:8px">
+    <button onClick="{{ goToday }}" style="{{ todayStyle }}">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"></rect><line x1="3.5" y1="9.5" x2="20.5" y2="9.5"></line><line x1="8" y1="3" x2="8" y2="6"></line><line x1="16" y1="3" x2="16" y2="6"></line></svg>
+      <span>Today</span>
+    </button>
+    <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+      <div class="noscroll" style="flex:1;min-width:0;display:flex;gap:2px;overflow-x:auto;border-left:1px solid #22333b;padding-left:8px;scroll-snap-type:x mandatory">
+        <sc-for list="{{ contextNav }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.onPick }}" style="{{ n.style }}">
+            <span style="{{ n.dotStyle }}"></span>
+            <span>{{ n.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;min-width:0;display:flex;align-items:center;border-left:1px solid #22333b;padding:0 16px 0 14px">
+        <span style="font:400 11.5px/1.35 -apple-system,sans-serif;color:#93a29c">Open a work order for hours, articles and sign off</span>
+      </div>
+    </sc-if>
+  </nav>
+
+  <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(11,20,24,.6);z-index:20"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;z-index:21;background:#1a2e36;border-top:1px solid #2f4952;border-radius:22px 22px 0 0;padding:8px 16px 30px;max-height:78%;overflow-y:auto">
+      <div style="width:40px;height:4px;border-radius:999px;background:#2f4952;margin:6px auto 16px"></div>
+
+      <sc-if value="{{ isProfileSheet }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:13px">
+          <div style="width:54px;height:54px;border-radius:999px;background:#22333b;border:1px solid #2f4952;color:#dfe4e0;font:600 17px/54px -apple-system,sans-serif;text-align:center">TB</div>
+          <div>
+            <div style="font:400 20px/1.2 Georgia,serif;color:#dfe4e0">Tomas Bakker</div>
+            <div style="font:400 13px/1.4 -apple-system,sans-serif;color:#93a29c;margin-top:3px">Service engineer · Norr</div>
+          </div>
+        </div>
+        <div style="margin-top:18px;border:1px solid #2f4952;border-radius:16px;overflow:hidden">
+          <div style="display:flex;justify-content:space-between;padding:14px;border-bottom:1px solid #22333b;font:400 14px/1.3 -apple-system,sans-serif;color:#93a29c"><span>This week</span><span style="font-weight:600;color:#dfe4e0">31h 45m</span></div>
+          <div style="display:flex;justify-content:space-between;padding:14px;border-bottom:1px solid #22333b;font:400 14px/1.3 -apple-system,sans-serif;color:#93a29c"><span>Offline data</span><span style="font-weight:600;color:#8fbf85">Synced</span></div>
+          <div style="display:flex;justify-content:space-between;padding:14px;font:400 14px/1.3 -apple-system,sans-serif;color:#93a29c"><span>Version</span><span style="color:#6f8078">2.4.0</span></div>
+        </div>
+        <button onClick="{{ closeSheet }}" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:14px;padding:16px 0;border-radius:14px;border:1px solid rgba(224,132,118,.4);background:rgba(224,132,118,.12);color:#e08476;font:600 15px/1 -apple-system,sans-serif;cursor:pointer">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h-3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path><line x1="20" y1="12" x2="9.5" y2="12"></line><path d="m16.5 8 4 4-4 4"></path></svg>
+          Log out
+        </button>
+      </sc-if>
+
+      <sc-if value="{{ isCatalogSheet }}" hint-placeholder-val="{{ false }}">
+        <div style="font:400 20px/1.2 Georgia,serif;color:#dfe4e0;padding:0 2px 5px">Add article</div>
+        <div style="font:400 13px/1.4 -apple-system,sans-serif;color:#6f8078;padding:0 2px 12px">Tap once to add one. Tap again for a second.</div>
+        <sc-for list="{{ catalog }}" as="c" hint-placeholder-count="5">
+          <button onClick="{{ c.onAdd }}" style="display:flex;width:100%;align-items:center;gap:12px;text-align:left;border:0;border-bottom:1px solid #22333b;background:transparent;padding:15px 2px;cursor:pointer">
+            <div style="flex:1">
+              <div style="font:400 15px/1.3 -apple-system,sans-serif;color:#dfe4e0">{{ c.name }}</div>
+              <div style="font:400 12px/1.3 -apple-system,sans-serif;color:#6f8078;margin-top:3px">{{ c.code }}</div>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c79a3e" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="4" x2="12" y2="20"></line><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+          </button>
+        </sc-for>
+      </sc-if>
+    </div>
+  </sc-if>
+</div></div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "show the offline state on Today" · "add a photo step before sign off" · "make the bottom bar four items instead of five"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:520,&quot;height&quot;:1050}}">
+const ITEMS = [
+  { id: "wo-2418", time: "08:30", status: "In progress", title: "Chiller service — De Kolk 12", client: "Nordwind Logistics", address: "De Kolk 12, 8321 AB Urk", orderNo: "WO-2418", asset: "Carrier 30XA-452", assetMeta: "AS-0041 · roof, unit 3 · installed 2019", description: "Quarterly service on the process chiller plus a leak check on circuit B. Client reports a drop in capacity on warm days.", contract: "Maintenance agreement 2024–2027 · 4 visits per year · travel included", tag: "" },
+  { id: "wo-2421", time: "11:30", status: "Planned", title: "Filter replacement", client: "Fjordhus BV", address: "Nagelerweg 8, 8304 AC Emmeloord", orderNo: "WO-2421", asset: "AHU Systemair DV-40", assetMeta: "AS-0119 · technical room 1", description: "Replace G4 and F7 filter sets, log the pressure drop before and after.", contract: "Maintenance agreement 2025–2028 · 2 visits per year", tag: "" },
+  { id: "wo-2426", time: "14:00", status: "Urgent", title: "Alarm — cold room 2", client: "Vries Cold Store", address: "Zuiveringweg 44, 8243 PZ Lelystad", orderNo: "WO-2426", asset: "Bitzer 4FES-3Y", assetMeta: "AS-0207 · cold room 2", description: "High-temperature alarm since 05:40. Check compressor and defrost cycle.", contract: "Call-out · time and material", tag: "Urgent" },
+  { id: "wo-2409", time: "08:00", status: "Signed", title: "Intake inspection", client: "Havenbedrijf Urk", address: "Westhavenkade 3, 8321 EM Urk", orderNo: "WO-2409", asset: "Daikin VRV IV", assetMeta: "AS-0088 · office wing", description: "Intake inspection for the new maintenance agreement.", contract: "Not under contract yet", tag: "Signed" },
+];
+
+const CATALOG = [
+  { code: "ART-1042", name: "Filter set G4 290×592" },
+  { code: "ART-1078", name: "Filter set F7 490×592" },
+  { code: "ART-2211", name: "Refrigerant R-410A (1 kg)" },
+  { code: "ART-3390", name: "Contactor 3P 25A" },
+  { code: "ART-4102", name: "Leak detection spray" },
+];
+
+function pad(n) { return String(n).padStart(2, "0"); }
+
+class Component extends DCLogic {
+  state = {
+    screen: "today",
+    id: "wo-2418",
+    tab: "details",
+    query: "",
+    filter: "All",
+    clocks: {
+      "wo-2418": { travelStart: null, travelMs: 32 * 60000, workStart: Date.now() - 74 * 60000 - 8000, workMs: 0 },
+      "wo-2409": { travelStart: null, travelMs: 14 * 60000, workStart: null, workMs: 48 * 60000 },
+    },
+    now: Date.now(),
+    parts: [{ code: "ART-1042", name: "Filter set G4 290×592", qty: 2 }],
+    sheet: null,
+    sigEmpty: true,
+  };
+
+  sigRef = React.createRef();
+  drawing = false;
+
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      const c = this.clockOf(this.state.id);
+      if (c.travelStart || c.workStart) this.setState({ now: Date.now() });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  clockOf(id) {
+    return this.state.clocks[id] || { travelStart: null, travelMs: 0, workStart: null, workMs: 0 };
+  }
+  runningId() {
+    const c = this.state.clocks;
+    return Object.keys(c).find((k) => c[k].travelStart || c[k].workStart) || null;
+  }
+  ms(kind, id) {
+    const c = this.clockOf(id);
+    const base = kind === "travel" ? c.travelMs : c.workMs;
+    const start = kind === "travel" ? c.travelStart : c.workStart;
+    return base + (start ? this.state.now - start : 0);
+  }
+  fmt(ms) {
+    const m = Math.floor(ms / 60000);
+    return Math.floor(m / 60) + "h " + pad(m % 60) + "m";
+  }
+  hms(ms) {
+    const t = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(t / 3600) + ":" + pad(Math.floor(t / 60) % 60) + ":" + pad(t % 60);
+  }
+  clock(ts) { const d = new Date(ts); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+
+  toggle(kind) {
+    this.setState((s) => {
+      const now = Date.now();
+      const startKey = kind === "travel" ? "travelStart" : "workStart";
+      const msKey = kind === "travel" ? "travelMs" : "workMs";
+      const other = kind === "travel" ? "workStart" : "travelStart";
+      const otherMs = kind === "travel" ? "workMs" : "travelMs";
+      const clocks = {};
+      Object.keys(s.clocks).forEach((k) => { clocks[k] = Object.assign({}, s.clocks[k]); });
+      const c = clocks[s.id] || (clocks[s.id] = { travelStart: null, travelMs: 0, workStart: null, workMs: 0 });
+
+      // only one order can run at a time — stop every other order first
+      Object.keys(clocks).forEach((k) => {
+        if (k === s.id) return;
+        const o = clocks[k];
+        if (o.travelStart) { o.travelMs += now - o.travelStart; o.travelStart = null; }
+        if (o.workStart) { o.workMs += now - o.workStart; o.workStart = null; }
+      });
+
+      if (c[startKey]) { c[msKey] += now - c[startKey]; c[startKey] = null; }
+      else {
+        if (c[other]) { c[otherMs] += now - c[other]; c[other] = null; }
+        c[startKey] = now;
+      }
+      return { clocks, now };
+    });
+  }
+
+  sigPos(e) {
+    const c = this.sigRef.current;
+    const r = c.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * c.width, ((e.clientY - r.top) / r.height) * c.height];
+  }
+
+  renderVals() {
+    const s = this.state;
+    const detail = ITEMS.find((i) => i.id === s.id) || ITEMS[0];
+    // Today's "Now" card follows the running order, else the next one that isn't signed
+    const runId = this.runningId();
+    const now = ITEMS.find((i) => i.id === runId) || ITEMS.filter((i) => i.status !== "Signed")[0] || ITEMS[0];
+    const cur = s.screen === "detail" ? detail : now;
+    const curClock = this.clockOf(cur.id);
+    const q = s.query.trim().toLowerCase();
+    const running = curClock.workStart ? "work" : curClock.travelStart ? "travel" : null;
+
+    const filters = ["All", "Planned", "In progress", "Signed"].map((label) => ({
+      label,
+      onPick: () => this.setState({ filter: label }),
+      style: "flex:none;min-height:44px;padding:0 16px;border-radius:999px;cursor:pointer;font:600 13px/1 -apple-system,sans-serif;border:1px solid " +
+        (s.filter === label ? "#c79a3e;background:#c79a3e;color:#1f3540" : "#2f4952;background:transparent;color:#93a29c"),
+    }));
+
+    const match = (i) => (s.filter === "All" || i.status === s.filter) &&
+      (!q || (i.title + i.client + i.address + i.orderNo).toLowerCase().includes(q));
+
+    const items = ITEMS.filter((i) => i.id !== now.id).filter(match)
+      .slice().sort((a, b) => a.time.localeCompare(b.time)).map((i) => {
+      const done = i.status === "Signed";
+      const urgent = i.status === "Urgent";
+      return {
+        time: i.time,
+        title: i.title,
+        sub: done ? "Signed · " + this.fmt(this.ms("travel", i.id) + this.ms("work", i.id)) : i.client + " · " + i.address.split(",")[1],
+        tag: i.tag,
+        timeColor: done ? "#6f8078" : "#c79a3e",
+        rowStyle: "display:flex;align-items:center;gap:14px;width:100%;border-radius:16px;background:#1a2e36;border:1px solid #223a43;padding:15px 16px;cursor:pointer;text-align:left;" + (done ? "opacity:.55;" : ""),
+        tagStyle: urgent
+          ? "font:600 10.5px/1 -apple-system,sans-serif;padding:6px 9px;border-radius:999px;background:rgba(224,132,118,.16);color:#e08476"
+          : done
+            ? "font:600 10.5px/1 -apple-system,sans-serif;padding:6px 9px;border-radius:999px;background:rgba(143,191,133,.14);color:#8fbf85"
+            : "display:none",
+        onOpen: () => this.setState({ screen: "detail", id: i.id, tab: "details" }),
+      };
+    });
+
+    const travelMs = this.ms("travel", cur.id), workMs = this.ms("work", cur.id);
+    const bigMs = running === "work" ? workMs : running === "travel" ? travelMs : travelMs + workMs;
+
+    const contextNav = [
+      ["details", "Work"], ["hours", "Hours"], ["parts", "Articles"], ["sign", "Sign off"], ["photos", "Photos"],
+    ].map(([key, label]) => {
+      const active = s.screen === "detail" && s.tab === key;
+      return {
+        label,
+        onPick: () => this.setState({ screen: "detail", tab: key }),
+        style: "flex:0 0 auto;min-width:72px;scroll-snap-align:start;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:56px;padding:8px 6px;border:0;background:transparent;cursor:pointer;border-radius:14px;font:600 11px/1 -apple-system,sans-serif;color:" + (active ? "#c79a3e" : "#6f8078"),
+        dotStyle: "width:22px;height:3px;border-radius:999px;background:" + (active ? "#c79a3e" : "#2f4952"),
+      };
+    });
+
+    const timerCard = (bg, fg, border) =>
+      "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px;border-radius:20px;background:" + bg + ";color:" + fg + ";border:1px solid " + border + ";box-shadow:0 10px 24px rgba(11,20,24,.45)";
+    const smallBtn = (primary) =>
+      "min-width:104px;padding:13px 12px;border-radius:12px;cursor:pointer;font:600 13px/1 -apple-system,sans-serif;border:1px solid " +
+      (primary ? "rgba(31,53,64,.25);background:#1f3540;color:#dfe4e0" : "#2f4952;background:#22333b;color:#dfe4e0");
+
+    const entries = [];
+    if (travelMs > 0) entries.push({ kind: "Travel", bg: "rgba(199,154,62,.16)", fg: "#e2c281", range: "07:58 – " + (curClock.travelStart ? "now" : "08:30"), dur: this.fmt(travelMs) });
+    if (workMs > 0) entries.push({ kind: "Work", bg: "rgba(143,191,133,.14)", fg: "#8fbf85", range: (curClock.workStart ? this.clock(curClock.workStart) + " – now" : "08:32 – " + this.clock(Date.now())), dur: this.fmt(workMs) });
+    if (!entries.length) entries.push({ kind: "None", bg: "#22333b", fg: "#93a29c", range: "Nothing logged yet", dur: "0h 00m" });
+
+    const parts = s.parts.map((p, idx) => Object.assign({}, p, {
+      onRemove: () => this.setState((st) => ({ parts: st.parts.filter((_, i) => i !== idx) })),
+    }));
+    const count = s.parts.reduce((n, p) => n + p.qty, 0);
+
+    return {
+      isToday: s.screen === "today",
+      isDetail: s.screen === "detail",
+      cur, items, filters, contextNav,
+      goToday: () => this.setState({ screen: "today" }),
+      todayStyle: "flex:0 0 auto;width:86px;margin-left:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:56px;border-radius:16px;cursor:pointer;font:600 11px/1 -apple-system,sans-serif;border:1px solid " +
+        (s.screen === "today" ? "#c79a3e;background:rgba(199,154,62,.16);color:#c79a3e" : "#2f4952;background:#1a2e36;color:#93a29c"),
+      query: s.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      showNow: match(now),
+      openCurrent: () => this.setState({ screen: "detail", id: now.id, tab: "details" }),
+      isDetails: s.tab === "details", isHours: s.tab === "hours", isParts: s.tab === "parts", isSign: s.tab === "sign", isPhotos: s.tab === "photos",
+      openCamera: () => this.setState({ tab: "photos" }),
+      statusPill: "font:600 11px/1 -apple-system,sans-serif;padding:8px 11px;border-radius:999px;" +
+        (cur.status === "Urgent" ? "background:rgba(224,132,118,.16);color:#e08476" :
+          cur.status === "In progress" ? "background:rgba(143,191,133,.14);color:#8fbf85" :
+            "background:#22333b;color:#93a29c"),
+      bigTimer: this.hms(bigMs),
+      runningLabel: running === "work" ? "Work time running" : running === "travel" ? "Travel time running" : "Timer paused · total today",
+      travelLabel: this.fmt(travelMs),
+      workLabel: this.fmt(workMs),
+      totalLabel: this.fmt(travelMs + workMs),
+      travelAction: curClock.travelStart ? "Stop travel" : "Start travel",
+      workAction: curClock.workStart ? "Stop work" : "Start work",
+      timerCardStyle: running ? timerCard("#c79a3e", "#1f3540", "#c79a3e") : timerCard("#1a2e36", "#dfe4e0", "#2f4952"),
+      workBtn: smallBtn(!!running),
+      travelBtn: smallBtn(!!running),
+      nowTimerStyle: "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:15px 16px;border-radius:16px;" +
+        (running ? "background:#c79a3e;color:#1f3540" : "background:#22333b;color:#dfe4e0"),
+      nowPillLabel: running ? "Open" : "Start",
+      nowPillStyle: "min-width:58px;text-align:center;padding:13px 0;border-radius:999px;font:600 12px/1 -apple-system,sans-serif;" +
+        (running ? "background:#1f3540;color:#c79a3e" : "background:#c79a3e;color:#1f3540"),
+      toggleTravel: () => this.toggle("travel"),
+      toggleWork: () => this.toggle("work"),
+      entries, parts,
+      partsTotal: count + (count === 1 ? " item" : " items"),
+      catalog: CATALOG.map((c) => Object.assign({}, c, {
+        onAdd: () => this.setState((st) => {
+          const found = st.parts.find((p) => p.code === c.code);
+          return { parts: found ? st.parts.map((p) => (p.code === c.code ? Object.assign({}, p, { qty: p.qty + 1 }) : p)) : st.parts.concat([{ code: c.code, name: c.name, qty: 1 }]) };
+        }),
+      })),
+      openCatalog: () => this.setState({ sheet: "catalog" }),
+      openProfile: () => this.setState({ sheet: "profile" }),
+      closeSheet: () => this.setState({ sheet: null }),
+      sheetOpen: s.sheet !== null,
+      isProfileSheet: s.sheet === "profile",
+      isCatalogSheet: s.sheet === "catalog",
+      sigRef: this.sigRef,
+      sigEmpty: s.sigEmpty,
+      sigDown: (e) => {
+        const c = this.sigRef.current; if (!c) return;
+        c.setPointerCapture(e.pointerId);
+        this.drawing = true;
+        const ctx = c.getContext("2d");
+        ctx.lineWidth = 3.5; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#dfe4e0";
+        const [x, y] = this.sigPos(e); ctx.beginPath(); ctx.moveTo(x, y);
+        if (s.sigEmpty) this.setState({ sigEmpty: false });
+      },
+      sigMove: (e) => {
+        if (!this.drawing) return;
+        const ctx = this.sigRef.current.getContext("2d");
+        const [x, y] = this.sigPos(e); ctx.lineTo(x, y); ctx.stroke();
+      },
+      sigUp: () => { this.drawing = false; },
+      clearSig: () => {
+        const c = this.sigRef.current;
+        if (c) c.getContext("2d").clearRect(0, 0, c.width, c.height);
+        this.setState({ sigEmpty: true });
+      },
+      finish: () => this.setState((st) => {
+        const t = Date.now();
+        const clocks = {};
+        Object.keys(st.clocks).forEach((k) => { clocks[k] = Object.assign({}, st.clocks[k]); });
+        const c = clocks[st.id];
+        if (c) {
+          if (c.travelStart) { c.travelMs += t - c.travelStart; c.travelStart = null; }
+          if (c.workStart) { c.workMs += t - c.workStart; c.workStart = null; }
+        }
+        return { clocks, screen: "today", sheet: null };
+      }),
+      finishLabel: s.sigEmpty ? "Finish work order" : "Send work receipt",
+      finishBtn: "flex:1;padding:14px 0;border-radius:12px;border:0;cursor:pointer;font:600 14px/1 -apple-system,sans-serif;" +
+        (s.sigEmpty ? "background:#22333b;color:#93a29c" : "background:#c79a3e;color:#1f3540"),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

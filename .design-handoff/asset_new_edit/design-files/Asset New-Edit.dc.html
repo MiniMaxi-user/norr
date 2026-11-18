@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0;background:#eff2ed}
+*{box-sizing:border-box}
+input,select,textarea{font:inherit}
+a{color:#1f3540;text-decoration:none}
+a:hover{color:#8a6522}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid #c79a3e;outline-offset:1px}
+</style></helmet>
+<div style="display:flex;height:100vh;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f3540;font-size:14px">
+  <dc-import name="Norr Sidebar" hint-size="224px,100%" style="flex:none"></dc-import>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+    <dc-import name="Norr Topbar" crumb="{{ crumb }}" hint-size="100%,64px" style="flex:none"></dc-import>
+
+    <div style="flex:none;background:#16262e;padding:24px 36px 22px;color:#dfe4e0">
+      <div style="display:flex;align-items:flex-start;gap:24px">
+        <div style="min-width:0;flex:1">
+          <h1 style="margin:0;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:34px;font-weight:400;letter-spacing:-.01em;color:#f6f8f5">{{ heroTitle }}</h1>
+          <div style="height:1px;background:#2f4952;margin:15px 0 13px;max-width:930px"></div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;color:#93a29c">
+            <span style="background:#233a43;border:1px solid #33505a;color:#dfe4e0;border-radius:999px;padding:4px 12px;font-size:12px">{{ statusBadge }}</span>
+            <span style="background:#233a43;border:1px solid #33505a;color:#d8b46c;border-radius:999px;padding:4px 12px;font-size:12px">{{ modeBadge }}</span>
+            <span style="display:inline-flex;align-items:center;gap:7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>{{ metaSite }}</span>
+            <span style="display:inline-flex;align-items:center;gap:7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M3 11h18"></path></svg>{{ metaInstalled }}</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex:none">
+          <button onClick="{{ save }}" style="display:flex;align-items:center;gap:8px;border:0;background:#c79a3e;color:#16262e;font-weight:600;font-size:13.5px;padding:10px 18px;border-radius:8px;cursor:pointer" style-hover="background:#d8ad5c"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8"></path><path d="M7 3v5h8"></path></svg>{{ saveLabel }}</button>
+          <button style="background:transparent;border:1px solid #3e5c64;color:#c3cbc6;font-size:13.5px;padding:10px 16px;border-radius:8px;cursor:pointer" style-hover="border-color:#61716b;color:#dfe4e0">Cancel</button>
+          <sc-if value="{{ isEdit }}" hint-placeholder-val="{{ true }}">
+            <button style="display:flex;align-items:center;gap:7px;background:transparent;border:1px solid #7e4034;color:#e08476;font-size:13.5px;padding:10px 16px;border-radius:8px;cursor:pointer" style-hover="background:#3a2320"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"></path></svg>Delete</button>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:20px 36px 30px">
+      <div ref="{{ formRef }}" onInput="{{ markDirty }}" onChange="{{ markDirty }}" style="max-width:1560px;display:flex;flex-direction:column;gap:22px">
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
+          <div style="background:#fff;border:1px solid #dfe4e0;border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(31,53,64,.04);position:relative">
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"></path><path d="M15 9h3a2 2 0 0 1 2 2v10"></path><path d="M2 21h20"></path><path d="M8 7h3"></path><path d="M8 11h3"></path><path d="M8 15h3"></path></svg>Client <span style="color:#c4402f">*</span></div>
+            <div style="margin-top:11px;font-size:16px;font-weight:600">{{ clientName }}</div>
+            <div style="margin-top:4px;font-size:12.5px;color:#82918a">{{ clientMeta }}</div>
+            <button title="Change client" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;background:transparent;border:0;border-radius:7px;color:#82918a;cursor:pointer" style-hover="background:#eff2ed;color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>
+            <button style="position:absolute;bottom:10px;right:12px;background:transparent;border:0;color:#a4b0aa;cursor:pointer;padding:2px" style-hover="color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          </div>
+          <div style="background:#fff;border:1px solid #dfe4e0;border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(31,53,64,.04);position:relative">
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>Site <span style="color:#c4402f">*</span></div>
+            <div style="margin-top:11px;font-size:16px;font-weight:600">{{ siteName }}</div>
+            <div style="margin-top:4px;font-size:12.5px;color:#82918a">{{ siteMeta }}</div>
+            <button title="Change site" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;background:transparent;border:0;border-radius:7px;color:#82918a;cursor:pointer" style-hover="background:#eff2ed;color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>
+            <button style="position:absolute;bottom:10px;right:12px;background:transparent;border:0;color:#a4b0aa;cursor:pointer;padding:2px" style-hover="color:#1f3540"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:22px;min-width:0">
+
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#61716b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"></rect><path d="M8 7V4h8v3"></path><path d="M8 15h8"></path></svg>
+                <h2 style="margin:0;font-size:15.5px;font-weight:600">Equipment</h2>
+                <div style="flex:1;height:1px;background:#dfe4e0"></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px">
+                <div>
+                  <label for="a-serial" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Serial number</label>
+                  <input id="a-serial" name="serialNumber" maxlength="200" placeholder="e.g. R83B838282" data-edit-value="R83B838282" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                </div>
+                <div>
+                  <label for="a-name" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Asset ID</label>
+                  <input id="a-name" name="name" maxlength="200" placeholder="Leave blank to auto-generate" data-edit-value="AST-28383" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                  <div style="margin-top:6px;font-size:11.5px;color:#82918a">Blank → next sequential id for this organisation.</div>
+                </div>
+                <div>
+                  <label for="a-type" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Type <span style="color:#c4402f">*</span></label>
+                  <select id="a-type" name="typeId" data-edit-value="printer" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff">
+                    <option value="">Select a type…</option>
+                    <option value="printer">Printer</option>
+                    <option value="hvac">HVAC</option>
+                    <option value="pump">Pomp</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="a-subtype" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Sub-type</label>
+                  <select id="a-subtype" name="subtypeId" data-edit-value="mfp" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff">
+                    <option value="">No sub-type</option>
+                    <option value="mfp">MFP</option>
+                    <option value="a3">A3 kleur</option>
+                  </select>
+                  <div style="margin-top:6px;font-size:11.5px;color:#82918a">Depends on Type — a mismatched sub-type is cleared.</div>
+                </div>
+                <div>
+                  <label for="a-brand" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Manufacturer</label>
+                  <select id="a-brand" name="brandItemId" data-edit-value="kyocera" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff">
+                    <option value="">Search manufacturers…</option>
+                    <option value="kyocera">Kyocera</option>
+                    <option value="hp">HP</option>
+                    <option value="canon">Canon</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="a-model" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Model</label>
+                  <select id="a-model" name="modelId" data-edit-value="m1" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff">
+                    <option value="">Search models…</option>
+                    <option value="m1">Kyocera ECOSYS M5526cdw</option>
+                    <option value="m2">Kyocera TASKalfa 3554ci</option>
+                    <option value="m3">HP LaserJet E52645</option>
+                  </select>
+                  <div style="margin-top:6px;font-size:11.5px;color:#82918a">Filtered by Type + Manufacturer · fills both in when picked.</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#61716b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                <h2 style="margin:0;font-size:15.5px;font-weight:600">Status &amp; warranty</h2>
+                <div style="flex:1;height:1px;background:#dfe4e0"></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px">
+                <div>
+                  <label for="a-status" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Status</label>
+                  <select id="a-status" name="statusId" data-edit-value="active" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 10px;background:#fff">
+                    <option value="">Use default (Active)</option>
+                    <option value="active">Active</option>
+                    <option value="maintenance">In onderhoud</option>
+                    <option value="retired">Afgevoerd</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="a-ext" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">External reference</label>
+                  <input id="a-ext" name="externalReference" maxlength="200" placeholder="ERP or legacy asset id" data-edit-value="ERP-4471-B" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                </div>
+                <div>
+                  <label for="a-inst" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Installed on</label>
+                  <input id="a-inst" name="installedAt" type="date" data-edit-value="2024-03-14" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                </div>
+                <div>
+                  <label for="a-warr" style="display:block;margin-bottom:6px;font-size:12.5px;font-weight:600;color:#485754">Warranty until</label>
+                  <input id="a-warr" name="warrantyUntil" type="date" data-edit-value="2027-03-14" style="width:100%;height:38px;border:1px solid #c7cec7;border-radius:8px;padding:0 11px;background:#fff" />
+                  <div style="margin-top:6px;font-size:11.5px;color:#82918a">Model default: 36 months from install.</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#61716b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+                <h2 style="margin:0;font-size:15.5px;font-weight:600">Notes</h2>
+                <div style="flex:1;height:1px;background:#dfe4e0"></div>
+              </div>
+              <textarea id="a-notes" name="notes" rows="3" maxlength="5000" placeholder="Anything an engineer should know before going on site…" data-edit-value="Toner voorraad staat in de serverruimte. Sleutel bij receptie ophalen." style="width:100%;border:1px solid #c7cec7;border-radius:8px;padding:10px 11px;background:#fff;resize:vertical;line-height:1.5"></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+            <div style="background:#fff;border:1px solid #dfe4e0;border-radius:12px;padding:15px 17px;box-shadow:0 1px 2px rgba(31,53,64,.04)">
+              <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a;margin-bottom:10px">Summary</div>
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eff2ed"><span style="color:#61716b;font-size:13px">Asset ID</span><span style="font-weight:600">{{ sumId }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eff2ed"><span style="color:#61716b;font-size:13px">Type</span><span>{{ sumType }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eff2ed"><span style="color:#61716b;font-size:13px">Model</span><span>{{ sumModel }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0"><span style="color:#61716b;font-size:13px">Warranty</span><span>{{ sumWarranty }}</span></div>
+            </div>
+
+            <sc-if value="{{ isEdit }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="background:#fff;border:1px solid #dfe4e0;border-radius:12px;padding:15px 17px;box-shadow:0 1px 2px rgba(31,53,64,.04)">
+                  <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a;margin-bottom:8px">Linked records</div>
+                  <a href="#" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eff2ed;font-size:13.5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#82918a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Work orders<span style="margin-left:auto;color:#82918a">4</span></a>
+                  <a href="#" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eff2ed;font-size:13.5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#82918a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Contracts<span style="margin-left:auto;color:#82918a">1</span></a>
+                  <a href="#" style="display:flex;align-items:center;gap:10px;padding:9px 0;font-size:13.5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#82918a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Activiteiten<span style="margin-left:auto;color:#82918a">2</span></a>
+                  <button style="margin-top:12px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;background:#c79a3e;color:#16262e;border:0;border-radius:8px;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#b0872f"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>New activity</button>
+                </div>
+                <div style="background:#fff;border:1px solid #dfe4e0;border-radius:12px;padding:15px 17px;box-shadow:0 1px 2px rgba(31,53,64,.04)">
+                  <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#82918a;margin-bottom:8px">Record</div>
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eff2ed;font-size:13px"><span style="color:#61716b">Created</span><span>Aug 30, 2026 · Martijn Platform</span></div>
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:13px"><span style="color:#61716b">Last modified</span><span>Aug 31, 2026 at 6:31 PM</span></div>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="display:flex;gap:10px;background:#fbf6ea;border:1px solid #ecd9ac;border-radius:12px;padding:13px 15px;color:#8a6522;font-size:12.5px;line-height:1.5"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01"></path><path d="M11 12h1v4h1"></path></svg><span>Reference data (types, sub-types, brands, models, statuses) is tenant-configurable in Settings.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:none;border-top:1px solid #dfe4e0;background:#fff;padding:12px 36px;display:flex;align-items:center;gap:14px">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#82918a"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>{{ dirtyLabel }}</span>
+      <div style="margin-left:auto;display:flex;gap:10px">
+        <button style="background:#fff;border:1px solid #c7cec7;color:#485754;font-size:13.5px;padding:9px 16px;border-radius:8px;cursor:pointer" style-hover="border-color:#82918a">Cancel</button>
+        <button onClick="{{ save }}" style="border:0;background:#c79a3e;color:#16262e;font-weight:600;font-size:13.5px;padding:9px 18px;border-radius:8px;cursor:pointer" style-hover="background:#b0872f">{{ saveLabel }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;edit&quot;,&quot;new&quot;],&quot;default&quot;:&quot;edit&quot;,&quot;tsType&quot;:&quot;\&quot;edit\&quot; | \&quot;new\&quot;&quot;,&quot;section&quot;:&quot;State&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { dirty: false };
+    this.formRef = React.createRef();
+  }
+  componentDidMount() { this.applyMode(); }
+  componentDidUpdate() { this.applyMode(); }
+  applyMode() {
+    const root = this.formRef.current;
+    if (!root) return;
+    const edit = (this.props.mode ?? "edit") === "edit";
+    root.querySelectorAll("[data-edit-value]").forEach((el) => {
+      const next = edit ? el.dataset.editValue : "";
+      if (el.value !== next) el.value = next;
+    });
+  }
+  renderVals() {
+    const edit = (this.props.mode ?? "edit") === "edit";
+    return {
+      isEdit: edit,
+      crumb: edit ? "AST-28383 · Edit" : "New asset",
+      heroTitle: edit ? "AST-28383" : "New asset",
+      statusBadge: edit ? "Active" : "Default status: Active",
+      modeBadge: edit ? "Editing" : "Draft",
+      metaSite: edit ? "Klein Elsbroek 12, Hillegom" : "Site not selected",
+      metaInstalled: edit ? "Installed March 14, 2024" : "Not installed yet",
+      clientName: edit ? "Norr" : "Select a client",
+      clientMeta: edit ? "KvK 2892398982 · 9823829898" : "Required — search by name or KvK",
+      siteName: edit ? "Klein Elsbroek 12, 2182TE Hillegom, NL" : "Select a site",
+      siteMeta: edit ? "Primary" : "Primary visit address prefills after client",
+      saveLabel: edit ? "Save changes" : "Add asset",
+      dirtyLabel: this.state.dirty ? "Unsaved changes" : edit ? "All changes saved" : "Required: Client, Site, Type",
+      sumId: edit ? "AST-28383" : "Auto-generated",
+      sumType: edit ? "Printer / MFP" : "—",
+      sumModel: edit ? "Kyocera ECOSYS M5526cdw" : "—",
+      sumWarranty: edit ? "until Mar 14, 2027" : "—",
+      save: () => this.setState({ dirty: false }),
+      markDirty: () => { if (!this.state.dirty) this.setState({ dirty: true }); },
+      formRef: this.formRef,
+    };
+  }
+}
+</script>
+</body>
+</html>
