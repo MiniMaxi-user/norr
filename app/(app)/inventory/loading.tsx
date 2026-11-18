@@ -1,8 +1,7 @@
-import { InventoryScreenSkeleton } from "./components/inventory-screen-skeleton";
+import { WebListSkeleton } from "@yourorg/ui/web";
 
-// Route-level Suspense fallback (issue #140 precedent) for `/inventory` —
-// reuses the exact skeleton `page.tsx` already renders as its own
-// `<Suspense>` fallback.
+// Route-level Suspense fallback (issue #140) for `/inventory`: the same
+// list-page skeleton `page.tsx` uses as its own `<Suspense>` fallback.
 export default function InventoryLoading() {
-  return <InventoryScreenSkeleton />;
+  return <WebListSkeleton module="Inventory" title="Inventory" columns={6} />;
 }

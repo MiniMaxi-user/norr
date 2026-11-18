@@ -98,6 +98,9 @@ export interface WarehouseListRecord extends WarehouseRecord {
   /** `sum(quantity * articles.sale_price)` across this warehouse's stock
    * rows, treating a `null` `sale_price` as `0`. */
   totalSaleValue: number;
+  /** Stock rows with a minimum threshold that are at/below zero or strictly
+   * below it (same rule as the warehouse page's "Low stock" status). */
+  lowStockCount: number;
 }
 
 /** A `warehouse_stock` row's embedded `articles` display fields, via
@@ -143,6 +146,7 @@ export interface WarehouseStockRecord {
 interface WarehouseStockValueRow {
   warehouse_id: string;
   quantity: number;
+  min_threshold: number | null;
   article: { purchase_price: number | null; sale_price: number | null } | null;
 }
 
@@ -197,7 +201,7 @@ export async function listWarehouses(): Promise<ActionResult<{ warehouses: Wareh
     supabase.from("warehouses").select(WAREHOUSE_SELECT).order("name", { ascending: true }),
     supabase
       .from("warehouse_stock")
-      .select("warehouse_id, quantity, article:articles!warehouse_stock_article_id_fkey(purchase_price,sale_price)"),
+      .select("warehouse_id, quantity, min_threshold, article:articles!warehouse_stock_article_id_fkey(purchase_price,sale_price)"),
   ]);
 
   if (warehousesResult.error) return fail(mapDbError(warehousesResult.error));
@@ -218,6 +222,9 @@ export async function listWarehouses(): Promise<ActionResult<{ warehouses: Wareh
       stockRowCount: bucket.length,
       totalPurchaseValue,
       totalSaleValue,
+      lowStockCount: bucket.filter(
+        (row) => row.min_threshold !== null && (row.quantity <= 0 || row.quantity < row.min_threshold),
+      ).length,
     };
   });
 

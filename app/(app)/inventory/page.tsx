@@ -1,38 +1,24 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
+import { WebListSkeleton } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
-import { InventoryScreen } from "./components/inventory-screen";
-import { InventoryScreenSkeleton } from "./components/inventory-screen-skeleton";
+import { WarehousesList } from "./components/warehouses-list";
 
 export const metadata = { title: "Inventory" };
 
 /**
- * Inventory / "Voorraad" module entry point (issue #181) — the admin-
- * facing overview of every engineer's own warehouse (one row per engineer).
- * Mirrors `app/(app)/articles/page.tsx`'s shape exactly: Server Component
- * resolving session/entitlement/RBAC once, handing the data-dependent table
- * to `InventoryScreen` behind a `Suspense` boundary so the hero band paints
- * immediately and the table streams in behind a shaped skeleton
- * (docs/ARCHITECTURE.md "Premium UX requirements").
+ * Inventory module list page (issue #181, list-page shell of issue #222) —
+ * the admin-facing overview of every engineer's own warehouse (one row per
+ * engineer). Server Component: resolves session / entitlement / RBAC once,
+ * then streams the data-dependent list behind the shaped `WebListSkeleton`
+ * (its header paints at once).
  *
- * Per docs/ARCHITECTURE.md ("a module/view that isn't entitled for the
- * tenant must not render, not just be disabled"): `hasFeature()` is checked
- * here, before anything module-specific renders, and `notFound()`s
- * otherwise — same gate `./actions.ts` applies server-action-side via
- * `requireModuleContext`. `canAccessModule` on top of that is what actually
- * keeps Engineer out of this route in practice: the "Voorraad" nav entry
- * already hides itself for them (`requiredPermission: { module: "inventory",
- * action: "read" }`, which Engineer's `read_own` doesn't satisfy — see
- * `components/shell/nav-items.ts`), but a direct hit on `/inventory` still
- * needs this same gate server-side.
- *
- * No filters/pagination/view-switcher here — `listWarehouses` is
- * deliberately unpaginated (cardinality bounded by team size, one warehouse
- * per engineer), so unlike Articles/Contracts there is no search bar or
- * page param to thread through.
+ * `hasFeature()` is checked here, before anything module-specific renders,
+ * and `notFound()`s otherwise — the same gate `./actions.ts` applies via
+ * `requireModuleContext`. `canAccessModule` keeps Engineer (plain
+ * `read_own`) out of this route; a direct hit still needs this gate.
  */
 export default async function InventoryPage() {
   const session = await getCurrentSession();
@@ -43,15 +29,8 @@ export default async function InventoryPage() {
   if (!canAccessModule(actor, "inventory")) notFound();
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Inventory"
-        subtitle="Every engineer has their own warehouse — view stock, quantities, and value per warehouse."
-      />
-
-      <Suspense fallback={<InventoryScreenSkeleton />}>
-        <InventoryScreen />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<WebListSkeleton module="Inventory" title="Inventory" columns={6} />}>
+      <WarehousesList />
+    </Suspense>
   );
 }
