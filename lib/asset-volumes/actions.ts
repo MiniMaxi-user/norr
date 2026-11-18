@@ -9,6 +9,7 @@ import { workOrderLabel } from "@/lib/format/work-order-label";
 import { z } from "zod";
 import { assetVolumeReadingCreateSchema, assetVolumeReadingDeleteSchema } from "./schema";
 import { mapVolumeReadingError } from "./errors";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 
 /**
  * Server Actions + loaders for asset volumes (issue #221): counters (items of
@@ -328,12 +329,13 @@ export async function getClientVolumeTotals(clientId: string): Promise<ActionRes
   if (latest.length === 0) return ok({ totals: [], rows: [] });
 
   const assetIds = Array.from(new Set(latest.map((l) => l.asset_id)));
-  const siteIds = Array.from(new Set(latest.map((l) => l.site_id)));
+  const siteIds = Array.from(new Set(latest.map((l) => l.site_id).filter((s): s is string => Boolean(s))));
   const counterIds = Array.from(new Set(latest.map((l) => l.volume_item_id)));
 
+  // Sites have no `name` column (issue #42) — they're labelled by address.
   const [assetsResult, sitesResult, countersResult] = await Promise.all([
     supabase.from("assets").select("id, name").in("id", assetIds),
-    supabase.from("sites").select("id, name").in("id", siteIds),
+    supabase.from("sites").select("id, address_line1, city").in("id", siteIds),
     loadCounterItems(supabase, counterIds),
   ]);
   if (assetsResult.error) return fail(mapDbError(assetsResult.error));
@@ -341,7 +343,12 @@ export async function getClientVolumeTotals(clientId: string): Promise<ActionRes
   if (!countersResult.ok) return fail(countersResult.error);
 
   const assetNames = new Map((assetsResult.data ?? []).map((a) => [a.id as string, a.name as string]));
-  const siteNames = new Map((sitesResult.data ?? []).map((s) => [s.id as string, s.name as string]));
+  const siteNames = new Map(
+    ((sitesResult.data ?? []) as { id: string; address_line1: string | null; city: string | null }[]).map((s) => [
+      s.id,
+      formatSiteAddressShort(s) ?? "—",
+    ]),
+  );
 
   const rows: ClientVolumeAssetRow[] = latest.map((l) => ({
     assetId: l.asset_id,
