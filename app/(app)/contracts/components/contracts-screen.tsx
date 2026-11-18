@@ -1,124 +1,86 @@
-import Link from "next/link";
-import { Button, Card, EmptyState, Stack, Text, Toolbar } from "@yourorg/ui";
-import { FileText } from "@yourorg/ui/icons";
+import { WebCard, WebDataTableEmpty, WebLinkButton, WebListPage } from "@yourorg/ui/web";
 import { listContracts } from "../actions";
 import { listClients, type ClientRecord } from "@/app/(app)/clients/actions";
-import { CreateContractButton } from "./create-contract-button";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { parseContractsQuery, type ContractsSearchParams } from "./contracts-query";
 import { ContractsTable } from "./contracts-table";
 
-const LIST_PAGE_SIZE = 20;
-
 export interface ContractsScreenProps {
-  page: number;
+  params: ContractsSearchParams;
   canCreate: boolean;
-  canEdit: boolean;
   canDelete: boolean;
-}
-
-function buildPageHref(page: number): string {
-  const qs = new URLSearchParams();
-  if (page > 0) qs.set("page", String(page));
-  const query = qs.toString();
-  return query ? `/contracts?${query}` : "/contracts";
 }
 
 /**
  * The data-fetching heart of the Contracts module — rendered inside a
- * `Suspense` boundary by `app/(app)/contracts/page.tsx` so its shaped
- * skeleton shows while these `await`s resolve (route-level streaming, per
- * docs/ARCHITECTURE.md). A plain paginated list, same shape as
- * `app/(app)/work-orders/components/work-orders-screen.tsx`.
+ * `Suspense` boundary by `app/(app)/contracts/page.tsx` (fallback
+ * `WebListSkeleton`). Renders the list-page shell (`WebListPage`): header
+ * with count and the navy "New contract" button, then one server-driven
+ * table. Search, filters, sort and pagination come from the URL
+ * (`contracts-query.ts`) and are applied by `listContracts`.
  */
-export async function ContractsScreen({ page, canCreate, canEdit, canDelete }: ContractsScreenProps) {
-  const offset = page * LIST_PAGE_SIZE;
+export async function ContractsScreen({ params, canCreate, canDelete }: ContractsScreenProps) {
+  const { page, options } = parseContractsQuery(params);
 
-  const [clientsResult, contractsResult] = await Promise.all([
+  const [clientsResult, contractsResult, typesResult, slaTiersResult] = await Promise.all([
     listClients({ limit: 200 }),
-    listContracts({ limit: LIST_PAGE_SIZE, offset }),
+    listContracts(options),
+    listReferenceItems("contract_type"),
+    listReferenceItems("sla_tier"),
   ]);
 
-  const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
-  const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
-
-  const toolbar = (
-    <Toolbar>
-      <Toolbar.Section>
-        <Text tone="muted">
-          {contractsResult.data ? `${contractsResult.data.count} contract${contractsResult.data.count === 1 ? "" : "s"}` : ""}
-        </Text>
-      </Toolbar.Section>
-      <Toolbar.Section align="end">{canCreate && <CreateContractButton />}</Toolbar.Section>
-    </Toolbar>
-  );
+  const primary = canCreate ? (
+    <WebLinkButton variant="primary" href="/contracts/new">
+      New contract
+    </WebLinkButton>
+  ) : undefined;
 
   if (!contractsResult.data) {
     return (
-      <>
-        {toolbar}
-        <Card>
-          <Text tone="danger">{contractsResult.error ?? "Could not load contracts."}</Text>
-        </Card>
-      </>
+      <WebListPage module="Contracts" title="Contracts" primary={primary}>
+        <WebCard title="Contracts">
+          <WebDataTableEmpty>{contractsResult.error ?? "Could not load contracts."}</WebDataTableEmpty>
+        </WebCard>
+      </WebListPage>
     );
   }
 
-  const { contracts, count } = contractsResult.data;
+  const { contracts, count, unfilteredCount } = contractsResult.data;
 
-  if (contracts.length === 0) {
-    return (
-      <>
-        {toolbar}
-        <EmptyState
-          icon={<FileText />}
-          heading="No contracts yet"
-          text="Create your first service agreement to start tracking terms and coverage."
-          action={canCreate ? <CreateContractButton /> : undefined}
-        />
-      </>
-    );
-  }
+  const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
+  const clientNameById = new Map(clients.map((client) => [client.id, client.name]));
+  const clientOptions = clients.map((client) => ({ value: client.id, label: client.name }));
 
-  const hasPrev = offset > 0;
-  const hasNext = offset + contracts.length < count;
+  // The picklists need settings access; fall back to the values on this page.
+  const distinct = (pick: (contract: (typeof contracts)[number]) => { id: string; label: string } | null) => {
+    const seen = new Map<string, string>();
+    for (const contract of contracts) {
+      const item = pick(contract);
+      if (item && !seen.has(item.id)) seen.set(item.id, item.label);
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  };
+  const typeOptions = typesResult.data
+    ? typesResult.data.items.map((item) => ({ value: item.id, label: item.label }))
+    : distinct((c) => (c.contract_type ? { id: c.type_id, label: c.contract_type.label } : null));
+  const slaTierOptions = slaTiersResult.data
+    ? slaTiersResult.data.items.map((item) => ({ value: item.id, label: item.label }))
+    : distinct((c) => (c.sla_tier && c.sla_tier_id ? { id: c.sla_tier_id, label: c.sla_tier.label } : null));
 
   return (
-    <>
-      {toolbar}
+    <WebListPage module="Contracts" title="Contracts" count={unfilteredCount ?? count} primary={primary}>
       <ContractsTable
         contracts={contracts}
         clientNameById={clientNameById}
-        canEdit={canEdit}
+        clientOptions={clientOptions}
+        typeOptions={typeOptions}
+        slaTierOptions={slaTierOptions}
+        total={count}
+        unfilteredTotal={unfilteredCount}
+        page={page}
+        canCreate={canCreate}
         canDelete={canDelete}
       />
-      <Stack gap="sm">
-        <Text tone="muted">
-          Showing {offset + 1}–{Math.min(offset + contracts.length, count)} of {count}
-        </Text>
-        <span>
-          {hasPrev ? (
-            <Link href={buildPageHref(page - 1)}>
-              <Button type="button" variant="outline" size="sm">
-                Previous
-              </Button>
-            </Link>
-          ) : (
-            <Button type="button" variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-          )}{" "}
-          {hasNext ? (
-            <Link href={buildPageHref(page + 1)}>
-              <Button type="button" variant="outline" size="sm">
-                Next
-              </Button>
-            </Link>
-          ) : (
-            <Button type="button" variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          )}
-        </span>
-      </Stack>
-    </>
+    </WebListPage>
   );
 }

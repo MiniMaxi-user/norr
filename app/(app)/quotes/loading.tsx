@@ -1,8 +1,7 @@
-import { QuotesScreenSkeleton } from "./components/quotes-screen-skeleton";
+import { WebListSkeleton } from "@yourorg/ui/web";
 
-// Route-level Suspense fallback (issue #140) for `/quotes` — reuses the
-// exact skeleton `page.tsx` already renders as its own `<Suspense>`
-// fallback.
+// Route-level Suspense fallback (issue #140) for `/quotes`: the same
+// list-page skeleton `page.tsx` uses as its own `<Suspense>` fallback.
 export default function QuotesLoading() {
-  return <QuotesScreenSkeleton />;
+  return <WebListSkeleton module="Quotes" title="Quotes" columns={7} />;
 }

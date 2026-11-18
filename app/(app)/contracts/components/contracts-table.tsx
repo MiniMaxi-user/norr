@@ -1,146 +1,156 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Badge, Button, Input, Stack, Table, Text } from "@yourorg/ui";
+import Link from "next/link";
+import {
+  StatusText,
+  WebDataTableCard,
+  type FilterOption,
+  type StatusTone,
+  type WebColumn,
+} from "@yourorg/ui/web-client";
+import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { ContractRecord } from "../actions";
+import { getContractStatus, type ContractPhase } from "./contract-status";
+import { CONTRACTS_DROPDOWN_IDS, CONTRACTS_PAGE_SIZE, CONTRACTS_PHASE_SEGMENT } from "./contracts-query";
 import { DeleteContractDialog } from "./delete-contract-dialog";
-import { formatDate } from "@/lib/format/date";
-import { formatCurrency } from "@/lib/format/currency";
+
+const PHASE_TONE: Record<ContractPhase, StatusTone> = {
+  active: "success",
+  upcoming: "info",
+  ended: "neutral",
+};
 
 export interface ContractsTableProps {
   contracts: ContractRecord[];
   clientNameById: Map<string, string>;
-  canEdit: boolean;
+  /** Filter choices (ids = reference-list item / client ids). */
+  clientOptions: FilterOption[];
+  typeOptions: FilterOption[];
+  slaTierOptions: FilterOption[];
+  total: number;
+  unfilteredTotal?: number;
+  page: number;
+  canCreate: boolean;
   canDelete: boolean;
 }
 
 /**
- * List view table for Contracts — same shape as
- * `app/(app)/work-orders/components/work-orders-table.tsx`: client-side
- * search over the current page, row click and the row-level Edit action both
- * navigate to the same unified detail/edit screen (`/contracts/[id]`, issue
- * #122 — editing now happens inline there via each section's own pencil, no
- * separate `/contracts/[id]/edit` route anymore), Delete stays a lightweight
- * confirm `Dialog`.
+ * Contracts list table (list-page shell, issue #222): a `WebDataTableCard`
+ * in server mode. `listContracts` (driven by the `q`, `clientId`, `typeId`,
+ * `slaTierId`, `seg`, `sort`, `dir` and `page` URL params) returns the
+ * filtered page; this component renders it. A row (or the Number link) opens
+ * the unified detail/edit screen (`/contracts/[id]`, where editing happens
+ * inline, so there is no separate Edit action). One ··· menu per row: Open
+ * and, with delete rights, Delete (confirmed in `DeleteContractDialog`).
  */
-export function ContractsTable({ contracts, clientNameById, canEdit, canDelete }: ContractsTableProps) {
-  const router = useRouter();
-  const [query, setQuery] = useState("");
+export function ContractsTable({
+  contracts,
+  clientNameById,
+  clientOptions,
+  typeOptions,
+  slaTierOptions,
+  total,
+  unfilteredTotal,
+  page,
+  canCreate,
+  canDelete,
+}: ContractsTableProps) {
   const [deletingContract, setDeletingContract] = useState<ContractRecord | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return contracts;
-    return contracts.filter((contract) =>
-      [
-        contract.contract_number,
-        contract.external_reference,
-        clientNameById.get(contract.client_id),
-        contract.contract_type?.label,
-        contract.sla_tier?.label,
-        contract.billing_terms?.label,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase().includes(q)),
-    );
-  }, [contracts, query, clientNameById]);
+  const columns = useMemo<WebColumn<ContractRecord>[]>(
+    () => [
+      {
+        id: "number",
+        header: "Number",
+        primary: true,
+        mono: true,
+        sortable: true,
+        render: (contract) => contract.contract_number,
+      },
+      { id: "reference", header: "Reference", render: (contract) => contract.external_reference },
+      { id: "client", header: "Client", render: (contract) => clientNameById.get(contract.client_id) ?? null },
+      { id: "type", header: "Type", render: (contract) => contract.contract_type?.label ?? null },
+      { id: "sla", header: "SLA tier", render: (contract) => contract.sla_tier?.label ?? null },
+      {
+        id: "status",
+        header: "Status",
+        render: (contract) => {
+          const status = getContractStatus(contract);
+          return <StatusText tone={PHASE_TONE[status.phase]}>{status.label}</StatusText>;
+        },
+      },
+      { id: "billing", header: "Billing terms", render: (contract) => contract.billing_terms?.label ?? null },
+      { id: "start", header: "Start date", sortable: true, render: (contract) => formatDateWeb(contract.start_date) },
+      {
+        id: "end",
+        header: "End date",
+        sortable: true,
+        render: (contract) => (contract.end_date ? formatDateWeb(contract.end_date) : null),
+      },
+      {
+        id: "nextInvoice",
+        header: "Next invoice",
+        sortable: true,
+        render: (contract) => (contract.next_invoice_date ? formatDateWeb(contract.next_invoice_date) : null),
+      },
+      {
+        id: "value",
+        header: "Value",
+        align: "end",
+        sortable: true,
+        render: (contract) => (contract.value === null ? null : formatMoneyWeb(contract.value)),
+      },
+    ],
+    [clientNameById],
+  );
 
-  const showActionsColumn = canEdit || canDelete;
+  const dropdowns = useMemo(
+    () => [
+      { id: CONTRACTS_DROPDOWN_IDS.client, label: "Client", options: clientOptions },
+      { id: CONTRACTS_DROPDOWN_IDS.type, label: "Type", options: typeOptions },
+      { id: CONTRACTS_DROPDOWN_IDS.slaTier, label: "SLA tier", options: slaTierOptions },
+    ],
+    [clientOptions, typeOptions, slaTierOptions],
+  );
 
   return (
     <>
-      <Stack gap="md">
-        <Input
-          aria-label="Search contracts on this page"
-          placeholder="Search by number, client, type, SLA tier…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-
-        <Table stickyHeader maxHeight="65vh">
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Number</Table.HeaderCell>
-              <Table.HeaderCell>Client</Table.HeaderCell>
-              <Table.HeaderCell align="center">Type</Table.HeaderCell>
-              <Table.HeaderCell align="center">SLA Tier</Table.HeaderCell>
-              <Table.HeaderCell>Billing terms</Table.HeaderCell>
-              <Table.HeaderCell>Start date</Table.HeaderCell>
-              <Table.HeaderCell>End date</Table.HeaderCell>
-              <Table.HeaderCell>Next invoice</Table.HeaderCell>
-              <Table.HeaderCell>Value</Table.HeaderCell>
-              {showActionsColumn && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {filtered.map((contract) => (
-              <Table.Row key={contract.id} onClick={() => router.push(`/contracts/${contract.id}`)}>
-                <Table.Cell>
-                  {contract.contract_number}
-                  {contract.external_reference && <Text tone="muted">{contract.external_reference}</Text>}
-                </Table.Cell>
-                <Table.Cell>{clientNameById.get(contract.client_id) ?? "—"}</Table.Cell>
-                <Table.Cell align="center">
-                  <Badge color={contract.contract_type?.color} variant="muted">
-                    {contract.contract_type?.label ?? "—"}
-                  </Badge>
-                </Table.Cell>
-                <Table.Cell align="center">
-                  {contract.sla_tier ? (
-                    <Badge color={contract.sla_tier.color} variant="muted">
-                      {contract.sla_tier.label}
-                    </Badge>
-                  ) : (
-                    "—"
-                  )}
-                </Table.Cell>
-                <Table.Cell>{contract.billing_terms?.label ?? "—"}</Table.Cell>
-                <Table.Cell>{formatDate(contract.start_date)}</Table.Cell>
-                <Table.Cell>{formatDate(contract.end_date)}</Table.Cell>
-                <Table.Cell>{contract.next_invoice_date ? formatDate(contract.next_invoice_date) : "—"}</Table.Cell>
-                <Table.Cell>{formatCurrency(contract.value)}</Table.Cell>
-                {showActionsColumn && (
-                  <Table.Cell align="center">
-                    <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
-                      {canEdit && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => router.push(`/contracts/${contract.id}`)}
-                        >
-                          Edit
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          onClick={() => setDeletingContract(contract)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </span>
-                  </Table.Cell>
-                )}
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
-
-        {filtered.length === 0 && <Text tone="muted">No contracts match &ldquo;{query}&rdquo;.</Text>}
-      </Stack>
-
-      {deletingContract && (
+      <WebDataTableCard<ContractRecord>
+        rows={contracts}
+        getRowKey={(contract) => contract.id}
+        columns={columns}
+        noun="contracts"
+        dropdowns={dropdowns}
+        segment={CONTRACTS_PHASE_SEGMENT}
+        server={{ total, unfilteredTotal, page, pageSize: CONTRACTS_PAGE_SIZE }}
+        defaultSort={{ columnId: "number", direction: "desc" }}
+        rowHref={(contract) => `/contracts/${contract.id}`}
+        rowLabel={(contract) => contract.contract_number}
+        rowActions={(contract) => [
+          { key: "open", label: "Open", href: `/contracts/${contract.id}` },
+          ...(canDelete
+            ? [
+                { type: "separator" as const, key: "sep" },
+                { key: "delete", label: "Delete…", danger: true, onSelect: () => setDeletingContract(contract) },
+              ]
+            : []),
+        ]}
+        emptyAction={
+          canCreate ? (
+            <Link href="/contracts/new" className="web-rail-link">
+              Create contract
+            </Link>
+          ) : null
+        }
+      />
+      {deletingContract ? (
         <DeleteContractDialog
           contract={deletingContract}
           open
           onOpenChange={(next) => !next && setDeletingContract(null)}
         />
-      )}
+      ) : null}
     </>
   );
 }

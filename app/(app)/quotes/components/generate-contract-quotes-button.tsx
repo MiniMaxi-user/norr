@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Stack, Text, useEscapeToClose } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 import { generateContractQuotes, type GenerateContractQuotesResult } from "../contract-quote-actions";
 
 /**
@@ -44,9 +45,7 @@ export function GenerateContractQuotesButton() {
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
-        Generate contract quotes
-      </Button>
+      <WebButton onClick={() => setOpen(true)}>Generate contract quotes</WebButton>
 
       {open && (
         <Dialog open onOpenChange={handleOpenChange} size="sm">

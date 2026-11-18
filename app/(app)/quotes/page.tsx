@@ -1,23 +1,22 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
+import { WebListSkeleton } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { QuotesScreen } from "./components/quotes-screen";
-import { QuotesScreenSkeleton } from "./components/quotes-screen-skeleton";
+import type { QuotesSearchParams } from "./components/quotes-query";
 
 export const metadata = { title: "Quotes" };
 
-interface QuotesPageProps {
-  searchParams: Promise<{ page?: string; drafts?: string; status?: string; type?: string }>;
-}
-
 /**
- * Quotes module entry point (issue #16, third stage — frontend) — mirrors
- * `app/(app)/contracts/page.tsx`'s shape exactly: Server Component resolving
- * session/entitlement/RBAC once, handing everything data-dependent to a
- * screen component behind `Suspense` so the page shell paints immediately.
+ * Quotes module entry point (issue #16, third stage — frontend; list-page
+ * shell of issue #222): Server Component resolving session/entitlement/RBAC
+ * once, handing everything data-dependent to `QuotesScreen` behind
+ * `Suspense` (fallback `WebListSkeleton`, whose header paints at once). The
+ * `Suspense` is deliberately not keyed on the filter params: the table
+ * changes the URL in a transition, keeping the old rows on screen while the
+ * new page loads.
  *
  * Per docs/ARCHITECTURE.md ("a module/view that isn't entitled for the
  * tenant must not render, not just be disabled"): `hasFeature()` is checked
@@ -26,21 +25,10 @@ interface QuotesPageProps {
  * server-action-side via `requireModuleContext`.
  *
  * Quotes is owner-or-planner-write, everyone-else-read
- * (`lib/rbac/permissions.ts`'s `quotes` row): the "New quote" toolbar action
- * below is gated on `can(actor, "quotes", "create")`, which only an owner or
- * planner satisfies — an engineer/finance/administratie never sees it, even
- * though they can still view the list.
+ * (`lib/rbac/permissions.ts`'s `quotes` row): "New quote" is gated on
+ * `can(actor, "quotes", "create")`.
  */
-/** `undefined` (param absent) = use the default; otherwise the parsed list. */
-function parseListParam(raw: string | undefined): string[] | undefined {
-  if (raw === undefined) return undefined;
-  return raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-export default async function QuotesPage({ searchParams }: QuotesPageProps) {
+export default async function QuotesPage({ searchParams }: { searchParams: Promise<QuotesSearchParams> }) {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
   if (!(await hasFeature(session.organization, "quotes"))) notFound();
@@ -49,38 +37,19 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   if (!canAccessModule(actor, "quotes")) notFound();
 
   const params = await searchParams;
-  const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
-  // Issue #109 — auto-draft (system-managed shadow) quotes are hidden from
-  // the default list view (`?drafts=1` reveals them) so `/quotes` isn't
-  // cluttered with one shadow-quote per work order — see `QuotesScreen`'s own
-  // doc comment for the full design.
-  const showDrafts = params.drafts === "1";
-
-  // Issues #210/#211 - multi-select Status/Type filters live in the URL as
-  // comma-separated lists; an absent param means the default (Draft / Default).
-  const statusFilter = parseListParam(params.status);
-  const typeFilter = parseListParam(params.type);
   const canGenerateContractQuotes =
     can(actor, "quotes", "create") &&
     (await hasFeature(session.organization, "contracts")) &&
     canAccessModule(actor, "contracts");
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand title="Quotes" subtitle="Pre-sale proposals, across every client." />
-
-      <Suspense key={`${page}-${showDrafts}-${statusFilter?.join(",")}-${typeFilter?.join(",")}`} fallback={<QuotesScreenSkeleton />}>
-        <QuotesScreen
-          page={page}
-          showDrafts={showDrafts}
-          statusFilter={statusFilter}
-          typeFilter={typeFilter}
-          canGenerateContractQuotes={canGenerateContractQuotes}
-          canCreate={can(actor, "quotes", "create")}
-          canEdit={can(actor, "quotes", "update")}
-          canDelete={can(actor, "quotes", "delete")}
-        />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<WebListSkeleton module="Quotes" title="Quotes" columns={7} />}>
+      <QuotesScreen
+        params={params}
+        canGenerateContractQuotes={canGenerateContractQuotes}
+        canCreate={can(actor, "quotes", "create")}
+        canDelete={can(actor, "quotes", "delete")}
+      />
+    </Suspense>
   );
 }

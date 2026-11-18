@@ -1,140 +1,135 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Badge, Button, Inline, Input, Stack, Table, Text } from "@yourorg/ui";
+import Link from "next/link";
+import { StatusText, WebDataTableCard, toneFromColor, type FilterOption, type WebColumn } from "@yourorg/ui/web-client";
+import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { QuoteRecord } from "../actions";
 import { DeleteQuoteDialog } from "./delete-quote-dialog";
-import { formatDate } from "@/lib/format/date";
-import { formatCurrency } from "@/lib/format/currency";
+import { QUOTE_TYPE_OPTIONS, QUOTES_DROPDOWN_IDS, QUOTES_OPEN_SEGMENT, QUOTES_PAGE_SIZE } from "./quotes-query";
 
 export interface QuotesTableProps {
   quotes: QuoteRecord[];
   clientNameById: Map<string, string>;
-  canEdit: boolean;
-  canDelete: boolean;
-  /** Issue #109 — `true` (only ever passed when `QuotesScreen`'s "Show draft
-   * quotes" toggle is on) renders a "Concept" badge next to the Name for any
-   * row with `is_auto_draft: true`, so an auto-draft stays visually distinct
-   * from a "real" quote even once a planner has chosen to look at both
-   * together. */
+  /** Filter choices (see `quotes-query.ts`). */
+  clientOptions: FilterOption[];
+  statusOptions: FilterOption[];
+  total: number;
+  unfilteredTotal?: number;
+  page: number;
+  /** Issue #109 — `true` (only when the header's "Show auto-drafts" is on)
+   * marks rows with `is_auto_draft` as "Concept" next to the Name. */
   showDraftBadge?: boolean;
+  canCreate: boolean;
+  canDelete: boolean;
 }
 
 /**
- * List view table for Quotes — same shape as
- * `app/(app)/contracts/components/contracts-table.tsx`: client-side search
- * over the current page, row click navigates to the detail page. Row-level
- * "Edit" navigates to that same detail page (Pattern A migration deleted
- * `/quotes/[id]/edit` — every field that page used to own is inline-editable
- * on the detail page now, see `components/quote-screen.tsx`'s own doc comment) —
- * same "Edit is just a second, discoverable way to reach the detail page"
- * precedent `app/(app)/work-orders/components/work-orders-table.tsx` already
- * establishes (issue #89). Delete stays a lightweight confirm `Dialog`.
+ * Quotes list table (list-page shell, issue #222): a `WebDataTableCard` in
+ * server mode. `listQuotes` (driven by the `q`, `status`, `type`, `clientId`,
+ * `drafts`, `seg`, `sort`, `dir` and `page` URL params) returns the filtered
+ * page; this component renders it. A row (or the Name link) opens the quote
+ * detail page, where every field is edited inline (no separate Edit action).
+ * One ··· menu per row: Open and, with delete rights, Delete (confirmed in
+ * `DeleteQuoteDialog`).
  */
-export function QuotesTable({ quotes, clientNameById, canEdit, canDelete, showDraftBadge }: QuotesTableProps) {
-  const router = useRouter();
-  const [query, setQuery] = useState("");
+export function QuotesTable({
+  quotes,
+  clientNameById,
+  clientOptions,
+  statusOptions,
+  total,
+  unfilteredTotal,
+  page,
+  showDraftBadge,
+  canCreate,
+  canDelete,
+}: QuotesTableProps) {
   const [deletingQuote, setDeletingQuote] = useState<QuoteRecord | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return quotes;
-    return quotes.filter((quote) =>
-      [quote.name, clientNameById.get(quote.client_id), quote.quote_status?.label]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase().includes(q)),
-    );
-  }, [quotes, query, clientNameById]);
+  const columns = useMemo<WebColumn<QuoteRecord>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        primary: true,
+        sortable: true,
+        render: (quote) => (
+          <>
+            {quote.name}
+            {showDraftBadge && quote.is_auto_draft ? <StatusText tone="neutral"> · Concept</StatusText> : null}
+          </>
+        ),
+      },
+      { id: "client", header: "Client", render: (quote) => clientNameById.get(quote.client_id) ?? null },
+      { id: "type", header: "Type", render: (quote) => (quote.quote_type === "contract" ? "Contract" : "Default") },
+      {
+        id: "status",
+        header: "Status",
+        render: (quote) =>
+          quote.quote_status ? (
+            <StatusText tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
+          ) : null,
+      },
+      {
+        id: "valid",
+        header: "Valid until / period",
+        sortable: true,
+        render: (quote) =>
+          quote.quote_type === "contract" && quote.contract_period_start && quote.contract_period_end
+            ? `${formatDateWeb(quote.contract_period_start)} – ${formatDateWeb(quote.contract_period_end)}`
+            : quote.valid_until
+              ? formatDateWeb(quote.valid_until)
+              : null,
+      },
+      { id: "total", header: "Total", align: "end", render: (quote) => formatMoneyWeb(quote.total) },
+      { id: "created", header: "Created", sortable: true, render: (quote) => formatDateWeb(quote.created_at) },
+    ],
+    [clientNameById, showDraftBadge],
+  );
 
-  const showActionsColumn = canEdit || canDelete;
+  const dropdowns = useMemo(
+    () => [
+      { id: QUOTES_DROPDOWN_IDS.status, label: "Status", options: statusOptions },
+      { id: QUOTES_DROPDOWN_IDS.type, label: "Type", options: QUOTE_TYPE_OPTIONS },
+      { id: QUOTES_DROPDOWN_IDS.client, label: "Client", options: clientOptions },
+    ],
+    [statusOptions, clientOptions],
+  );
 
   return (
     <>
-      <Stack gap="md">
-        <Input
-          aria-label="Search quotes on this page"
-          placeholder="Search by name, client, status…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-
-        <Table stickyHeader maxHeight="65vh">
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Name</Table.HeaderCell>
-              <Table.HeaderCell>Client</Table.HeaderCell>
-              <Table.HeaderCell>Type</Table.HeaderCell>
-              <Table.HeaderCell align="center">Status</Table.HeaderCell>
-              <Table.HeaderCell>Valid until / period</Table.HeaderCell>
-              <Table.HeaderCell>Total</Table.HeaderCell>
-              {showActionsColumn && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {filtered.map((quote) => (
-              <Table.Row key={quote.id} onClick={() => router.push(`/quotes/${quote.id}`)}>
-                <Table.Cell>
-                  {showDraftBadge && quote.is_auto_draft ? (
-                    <Inline gap="xs" align="center">
-                      <Text>{quote.name}</Text>
-                      <Badge variant="muted">Concept</Badge>
-                    </Inline>
-                  ) : (
-                    quote.name
-                  )}
-                </Table.Cell>
-                <Table.Cell>{clientNameById.get(quote.client_id) ?? "—"}</Table.Cell>
-                <Table.Cell>
-                  {quote.quote_type === "contract" ? (
-                    <Badge variant="accent">Contract</Badge>
-                  ) : (
-                    <Text tone="muted">Default</Text>
-                  )}
-                </Table.Cell>
-                <Table.Cell align="center">
-                  <Badge color={quote.quote_status?.color} variant="muted">
-                    {quote.quote_status?.label ?? "—"}
-                  </Badge>
-                </Table.Cell>
-                <Table.Cell>
-                  {quote.quote_type === "contract" && quote.contract_period_start && quote.contract_period_end
-                    ? `${formatDate(quote.contract_period_start)} - ${formatDate(quote.contract_period_end)}`
-                    : formatDate(quote.valid_until)}
-                </Table.Cell>
-                <Table.Cell>{formatCurrency(quote.total)}</Table.Cell>
-                {showActionsColumn && (
-                  <Table.Cell align="center">
-                    <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
-                      {canEdit && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => router.push(`/quotes/${quote.id}`)}
-                        >
-                          Edit
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button type="button" variant="danger" size="sm" onClick={() => setDeletingQuote(quote)}>
-                          Delete
-                        </Button>
-                      )}
-                    </span>
-                  </Table.Cell>
-                )}
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
-
-        {filtered.length === 0 && <Text tone="muted">No quotes match &ldquo;{query}&rdquo;.</Text>}
-      </Stack>
-
-      {deletingQuote && (
+      <WebDataTableCard<QuoteRecord>
+        rows={quotes}
+        getRowKey={(quote) => quote.id}
+        columns={columns}
+        noun="quotes"
+        dropdowns={dropdowns}
+        segment={QUOTES_OPEN_SEGMENT}
+        server={{ total, unfilteredTotal, page, pageSize: QUOTES_PAGE_SIZE }}
+        defaultSort={{ columnId: "created", direction: "desc" }}
+        rowHref={(quote) => `/quotes/${quote.id}`}
+        rowLabel={(quote) => quote.name}
+        rowActions={(quote) => [
+          { key: "open", label: "Open", href: `/quotes/${quote.id}` },
+          ...(canDelete
+            ? [
+                { type: "separator" as const, key: "sep" },
+                { key: "delete", label: "Delete…", danger: true, onSelect: () => setDeletingQuote(quote) },
+              ]
+            : []),
+        ]}
+        emptyAction={
+          canCreate ? (
+            <Link href="/quotes/new" className="web-rail-link">
+              Create quote
+            </Link>
+          ) : null
+        }
+      />
+      {deletingQuote ? (
         <DeleteQuoteDialog quote={deletingQuote} open onOpenChange={(next) => !next && setDeletingQuote(null)} />
-      )}
+      ) : null}
     </>
   );
 }

@@ -1,24 +1,21 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
+import { WebListSkeleton } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { ContractsScreen } from "./components/contracts-screen";
-import { ContractsScreenSkeleton } from "./components/contracts-screen-skeleton";
+import type { ContractsSearchParams } from "./components/contracts-query";
 
 export const metadata = { title: "Contracts" };
 
-interface ContractsPageProps {
-  searchParams: Promise<{ page?: string }>;
-}
-
 /**
- * Contracts module entry point (issue #33 frontend half) — mirrors
- * `app/(app)/work-orders/page.tsx`'s shape exactly: Server Component
- * resolving session/entitlement/RBAC once, handing everything
- * data-dependent to a screen component behind `Suspense` so the page shell
- * paints immediately.
+ * Contracts module entry point (issue #33 frontend half, list-page shell of
+ * issue #222): Server Component resolving session/entitlement/RBAC once,
+ * handing everything data-dependent to `ContractsScreen` behind `Suspense`
+ * (fallback `WebListSkeleton`, whose header paints at once). The `Suspense`
+ * is deliberately not keyed on the filter params: the table changes the URL
+ * in a transition, keeping the old rows on screen while the new page loads.
  *
  * Per docs/ARCHITECTURE.md ("a module/view that isn't entitled for the
  * tenant must not render, not just be disabled"): `hasFeature()` is checked
@@ -26,14 +23,11 @@ interface ContractsPageProps {
  * otherwise — same gate `app/(app)/contracts/actions.ts` applies
  * server-action-side via `requireModuleContext`.
  *
- * Unlike Work Orders' owner/planner "create" split, Contracts is
- * owner-or-finance-write, everyone-else-read (`lib/rbac/permissions.ts`'s
- * `contracts` row): the "New contract" toolbar action below is gated on
- * `can(actor, "contracts", "create")`, which only an owner or finance user
- * satisfies — a planner/engineer/administratie never sees it, even though
- * they can still view the list.
+ * Contracts is owner-or-finance-write, everyone-else-read
+ * (`lib/rbac/permissions.ts`'s `contracts` row): "New contract" is gated on
+ * `can(actor, "contracts", "create")`.
  */
-export default async function ContractsPage({ searchParams }: ContractsPageProps) {
+export default async function ContractsPage({ searchParams }: { searchParams: Promise<ContractsSearchParams> }) {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
   if (!(await hasFeature(session.organization, "contracts"))) notFound();
@@ -42,20 +36,14 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   if (!canAccessModule(actor, "contracts")) notFound();
 
   const params = await searchParams;
-  const page = Math.max(0, Number.parseInt(params.page ?? "0", 10) || 0);
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand title="Contracts" subtitle="Service agreements and maintenance contracts, across every client." />
-
-      <Suspense key={`${page}`} fallback={<ContractsScreenSkeleton />}>
-        <ContractsScreen
-          page={page}
-          canCreate={can(actor, "contracts", "create")}
-          canEdit={can(actor, "contracts", "update")}
-          canDelete={can(actor, "contracts", "delete")}
-        />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<WebListSkeleton module="Contracts" title="Contracts" columns={9} />}>
+      <ContractsScreen
+        params={params}
+        canCreate={can(actor, "contracts", "create")}
+        canDelete={can(actor, "contracts", "delete")}
+      />
+    </Suspense>
   );
 }

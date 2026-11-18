@@ -362,6 +362,29 @@ export interface ListQuotesOptions {
   isAutoDraft?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * List-page filters (web design system list shell). All optional; every
+   * other caller passes none and is unaffected.
+   *
+   * `search` matches the quote name, the client name and the status label.
+   */
+  search?: string;
+  /** Quote_status item values/ids to exclude (the list's "Closed" toggle is
+   * "everything but draft/sent"). Combinable with `status`. */
+  excludeStatus?: string[];
+  /** Sort column; unknown values fall back to newest-created first. */
+  sort?: "name" | "valid_until" | "created_at";
+  direction?: "asc" | "desc";
+  /** Also return `unfilteredCount` (every quote in the `isAutoDraft` scope,
+   * ignoring all other filters) for the "3 of 12" count. */
+  includeUnfilteredCount?: boolean;
+}
+
+const QUOTE_SORT_COLUMNS = new Set(["name", "valid_until", "created_at"]);
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/ +/g, " ").trim().slice(0, 80);
 }
 
 /**
@@ -376,11 +399,13 @@ export interface ListQuotesOptions {
  */
 export async function listQuotes(
   options: ListQuotesOptions = {},
-): Promise<ActionResult<{ quotes: QuoteRecord[]; count: number }>> {
+): Promise<ActionResult<{ quotes: QuoteRecord[]; count: number; unfilteredCount?: number }>> {
   const typeFilter = z.array(z.enum(["default", "contract"])).max(2).safeParse(options.type ?? []);
   if (!typeFilter.success) return fail("Invalid type filter.");
   const statusFilter = z.array(z.string().trim().min(1).max(100)).max(50).safeParse(options.status ?? []);
   if (!statusFilter.success) return fail("Invalid status filter.");
+  const excludeFilter = z.array(z.string().trim().min(1).max(100)).max(50).safeParse(options.excludeStatus ?? []);
+  if (!excludeFilter.success) return fail("Invalid status filter.");
 
   for (const [label, value] of [
     ["client id filter", options.clientId],
@@ -407,28 +432,75 @@ export async function listQuotes(
   if (options.statusId) query = query.eq("status_id", options.statusId);
   if (options.isAutoDraft !== undefined) query = query.eq("is_auto_draft", options.isAutoDraft);
   if (typeFilter.data.length > 0) query = query.in("quote_type", typeFilter.data);
-  if (statusFilter.data.length > 0) {
-    const ids = statusFilter.data.filter((v) => uuidSchema.safeParse(v).success);
-    const values = statusFilter.data.filter((v) => !uuidSchema.safeParse(v).success);
+  /** Resolves a list of item ids and/or values to quote_status item ids. */
+  async function resolveStatusIds(entries: string[]): Promise<{ ids: string[]; error?: string }> {
+    const ids = entries.filter((v) => uuidSchema.safeParse(v).success);
+    const values = entries.filter((v) => !uuidSchema.safeParse(v).success);
     if (values.length > 0) {
       const { data: items, error: itemsError } = await supabase
         .from("reference_list_items")
         .select("id, reference_list:reference_lists!inner(list_key)")
         .eq("reference_list.list_key", "quote_status")
         .in("value", values);
-      if (itemsError) return fail(mapDbError(itemsError));
+      if (itemsError) return { ids, error: mapDbError(itemsError) };
       ids.push(...(items ?? []).map((item) => item.id as string));
     }
-    // No matching status at all -> match nothing (not everything).
-    query = query.in("status_id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"]);
+    return { ids };
   }
-  query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
 
-  const { data, error, count } = await query;
+  if (statusFilter.data.length > 0) {
+    const resolved = await resolveStatusIds(statusFilter.data);
+    if (resolved.error) return fail(resolved.error);
+    // No matching status at all -> match nothing (not everything).
+    query = query.in("status_id", resolved.ids.length > 0 ? resolved.ids : ["00000000-0000-0000-0000-000000000000"]);
+  }
+  if (excludeFilter.data.length > 0) {
+    const resolved = await resolveStatusIds(excludeFilter.data);
+    if (resolved.error) return fail(resolved.error);
+    if (resolved.ids.length > 0) query = query.not("status_id", "in", `(${resolved.ids.join(",")})`);
+  }
+
+  const term = sanitizeSearchTerm(options.search ?? "");
+  if (term) {
+    // Client name and status label live in other tables: resolve their
+    // matches first and fold the ids into the same `or()`.
+    const [clientMatches, itemMatches] = await Promise.all([
+      supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(100),
+      supabase.from("reference_list_items").select("id").ilike("label", `%${term}%`).limit(100),
+    ]);
+    const ids = (rows: { id: string }[] | null) => (rows ?? []).map((row) => row.id);
+    const clientIds = ids(clientMatches.data);
+    const itemIds = ids(itemMatches.data);
+    query = query.or(
+      [
+        `name.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+        ...(itemIds.length > 0 ? [`status_id.in.(${itemIds.join(",")})`] : []),
+      ].join(","),
+    );
+  }
+
+  if (options.sort && QUOTE_SORT_COLUMNS.has(options.sort)) {
+    query = query.order(options.sort, { ascending: options.direction !== "desc", nullsFirst: false });
+    if (options.sort !== "created_at") query = query.order("created_at", { ascending: false });
+  } else {
+    query = query.order("created_at", { ascending: false });
+  }
+  query = query.range(offset, offset + limit - 1);
+
+  let unfilteredQuery = null;
+  if (options.includeUnfilteredCount) {
+    let scoped = supabase.from("quotes").select("id", { count: "exact", head: true });
+    if (options.isAutoDraft !== undefined) scoped = scoped.eq("is_auto_draft", options.isAutoDraft);
+    unfilteredQuery = scoped;
+  }
+
+  const [{ data, error, count }, unfiltered] = await Promise.all([query, unfilteredQuery ?? Promise.resolve(null)]);
   if (error) return fail(mapDbError(error));
   return ok({
     quotes: (data ?? []).map((row) => toQuoteRecord(row as Record<string, unknown>)),
     count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
   });
 }
 

@@ -243,22 +243,49 @@ export interface ListContractsOptions {
   typeId?: string;
   limit?: number;
   offset?: number;
+  /**
+   * List-page filters (web design system list shell). All optional; every
+   * other caller passes none and is unaffected.
+   *
+   * `search` matches contract number, external reference, client name and the
+   * type / SLA tier / billing terms labels.
+   */
+  search?: string;
+  slaTierId?: string;
+  /** Derived lifecycle (see `contract-status.ts`): `active` = started and not
+   * ended, `upcoming` = starts in the future, `ended` = end date in the past. */
+  phase?: "active" | "upcoming" | "ended";
+  /** Sort column; unknown values fall back to newest-created first. */
+  sort?: "contract_number" | "start_date" | "end_date" | "next_invoice_date" | "value";
+  direction?: "asc" | "desc";
+  /** Also return `unfilteredCount` (every contract, ignoring all filters) for
+   * the "3 of 12" count. Only the list page asks for it. */
+  includeUnfilteredCount?: boolean;
+}
+
+const CONTRACT_SORT_COLUMNS = new Set(["contract_number", "start_date", "end_date", "next_invoice_date", "value"]);
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/ +/g, " ").trim().slice(0, 80);
 }
 
 /**
  * Lists contracts, org-scoped via RLS automatically. Supports filtering by
  * `clientId` and/or `typeId` (both optional, combinable), same pattern as
- * `listWorkOrders`/`listAssets`.
+ * `listWorkOrders`/`listAssets`; the list page adds search, SLA tier,
+ * lifecycle phase and sorting (see `ListContractsOptions`).
  *
  * Default order: most-recently created first — there is no "what's next"
  * queue concept for contracts the way there is for work orders.
  */
 export async function listContracts(
   options: ListContractsOptions = {},
-): Promise<ActionResult<{ contracts: ContractRecord[]; count: number }>> {
+): Promise<ActionResult<{ contracts: ContractRecord[]; count: number; unfilteredCount?: number }>> {
   for (const [label, value] of [
     ["client id filter", options.clientId],
     ["type id filter", options.typeId],
+    ["SLA tier filter", options.slaTierId],
   ] as const) {
     if (value !== undefined && !uuidSchema.safeParse(value).success) {
       return fail(`Invalid ${label}.`);
@@ -279,11 +306,66 @@ export async function listContracts(
   let query = supabase.from("contracts").select(CONTRACT_SELECT, { count: "exact" });
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.typeId) query = query.eq("type_id", options.typeId);
-  query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+  if (options.slaTierId) query = query.eq("sla_tier_id", options.slaTierId);
 
-  const { data, error, count } = await query;
+  const term = sanitizeSearchTerm(options.search ?? "");
+  if (term) {
+    // Client / type / SLA tier / billing terms live in other tables: resolve
+    // their matches first and fold the ids into the same `or()`.
+    const [clientMatches, itemMatches] = await Promise.all([
+      supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(100),
+      supabase.from("reference_list_items").select("id").ilike("label", `%${term}%`).limit(100),
+    ]);
+    const ids = (rows: { id: string }[] | null) => (rows ?? []).map((row) => row.id);
+    const clientIds = ids(clientMatches.data);
+    const itemIds = ids(itemMatches.data);
+    query = query.or(
+      [
+        `contract_number.ilike.%${term}%`,
+        `external_reference.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+        ...(itemIds.length > 0
+          ? [
+              `type_id.in.(${itemIds.join(",")})`,
+              `sla_tier_id.in.(${itemIds.join(",")})`,
+              `billing_terms_id.in.(${itemIds.join(",")})`,
+            ]
+          : []),
+      ].join(","),
+    );
+  }
+
+  if (options.phase) {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(new Date());
+    if (options.phase === "upcoming") {
+      query = query.gt("start_date", today);
+    } else if (options.phase === "ended") {
+      query = query.lt("end_date", today);
+    } else {
+      query = query.lte("start_date", today).or(`end_date.is.null,end_date.gte.${today}`);
+    }
+  }
+
+  if (options.sort && CONTRACT_SORT_COLUMNS.has(options.sort)) {
+    query = query.order(options.sort, { ascending: options.direction !== "desc", nullsFirst: false });
+    if (options.sort !== "contract_number") query = query.order("contract_number", { ascending: true });
+  } else {
+    query = query.order("created_at", { ascending: false });
+  }
+  query = query.range(offset, offset + limit - 1);
+
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query,
+    options.includeUnfilteredCount
+      ? supabase.from("contracts").select("id", { count: "exact", head: true })
+      : Promise.resolve(null),
+  ]);
   if (error) return fail(mapDbError(error));
-  return ok({ contracts: (data ?? []) as ContractRecord[], count: count ?? 0 });
+  return ok({
+    contracts: (data ?? []) as ContractRecord[],
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+  });
 }
 
 export async function getContract(id: string): Promise<ActionResult<{ contract: ContractRecord }>> {

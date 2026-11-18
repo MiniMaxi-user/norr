@@ -19,7 +19,7 @@ export function pluralDays(count: number): string {
 }
 
 /** Quotes still in play: not yet decided or invoiced. */
-const OPEN_STATUS_VALUES = ["draft", "sent"];
+export const OPEN_STATUS_VALUES = ["draft", "sent"];
 export const isOpenQuote = (quote: Pick<QuoteRecord, "quote_status">) =>
   OPEN_STATUS_VALUES.includes(quote.quote_status?.value ?? "");
 
