@@ -209,13 +209,11 @@ function toWorkOrderInsertRow(input: ReturnType<typeof workOrderCreateSchema.par
     // own (see workOrderCreateSchema.durationMinutes' comment in ./schema.ts).
     duration_minutes: input.durationMinutes ?? null,
   };
-  // status_id/type_id are intentionally omitted (not even sent as null) when
-  // not provided — the `derive_work_order_organization_id` DB trigger fills
-  // in the organization's default `work_order_status` item, and (issue #164,
-  // Planning module) type_id from the linked source_activity_id's own type,
-  // on insert. Same reasoning/comment as `toAssetInsertRow` in
-  // app/(app)/assets/actions.ts.
-  if (input.statusId !== undefined) row.status_id = input.statusId;
+  // status_id is never sent (issue #222: status only moves through workflow
+  // actions) — the `derive_work_order_organization_id` DB trigger fills in
+  // the organization's default `work_order_status` item. type_id is omitted
+  // (not even sent as null) when not provided, so the same trigger can take
+  // it from the linked source_activity_id's own type (issue #164).
   if (input.typeId !== undefined) row.type_id = input.typeId;
   return row;
 }
@@ -231,7 +229,6 @@ function toWorkOrderUpdateRow(input: ReturnType<typeof workOrderUpdateSchema.par
   if (input.description !== undefined) row.description = input.description ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   if (input.solution !== undefined) row.solution = input.solution ?? null;
-  if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.priorityId !== undefined) row.priority_id = input.priorityId ?? null;
   if (input.typeId !== undefined) row.type_id = input.typeId ?? null;
   if (input.durationMinutes !== undefined) row.duration_minutes = input.durationMinutes ?? null;

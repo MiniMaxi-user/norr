@@ -185,10 +185,16 @@ export function WorkOrderOverviewCards({
     {
       key: "statusId",
       label: "Status",
-      kind: "select",
-      read: savedStatus ? <StatusText tone={toneFromColor(savedStatusColor)}>{savedStatus}</StatusText> : null,
-      options: refOptions(statuses),
-      emptyLabel: defaultStatus ? `Default (${defaultStatus.label})` : "Organization default",
+      // Never edited by hand (issue #222): status moves only through the
+      // workflow (planning, PWA checkout/finish, Approve), so in edit and
+      // new mode it is a grey derived row.
+      kind: "derived",
+      read: isNew
+        ? (defaultStatus?.label ?? "New")
+        : savedStatus
+          ? <StatusText tone={toneFromColor(savedStatusColor)}>{savedStatus}</StatusText>
+          : null,
+      note: "Changes through the workflow",
     },
     {
       key: "priorityId",

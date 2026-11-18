@@ -79,11 +79,12 @@ export const workOrderCreateSchema = z.object({
   ),
   description: optionalText(5000),
   notes: optionalText(5000),
-  /** FK into this org's `work_order_status` reference list. Optional on
-   * create — the `derive_work_order_organization_id` DB trigger fills in the
-   * org's default `work_order_status` item ("New") when omitted, same UX as
-   * `assets.statusId`. */
-  statusId: optionalUuid("Invalid status."),
+  /* No `statusId` (issue #222): a work order's status is never set through
+   * create/update. On create the `derive_work_order_organization_id` DB
+   * trigger fills in the org's default status ("New"); after that it only
+   * moves through workflow actions (schedule/unschedule in
+   * `./planning-actions.ts`, the PWA's checkout/finish routes,
+   * `approveWorkOrderReview`). Zod strips an unexpected `statusId` key. */
   /** FK into this org's `work_order_priority` reference list. Nullable —
    * not every work order needs an explicit priority. */
   priorityId: optionalUuid("Invalid priority."),

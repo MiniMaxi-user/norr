@@ -272,7 +272,7 @@ export function WorkOrderScreen({
     initialMode: isCreate ? "new" : "read",
     canEdit: !isCreate && !readOnly,
     idPrefix: "wo",
-    firstFieldKey: isCreate ? (lockedClientId ? "description" : "clientId") : "statusId",
+    firstFieldKey: isCreate ? (lockedClientId ? "description" : "clientId") : "priorityId",
     navigate: (href) => router.push(href),
     onCancelNew: () => router.push(cancelHref ?? "/work-orders"),
     onSave: async (draft, dirty) => {

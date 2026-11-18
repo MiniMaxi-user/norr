@@ -129,7 +129,6 @@ export function draftToInput(patch: Partial<WorkOrderDraft>): Record<string, unk
   if (patch.contractId !== undefined) input.contractId = patch.contractId || undefined;
   if (patch.assignedTo !== undefined) input.assignedTo = patch.assignedTo || undefined;
   if (patch.scheduledAt !== undefined) input.scheduledAt = toIsoDateTime(patch.scheduledAt) || undefined;
-  if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
   if (patch.priorityId !== undefined) input.priorityId = patch.priorityId || undefined;
   if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
   if (patch.durationMinutes !== undefined) {

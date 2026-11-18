@@ -6,7 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { canAny } from "@/lib/rbac/permissions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
-import { updateWorkOrder, type WorkOrderRecord } from "./actions";
+import type { WorkOrderRecord } from "./actions";
 import { isWorkOrderCheckedOutOrLater } from "./checkout-lock";
 
 /**
@@ -267,11 +267,25 @@ export async function scheduleWorkOrder(
   const scheduledStatus = await resolveWorkOrderStatusId("scheduled");
   if ("error" in scheduledStatus) return fail(scheduledStatus.error);
 
-  return updateWorkOrder(idResult.data, {
-    assignedTo: parsed.data.assignedTo,
-    scheduledAt: parsed.data.scheduledAt,
-    statusId: scheduledStatus.id,
-  });
+  // Written directly (like `unscheduleWorkOrder` below) rather than through
+  // `updateWorkOrder`: since issue #222 the general update refuses status
+  // changes — status only moves through workflow actions such as this one.
+  // All guards `updateWorkOrder` applied are covered above (permission,
+  // checkout lock, RLS on the UPDATE itself).
+  const { data, error } = await supabase
+    .from("work_orders")
+    .update({
+      assigned_to: parsed.data.assignedTo,
+      scheduled_at: parsed.data.scheduledAt,
+      status_id: scheduledStatus.id,
+    })
+    .eq("id", idResult.data)
+    .select(WORK_ORDER_SELECT)
+    .maybeSingle();
+
+  if (error) return fail(mapDbError(error));
+  if (!data) return fail("Work order not found, or you do not have permission to schedule it.");
+  return ok({ workOrder: data as WorkOrderRecord });
 }
 
 /**
