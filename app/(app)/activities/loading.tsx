@@ -1,9 +1,7 @@
-import { ActivitiesScreenSkeleton } from "./components/activities-screen-skeleton";
+import { WebListSkeleton } from "@yourorg/ui/web";
 
-// Route-level Suspense fallback (issue #140) for `/activities` — reuses the
-// exact skeleton `page.tsx` already renders as its own `<Suspense>`
-// fallback, so hard navigation and client-side navigation show the same
-// shaped loading state.
+// Route-level Suspense fallback (issue #140) for `/activities`: the same
+// list-page skeleton `page.tsx` uses as its own `<Suspense>` fallback.
 export default function ActivitiesLoading() {
-  return <ActivitiesScreenSkeleton />;
+  return <WebListSkeleton module="Activities" title="Activities" columns={6} />;
 }

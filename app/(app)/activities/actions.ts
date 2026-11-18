@@ -258,8 +258,22 @@ export interface ListActivitiesOptions {
   statusId?: string;
   typeId?: string;
   actionHolderId?: string;
+  /** Free-text search over description/contact name/client name. Added for
+   * the list-page shell (issue #222). */
+  search?: string;
+  /** `open` = every status except `completed`; `completed` = status value
+   * `completed`. Omit for all. */
+  completion?: "open" | "completed";
+  /** Sort column (default `reported_at`, newest first). */
+  sort?: "reported_at" | "description";
+  direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
+}
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeActivitySearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 /**
@@ -277,7 +291,7 @@ export interface ListActivitiesOptions {
  */
 export async function listActivities(
   options: ListActivitiesOptions = {},
-): Promise<ActionResult<{ activities: ActivityRecord[]; count: number }>> {
+): Promise<ActionResult<{ activities: ActivityRecord[]; count: number; unfilteredCount?: number }>> {
   for (const [label, value] of [
     ["client id filter", options.clientId],
     ["asset id filter", options.assetId],
@@ -307,11 +321,64 @@ export async function listActivities(
   if (options.statusId) query = query.eq("status_id", options.statusId);
   if (options.typeId) query = query.eq("type_id", options.typeId);
   if (options.actionHolderId) query = query.eq("action_holder_id", options.actionHolderId);
-  query = query.order("reported_at", { ascending: false }).range(offset, offset + limit - 1);
 
-  const { data, error, count } = await query;
+  const term = sanitizeActivitySearchTerm(options.search ?? "");
+  if (term) {
+    const { data: clientMatches } = await supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(200);
+    const clientIds = (clientMatches ?? []).map((row) => row.id as string);
+    query = query.or(
+      [
+        `description.ilike.%${term}%`,
+        `contact_name.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+      ].join(","),
+    );
+  }
+
+  if (options.completion) {
+    const { data: completedRows } = await supabase
+      .from("reference_list_items")
+      .select("id, reference_list:reference_lists(list_key)")
+      .eq("value", "completed");
+    const completedIds = (
+      (completedRows ?? []) as unknown as { id: string; reference_list: { list_key: string } | null }[]
+    )
+      .filter((row) => row.reference_list?.list_key === "activity_status")
+      .map((row) => row.id);
+    if (completedIds.length > 0) {
+      query =
+        options.completion === "completed"
+          ? query.in("status_id", completedIds)
+          : query.not("status_id", "in", `(${completedIds.join(",")})`);
+    } else if (options.completion === "completed") {
+      query = query.in("status_id", ["00000000-0000-0000-0000-000000000000"]);
+    }
+  }
+
+  const sortColumn = options.sort === "description" ? "description" : "reported_at";
+  const ascending = options.direction ? options.direction === "asc" : sortColumn !== "reported_at";
+  query = query.order(sortColumn, { ascending });
+  if (sortColumn !== "reported_at") query = query.order("reported_at", { ascending: false });
+
+  const filtered = Boolean(
+    term ||
+      options.completion ||
+      options.clientId ||
+      options.assetId ||
+      options.statusId ||
+      options.typeId ||
+      options.actionHolderId,
+  );
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query.range(offset, offset + limit - 1),
+    filtered ? supabase.from("activities").select("id", { count: "exact", head: true }) : Promise.resolve(null),
+  ]);
   if (error) return fail(mapDbError(error));
-  return ok({ activities: (data ?? []) as ActivityRecord[], count: count ?? 0 });
+  return ok({
+    activities: (data ?? []) as ActivityRecord[],
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+  });
 }
 
 export async function getActivity(id: string): Promise<ActionResult<{ activity: ActivityRecord }>> {

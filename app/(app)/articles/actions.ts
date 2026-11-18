@@ -179,13 +179,19 @@ export interface ListArticlesOptions {
   manufacturerItemId?: string;
   isActive?: boolean;
   isComposite?: boolean;
+  /** Sort column (default `article_number`). Added for the list-page shell
+   * (issue #222); other callers are unaffected. */
+  sort?: "article_number" | "description" | "purchase_price" | "sale_price";
+  direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
 
+const ARTICLE_SORT_COLUMNS = new Set(["article_number", "description", "purchase_price", "sale_price"]);
+
 export async function listArticles(
   options: ListArticlesOptions = {},
-): Promise<ActionResult<{ articles: ArticleRecord[]; count: number }>> {
+): Promise<ActionResult<{ articles: ArticleRecord[]; count: number; unfilteredCount?: number }>> {
   if (options.groupId !== undefined) {
     const groupIdResult = uuidSchema.safeParse(options.groupId);
     if (!groupIdResult.success) return fail("Invalid group filter.");
@@ -214,11 +220,29 @@ export async function listArticles(
   if (options.manufacturerItemId) query = query.eq("manufacturer_item_id", options.manufacturerItemId);
   if (options.isActive !== undefined) query = query.eq("is_active", options.isActive);
   if (options.isComposite !== undefined) query = query.eq("is_composite", options.isComposite);
-  query = query.order("article_number", { ascending: true }).range(offset, offset + limit - 1);
+  const sortColumn = options.sort && ARTICLE_SORT_COLUMNS.has(options.sort) ? options.sort : "article_number";
+  query = query.order(sortColumn, { ascending: options.direction !== "desc", nullsFirst: false });
+  if (sortColumn !== "article_number") query = query.order("article_number", { ascending: true });
 
-  const { data, error, count } = await query;
+  // `unfilteredCount` (all articles of the org) only when some filter applies,
+  // for the list's "N of M" count; callers that don't filter never pay for it.
+  const filtered = Boolean(
+    searchResult.data ||
+      options.groupId ||
+      options.manufacturerItemId ||
+      options.isActive !== undefined ||
+      options.isComposite !== undefined,
+  );
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query.range(offset, offset + limit - 1),
+    filtered ? supabase.from("articles").select("id", { count: "exact", head: true }) : Promise.resolve(null),
+  ]);
   if (error) return fail(mapDbError(error));
-  return ok({ articles: (data ?? []) as ArticleRecord[], count: count ?? 0 });
+  return ok({
+    articles: (data ?? []) as ArticleRecord[],
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+  });
 }
 
 /** A single option for a "pick an article" `<select>` — e.g. the Travel-time/
