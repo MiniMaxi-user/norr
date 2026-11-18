@@ -478,7 +478,7 @@ export interface KvOption {
   label: string;
 }
 
-export type KvKind = "text" | "number" | "money" | "date" | "select" | "checkbox" | "derived";
+export type KvKind = "text" | "number" | "money" | "date" | "datetime" | "select" | "checkbox" | "derived";
 
 export interface KvField {
   /** Draft key (must exist in the edit schema) — for `derived` just a
@@ -604,7 +604,8 @@ function EditRow({ field, binding }: { field: KvField; binding: FieldBinding | n
       </label>
     );
   } else {
-    const type = kind === "money" || kind === "number" ? "number" : kind === "date" ? "date" : "text";
+    const type =
+      kind === "money" || kind === "number" ? "number" : kind === "date" ? "date" : kind === "datetime" ? "datetime-local" : "text";
     control = (
       <input
         {...common}

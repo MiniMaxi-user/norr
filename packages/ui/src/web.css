@@ -2036,3 +2036,62 @@ a.web-tree-id:hover {
   color: var(--text-ink);
   text-decoration: underline;
 }
+
+/* ---------------------------------------------------------------------- *
+ * Figure tiles (numbers tabs only)
+ * ---------------------------------------------------------------------- */
+.web-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-4);
+}
+.web-figure {
+  padding: 12px var(--space-card-x);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+.web-figure-label {
+  font: 400 10px/14px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.web-figure-value {
+  margin-top: 4px;
+  font: 400 21px/26px var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+}
+.web-figure-hint {
+  margin-top: 2px;
+  font: 400 11.5px/15px var(--font-sans);
+  color: var(--text-muted);
+}
+
+/* Small form inside a WebConfirmDialog (time entry, article, checklist item) */
+.web-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.web-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.web-dialog-field .web-field-label {
+  font: 400 12.5px/17px var(--font-sans);
+}
+
+/* Checkbox inside a table cell (checklist "Done" column) */
+.web-table-checkbox {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--brand-navy);
+  cursor: pointer;
+}
+.web-table-checkbox:disabled {
+  cursor: not-allowed;
+}

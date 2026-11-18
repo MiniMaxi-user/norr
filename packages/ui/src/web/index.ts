@@ -12,6 +12,7 @@ export {
   WebCardStack,
   WebDataTable,
   WebDataTableEmpty,
+  WebFigures,
   WebLinkButton,
 } from "./primitives";
 export type {
@@ -21,6 +22,7 @@ export type {
   WebButtonProps,
   WebButtonVariant,
   WebCardProps,
+  WebFigure,
   WebLinkButtonProps,
 } from "./primitives";
 export { SidebarNotice, SidebarProgress, SidebarRows, SidebarSection, Timeline, WebDetailLayout, WebPage } from "./layout";

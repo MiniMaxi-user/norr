@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
+import { approvalBlockers } from "./approval-readiness";
 import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 
@@ -118,10 +119,9 @@ export interface WorkOrderRecord {
   /** Free-text write-up of how the job was resolved (issue #170 PWA sign-off)
    * — set by the field-engineer PWA's `POST /api/work-orders/[id]/finish`
    * when an engineer finishes the work order, same shape/precedent as
-   * `activities.solution`. Read-only in the desktop app: surfaced on
-   * `WorkOrderAssignmentSection` but intentionally absent from
-   * `WorkOrderAssignmentDialog`/`workOrderUpdateSchema` — desktop users don't
-   * edit it here. */
+   * `activities.solution`. Editable on the web work order page too (issue
+   * #222) through `workOrderUpdateSchema.solution`, so the office can
+   * correct or complete it. */
   solution: string | null;
   notes: string | null;
   status_id: string;
@@ -230,6 +230,7 @@ function toWorkOrderUpdateRow(input: ReturnType<typeof workOrderUpdateSchema.par
   if (input.externalReference !== undefined) row.external_reference = input.externalReference;
   if (input.description !== undefined) row.description = input.description ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
+  if (input.solution !== undefined) row.solution = input.solution ?? null;
   if (input.statusId !== undefined) row.status_id = input.statusId;
   if (input.priorityId !== undefined) row.priority_id = input.priorityId ?? null;
   if (input.typeId !== undefined) row.type_id = input.typeId ?? null;
@@ -579,9 +580,18 @@ export async function approveWorkOrderReview(
 
   const { data: target, error: targetError } = await supabase
     .from("work_orders")
-    .select("id, status_id")
+    .select("id, status_id, description, solution, type_id, client_id, site_id, asset_id")
     .eq("id", idResult.data)
-    .maybeSingle<{ id: string; status_id: string }>();
+    .maybeSingle<{
+      id: string;
+      status_id: string;
+      description: string | null;
+      solution: string | null;
+      type_id: string | null;
+      client_id: string | null;
+      site_id: string | null;
+      asset_id: string | null;
+    }>();
 
   if (targetError) return fail(mapDbError(targetError));
   if (!target) return fail("Work order not found, or you do not have permission to approve it.");
@@ -592,6 +602,43 @@ export async function approveWorkOrderReview(
   const currentStatusItem = statusResult.data.items.find((candidate) => candidate.id === target.status_id);
   if (!currentStatusItem || currentStatusItem.value !== "to_review") {
     return fail("This work item is not awaiting review.");
+  }
+
+  // Wrap-up gate (issue #222): see `./approval-readiness.ts`.
+  const [runningResult, checklistResult] = await Promise.all([
+    supabase
+      .from("time_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("work_order_id", target.id)
+      .is("ended_at", null),
+    supabase.from("work_order_checklists").select("id").eq("work_order_id", target.id).maybeSingle<{ id: string }>(),
+  ]);
+  if (runningResult.error) return fail(mapDbError(runningResult.error));
+  if (checklistResult.error) return fail(mapDbError(checklistResult.error));
+
+  let openChecklistItems = 0;
+  if (checklistResult.data) {
+    const openResult = await supabase
+      .from("work_order_checklist_items")
+      .select("id", { count: "exact", head: true })
+      .eq("work_order_checklist_id", checklistResult.data.id)
+      .eq("is_checked", false);
+    if (openResult.error) return fail(mapDbError(openResult.error));
+    openChecklistItems = openResult.count ?? 0;
+  }
+
+  const blockers = approvalBlockers({
+    description: target.description,
+    solution: target.solution,
+    typeId: target.type_id,
+    clientId: target.client_id,
+    siteId: target.site_id,
+    assetId: target.asset_id,
+    runningTimeEntries: runningResult.count ?? 0,
+    openChecklistItems,
+  });
+  if (blockers.length > 0) {
+    return fail(`This work order can't be approved yet: ${blockers.join("; ")}.`);
   }
 
   const completedItem = statusResult.data.items.find((candidate) => candidate.value === "completed");

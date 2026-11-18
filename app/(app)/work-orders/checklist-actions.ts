@@ -129,7 +129,12 @@ export async function getWorkOrderChecklist(
     .from("work_order_checklist_items")
     .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
     .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
-    .order("sort_order", { ascending: true });
+    // Template order first; ties (items sharing a sort_order) are broken by
+    // creation order and then id, so the list never reshuffles after an
+    // item is ticked (an UPDATE can change Postgres' physical row order).
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (itemsError) return fail(mapDbError(itemsError));
 
@@ -185,7 +190,12 @@ export async function attachChecklistTemplate(
     .from("work_order_checklist_items")
     .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
     .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
-    .order("sort_order", { ascending: true });
+    // Template order first; ties (items sharing a sort_order) are broken by
+    // creation order and then id, so the list never reshuffles after an
+    // item is ticked (an UPDATE can change Postgres' physical row order).
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (itemsError) return fail(mapDbError(itemsError));
 

@@ -125,7 +125,13 @@ export type WorkOrderCreateInput = z.infer<typeof workOrderCreateSchema>;
  * reasoning as `siteUpdateSchema.clientId`); cross-organization re-parenting
  * is blocked at the DB trigger layer regardless
  * (`derive_work_order_organization_id`). */
-export const workOrderUpdateSchema = workOrderCreateSchema.partial();
+export const workOrderUpdateSchema = workOrderCreateSchema.partial().extend({
+  /** How the job was resolved. Normally written by the engineer at sign-off
+   * in the PWA (`POST /api/work-orders/[id]/finish`); the office can correct
+   * or complete it from the web work order page (issue #222). Update-only:
+   * a new work order has no solution yet. */
+  solution: optionalText(5000),
+});
 
 export type WorkOrderUpdateInput = z.infer<typeof workOrderUpdateSchema>;
 

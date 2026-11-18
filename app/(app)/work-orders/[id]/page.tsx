@@ -1,117 +1,67 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/permissions";
+import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { getWorkOrder } from "../actions";
 import { isWorkOrderCheckedOutInField } from "../checkout-lock";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
 import { getContract } from "@/app/(app)/contracts/actions";
+import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { withTiming } from "@/lib/perf/timing";
-import { WorkOrderScreen } from "../components/work-order-screen";
 import {
-  WorkOrderChecklistSectionSkeleton,
-  WorkOrderHoursSectionSkeleton,
-  WorkOrderMaterialSectionSkeleton,
-} from "../components/work-order-section-skeletons";
-import { WorkOrderHoursSlot } from "./work-order-hours-slot";
-import { WorkOrderMaterialSlot } from "./work-order-material-slot";
-import { WorkOrderChecklistSlot } from "./work-order-checklist-slot";
+  getOrganizationTimeRoundingSettings,
+  type OrganizationTimeRoundingSettings,
+} from "@/app/(app)/settings/organization-time-rounding-actions";
+import { listTimeEntries } from "../time-entries-actions";
+import { listWorkOrderArticles } from "../work-order-articles-actions";
+import { getWorkOrderChecklist } from "../checklist-actions";
+import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
+import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
+import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
 
-export const metadata = { title: "Edit Work Order" };
+const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "checklist"];
+
+/** Fallback no-op rule when the org's rounding settings cannot be read. */
+const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
+  travel: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+  work: { minimumMinutes: null, roundingMinutes: null, direction: "up" },
+};
+
+export const metadata = { title: "Work Order" };
 
 interface WorkOrderDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=hours` etc. deep-links straight to a tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /**
- * Work order detail page — renders the same shared `WorkOrderScreen`
- * (`../components/work-order-screen.tsx`, `mode="edit"`) that
- * `/work-orders/new` renders with `mode="create"` — both routes are one
- * genuinely shared screen now, not two hand-maintained layouts. No `Tabs`
- * here: unlike Client (Sites/Assets/Contacts) or a future Contract, none of a
- * work order's child sub-entities (Hours/Time Entries, issue #15; Material/
- * Consumed Articles, issue #94; Checklist, issue #14) needs its own tab —
- * each is a single always-visible section (`WorkOrderHoursSection`,
- * `WorkOrderMaterialSection`, `WorkOrderChecklistSection`) rendered below the
- * hero, same reasoning `ContractAssetsPanel` documents for Contracts'
- * Linked Assets.
+ * Work order detail page — renders the shared `WorkOrderScreen`
+ * (`../components/work-order-screen.tsx`, `mode="edit"`) on the web design
+ * system (issue #222); `/work-orders/new` renders the same screen in
+ * `mode="create"`. Overview + Hours / Material / Checklist tabs.
  *
- * *** Issue #89 ("New/Edit work order screens aligned") *** folded the
- * standalone `/work-orders/[id]/edit` page into this one — there is no
- * separate edit route left at all.
+ * Every tab's data is fetched here in ONE parallel round (the three former
+ * Suspense slots are gone: the rail's LivePanel, the tab counters and the
+ * timeline all need hours/material/checklist, so they cannot stream in behind
+ * the header any more; `loading.tsx` is the shaped skeleton while this
+ * resolves). Each list is only requested when the actor may see it — same
+ * "don't fetch what can't render" rule as before — and the checklist tab does
+ * not exist at all unless the org is entitled to the `checklists` module.
  *
- * *** Issue #102 ("Verbeteren workorder") *** redid the whole layout again,
- * replacing the old `DetailHero` + form-`Card`s shape with `WorkOrderScreen`'s
- * own composition: `WorkOrderHero` (dark `RecordHeroBand` + a KPI stat strip
- * + the Client/Site/Asset/Contract relation cards, each individually
- * re-pickable via a small Edit popup) up top, then Hours/Material side by
- * side, then Checklist/Assignment side by side. Every field is now edited
- * through small section-scoped popups (title is the one exception — an
- * inline-editable heading right in the hero) instead of one page-wide form —
- * see `WorkOrderScreen`'s own module doc comment for the full shape.
- * `contract` (fetched via `getContract` below, alongside `client`/`asset`)
- * exists purely to give the Contract relation card real facts (type/dates/
- * value), not just the bare id/name `workOrder.contract` embed already
- * carried.
- *
- * *** Issue #146 ("eliminate fetch waterfall, add below-fold Suspense
- * boundaries") *** replaced the old single 15-way `Promise.all` (which
- * blocked the ENTIRE page — hero included — on the slowest of Hours/
- * Material/Checklist/cost-summary data, with no `<Suspense>` anywhere) with
- * two tiers:
- *  1. A small `Promise.all` below of only the cheap, hero/relation-card-
- *     critical single-row/short-list lookups (`client`/`asset`/`contract`/
- *     `members`, plus the edit-only picker lists `clients`/`statuses`/
- *     `priorities`) — awaited, so the hero (title, relation cards, status/
- *     priority, and the Engineer stat tile, resolved from `members`) renders
- *     as soon as this resolves, without waiting on anything else.
- *  2. Three separate async Server Components (`work-order-hours-slot.tsx`/
- *     `-material-slot.tsx`/`-checklist-slot.tsx`), each doing exactly the
- *     fetches that section itself used to block on, each wrapped in its own
- *     `<Suspense>` below so they stream in independently of each other and of
- *     the hero. Because the hero's own stat strip needs the Material/
- *     Checklist/"To invoice" figures those same three slots fetch, those
- *     numbers are bridged back up via `WorkOrderHeroStatsProvider`
- *     (`work-order-hero-context.tsx`) instead of being fetched twice — see
- *     `WorkOrderScreen`'s own module doc comment for the full design
- *     rationale.
- *
- * Every RBAC/feature-flag gate below is unchanged from before this issue —
- * only WHEN each conditionally-fetched list is actually requested moved (from
- * this file's own `Promise.all` into the relevant slot component), never
- * whether it's requested at all.
- *
- * `readOnly` (`!canEdit || locked` below) hides every Edit affordance across
- * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
- * never a 404, never a disabled-but-technically-interactive control RLS
- * would just reject. `locked` (issue #203, "Checkout workitem naar pwa") is
- * the separate "genuinely still out in the field" case (`checkout` through
- * `in_progress` only, since 2026-09-19 — NOT `to_review`/`completed`/
- * `invoiced`, see `isWorkOrderCheckedOutInField`'s own doc comment) — folded
- * into `readOnly` so it gets the exact same hero/relation-card/assignment-
- * section treatment for a planner/owner, but ALSO threaded through on its
- * own (see `locked` prop below) so `WorkOrderHero` can render its distinct
- * lock icon, and so `canDelete`/`canCreateQuote`/`canUpdateTimeEntriesAny`/
- * `canUpdateWorkOrderArticlesAny` (none of which `readOnly` reaches) can be
- * gated on it too. `WorkOrderScreen` is keyed by
- * `workOrder.updated_at` so
- * a successful inline save (which never navigates away — see that
- * component's own doc comment) remounts it with the freshly saved values
- * instead of leaving stale local draft state behind — including this page's
- * own three `Suspense` boundaries, which briefly show their skeleton fallback
- * again while the freshly-saved data streams back in, same as every other
- * section already re-fetches on save via `router.refresh()`.
- *
- * Photo/e-signature capture on the checklist remains out of scope per the
- * checklists migration's own design notes (a documented follow-up, not an
- * oversight).
+ * Checkout lock (issue #203), the review-approval gate, entitlement checks and
+ * every per-sub-entity permission flag are computed exactly as before; see the
+ * comments on each below.
  */
-export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPageProps) {
+export default async function WorkOrderDetailPage({ params, searchParams }: WorkOrderDetailPageProps) {
   const { id } = await params;
+  const { tab: requestedTab } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -201,10 +151,8 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   // in this file already follows.
   const canSeeCosts = quotesEnabled && can(actor, "planning", "read") && canAny(actor, "quotes", ["read"]);
 
-  // Timed as one stage (issue #150, performance breakdown from #139) — this
-  // is the hero/relation-card-critical fetch tier issue #146's own doc
-  // comment above describes; a before/after number here is exactly what lets
-  // later stories (e.g. #147's select("*") projections) prove they helped.
+  // Everything the page needs, in one parallel round (timed as one stage,
+  // issue #150). Lists the actor cannot render are never requested.
   const [
     clientResult,
     assetResult,
@@ -214,28 +162,44 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
     statusesResult,
     prioritiesResult,
     typesResult,
+    timeEntriesResult,
+    timeEntryTypesResult,
+    costSummaryResult,
+    unresolvedTimeEntriesResult,
+    timeRoundingResult,
+    workOrderArticlesResult,
+    articlesForSelectResult,
+    checklistResult,
+    checklistTemplatesResult,
+    lastUsedTab,
   ] = await withTiming("work-order-detail:fetch", () =>
     Promise.all([
       getClient(workOrder.client_id),
       workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
       // Full contract record (issue #100) — the work order's own `contract`
-      // embed (`WORK_ORDER_SELECT` in `../actions.ts`) is deliberately thin
-      // (id/name only), enough for a plain link but not for the rail's "a
-      // couple of key facts" card; fetched the same "one extra round trip for
-      // the full record" way `asset`/`client` already are.
+      // embed is deliberately thin (id/number only).
       workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
       listOrgMembers(),
-      // Client/Site/Asset/Contract pickers and the Status/Priority/Type
-      // pickers (`WorkOrderFields`, editable branch only) — skipped for a
-      // read-only viewer, same "don't fetch what can't render" reasoning as
-      // every conditional fetch below.
+      // Pickers of the edit form — skipped for a read-only viewer.
       canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
       canEdit ? listReferenceItems("work_order_status") : Promise.resolve(null),
       canEdit ? listReferenceItems("work_order_priority") : Promise.resolve(null),
       // Issue #164 (Planning module) — reuses the `activity_type` list rather
-      // than a separate `work_order_type` one, see `../schema.ts`'s
-      // `workOrderCreateSchema.typeId` doc comment.
+      // than a separate `work_order_type` one, see `../schema.ts`.
       canEdit ? listReferenceItems("activity_type") : Promise.resolve(null),
+      // Hours tab (issue #15/#109/#198).
+      listTimeEntries(workOrder.id),
+      listReferenceItems("time_entry_type"),
+      canSeeCosts ? getWorkOrderCostSummary(workOrder.id) : Promise.resolve(null),
+      canSeeCosts ? getUnresolvedWorkOrderTimeEntries(workOrder.id) : Promise.resolve(null),
+      getOrganizationTimeRoundingSettings(),
+      // Material tab (issue #94) — the article picker only for someone who can log.
+      listWorkOrderArticles(workOrder.id),
+      canCreateWorkOrderArticles ? listArticlesForSelect() : Promise.resolve(null),
+      // Checklist tab (issue #14) — own module, only when entitled.
+      canAccessChecklists ? getWorkOrderChecklist(workOrder.id) : Promise.resolve(null),
+      canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
+      preferencesStore.getLastUsedView(session.userId, WORK_ORDER_DETAIL_VIEW_KEY),
     ]),
   );
 
@@ -297,11 +261,45 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
   const canUpdateChecklistAny = canAccessChecklists && can(actor, "checklists", "update");
   const canUpdateChecklistOwn = canAccessChecklists && can(actor, "checklists", "update_own");
 
+  // "Create quote" is the step AFTER the office review (approve moves the work
+  // order to `completed`), so it is offered as a LivePanel action only then,
+  // and only while no real (non-auto-draft) quote exists for it yet. The
+  // query runs under the caller's RLS, only for someone who may create one.
+  // Once the quote exists, the LivePanel links to it instead (same status).
+  let quoteReady = false;
+  let createdQuote: { id: string; name: string | null } | null = null;
+  const canReadQuotes = quotesEnabled && canAccessModule(actor, "quotes");
+  if (canReadQuotes && workOrder.work_order_status?.value === "completed") {
+    const supabase = await createSupabaseServerClient();
+    const { data: existingQuote } = await supabase
+      .from("quotes")
+      .select("id, name")
+      .eq("work_order_id", workOrder.id)
+      .eq("is_auto_draft", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; name: string | null }>();
+    if (existingQuote) createdQuote = { id: existingQuote.id, name: existingQuote.name };
+    quoteReady = canCreateQuote && !existingQuote;
+  }
+
+  const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
+  const costSummary = costSummaryResult?.data ?? null;
+  const unresolvedTimeEntryCount = unresolvedTimeEntriesResult?.data?.unresolvedTimeEntryIds.length ?? 0;
+  const workOrderArticles = workOrderArticlesResult.data?.workOrderArticles ?? [];
+
+  // `?tab=` (explicit deep link) beats the last-used-view cookie; either
+  // falls back to Overview when that tab does not exist for this actor.
+  const available = (tab: string | null | undefined): WorkOrderDetailTab | null => {
+    if (!tab || !TAB_IDS.includes(tab as WorkOrderDetailTab)) return null;
+    return tab === "checklist" && !canAccessChecklists ? null : (tab as WorkOrderDetailTab);
+  };
+
   return (
     <WorkOrderScreen
       key={workOrder.updated_at}
       mode="edit"
-      breadcrumbItems={[{ label: "Work Orders", href: "/work-orders" }, { label: workOrder.work_order_number }]}
+      breadcrumbItems={[{ label: "Work Orders", href: "/work-orders" }, { label: workOrder.work_order_number, mono: true }]}
       workOrder={workOrder}
       readOnly={!canEdit || locked}
       locked={locked}
@@ -316,52 +314,41 @@ export default async function WorkOrderDetailPage({ params }: WorkOrderDetailPag
       members={members}
       canDelete={canDelete}
       currentUserId={session.userId}
-      canCreateQuote={canCreateQuote}
+      canCreateQuote={quoteReady}
+      createdQuote={createdQuote}
       canApproveReview={canApproveReview}
-      canAccessChecklists={canAccessChecklists}
-      hoursSlot={
-        <Suspense fallback={<WorkOrderHoursSectionSkeleton />}>
-          <WorkOrderHoursSlot
-            workOrderId={workOrder.id}
-            assignedTo={workOrder.assigned_to}
-            currentUserId={session.userId}
-            members={members}
-            canLogTimeForOthers={canLogTimeForOthers}
-            canUpdateTimeEntriesAny={canUpdateTimeEntriesAny}
-            canUpdateTimeEntriesOwn={canUpdateTimeEntriesOwn}
-            canDelete={canDelete}
-            canSeeCosts={canSeeCosts}
-            locked={isCheckedOutInField}
-          />
-        </Suspense>
-      }
-      materialSlot={
-        <Suspense fallback={<WorkOrderMaterialSectionSkeleton />}>
-          <WorkOrderMaterialSlot
-            workOrderId={workOrder.id}
-            canCreateWorkOrderArticles={canCreateWorkOrderArticles}
-            canUpdateWorkOrderArticlesAny={canUpdateWorkOrderArticlesAny}
-            canUpdateWorkOrderArticlesOwn={canUpdateWorkOrderArticlesOwn}
-            canDelete={canDelete}
-            currentUserId={session.userId}
-            reportToInvoice={!canSeeCosts}
-            locked={isCheckedOutInField}
-          />
-        </Suspense>
-      }
-      checklistSlot={
-        canAccessChecklists ? (
-          <Suspense fallback={<WorkOrderChecklistSectionSkeleton />}>
-            <WorkOrderChecklistSlot
-              workOrderId={workOrder.id}
-              currentUserId={session.userId}
-              canAttachChecklist={canAttachChecklist}
-              canDetachChecklist={canDetachChecklist}
-              canUpdateChecklistAny={canUpdateChecklistAny}
-              canUpdateChecklistOwn={canUpdateChecklistOwn}
-            />
-          </Suspense>
-        ) : undefined
+      defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
+      hours={{
+        timeEntries,
+        entryTypes: timeEntryTypesResult.data?.items ?? [],
+        roundingSettings: timeRoundingResult.data?.settings ?? DEFAULT_TIME_ROUNDING_SETTINGS,
+        costSummary,
+        unresolvedTimeEntryCount,
+        canSeeCosts,
+        canLogTimeForOthers,
+        canUpdateAny: canUpdateTimeEntriesAny,
+        canUpdateOwn: canUpdateTimeEntriesOwn,
+        checkedOut: isCheckedOutInField,
+      }}
+      material={{
+        workOrderArticles,
+        articles: articlesForSelectResult?.data?.articles ?? [],
+        canCreate: canCreateWorkOrderArticles,
+        canUpdateAny: canUpdateWorkOrderArticlesAny,
+        canUpdateOwn: canUpdateWorkOrderArticlesOwn,
+      }}
+      checklistData={
+        canAccessChecklists
+          ? {
+              checklist: checklistResult?.data?.checklist ?? null,
+              items: checklistResult?.data?.items ?? [],
+              templates: checklistTemplatesResult?.data?.templates ?? [],
+              canAttach: canAttachChecklist,
+              canDetach: canDetachChecklist,
+              canUpdateAny: canUpdateChecklistAny,
+              canUpdateOwn: canUpdateChecklistOwn,
+            }
+          : null
       }
     />
   );

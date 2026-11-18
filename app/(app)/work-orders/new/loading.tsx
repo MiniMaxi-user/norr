@@ -1,7 +1,7 @@
-import { RouteLoading } from "@/components/shell/route-loading";
+import { ClientDetailSkeleton } from "@/app/(app)/clients/[id]/client-detail-skeleton";
 
-// Route-level Suspense fallback (issue #140) for `/work-orders/new` — no
-// bespoke skeleton for this create route; uses the shared minimal fallback.
+// Route-level Suspense fallback (issue #140) for `/work-orders/new` — the
+// shaped detail-page skeleton of the web design system (issue #222).
 export default function NewWorkOrderLoading() {
-  return <RouteLoading />;
+  return <ClientDetailSkeleton />;
 }

@@ -9,10 +9,12 @@ import type { WorkOrderRecord } from "../actions";
  * `WorkOrderScreen`'s own `commitPatch`, instead of each owning a disjoint
  * slice of local form state the way the old per-`Card` form did.
  */
-export interface WorkOrderDraft {
+export type WorkOrderDraft = {
   externalReference: string;
   description: string;
   notes: string;
+  /** How the job was resolved; only edited on an existing work order. */
+  solution: string;
   clientId: string;
   siteId: string;
   assetId: string;
@@ -35,17 +37,32 @@ export interface WorkOrderDraft {
   durationMinutes: string;
 }
 
+function toLocalDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toIsoDateTime(local: string): string {
+  if (!local) return "";
+  const date = new Date(local);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 export function draftFromWorkOrder(workOrder: WorkOrderRecord): WorkOrderDraft {
   return {
     externalReference: workOrder.external_reference ?? "",
     description: workOrder.description ?? "",
     notes: workOrder.notes ?? "",
+    solution: workOrder.solution ?? "",
     clientId: workOrder.client_id,
     siteId: workOrder.site_id ?? "",
     assetId: workOrder.asset_id ?? "",
     contractId: workOrder.contract_id ?? "",
     assignedTo: workOrder.assigned_to ?? "",
-    scheduledAt: workOrder.scheduled_at ?? "",
+    scheduledAt: toLocalDateTime(workOrder.scheduled_at),
     statusId: workOrder.status_id,
     priorityId: workOrder.priority_id ?? "",
     typeId: workOrder.type_id ?? "",
@@ -82,6 +99,7 @@ export function emptyDraft(options: {
     externalReference: options.initialExternalReference ?? "",
     description: options.initialDescription ?? "",
     notes: "",
+    solution: "",
     clientId: options.lockedClientId ?? options.initialClientId ?? "",
     siteId: options.initialSiteId ?? "",
     assetId: options.initialAssetId ?? "",
@@ -104,12 +122,13 @@ export function draftToInput(patch: Partial<WorkOrderDraft>): Record<string, unk
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
   if (patch.description !== undefined) input.description = patch.description;
   if (patch.notes !== undefined) input.notes = patch.notes;
+  if (patch.solution !== undefined) input.solution = patch.solution;
   if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
   if (patch.siteId !== undefined) input.siteId = patch.siteId || undefined;
   if (patch.assetId !== undefined) input.assetId = patch.assetId || undefined;
   if (patch.contractId !== undefined) input.contractId = patch.contractId || undefined;
   if (patch.assignedTo !== undefined) input.assignedTo = patch.assignedTo || undefined;
-  if (patch.scheduledAt !== undefined) input.scheduledAt = patch.scheduledAt || undefined;
+  if (patch.scheduledAt !== undefined) input.scheduledAt = toIsoDateTime(patch.scheduledAt) || undefined;
   if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
   if (patch.priorityId !== undefined) input.priorityId = patch.priorityId || undefined;
   if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;

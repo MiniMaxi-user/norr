@@ -166,6 +166,33 @@ export function WebCardPair({ className, children, ...rest }: HTMLAttributes<HTM
 }
 
 /* ---------------------------------------------------------------------- *
+ * Figure tiles — only for tabs that are about numbers (DS 02 "KPI tiles")
+ * ---------------------------------------------------------------------- */
+
+export interface WebFigure {
+  label: string;
+  /** Already formatted (serif 21px, tabular). */
+  value: ReactNode;
+  hint?: ReactNode;
+}
+
+/** A row of white bordered figure tiles. Never on Overview — only on a tab
+ * whose subject is numbers (a work order's Hours tab). */
+export function WebFigures({ items, className }: { items: WebFigure[]; className?: string }) {
+  return (
+    <div className={cx("web-figures", className)}>
+      {items.map((item) => (
+        <div key={item.label} className="web-figure">
+          <div className="web-figure-label">{item.label}</div>
+          <div className="web-figure-value">{item.value}</div>
+          {item.hint ? <div className="web-figure-hint">{item.hint}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- *
  * Breadcrumb
  * ---------------------------------------------------------------------- */
 
