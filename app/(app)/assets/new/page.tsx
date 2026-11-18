@@ -37,20 +37,11 @@ export default async function NewAssetPage({ searchParams }: NewAssetPageProps) 
   if (clientId && !lockedClientResult?.data) notFound();
   const lockedClient = lockedClientResult?.data?.client ?? null;
 
-  const breadcrumbItems = lockedClient
-    ? [
-        { label: "Clients", href: "/clients" },
-        { label: lockedClient.name, href: `/clients/${lockedClient.id}` },
-        { label: "New asset" },
-      ]
-    : [{ label: "Assets", href: "/assets" }, { label: "New asset" }];
-
   const cancelHref = lockedClient ? `/clients/${lockedClient.id}` : "/assets";
 
   return (
     <AssetScreen
       mode="create"
-      breadcrumbItems={breadcrumbItems}
       client={lockedClient}
       lockedClientId={lockedClient?.id}
       initialSiteId={siteId}

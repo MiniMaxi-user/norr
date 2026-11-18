@@ -22,6 +22,13 @@ const isoDateSchema = z.preprocess(
     .optional(),
 );
 
+/** A required reference (uuid) field: blank / missing => `message`. The
+ * database columns stay nullable (older rows may have gaps); the rule lives
+ * here, in the server action's validation. */
+function requiredUuid(message: string) {
+  return z.preprocess(emptyToUndefined, z.string({ required_error: message, invalid_type_error: message }).uuid(message));
+}
+
 export const assetCreateSchema = z.object({
   siteId: z.string().uuid("Invalid site id."),
   /** Displayed as "Asset ID" in the UI. Optional (issue #105) — when omitted
@@ -37,7 +44,7 @@ export const assetCreateSchema = z.object({
    * default, same as the old free-text `type` column. Validated
    * server-side by the `validate_asset_reference_items` DB trigger (must
    * belong to the `asset_type` list, same organization). */
-  typeId: z.string().uuid("Invalid asset type."),
+  typeId: z.string({ required_error: "Choose a type" }).uuid("Choose a type"),
   /** Free-text external/legacy reference (e.g. an ERP or previous system's
    * asset id) — see `assets.external_reference`'s column comment in
    * `supabase/migrations/20260826170000_assets_external_reference_brand_model.sql`.
@@ -59,13 +66,21 @@ export const assetCreateSchema = z.object({
    * `brandItemId` (see design note 3 in the `20260826170000` migration);
    * auto-filling those fields from a selected model is a UI convenience,
    * not a DB invariant. */
-  modelId: z.string().uuid("Invalid model.").optional(),
-  serialNumber: optionalText(200),
-  /** FK into this org's `asset_status` reference list. Optional on create —
-   * the `derive_asset_org_and_client` DB trigger fills in the org's default
-   * `asset_status` item when omitted (replacing the old `default 'active'`
-   * enum default). */
-  statusId: z.string().uuid("Invalid asset status.").optional(),
+  modelId: requiredUuid("Choose a model"),
+  /** Required (product owner, issue #222) - enforced here, not by a NOT NULL
+   * migration: existing rows may still have no serial number. */
+  serialNumber: z.preprocess(
+    emptyToUndefined,
+    z
+      .string({ required_error: "Enter a serial number" })
+      .trim()
+      .min(1, "Enter a serial number")
+      .max(200, "Serial number is too long."),
+  ),
+  /** FK into this org's `asset_status` reference list. Required (product
+   * owner, issue #222): the form preselects the org's default status; the DB
+   * trigger's own default stays as a fallback for other writers. */
+  statusId: requiredUuid("Choose a status"),
   /** FK into this org's `asset_subtype` reference list
    * (`reference_list_items.id`) — see
    * `supabase/migrations/20260823090000_contacts_dependent_reference_lists.sql`.
@@ -78,7 +93,12 @@ export const assetCreateSchema = z.object({
    * `validate_asset_reference_items` DB trigger, which raises a `23514`
    * mapped to a clean message by `mapDbError` when it's inconsistent. */
   subtypeId: z.string().uuid("Invalid asset sub-type.").optional(),
-  installedAt: isoDateSchema,
+  installedAt: z.preprocess(
+    emptyToUndefined,
+    z
+      .string({ required_error: "Enter the installation date" })
+      .regex(/^d{4}-d{2}-d{2}$/, "Expected a date in YYYY-MM-DD format."),
+  ),
   warrantyUntil: isoDateSchema,
   notes: optionalText(5000),
 });
@@ -88,7 +108,25 @@ export type AssetCreateInput = z.infer<typeof assetCreateSchema>;
 /** `siteId` stays updatable (re-assigning an asset to a different site of
  * the same client/org); cross-organization re-parenting is still blocked at
  * the DB trigger layer (`derive_asset_org_and_client`) regardless. */
-export const assetUpdateSchema = assetCreateSchema.partial();
+export const assetUpdateSchema = assetCreateSchema.partial().extend({
+  // An update may leave a required field out (= unchanged) but must never
+  // blank it: here an empty string is NOT turned into "omitted", it is
+  // rejected with the same field-mapped message as on create.
+  modelId: z.string().trim().uuid("Choose a model").optional(),
+  statusId: z.string().trim().uuid("Choose a status").optional(),
+  typeId: z.string().trim().uuid("Choose a type").optional(),
+  serialNumber: z
+    .string()
+    .trim()
+    .min(1, "Enter a serial number")
+    .max(200, "Serial number is too long.")
+    .optional(),
+  installedAt: z
+    .string()
+    .min(1, "Enter the installation date")
+    .regex(/^d{4}-d{2}-d{2}$/, "Expected a date in YYYY-MM-DD format.")
+    .optional(),
+});
 
 export type AssetUpdateInput = z.infer<typeof assetUpdateSchema>;
 

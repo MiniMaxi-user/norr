@@ -23,7 +23,7 @@ export type {
   WebCardProps,
   WebLinkButtonProps,
 } from "./primitives";
-export { SidebarNotice, SidebarRows, SidebarSection, Timeline, WebDetailLayout, WebPage } from "./layout";
+export { SidebarNotice, SidebarProgress, SidebarRows, SidebarSection, Timeline, WebDetailLayout, WebPage } from "./layout";
 export type {
   SidebarRow,
   SidebarSectionProps,

@@ -1,12 +1,8 @@
 import type { AssetRecord } from "../actions";
 
 /**
- * The asset's own editable fields, as one flat draft object — the single
- * source of truth `AssetScreen` owns for the unified create/view/edit screen
- * (asset new/edit design handoff v3, mirroring `work-order-draft.ts`). Every
- * section of the page (hero header pencil, relation cards + their edit
- * popups, Equipment/Status & warranty/Notes inline-edit sections) reads from
- * this and writes back through `AssetScreen`'s own `commitPatch`.
+ * The asset's own editable fields, as one flat draft object — the record
+ * `useEditMode` (issue #222) edits on the Asset page in edit and new mode.
  *
  * `clientId` is carried here purely for the UI's own cascade/relation-card
  * needs (picking a client scopes the Site select, drives the Contract card's
@@ -16,7 +12,9 @@ import type { AssetRecord } from "../actions";
  * `client_id` from its `site_id` at the trigger layer, same as the old
  * `asset-form-screen.tsx`'s hidden-`siteId`-only submission this replaces.
  */
-export interface AssetDraft {
+// A `type` alias (not an `interface`) so it is assignable to the
+// `Record<string, string | boolean>` `useEditMode` (issue #222) edits.
+export type AssetDraft = {
   clientId: string;
   siteId: string;
   name: string;
@@ -30,7 +28,7 @@ export interface AssetDraft {
   installedAt: string;
   warrantyUntil: string;
   notes: string;
-}
+};
 
 export function draftFromAsset(asset: AssetRecord): AssetDraft {
   return {
@@ -85,14 +83,16 @@ export function draftToInput(patch: Partial<AssetDraft>): Record<string, unknown
   const input: Record<string, unknown> = {};
   if (patch.siteId !== undefined) input.siteId = patch.siteId || undefined;
   if (patch.name !== undefined) input.name = patch.name || undefined;
-  if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
+  // Required fields are sent as typed (even blank) so the server rejects an
+  // emptied value with its field-mapped message instead of silently ignoring it.
+  if (patch.typeId !== undefined) input.typeId = patch.typeId;
   if (patch.subtypeId !== undefined) input.subtypeId = patch.subtypeId || undefined;
   if (patch.brandItemId !== undefined) input.brandItemId = patch.brandItemId || undefined;
-  if (patch.modelId !== undefined) input.modelId = patch.modelId || undefined;
-  if (patch.serialNumber !== undefined) input.serialNumber = patch.serialNumber || undefined;
-  if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
+  if (patch.modelId !== undefined) input.modelId = patch.modelId;
+  if (patch.serialNumber !== undefined) input.serialNumber = patch.serialNumber;
+  if (patch.statusId !== undefined) input.statusId = patch.statusId;
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference || undefined;
-  if (patch.installedAt !== undefined) input.installedAt = patch.installedAt || undefined;
+  if (patch.installedAt !== undefined) input.installedAt = patch.installedAt;
   if (patch.warrantyUntil !== undefined) input.warrantyUntil = patch.warrantyUntil || undefined;
   if (patch.notes !== undefined) input.notes = patch.notes || undefined;
   return input;

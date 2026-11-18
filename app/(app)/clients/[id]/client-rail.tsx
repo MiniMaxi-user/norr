@@ -1,10 +1,13 @@
 "use client";
 
 import { SidebarRows, SidebarSection } from "@yourorg/ui/web";
+import { LivePanel, type LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateTimeWeb, formatMoneyWeb } from "@/lib/format/web";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
 
 export interface ClientRailProps {
+  /** From `getLivePanel`; `null` almost always. Always the first section. */
+  livePanel: LivePanelData | null;
   accountManagerName: string | null;
   /** `null` = the Contracts module is not entitled/visible: row not shown. */
   activeContracts: { count: number; value: number } | null;
@@ -27,6 +30,7 @@ export interface ClientRailProps {
  * rail cards (KvK/VAT/IBAN/phone now live in Business details).
  */
 export function ClientRail({
+  livePanel,
   accountManagerName,
   activeContracts,
   openWorkOrders,
@@ -64,6 +68,8 @@ export function ClientRail({
 
   return (
     <>
+      <LivePanel panel={livePanel} />
+
       <SidebarSection title="Key figures">
         <SidebarRows rows={figures} />
       </SidebarSection>

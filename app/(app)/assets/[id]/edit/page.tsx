@@ -19,10 +19,5 @@ export default async function EditAssetPage({ params }: EditAssetPageProps) {
   const { id } = await params;
   const props = await loadAssetScreenProps(id);
 
-  return (
-    <AssetScreen
-      {...props}
-      breadcrumbItems={[{ label: "Assets", href: "/assets" }, { label: props.asset!.name }]}
-    />
-  );
+  return <AssetScreen {...props} />;
 }

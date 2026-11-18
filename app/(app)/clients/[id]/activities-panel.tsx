@@ -8,7 +8,13 @@ import { formatDateTimeWeb } from "@/lib/format/web";
 import { memberDisplayName } from "@/lib/members/format";
 
 export interface ActivitiesPanelProps {
-  clientId: string;
+  /** Client tab: "+ Activity" pre-scopes the create page to this client. */
+  clientId?: string;
+  /** Asset page: pre-scopes it to this asset instead (client resolved
+   * server-side). */
+  assetId?: string;
+  /** URL param namespace (default "activities"). */
+  urlPrefix?: string;
   activities: ActivityRecord[];
   canCreate: boolean;
 }
@@ -23,7 +29,7 @@ const isDone = (activity: ActivityRecord) => activity.activity_status?.value ===
  * clientId=…`); a row opens the real `/activities/[id]` page, which owns edit
  * and delete.
  */
-export function ActivitiesPanel({ clientId, activities, canCreate }: ActivitiesPanelProps) {
+export function ActivitiesPanel({ clientId, assetId, urlPrefix = "activities", activities, canCreate }: ActivitiesPanelProps) {
   const columns = useMemo<WebColumn<ActivityRecord>[]>(
     () => [
       {
@@ -127,11 +133,11 @@ export function ActivitiesPanel({ clientId, activities, canCreate }: ActivitiesP
       noun="activities"
       dropdowns={dropdowns}
       segment={segment}
-      urlPrefix="activities"
+      urlPrefix={urlPrefix}
       defaultSort={{ columnId: "reported", direction: "desc" }}
       rowHref={(activity) => `/activities/${activity.id}`}
       rowLabel={(activity) => activity.activity_type?.label ?? "activity"}
-      add={canCreate ? <CreateActivityButton clientId={clientId} label="+ Activity" filterBar /> : undefined}
+      add={canCreate ? <CreateActivityButton clientId={clientId} assetId={assetId} label="+ Activity" filterBar /> : undefined}
       emptyAction={canCreate ? "Use + Activity to log a call, breakdown or appointment." : undefined}
     />
   );

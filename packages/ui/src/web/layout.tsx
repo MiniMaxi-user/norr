@@ -74,6 +74,33 @@ export function SidebarRows({ rows }: { rows: SidebarRow[] }) {
   );
 }
 
+/** Thin progress bar for a rail section (warranty remaining, checklist…). */
+export function SidebarProgress({
+  value,
+  label,
+  tone,
+}: {
+  /** 0–100. */
+  value: number;
+  label: string;
+  tone?: "success" | "warning" | "danger";
+}) {
+  const clamped = Math.min(100, Math.max(0, value));
+  return (
+    <div
+      className="web-progress"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(clamped)}
+      data-tone={tone}
+    >
+      <span className="web-progress-fill" style={{ width: `${clamped}%` }} />
+    </div>
+  );
+}
+
 /** One gold callout per section for something that needs action. */
 export function SidebarNotice({ children }: { children: ReactNode }) {
   return <p className="web-rail-notice">{children}</p>;

@@ -1,25 +1,12 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmDeleteDialog,
-  Dialog,
-  EmptyState,
-  Heading,
-  Inline,
-  Input,
-  Label,
-  Select,
-  Stack,
-  Table,
-  Text,
-  Textarea,
-} from "@yourorg/ui";
+import { ConfirmDeleteDialog, Dialog, Heading, Input, Label, Select, Stack, Text, Textarea, Button } from "@yourorg/ui";
+import { WebCard } from "@yourorg/ui/web";
+import { WebButton } from "@yourorg/ui/web";
+import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import {
   createAssetVolumeReading,
   deleteAssetVolumeReading,
@@ -27,73 +14,83 @@ import {
   type AssetVolumeReading,
   type AssetVolumesData,
 } from "@/lib/asset-volumes/actions";
-import { formatDateTime } from "@/lib/format/date";
-import { formatNumber } from "@/lib/format/number";
+import { formatDateTimeWeb, formatNumberWeb } from "@/lib/format/web";
 
 export interface AssetVolumesPanelProps {
   volumes: AssetVolumesData;
 }
 
-/** `YYYY-MM-DDTHH:mm` in the browser's local zone, as `datetime-local` expects. */
 function toLocalInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatDelta(delta: number): string {
-  const text = formatNumber(Math.abs(delta));
+  const text = formatNumberWeb(Math.abs(delta));
   return delta > 0 ? `+${text}` : delta < 0 ? `-${text}` : text;
 }
 
+interface ReadingRow extends AssetVolumeReading {
+  /** Change versus the previous (older) reading; null for the first one. */
+  delta: number | null;
+}
+
 /**
- * "Volumes" tab on the asset page (issue #221): one card per counter
- * configured on the asset's model (latest value + immutable reading history),
- * plus counters that still have history but are no longer on the model.
+ * Asset "Volumes" tab (issue #221, restyled issue #222): one card per counter
+ * of the asset's model — title + mono meta ("Latest: …"), its own FilterBar
+ * and a readings table, all with the identical structure. "+ Reading" sits in
+ * the FilterBar (counter pre-selected), delete is in the row ··· menu.
+ * Readings cannot be edited; the model/counter rules and the add/delete
+ * actions are unchanged.
  */
 export function AssetVolumesPanel({ volumes }: AssetVolumesPanelProps) {
-  const [addOpen, setAddOpen] = useState(false);
+  const [addFor, setAddFor] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssetVolumeReading | null>(null);
   const router = useRouter();
 
   const configured = volumes.counters.filter((counter) => !counter.notConfigured);
 
   const settingsHint = (
-    <Text tone="muted">
+    <>
       Counters are configured per asset model in <Link href="/settings/asset-models">Settings, Asset Models</Link>.
-    </Text>
+    </>
   );
 
   if (!volumes.modelId || volumes.counters.length === 0) {
     return (
-      <EmptyState
-        heading={volumes.modelId ? "No counters on this model" : "No model on this asset"}
-        text={
-          volumes.modelId
-            ? "Add one or more counters to this asset's model to start recording volume readings."
-            : "Link this asset to a model first. Counters are configured per asset model."
-        }
-        action={settingsHint}
-      />
+      <WebCard title="Volumes">
+        <p className="web-card-text">
+          {volumes.modelId
+            ? "No counters on this model. Add one or more counters to this asset's model to start recording volume readings. "
+            : "No model on this asset. Link this asset to a model first. "}
+          {settingsHint}
+        </p>
+      </WebCard>
     );
   }
 
   return (
-    <Stack gap="lg">
-      <Inline justify="between" align="center" wrap>
-        {settingsHint}
-        {volumes.canCreate && configured.length > 0 && (
-          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
-            Add reading
-          </Button>
-        )}
-      </Inline>
-
-      {volumes.counters.map((counter) => (
-        <CounterCard key={counter.volumeItemId} counter={counter} onDelete={setDeleteTarget} />
+    <div className="web-tab-stack">
+      {volumes.counters.map((counter, index) => (
+        <CounterCard
+          key={counter.volumeItemId}
+          counter={counter}
+          prefix={`vol${index}`}
+          canAdd={volumes.canCreate && !counter.notConfigured && configured.length > 0}
+          onAdd={() => setAddFor(counter.volumeItemId)}
+          onDelete={setDeleteTarget}
+          shortcut={index === 0}
+        />
       ))}
+      <p className="web-card-note">{settingsHint}</p>
 
-      {volumes.canCreate && addOpen && (
-        <AddReadingDialog onClose={() => setAddOpen(false)} assetId={volumes.assetId} counters={configured} />
+      {volumes.canCreate && addFor && (
+        <AddReadingDialog
+          onClose={() => setAddFor(null)}
+          assetId={volumes.assetId}
+          counters={configured}
+          defaultCounterId={addFor}
+        />
       )}
 
       <ConfirmDeleteDialog
@@ -111,113 +108,145 @@ export function AssetVolumesPanel({ volumes }: AssetVolumesPanelProps) {
         }}
         onDeleted={() => router.refresh()}
       />
-    </Stack>
+    </div>
   );
 }
 
 function CounterCard({
   counter,
+  prefix,
+  canAdd,
+  onAdd,
   onDelete,
+  shortcut,
 }: {
   counter: AssetVolumeCounter;
+  prefix: string;
+  canAdd: boolean;
+  onAdd: () => void;
   onDelete: (reading: AssetVolumeReading) => void;
+  shortcut: boolean;
 }) {
   const unit = counter.unitLabel ? ` ${counter.unitLabel}` : "";
-  return (
-    <Card>
-      <Stack gap="md">
-        <Inline justify="between" align="center" wrap>
-          <Inline gap="sm" align="center">
-            <Heading level={5}>{counter.label}</Heading>
-            {counter.notConfigured && <Badge variant="muted">No longer on model</Badge>}
-            {!counter.isActive && <Badge variant="warning">Retired</Badge>}
-          </Inline>
-          <Text tone="muted">
-            {counter.latest
-              ? `Latest: ${formatNumber(counter.latest.value)}${unit} · ${formatDateTime(counter.latest.readAt)}`
-              : "No readings yet"}
-          </Text>
-        </Inline>
-        {counter.description && <Text tone="muted">{counter.description}</Text>}
+  const rows = useMemo<ReadingRow[]>(
+    () =>
+      counter.readings.map((reading, index) => {
+        const previous = counter.readings[index + 1];
+        return { ...reading, delta: previous ? reading.value - previous.value : null };
+      }),
+    [counter.readings],
+  );
 
-        {counter.readings.length === 0 ? (
-          <Text tone="muted">No readings recorded for this counter.</Text>
-        ) : (
-          <Table>
-            <Table.Head>
-              <Table.Row>
-                <Table.HeaderCell>Date/time</Table.HeaderCell>
-                <Table.HeaderCell align="end">Value</Table.HeaderCell>
-                <Table.HeaderCell align="end">Change</Table.HeaderCell>
-                <Table.HeaderCell>Work order</Table.HeaderCell>
-                <Table.HeaderCell>Recorded by</Table.HeaderCell>
-                <Table.HeaderCell>Notes</Table.HeaderCell>
-                <Table.HeaderCell align="center">Actions</Table.HeaderCell>
-              </Table.Row>
-            </Table.Head>
-            <Table.Body>
-              {counter.readings.map((reading, index) => {
-                const previous = counter.readings[index + 1];
-                return (
-                  <Table.Row key={reading.id}>
-                    <Table.Cell>
-                      <Text>{formatDateTime(reading.readAt)}</Text>
-                    </Table.Cell>
-                    <Table.Cell align="end">
-                      <Text>
-                        {formatNumber(reading.value)}
-                        {unit}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell align="end">
-                      <Text tone="muted">{previous ? formatDelta(reading.value - previous.value) : "—"}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      {reading.workOrderId ? (
-                        <Link href={`/work-orders/${reading.workOrderId}`}>{reading.workOrderLabel ?? "Work order"}</Link>
-                      ) : (
-                        <Text tone="muted">—</Text>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text tone="muted">{reading.createdByName ?? "—"}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text tone="muted">{reading.notes ?? "—"}</Text>
-                    </Table.Cell>
-                    <Table.Cell align="center">
-                      {reading.canDelete ? (
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => onDelete(reading)}
-                          aria-label={`Delete reading of ${formatNumber(reading.value)} on ${formatDateTime(reading.readAt)}`}
-                        >
-                          Delete
-                        </Button>
-                      ) : null}
-                    </Table.Cell>
-                  </Table.Row>
-                );
-              })}
-            </Table.Body>
-          </Table>
-        )}
-      </Stack>
-    </Card>
+  const columns = useMemo<WebColumn<ReadingRow>[]>(
+    () => [
+      { id: "readAt", header: "Date/time", sortValue: (row) => row.readAt, render: (row) => formatDateTimeWeb(row.readAt) },
+      {
+        id: "value",
+        header: "Value",
+        align: "end",
+        sortValue: (row) => row.value,
+        render: (row) => `${formatNumberWeb(row.value)}${unit}`,
+      },
+      {
+        id: "delta",
+        header: "Change",
+        align: "end",
+        sortValue: (row) => row.delta,
+        render: (row) => (row.delta === null ? "—" : formatDelta(row.delta)),
+      },
+      {
+        id: "workOrder",
+        header: "Work order",
+        render: (row) =>
+          row.workOrderId ? (
+            <Link href={`/work-orders/${row.workOrderId}`} className="web-cell-link">
+              {row.workOrderLabel ?? "Work order"}
+            </Link>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "by",
+        header: "Recorded by",
+        sortValue: (row) => row.createdByName ?? "",
+        render: (row) => row.createdByName ?? "—",
+      },
+      { id: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
+    ],
+    [unit],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "by",
+        label: "Recorded by",
+        getOptions: (row: ReadingRow) =>
+          row.createdByName ? [{ value: row.createdByName, label: row.createdByName }] : [],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show readings",
+      defaultValue: "all",
+      options: [
+        { value: "manual", label: "Manual", match: (row: ReadingRow) => !row.workOrderId },
+        { value: "workorder", label: "Work order", match: (row: ReadingRow) => Boolean(row.workOrderId) },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
+
+  const meta = counter.latest
+    ? `Latest: ${formatNumberWeb(counter.latest.value)}${unit} · ${formatDateTimeWeb(counter.latest.readAt)}`
+    : "No readings yet";
+
+  return (
+    <WebDataTableCard
+      title={`${counter.label}${counter.notConfigured ? " (no longer on model)" : ""}${!counter.isActive ? " (retired)" : ""}`}
+      meta={meta}
+      rows={rows}
+      getRowKey={(row) => row.id}
+      columns={columns}
+      searchText={(row) => `${row.createdByName ?? ""} ${row.notes ?? ""} ${row.workOrderLabel ?? ""}`}
+      noun="readings"
+      dropdowns={dropdowns}
+      segment={segment}
+      urlPrefix={prefix}
+      defaultSort={{ columnId: "readAt", direction: "desc" }}
+      searchShortcut={shortcut}
+      note={counter.description ?? undefined}
+      rowActions={(row): WebMenuItem[] =>
+        row.canDelete ? [{ key: "delete", label: "Delete reading", danger: true, onSelect: () => onDelete(row) }] : []
+      }
+      rowLabel={(row) => `reading of ${formatNumberWeb(row.value)} on ${formatDateTimeWeb(row.readAt)}`}
+      add={
+        canAdd ? (
+          <WebButton size="filter" onClick={onAdd}>
+            + Reading
+          </WebButton>
+        ) : undefined
+      }
+      emptyAction={canAdd ? "Use + Reading to record the first one." : undefined}
+    />
   );
 }
 
-/** Mounted only while open (parent conditionally renders it), so the
- * "now" default and the error state are fresh on every open. */
 function AddReadingDialog({
   onClose,
   assetId,
   counters,
+  defaultCounterId,
 }: {
   onClose: () => void;
   assetId: string;
   counters: AssetVolumeCounter[];
+  defaultCounterId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -273,7 +302,7 @@ function AddReadingDialog({
 
             <Stack gap="xs">
               <Label htmlFor="asset-volume-counter">Counter</Label>
-              <Select id="asset-volume-counter" name="volumeItemId" required defaultValue={counters[0]?.volumeItemId}>
+              <Select id="asset-volume-counter" name="volumeItemId" required defaultValue={defaultCounterId ?? counters[0]?.volumeItemId}>
                 {counters.map((counter) => (
                   <option key={counter.volumeItemId} value={counter.volumeItemId}>
                     {counter.label}

@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -18,6 +19,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "../icons";
 import { WebButton, WebCard } from "./primitives";
 import { WebMenu, type WebMenuItem } from "./menu";
+import { getMainScrollArea } from "./scroll";
 
 /* ---------------------------------------------------------------------- *
  * StatusText — status as coloured text, never a badge per row.
@@ -377,6 +379,11 @@ export interface WebDataTableCardProps<T> {
   loading?: boolean;
   /** One muted explanatory line between the card head and the FilterBar. */
   note?: ReactNode;
+  /** Overview preview tables: show at most this many rows, no pagination
+   * footer (the card head carries a "Show all" link instead). */
+  maxRows?: number;
+  /** Right side of the card head — at most one link ("Show all"). */
+  headerAction?: ReactNode;
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -414,13 +421,16 @@ export function WebDataTableCard<T>({
   rowLabel,
   isAttention,
   defaultSort,
-  pageSize = DEFAULT_PAGE_SIZE,
+  pageSize: pageSizeProp = DEFAULT_PAGE_SIZE,
   emptyAction,
   searchShortcut,
   loading,
   note,
+  maxRows,
+  headerAction,
 }: WebDataTableCardProps<T>) {
   const router = useRouter();
+  const pageSize = maxRows ?? pageSizeProp;
   const url = useUrlParams(urlPrefix);
   const q = url.get("q");
   const segValue = url.get("seg") || segment.defaultValue;
@@ -506,12 +516,59 @@ export function WebDataTableCard<T>({
     else onRowClick?.(row);
   }
 
+  // ---- Scrolling (01 section 5) -------------------------------------------
+  // Full tables keep FilterBar + column headers stuck to the top of the
+  // centre scroll area; previews (maxRows) do not stick. A table wider than
+  // its card scrolls sideways inside the card: the wrapper only becomes a
+  // scroll container when that is actually needed, because a scroll container
+  // would otherwise swallow the sticky column headers.
+  const sticky = !maxRows;
+  const hasRowActions = Boolean(rowActions);
+  const dropdownKey = JSON.stringify(dropdownValues);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [filterBarHeight, setFilterBarHeight] = useState(51);
+  const [scrollX, setScrollX] = useState(false);
+  useEffect(() => {
+    const root = rootRef.current;
+    const wrap = wrapRef.current;
+    if (!root || !wrap || typeof ResizeObserver === "undefined") return undefined;
+    const filterBar = root.querySelector<HTMLElement>(".web-filterbar");
+    const measure = () => {
+      if (filterBar) setFilterBarHeight(filterBar.offsetHeight);
+      setScrollX(wrap.scrollWidth > wrap.clientWidth + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(wrap);
+    if (filterBar) observer.observe(filterBar);
+    const tableEl = wrap.querySelector("table");
+    if (tableEl) observer.observe(tableEl);
+    return () => observer.disconnect();
+  }, [columns.length, hasRowActions]);
+
+  // A new page, sort or filter returns the centre to the top of this table.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const root = rootRef.current;
+    const area = getMainScrollArea();
+    const card = root?.closest<HTMLElement>(".web-card");
+    if (!area || !card) return;
+    const offset = card.getBoundingClientRect().top - area.getBoundingClientRect().top;
+    if (offset < 0) area.scrollBy({ top: offset });
+  }, [currentPage, q, segValue, sortId, sortDir, dropdownKey]);
+
   const hasActions = Boolean(rowActions);
   const columnCount = columns.length + (hasActions ? 1 : 0);
   const emptyUnfiltered = rows.length === 0;
 
   return (
-    <WebCard title={title} meta={meta}>
+    <WebCard title={title} meta={meta} action={headerAction}>
+      <div className="web-dt" data-sticky={sticky ? "true" : undefined} ref={rootRef}>
       {note ? <p className="web-card-note">{note}</p> : null}
       <FilterBar
         searchValue={searchInput}
@@ -538,6 +595,12 @@ export function WebDataTableCard<T>({
         add={add}
       />
 
+      <div
+        className="web-table-wrap"
+        ref={wrapRef}
+        data-scroll-x={scrollX ? "true" : undefined}
+        style={{ "--web-filterbar-h": `${filterBarHeight}px` } as CSSProperties}
+      >
       <table className="web-table">
         <thead>
           <tr>
@@ -617,6 +680,7 @@ export function WebDataTableCard<T>({
                     })}
                     {hasActions ? (
                       <td className="web-td-actions">
+                        {(rowActions?.(row) ?? []).length > 0 ? (
                         <WebMenu
                           label={`Actions for ${label}`}
                           triggerClassName="web-btn web-btn-icon web-row-actions"
@@ -629,6 +693,7 @@ export function WebDataTableCard<T>({
                           }
                           items={rowActions?.(row) ?? []}
                         />
+                        ) : null}
                       </td>
                     ) : null}
                   </tr>
@@ -636,6 +701,7 @@ export function WebDataTableCard<T>({
               })}
         </tbody>
       </table>
+      </div>
 
       {!loading && filtered.length === 0 ? (
         <p className="web-table-empty">
@@ -654,7 +720,7 @@ export function WebDataTableCard<T>({
         </p>
       ) : null}
 
-      {!loading && filtered.length > pageSize ? (
+      {!loading && !maxRows && filtered.length > pageSize ? (
         <div className="web-table-footer">
           <span>
             {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
@@ -669,6 +735,8 @@ export function WebDataTableCard<T>({
           </span>
         </div>
       ) : null}
+      </div>
     </WebCard>
   );
 }
+

@@ -1,44 +1,69 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, DetailColumns, Inline, Stack, Tabs, Text, type BreadcrumbItem, type StatStripItem } from "@yourorg/ui";
-import { BarChart3, CreditCard } from "@yourorg/ui/icons";
-import type { AssetVolumesData } from "@/lib/asset-volumes/actions";
-import { createAsset, updateAsset, type AssetRecord } from "../actions";
+import { toast } from "@yourorg/ui";
+import {
+  SidebarSection,
+  WebDetailLayout,
+  WebLinkButton,
+  WebPage,
+  type WebBadgeVariant,
+} from "@yourorg/ui/web";
+import {
+  EditDiscardDialog,
+  PageHeader,
+  scrollMainToTop,
+  toneFromColor,
+  useEditMode,
+  webTabIds,
+  type PageHeaderBadge,
+  type PageHeaderTab,
+  type WebMenuItem,
+} from "@yourorg/ui/web-client";
 import { getClient, listClients, type ClientRecord, type SiteRecord } from "@/app/(app)/clients/actions";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels, type AssetModelRecord } from "@/lib/asset-models/actions";
-import { formatDate, formatDateTime } from "@/lib/format/date";
-import { usePageHeader } from "@/components/shell/page-header-context";
-import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
+import type { AssetVolumesData } from "@/lib/asset-volumes/actions";
+import { unlinkContractAsset, type AssetContractCoverage } from "@/app/(app)/contracts/actions";
+import type { ActivityRecord } from "@/app/(app)/activities/actions";
+import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
+import { ActivitiesPanel } from "@/app/(app)/clients/[id]/activities-panel";
+import { WorkOrdersPanel } from "@/app/(app)/clients/[id]/work-orders-panel";
+import { CLOSED_WORK_ORDER_STATUS_VALUES } from "@/app/(app)/clients/[id]/client-timeline";
 import { useClientScopedLists } from "@/app/(app)/work-orders/components/use-client-scoped-lists";
-import { draftFromAsset, draftToInput, emptyDraft, type AssetDraft } from "./asset-draft";
-import { AssetHero } from "./asset-hero";
-import { AssetEquipmentSection } from "./asset-equipment-section";
-import { AssetStatusWarrantySection } from "./asset-status-warranty-section";
-import { AssetNotesSection } from "./asset-notes-section";
-import { AssetRecentActivities, type RecentAssetActivityItem } from "./asset-recent-activities";
-import { useAssetContracts } from "./use-asset-contracts";
-import { DeleteAssetDialog } from "./delete-asset-dialog";
+import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { contractLabel } from "@/lib/format/contract-label";
+import { formatDateWeb } from "@/lib/format/web";
+import { setLastUsedView } from "@/lib/preferences/actions";
+import type { AssetRecord } from "../actions";
+import type { AssetComponentTreeNode } from "../components-actions";
+import { draftFromAsset, emptyDraft, type AssetDraft } from "./asset-draft";
+import { createAssetFromDraft, buildAssetSchema, saveAssetEdits } from "./asset-form-schema";
+import { ASSET_DETAIL_VIEW_KEY } from "./constants";
+import { AssetOverviewCards, type AssetReferenceLists } from "./asset-overview-cards";
+import { AssetRail } from "./asset-rail";
+import { buildAssetTimeline } from "./asset-timeline";
+import { AssetContractsPanel } from "./asset-contracts-panel";
+import { AssetStructurePanel, hasStructure, structureInfo, structureSize } from "./asset-structure-panel";
+import { getLivePanel } from "./asset-live-panel";
+import { AssetContractsDialog } from "./asset-contracts-dialog";
+import { AssetCompositeManageDialog } from "./asset-composite-manage-dialog";
 import { AssetVolumesPanel } from "./asset-volumes-panel";
-import { AssetCompositeSection } from "./asset-composite-section";
+import { DeleteAssetDialog } from "./delete-asset-dialog";
+
+export type AssetDetailTab = "overview" | "workOrders" | "activities" | "contracts" | "structure" | "volumes";
 
 export interface AssetScreenProps {
   mode: "create" | "edit";
-  /** Built by the server `page.tsx` and pushed into the Topbar via
-   * `usePageHeader` — never rendered inline, same pattern
-   * `WorkOrderScreen`/`client-detail.tsx` already use. */
-  breadcrumbItems: BreadcrumbItem[];
 
   /** Required for `mode: "edit"`. */
   asset?: AssetRecord;
   client?: ClientRecord | null;
   site?: SiteRecord | null;
   /** Never render an edit affordance RLS would reject — a viewer with `read`/
-   * `read_own` but no `update`/`update_own` gets a fully read-only render
-   * (no pencils anywhere), same convention `RelationCard.onEdit`'s own doc
-   * comment states. */
+   * `read_own` but no `update`/`update_own` gets no Edit button at all. */
   readOnly?: boolean;
   lockedClientId?: string;
   initialSiteId?: string;
@@ -47,65 +72,44 @@ export interface AssetScreenProps {
   // ---- edit-mode-only ----
   canDelete?: boolean;
   canCreateActivityFromAsset?: boolean;
-  /** Work order/contract/activity counts for the hero's "Work orders" KPI
-   * tile — each already gated by its own module's feature flag + RBAC
-   * server-side (`[id]/page.tsx`), 0 when not entitled/visible. */
-  workOrderCount?: number;
-  contractCount?: number;
-  activityCount?: number;
-  recentItems?: RecentAssetActivityItem[];
-  /** The asset's own client's Activities tab — the closest honest
-   * destination for "View all" (see `AssetRecentActivities`'s own doc
-   * comment for why `/assets/[id]` itself can't be it). Omitted when there's
-   * truly nowhere to send it. */
-  viewAllHref?: string;
+  /** `can(actor, "planning", "create")` + module visible — gates "+ Work order". */
+  canCreateWorkOrder?: boolean;
+  /** `null` = the module is not entitled / not readable: its tab and every
+   * figure derived from it are hidden. */
+  workOrders?: WorkOrderRecord[] | null;
+  activities?: ActivityRecord[] | null;
+  contractCoverage?: AssetContractCoverage[] | null;
+  /** The composition tree this asset is part of (`null` = none). */
+  tree?: AssetComponentTreeNode | null;
   /** Volumes tab data (issue #221); null/absent = the actor cannot read
    * asset volumes, so the tab does not render at all. */
   volumes?: AssetVolumesData | null;
-  defaultTab?: "details" | "volumes";
+  defaultTab?: AssetDetailTab;
 }
 
 /**
- * The single shared screen behind `/assets/new` (`mode: "create"`),
- * `/assets/[id]` and `/assets/[id]/edit` (`mode: "edit"`, identical props —
- * NOT a distinct third mode; see both those routes' own `page.tsx`) — one
- * real screen, not three, mirroring `WorkOrderScreen`'s own "one screen, not
- * two" shape exactly (asset new/edit design handoff v3, superseding the
- * previous page-wide-`<form>` pass).
+ * The single shared screen behind `/assets/new` (`mode: "create"`) and
+ * `/assets/[id]` / `/assets/[id]/edit` (`mode: "edit"`) on the web design
+ * system (issue #222), built exactly like the Client page:
  *
- * Owns one flat `AssetDraft` (`./asset-draft.ts`) as the source of truth for
- * every editable field; every section reads from it and writes back through
- * `commitPatch` (`mode: "create"`'s own sections' Save, unchanged) or
- * `updateDraft` (`mode: "edit"`'s sections, on every field change — see
- * below).
+ *  - `PageHeader`: breadcrumb, human title (brand + model, falling back to the
+ *    asset ID), badges (status → warnings → type → facts → ID, max 5), ONE
+ *    Edit button (omitted without update permission; Overview only), the ···
+ *    menu (Delete), the navy primary action ("New activity") and tabs with
+ *    counts;
+ *  - centre: the active tab — Overview (ONE two-column Details card + Notes;
+ *    no related-list previews — those live only in their own tab) or a related list (Work orders,
+ *    Activities, Contracts, Volumes), each a card + FilterBar + table, and
+ *    Structure (the composition as a StructureTree);
+ *  - rail: [LivePanel] · Context · Warranty & contract · Structure (only when
+ *    part of a structure) · TIMELINE.
  *
- * `mode: "edit"` has exactly ONE editing surface across Equipment/Status &
- * warranty/Notes, not three independent ones: the hero's own pencil
- * (`AssetHero`'s `onEditHeader`, next to the status/type badges) opens all
- * three sections into their inline-edit state at once, driven by the single
- * `pageEditing` boolean below (each section's own per-section pencil is gone
- * as a natural consequence). Every field writes straight into the shared
- * `draft` on every change (`updateDraft`, passed down as each section's own
- * `onFieldChange`), and the ONE Save/Cancel pair rendered in the hero's
- * `actions` slot (replacing "New activity"/"Delete" while `pageEditing`)
- * commits the whole `draft` in a single `commitPatch` call, or discards it
- * and re-derives `draft` from the server record. The Type-required
- * validation that used to live inside `AssetEquipmentSection`'s own
- * `handleSave` now lives in this screen's own `handleEditSave`, surfaced the
- * same way `handleCreate` already surfaces its own.
- *
- * `mode: "create"` is untouched by any of the above: `equipmentEditing`/
- * `statusEditing` still start (and stay) `true` — both sections' own
- * components still refuse to close themselves in create mode (nothing exists
- * yet for their read view to source from), same "sections just accumulate
- * into local draft state" pattern `WorkOrderScreen` already establishes for
- * its own create-mode sections — and the hero's pencil still only opens
- * those two (not Notes, which was never part of the "start open" instruction
- * — see `AssetNotesSection`'s own doc comment).
+ * Editing is `useEditMode` through the existing `updateAsset` / `createAsset`
+ * actions (RBAC and RLS untouched). `mode: "create"` is the same page in new
+ * mode: Overview only, "After creating" rail, gold "Create asset".
  */
 export function AssetScreen({
   mode,
-  breadcrumbItems,
   asset,
   client = null,
   site = null,
@@ -115,67 +119,37 @@ export function AssetScreen({
   cancelHref,
   canDelete,
   canCreateActivityFromAsset,
-  workOrderCount = 0,
-  contractCount = 0,
-  activityCount = 0,
-  recentItems = [],
-  viewAllHref,
+  canCreateWorkOrder,
+  workOrders = null,
+  activities = null,
+  contractCoverage = null,
+  tree = null,
   volumes = null,
-  defaultTab = "details",
+  defaultTab = "overview",
 }: AssetScreenProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<"details" | "volumes">(defaultTab);
+  const isCreate = mode === "create";
+  const [tab, setTab] = useState<AssetDetailTab>(defaultTab);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [contractsOpen, setContractsOpen] = useState(false);
+  const [linkParent, setLinkParent] = useState<{ id: string; name: string } | null>(null);
+  const [, startTransition] = useTransition();
 
-  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
-  usePageHeader(breadcrumbNode);
-
-  const [draft, setDraft] = useState<AssetDraft>(() =>
-    asset ? draftFromAsset(asset) : emptyDraft({ lockedClientId, initialSiteId }),
-  );
-
-  // The client currently being PREVIEWED for the relation cards + the
-  // relations popup's own site picker — kept separate from `draft.clientId`
-  // so opening the popup and trying a different client updates both live,
-  // without touching the actually-saved value until Save is clicked. Same
-  // "committed vs. scoping" split `WorkOrderScreen`'s `scopingClientId` uses.
-  const [scopingClientId, setScopingClientId] = useState(draft.clientId);
-  useEffect(() => {
-    setScopingClientId(draft.clientId);
-  }, [draft.clientId]);
-  const clientScoped = useClientScopedLists(scopingClientId, !readOnly);
-
-  // The asset's own linked contracts (`contract_assets`) — needed for the
-  // Contract relation card's display even for a `readOnly` viewer (unlike
-  // Model/Equipment, there is no resolved embed on `AssetRecord` itself for
-  // this many-to-many; see `use-asset-contracts.ts`'s own doc comment).
-  const assetContracts = useAssetContracts(asset?.id, mode === "edit");
-  // The hero's "Work orders" tile hint counts TOTAL contract coverage
-  // (direct + inherited, issue #126) — inherited coverage is real coverage,
-  // not a lesser count. `contractCount` (the server-computed, direct-only
-  // prop, available on first paint before this hook's own client fetch
-  // resolves) is only the fallback while `assetContracts` is still loading,
-  // so the tile never flashes "0 contracts" before settling on the true
-  // (direct + inherited) total.
-  const resolvedContractCount = assetContracts.loading ? contractCount : assetContracts.coverage.length;
-
-  // ---- Reference data (Type/Sub-type/Brand/Model/Status + Clients) -------
+  // ---- Reference data (fetched client-side, only for someone who can edit)
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [lockedClientRecord, setLockedClientRecord] = useState<ClientRecord | null>(null);
-  const [assetTypes, setAssetTypes] = useState<ReferenceListItemRecord[]>([]);
-  const [assetStatuses, setAssetStatuses] = useState<ReferenceListItemRecord[]>([]);
-  const [assetSubtypes, setAssetSubtypes] = useState<ReferenceListItemRecord[]>([]);
-  const [assetBrands, setAssetBrands] = useState<ReferenceListItemRecord[]>([]);
-  const [assetModels, setAssetModels] = useState<AssetModelRecord[]>([]);
+  const [types, setTypes] = useState<ReferenceListItemRecord[]>([]);
+  const [statuses, setStatuses] = useState<ReferenceListItemRecord[]>([]);
+  const [subtypes, setSubtypes] = useState<ReferenceListItemRecord[]>([]);
+  const [brands, setBrands] = useState<ReferenceListItemRecord[]>([]);
+  const [models, setModels] = useState<AssetModelRecord[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(!readOnly);
 
   useEffect(() => {
-    // A `readOnly` viewer never sees a single edit affordance, so none of
-    // these lists can ever render anything — same "don't fetch what can't
-    // render" convention `use-client-scoped-lists.ts`'s own `enabled` flag
-    // documents.
+    // A `readOnly` viewer never sees an edit affordance — don't fetch what
+    // can't render. Runs once on mount (this screen mounts fresh per route).
     if (readOnly) return;
     let cancelled = false;
-    setLoadingOptions(true);
     Promise.all([
       lockedClientId ? getClient(lockedClientId) : Promise.resolve(null),
       lockedClientId ? Promise.resolve(null) : listClients({ limit: 200 }),
@@ -185,15 +159,15 @@ export function AssetScreen({
       listReferenceItems("asset_brand"),
       listAssetModels(),
     ])
-      .then(([lockedClientResult, clientsResult, typesResult, statusesResult, subtypesResult, brandsResult, modelsResult]) => {
+      .then(([lockedResult, clientsResult, typesResult, statusesResult, subtypesResult, brandsResult, modelsResult]) => {
         if (cancelled) return;
-        setLockedClientRecord(lockedClientResult?.data?.client ?? null);
+        setLockedClientRecord(lockedResult?.data?.client ?? null);
         setClients(clientsResult?.data?.clients ?? []);
-        setAssetTypes(typesResult.data?.items ?? []);
-        setAssetStatuses(statusesResult.data?.items ?? []);
-        setAssetSubtypes(subtypesResult.data?.items ?? []);
-        setAssetBrands(brandsResult.data?.items ?? []);
-        setAssetModels(modelsResult.data?.models ?? []);
+        setTypes(typesResult.data?.items ?? []);
+        setStatuses(statusesResult.data?.items ?? []);
+        setSubtypes(subtypesResult.data?.items ?? []);
+        setBrands(brandsResult.data?.items ?? []);
+        setModels(modelsResult.data?.models ?? []);
       })
       .finally(() => {
         if (!cancelled) setLoadingOptions(false);
@@ -201,301 +175,392 @@ export function AssetScreen({
     return () => {
       cancelled = true;
     };
-    // Runs once on mount only — this screen mounts fresh per navigation (a
-    // real route, not a reused Dialog instance), same reasoning
-    // `asset-form-screen.tsx`'s identical effect documented for itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const resolvedClients = lockedClientId
-    ? lockedClientRecord
-      ? [lockedClientRecord]
-      : client
-        ? [client]
-        : []
-    : clients;
+  const lists = useMemo<AssetReferenceLists>(() => {
+    const resolvedClients = lockedClientId
+      ? lockedClientRecord
+        ? [lockedClientRecord]
+        : client
+          ? [client]
+          : []
+      : clients;
+    return { clients: resolvedClients, types, subtypes, statuses, brands, models };
+  }, [lockedClientId, lockedClientRecord, client, clients, types, subtypes, statuses, brands, models]);
 
-  // ---- Section edit-open state (see this component's own doc comment) ---
-  // `pageEditing` is the ONLY editing surface for `mode: "edit"` — the three
-  // booleans below are `mode: "create"`-only (untouched by this change).
-  const [pageEditing, setPageEditing] = useState(false);
-  const [equipmentEditing, setEquipmentEditing] = useState(mode === "create");
-  const [statusEditing, setStatusEditing] = useState(mode === "create");
-  const [notesEditing, setNotesEditing] = useState(false);
+  // ---- Edit mode ------------------------------------------------------------
+  const record = useMemo<AssetDraft>(
+    () => (asset ? draftFromAsset(asset) : emptyDraft({ lockedClientId, initialSiteId })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [asset],
+  );
+  const sitesRef = useRef<SiteRecord[]>([]);
+  const schema = useMemo(
+    () =>
+      buildAssetSchema({
+        isNew: isCreate,
+        labelFor: (key, id) => {
+          switch (key) {
+            case "clientId":
+              return lists.clients.find((item) => item.id === id)?.name ?? "";
+            case "siteId": {
+              const found = sitesRef.current.find((item) => item.id === id) ?? (site?.id === id ? site : null);
+              return found ? (formatSiteAddressShort(found) ?? "") : "";
+            }
+            case "typeId":
+              return lists.types.find((item) => item.id === id)?.label ?? "";
+            case "subtypeId":
+              return lists.subtypes.find((item) => item.id === id)?.label ?? "";
+            case "brandItemId":
+              return lists.brands.find((item) => item.id === id)?.label ?? "";
+            case "statusId":
+              return lists.statuses.find((item) => item.id === id)?.label ?? "";
+            case "modelId": {
+              const model = lists.models.find((item) => item.id === id);
+              return model ? [model.brand?.label, model.name].filter(Boolean).join(" ") : "";
+            }
+          }
+        },
+      }),
+    [lists, site, isCreate],
+  );
 
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  /** `mode: "create"`'s own sections' Save call this — unchanged. `mode:
-   * "edit"`'s single page-level Save (`handleEditSave` below) also calls
-   * this, once, with the whole `draft`. */
-  async function commitPatch(patch: Partial<AssetDraft>): Promise<{ ok: boolean; error?: string }> {
-    if (mode === "edit" && asset) {
-      const result = await updateAsset(asset.id, draftToInput(patch));
-      if (!result.data) return { ok: false, error: result.error };
-      setDraft((prev) => ({ ...prev, ...patch }));
+  const createdIdRef = useRef<string | null>(null);
+  const edit = useEditMode<AssetDraft>({
+    record,
+    schema,
+    initialMode: isCreate ? "new" : "read",
+    canEdit: !isCreate && !readOnly,
+    idPrefix: "asset",
+    firstFieldKey: isCreate ? "modelId" : "name",
+    navigate: (href) => router.push(href),
+    onCancelNew: () => router.push(cancelHref ?? "/assets"),
+    onSave: async (draft, dirty) => {
+      if (isCreate) {
+        if (createdIdRef.current) {
+          router.push(`/assets/${createdIdRef.current}`);
+          return { ok: true };
+        }
+        const { result, assetId } = await createAssetFromDraft(draft);
+        if (!result.ok || !assetId) return result;
+        createdIdRef.current = assetId;
+        toast({ title: "Asset created", tone: "success", duration: 3000 });
+        router.push(`/assets/${assetId}`);
+        return { ok: true };
+      }
+      return saveAssetEdits(asset!.id, draft, dirty);
+    },
+    onSaved: () => {
+      if (isCreate) return;
+      toast({ title: "Saved", tone: "success", duration: 3000 });
       router.refresh();
-      return { ok: true };
-    }
-    setDraft((prev) => ({ ...prev, ...patch }));
-    return { ok: true };
+    },
+  });
+  const editing = edit.isEditing;
+
+  // Status is required: a new asset starts on the organization's default
+  // status (the user can change it).
+  useEffect(() => {
+    if (!isCreate || loadingOptions) return;
+    const defaultStatus = statuses.find((item) => item.is_default);
+    if (defaultStatus && !edit.draft.statusId) edit.setValue("statusId", defaultStatus.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreate, loadingOptions, statuses]);
+
+  // Sites of the draft's client (follows the Client select).
+  const clientScoped = useClientScopedLists(edit.draft.clientId, !readOnly);
+  sitesRef.current = clientScoped.sites;
+
+  // ---- Derived data ---------------------------------------------------------
+  const saved = edit.record;
+  const savedModel = saved.modelId ? models.find((item) => item.id === saved.modelId) : undefined;
+  const brandLabel =
+    brands.find((item) => item.id === saved.brandItemId)?.label ??
+    (saved.brandItemId === asset?.brand_item_id ? asset?.asset_brand?.label : undefined);
+  const modelLabel = savedModel
+    ? [savedModel.brand?.label, savedModel.name].filter(Boolean).join(" ")
+    : saved.modelId && saved.modelId === asset?.model_id
+      ? [brandLabel, asset.asset_model?.name].filter(Boolean).join(" ")
+      : "";
+  const typeLabel =
+    types.find((item) => item.id === saved.typeId)?.label ?? (saved.typeId === asset?.type_id ? asset?.asset_type?.label : "");
+  const subtypeLabel =
+    subtypes.find((item) => item.id === saved.subtypeId)?.label ??
+    (saved.subtypeId === asset?.subtype_id ? asset?.asset_subtype?.label : "");
+  const status =
+    statuses.find((item) => item.id === saved.statusId) ??
+    (saved.statusId === asset?.status_id ? asset?.asset_status : null);
+  const savedSite =
+    clientScoped.sites.find((item) => item.id === saved.siteId) ?? (site?.id === saved.siteId ? site : null);
+  const savedClientRecord = lists.clients.find((item) => item.id === saved.clientId) ?? client;
+
+  const openWorkOrders = useMemo(
+    () => (workOrders ?? []).filter((order) => !CLOSED_WORK_ORDER_STATUS_VALUES.includes(order.work_order_status?.value ?? "")),
+    [workOrders],
+  );
+  // Structure tab: when the asset is part of a composite structure, or when the
+  // user may start one (link a first component).
+  const structureCount = useMemo(() => structureSize(tree), [tree]);
+  const structure = useMemo(() => structureInfo(tree), [tree]);
+  const showStructureTab = !isCreate && (hasStructure(tree) || (!readOnly && Boolean(asset)));
+  const livePanel = useMemo(() => getLivePanel(asset, null), [asset]);
+
+  const timeline = useMemo(
+    () =>
+      asset
+        ? buildAssetTimeline({ asset, activities, workOrders, volumes })
+        : [],
+    [asset, activities, workOrders, volumes],
+  );
+
+  // ---- Tabs -----------------------------------------------------------------
+  function selectTab(next: AssetDetailTab) {
+    if (editing) return;
+    setTab(next);
+    scrollMainToTop();
+    startTransition(() => {
+      void setLastUsedView(ASSET_DETAIL_VIEW_KEY, next);
+    });
   }
 
-  /** `mode: "edit"`'s own sections' every field change calls this directly —
-   * a local-only merge, same shape `commitPatch`'s own `mode: "create"`
-   * branch already has, just never posted to the server until the page's own
-   * Save (`handleEditSave` below). */
-  function updateDraft(patch: Partial<AssetDraft>) {
-    setDraft((prev) => ({ ...prev, ...patch }));
+  const tabs = useMemo<PageHeaderTab[]>(
+    () => [
+      { id: "overview", label: "Overview" },
+      ...(isCreate
+        ? []
+        : [
+            ...(workOrders ? [{ id: "workOrders", label: "Work orders", count: workOrders.length }] : []),
+            ...(activities ? [{ id: "activities", label: "Activities", count: activities.length }] : []),
+            ...(contractCoverage ? [{ id: "contracts", label: "Contracts", count: contractCoverage.length }] : []),
+            ...(showStructureTab ? [{ id: "structure", label: "Structure", count: structureCount }] : []),
+            ...(volumes ? [{ id: "volumes", label: "Volumes" }] : []),
+          ]),
+    ],
+    [isCreate, workOrders, activities, contractCoverage, showStructureTab, structureCount, volumes],
+  );
+
+  useEffect(() => {
+    if (!tabs.some((entry) => entry.id === tab)) setTab("overview");
+  }, [tabs, tab]);
+
+  // ---- Header ---------------------------------------------------------------
+  const title = isCreate ? "New asset" : modelLabel || asset?.name || "Asset";
+
+  const badges: PageHeaderBadge[] = [];
+  if (!isCreate) {
+    if (status) {
+      badges.push({ label: status.label, variant: toneFromColor(status.color) as WebBadgeVariant });
+    }
+    if (workOrders && openWorkOrders.length > 0) {
+      badges.push({
+        label: `${openWorkOrders.length} open ${openWorkOrders.length === 1 ? "work order" : "work orders"}`,
+        variant: "warning",
+      });
+    }
+    if (contractCoverage && contractCoverage.length === 0) badges.push({ label: "No contract", variant: "warning" });
+    const typeText = [typeLabel, subtypeLabel].filter(Boolean).join(" / ");
+    if (typeText) badges.push({ label: typeText });
+    if (saved.warrantyUntil) badges.push({ label: `Warranty until ${formatDateWeb(saved.warrantyUntil)}` });
+    if (asset && asset.name !== title) badges.push({ label: asset.name, variant: "mono" });
   }
 
-  function handleEditCancel() {
-    if (asset) setDraft(draftFromAsset(asset));
-    setEditError(null);
-    setPageEditing(false);
+  const overflow: WebMenuItem[] = [];
+  if (canDelete && asset) {
+    overflow.push({ key: "delete", label: "Delete asset", danger: true, onSelect: () => setDeleteOpen(true) });
   }
 
-  async function handleEditSave() {
-    if (!draft.typeId) {
-      setEditError("Select a type.");
-      return;
+  const newActivityHref = asset ? `/activities/new?assetId=${asset.id}` : undefined;
+  const primary =
+    canCreateActivityFromAsset && newActivityHref ? (
+      <WebLinkButton href={newActivityHref} variant="primary">
+        New activity
+      </WebLinkButton>
+    ) : undefined;
+
+  const breadcrumb = isCreate
+    ? lockedClientId && client
+      ? [{ label: "Clients", href: "/clients" }, { label: client.name, href: `/clients/${client.id}` }, { label: "New asset" }]
+      : [{ label: "Assets", href: "/assets" }, { label: "New asset" }]
+    : [{ label: "Assets", href: "/assets" }, { label: asset?.name ?? "Asset", mono: true }];
+
+  const header = (
+    <PageHeader
+      breadcrumb={breadcrumb}
+      title={title}
+      badges={badges}
+      mode={edit.mode}
+      actions={{
+        canEdit: !isCreate && !readOnly && tab === "overview",
+        onEdit: edit.startEdit,
+        overflow,
+        primary,
+        onSave: () => void edit.save(),
+        onCancel: edit.requestCancel,
+        saving: edit.saving,
+        saveLabel: isCreate ? "Create asset" : "Save",
+      }}
+      tabs={tabs}
+      activeTab={tab}
+      onTabChange={(id) => selectTab(id as AssetDetailTab)}
+      tabsLabel="Asset sections"
+      editStatus={edit.status}
+    />
+  );
+
+  // ---- Rail -----------------------------------------------------------------
+  const firstContract = contractCoverage?.[0]?.contract ?? null;
+  const warrantyTerm = (() => {
+    if (savedModel) return savedModel.default_warranty_months;
+    if (saved.installedAt && saved.warrantyUntil) {
+      const from = new Date(`${saved.installedAt}T00:00:00`);
+      const to = new Date(`${saved.warrantyUntil}T00:00:00`);
+      if (!Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime()) && to > from) {
+        return Math.max(0, (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()));
+      }
     }
-    setEditError(null);
-    setSaving(true);
-    const result = await commitPatch(draft);
-    setSaving(false);
-    if (!result.ok) {
-      setEditError(result.error ?? "Could not save.");
-      return;
-    }
-    setPageEditing(false);
-  }
+    return asset?.asset_model?.default_warranty_months ?? null;
+  })();
 
-  async function handleCreate() {
-    if (!draft.siteId) {
-      setCreateError("Select a client and site.");
-      return;
-    }
-    if (!draft.typeId) {
-      setCreateError("Select a type.");
-      return;
-    }
-    setCreateError(null);
-    setCreating(true);
-    const result = await createAsset(draftToInput(draft));
-    setCreating(false);
-    if (!result.data) {
-      setCreateError(result.error ?? "Could not create this asset.");
-      return;
-    }
-    router.push(`/assets/${result.data.asset.id}`);
-  }
+  const rail = isCreate ? (
+    <SidebarSection title="After creating">
+      <p className="web-rail-empty">
+        The asset opens on its own page. Add readings, contracts, components and work orders from the tabs there.
+      </p>
+    </SidebarSection>
+  ) : (
+    <AssetRail
+      client={savedClientRecord ? { id: savedClientRecord.id, name: savedClientRecord.name } : null}
+      siteLabel={savedSite ? (formatSiteAddressShort(savedSite) ?? "Unnamed site") : null}
+      modelLabel={modelLabel || null}
+      contracts={
+        contractCoverage
+          ? {
+              first: firstContract ? (
+                <Link href={`/contracts/${firstContract.id}`}>{contractLabel(firstContract)}</Link>
+              ) : null,
+              extra: Math.max(0, contractCoverage.length - 1),
+              formLabel: firstContract?.contract_type?.label ?? null,
+            }
+          : null
+      }
+      onManageContracts={contractCoverage ? () => selectTab("contracts") : undefined}
+      warranty={{ until: saved.warrantyUntil || null, termMonths: warrantyTerm, installedAt: saved.installedAt || null }}
+      structure={structure ? { ...structure, onShow: () => selectTab("structure") } : null}
+      livePanel={livePanel}
+    />
+  );
 
-  function handleContractsChange() {
-    assetContracts.refresh();
-    router.refresh();
-  }
-
-  const stats: StatStripItem[] = useMemo(() => {
-    const resolvedModel =
-      assetModels.find((candidate) => candidate.id === draft.modelId) ??
-      (draft.modelId && asset?.model_id === draft.modelId ? asset.asset_model : null);
-    const resolvedBrandLabel =
-      assetBrands.find((candidate) => candidate.id === draft.brandItemId)?.label ??
-      (draft.brandItemId && asset?.brand_item_id === draft.brandItemId ? asset?.asset_brand?.label : undefined) ??
-      undefined;
-
-    const warrantyStart = draft.installedAt ? new Date(`${draft.installedAt}T00:00:00`).getTime() : NaN;
-    const warrantyEnd = draft.warrantyUntil ? new Date(`${draft.warrantyUntil}T00:00:00`).getTime() : NaN;
-    const warrantyProgress =
-      mode === "edit" && !Number.isNaN(warrantyStart) && !Number.isNaN(warrantyEnd) && warrantyEnd > warrantyStart
-        ? Math.min(100, Math.max(0, ((warrantyEnd - Date.now()) / (warrantyEnd - warrantyStart)) * 100))
-        : undefined;
-
-    return [
-      {
-        label: "Model",
-        value: mode === "create" ? "—" : (resolvedModel?.name ?? "—"),
-        hint: mode === "create" ? "Save the asset first" : resolvedBrandLabel,
-      },
-      {
-        label: "Serial",
-        value: mode === "create" ? "—" : draft.serialNumber || "—",
-        hint: mode === "create" ? undefined : draft.externalReference || undefined,
-      },
-      {
-        label: "Warranty",
-        value: mode === "create" ? "—" : draft.warrantyUntil ? formatDate(draft.warrantyUntil, { month: "long" }) : "—",
-        progress: warrantyProgress,
-      },
-      {
-        label: "Work orders",
-        value: mode === "create" ? "—" : String(workOrderCount),
-        hint:
-          mode === "create"
-            ? "Save the asset first"
-            : `${resolvedContractCount} ${resolvedContractCount === 1 ? "contract" : "contracts"} · ${activityCount} ${activityCount === 1 ? "activity" : "activities"}`,
-      },
-    ];
-  }, [assetModels, assetBrands, draft, asset, mode, workOrderCount, resolvedContractCount, activityCount]);
-
-  const heroActions =
-    mode === "edit" && asset ? (
-      pageEditing ? (
-        <>
-          <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </>
-      ) : (
-        <>
-          {canCreateActivityFromAsset && <CreateActivityButton assetId={asset.id} label="New activity" />}
-          {canDelete && (
-            <Button type="button" variant="danger" onClick={() => setDeleting(true)}>
-              Delete
-            </Button>
-          )}
-        </>
-      )
-    ) : (
-      <>
-        <Button type="button" variant="outline" onClick={() => router.push(cancelHref ?? "/assets")} disabled={creating}>
-          Cancel
-        </Button>
-        <Button type="button" variant="primary" onClick={handleCreate} disabled={creating}>
-          {creating ? "Saving…" : "Save asset"}
-        </Button>
-      </>
-    );
+  const ids = webTabIds(tab);
+  const refresh = () => router.refresh();
 
   return (
-    <Stack gap="lg">
-      {createError && <Text tone="danger">{createError}</Text>}
-      {editError && <Text tone="danger">{editError}</Text>}
+    <WebPage>
+      <WebDetailLayout
+        header={header}
+        rail={rail}
+        timeline={{
+          items: timeline,
+          emptyText: isCreate ? "The timeline starts once this record is created." : "No activity yet",
+        }}
+        locked={editing && !isCreate}
+        mainProps={{ role: "tabpanel", id: ids.panel, "aria-labelledby": ids.tab }}
+      >
+        {tab === "overview" && (
+          <div className="web-tab-stack">
+            <AssetOverviewCards
+              edit={edit}
+              asset={asset}
+              client={client}
+              site={site}
+              lists={lists}
+              sites={clientScoped.sites}
+              loadingOptions={loadingOptions}
+              lockedClientId={lockedClientId}
+              isNew={isCreate}
+            />
+          </div>
+        )}
 
-      <AssetHero
-        mode={mode}
-        draft={draft}
-        asset={asset}
-        client={client}
-        site={site}
-        clients={resolvedClients}
-        lockedClientId={lockedClientId}
-        clientScoped={clientScoped}
-        assetTypes={assetTypes}
-        assetStatuses={assetStatuses}
-        assetModels={assetModels}
-        assetBrands={assetBrands}
-        assetContracts={assetContracts}
-        readOnly={readOnly}
-        stats={stats}
-        actions={heroActions}
-        onClientChange={setScopingClientId}
-        onRelationsSave={commitPatch}
-        onModelSave={commitPatch}
-        onContractsChange={handleContractsChange}
-        onEditHeader={
-          readOnly
-            ? undefined
-            : mode === "edit"
-              ? pageEditing
-                ? undefined
-                : () => setPageEditing(true)
-              : () => {
-                  setEquipmentEditing(true);
-                  setStatusEditing(true);
+        {tab === "workOrders" && workOrders && asset && (
+          <WorkOrdersPanel
+            workOrders={workOrders}
+            canCreate={Boolean(canCreateWorkOrder)}
+            add={
+              canCreateWorkOrder ? (
+                <WebLinkButton
+                  size="filter"
+                  href={`/work-orders/new?clientId=${asset.client_id}&siteId=${asset.site_id}&assetId=${asset.id}`}
+                >
+                  + Work order
+                </WebLinkButton>
+              ) : undefined
+            }
+          />
+        )}
+
+        {tab === "activities" && activities && asset && (
+          <ActivitiesPanel assetId={asset.id} activities={activities} canCreate={Boolean(canCreateActivityFromAsset)} />
+        )}
+
+        {tab === "contracts" && contractCoverage && asset && (
+          <AssetContractsPanel
+            coverage={contractCoverage}
+            canManage={!readOnly}
+            onLink={() => setContractsOpen(true)}
+            onUnlink={(contractId) => {
+              void unlinkContractAsset(contractId, asset.id).then((result) => {
+                if (!result.data) {
+                  toast({
+                    title: "Contract not unlinked",
+                    description: result.error ?? "Could not unlink this contract. Try again.",
+                    tone: "danger",
+                    duration: 6000,
+                  });
+                  return;
                 }
-        }
-      />
+                toast({ title: "Contract unlinked", duration: 3000 });
+                refresh();
+              });
+            }}
+          />
+        )}
 
-      {(() => {
-        const details = (
-      <DetailColumns
-        left={
-          <Stack gap="lg">
-            <AssetEquipmentSection
-              mode={mode}
-              draft={draft}
-              asset={asset}
-              assetTypes={assetTypes}
-              assetSubtypes={assetSubtypes}
-              editing={mode === "edit" ? pageEditing : equipmentEditing}
-              onEditToggle={mode === "edit" ? undefined : setEquipmentEditing}
-              readOnly={readOnly}
-              loadingOptions={loadingOptions}
-              onSave={commitPatch}
-              onFieldChange={mode === "edit" ? updateDraft : undefined}
-            />
-            <AssetStatusWarrantySection
-              mode={mode}
-              draft={draft}
-              asset={asset}
-              assetStatuses={assetStatuses}
-              editing={mode === "edit" ? pageEditing : statusEditing}
-              onEditToggle={mode === "edit" ? undefined : setStatusEditing}
-              readOnly={readOnly}
-              loadingOptions={loadingOptions}
-              onSave={commitPatch}
-              onFieldChange={mode === "edit" ? updateDraft : undefined}
-            />
-          </Stack>
-        }
-        right={
-          <Stack gap="lg">
-            {mode === "edit" && asset && (
-              // Product-owner placement (2026-09-07): the right column,
-              // above Notes — overrides this section's earlier full-width-
-              // below-the-columns placement.
-              <AssetCompositeSection assetId={asset.id} assetName={draft.name || asset.name} readOnly={readOnly} />
-            )}
-            <AssetNotesSection
-              mode={mode}
-              draft={draft}
-              editing={mode === "edit" ? pageEditing : notesEditing}
-              onEditToggle={mode === "edit" ? undefined : setNotesEditing}
-              readOnly={readOnly}
-              onSave={commitPatch}
-              onFieldChange={mode === "edit" ? updateDraft : undefined}
-            />
-            <AssetRecentActivities items={recentItems} viewAllHref={viewAllHref} />
-            {mode === "edit" && asset && (
-              <Inline justify="between" gap="sm">
-                <Text tone="muted">Created {formatDateTime(asset.created_at, { month: "long" })}</Text>
-                <Text tone="muted">Last modified {formatDateTime(asset.updated_at, { month: "long" })}</Text>
-              </Inline>
-            )}
-          </Stack>
-        }
-      />
-        );
-        if (mode !== "edit" || !volumes) return details;
-        return (
-          <Tabs value={tab} onValueChange={(next) => setTab(next as "details" | "volumes")}>
-            <Tabs.List aria-label="Asset detail">
-              <Tabs.Tab value="details" icon={<CreditCard />}>
-                Details
-              </Tabs.Tab>
-              <Tabs.Tab value="volumes" icon={<BarChart3 />}>
-                Volumes
-              </Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="details">{details}</Tabs.Panel>
-            <Tabs.Panel value="volumes">
-              <AssetVolumesPanel volumes={volumes} />
-            </Tabs.Panel>
-          </Tabs>
-        );
-      })()}
+        {tab === "structure" && asset && (
+          <AssetStructurePanel tree={tree} canManage={!readOnly} onLink={setLinkParent} onChange={refresh} />
+        )}
 
-      {mode === "edit" && asset && deleting && (
-        <DeleteAssetDialog asset={asset} open onOpenChange={setDeleting} redirectOnDelete />
+        {tab === "volumes" && volumes && <AssetVolumesPanel volumes={volumes} />}
+      </WebDetailLayout>
+
+      <EditDiscardDialog confirm={edit.confirm} />
+
+      {!isCreate && asset && deleteOpen && (
+        <DeleteAssetDialog asset={asset} open onOpenChange={setDeleteOpen} redirectOnDelete />
       )}
-    </Stack>
+      {!isCreate && asset && contractsOpen && (
+        <AssetContractsDialog
+          open
+          onOpenChange={setContractsOpen}
+          assetId={asset.id}
+          coverage={contractCoverage ?? []}
+          loading={false}
+          clientContracts={clientScoped.contracts}
+          onChange={refresh}
+        />
+      )}
+      {!isCreate && asset && !readOnly && linkParent && (
+        <AssetCompositeManageDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setLinkParent(null);
+          }}
+          parentAssetId={linkParent.id}
+          parentAssetName={linkParent.name}
+          onChange={refresh}
+        />
+      )}
+    </WebPage>
   );
 }
+

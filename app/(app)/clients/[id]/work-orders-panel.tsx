@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { StatusText, WebDataTableCard, toneFromColor, type WebColumn } from "@yourorg/ui/web-client";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { CreateWorkOrderButton } from "@/app/(app)/work-orders/components/create-work-order-button";
@@ -8,11 +8,19 @@ import { formatDateTimeWeb } from "@/lib/format/web";
 import { CLOSED_WORK_ORDER_STATUS_VALUES } from "./client-timeline";
 
 export interface WorkOrdersPanelProps {
-  clientId: string;
+  /** Client tab: the "+ Work order" picker is pre-scoped to this client. */
+  clientId?: string;
   workOrders: WorkOrderRecord[];
   /** `can(actor, "planning", "create")` resolved once by `page.tsx` — gates
    * this tab's own "+ Work order" button. */
   canCreate: boolean;
+  /** Replaces the default "+ Work order" button (the asset page links to the
+   * create page with the asset pre-filled). */
+  add?: ReactNode;
+  /** URL param namespace (default "workorders"). */
+  urlPrefix?: string;
+  /** Overview preview: max 5 rows, "Show all" in the card head, no add. */
+  preview?: { onShowAll: () => void };
 }
 
 const isClosed = (order: WorkOrderRecord) =>
@@ -26,7 +34,14 @@ const isClosed = (order: WorkOrderRecord) =>
  * detail page; running jobs get the attention background. "+ Work order" opens
  * the same relation picker as before, client pre-filled.
  */
-export function WorkOrdersPanel({ clientId, workOrders, canCreate }: WorkOrdersPanelProps) {
+export function WorkOrdersPanel({
+  clientId,
+  workOrders,
+  canCreate,
+  add,
+  urlPrefix = "workorders",
+  preview,
+}: WorkOrdersPanelProps) {
   const columns = useMemo<WebColumn<WorkOrderRecord>[]>(
     () => [
       {
@@ -113,7 +128,7 @@ export function WorkOrdersPanel({ clientId, workOrders, canCreate }: WorkOrdersP
 
   return (
     <WebDataTableCard
-      title="Work orders"
+      title={preview ? "Recent work orders" : "Work orders"}
       meta={`${workOrders.length} · ${workOrders.filter((order) => !isClosed(order)).length} open`}
       rows={workOrders}
       getRowKey={(order) => order.id}
@@ -132,13 +147,27 @@ export function WorkOrdersPanel({ clientId, workOrders, canCreate }: WorkOrdersP
       noun="work orders"
       dropdowns={dropdowns}
       segment={segment}
-      urlPrefix="workorders"
+      urlPrefix={urlPrefix}
+      maxRows={preview ? 5 : undefined}
+      headerAction={
+        preview ? (
+          <button type="button" className="web-rail-link" onClick={preview.onShowAll}>
+            Show all
+          </button>
+        ) : undefined
+      }
+      searchShortcut={preview ? false : undefined}
       defaultSort={{ columnId: "scheduled", direction: "desc" }}
       rowHref={(order) => `/work-orders/${order.id}`}
       rowLabel={(order) => order.work_order_number}
       isAttention={(order) => order.work_order_status?.value === "in_progress"}
-      add={canCreate ? <CreateWorkOrderButton clientId={clientId} label="+ Work order" filterBar /> : undefined}
-      emptyAction={canCreate ? "Use + Work order to dispatch the first job." : undefined}
+      add={
+        preview
+          ? undefined
+          : (add ??
+            (canCreate && clientId ? <CreateWorkOrderButton clientId={clientId} label="+ Work order" filterBar /> : undefined))
+      }
+      emptyAction={canCreate && !preview ? "Use + Work order to dispatch the first job." : undefined}
     />
   );
 }

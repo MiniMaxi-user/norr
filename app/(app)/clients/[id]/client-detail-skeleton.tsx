@@ -18,9 +18,7 @@ export function ClientDetailSkeleton() {
             <div>
               <Skeleton height="2rem" width="16rem" />
               <div className="web-badge-row">
-                <Skeleton height="22px" width="4.5rem" />
-                <Skeleton height="22px" width="6rem" />
-                <Skeleton height="22px" width="7rem" />
+                <Skeleton height="22px" width="14rem" />
               </div>
             </div>
           </div>

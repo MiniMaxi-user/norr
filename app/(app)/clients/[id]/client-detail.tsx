@@ -6,6 +6,7 @@ import { toast } from "@yourorg/ui";
 import { WebButton, WebDetailLayout, WebPage, type WebBadgeVariant } from "@yourorg/ui/web";
 import {
   EditDiscardDialog,
+  scrollMainToTop,
   PageHeader,
   useEditMode,
   webTabIds,
@@ -44,6 +45,7 @@ import { ContractsPanel } from "./contracts-panel";
 import { ModulesPanel } from "./modules-panel";
 import { QuotesPanel } from "./quotes-panel";
 import { ClientRail } from "./client-rail";
+import { getLivePanel } from "./client-live-panel";
 import { CLOSED_WORK_ORDER_STATUS_VALUES, buildClientTimeline } from "./client-timeline";
 import { ActivateTenantDialog, DeactivateTenantDialog, reactivateTenant } from "./client-tenant-actions";
 import type { SiteMapPin } from "./site-map-loader";
@@ -302,6 +304,7 @@ export function ClientDetail({
   function selectTab(next: ClientDetailTab) {
     if (editing) return;
     setTab(next);
+    scrollMainToTop();
     startTransition(() => {
       void setLastUsedView(CLIENT_DETAIL_VIEW_KEY, next);
     });
@@ -428,8 +431,16 @@ export function ClientDetail({
     />
   );
 
+  // Today in Amsterdam (the app's display zone), for date-only deadlines.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(new Date());
+  const livePanel = useMemo(
+    () => getLivePanel({ quotes: quotesEnabled ? quotes : null, today }, null),
+    [quotes, quotesEnabled, today],
+  );
+
   const rail = (
     <ClientRail
+      livePanel={livePanel}
       accountManagerName={accountManagerName}
       activeContracts={contractsEnabled ? { count: activeContracts.length, value: activeContractsValue } : null}
       openWorkOrders={workOrdersEnabled ? { count: openWorkOrders.length, nextAppointment } : null}

@@ -120,6 +120,54 @@ body {
   font-family: var(--font-sans);
 }
 
+/* The browser page itself never scrolls inside the app shell (01 section 5):
+   the shell fills the window, the topbar/page header/tabs stay put and the
+   content areas below scroll on their own. Scoped with `:has(.web-shell)` so
+   the auth/marketing pages (no shell) keep their normal document scroll. */
+html:has(.web-shell),
+html:has(.web-shell) body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Thin, calm scrollbars on every scroll area of the shell - never hidden. */
+.web-shell .ui-app-layout-content,
+.web-detail-main,
+.web-detail-rail,
+.web-table-wrap,
+.web-tabs,
+.web-tree-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-disabled) transparent;
+}
+.web-shell .ui-app-layout-content::-webkit-scrollbar,
+.web-detail-main::-webkit-scrollbar,
+.web-detail-rail::-webkit-scrollbar,
+.web-table-wrap::-webkit-scrollbar,
+.web-tabs::-webkit-scrollbar,
+.web-tree-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.web-shell .ui-app-layout-content::-webkit-scrollbar-thumb,
+.web-detail-main::-webkit-scrollbar-thumb,
+.web-detail-rail::-webkit-scrollbar-thumb,
+.web-table-wrap::-webkit-scrollbar-thumb,
+.web-tabs::-webkit-scrollbar-thumb,
+.web-tree-scroll::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--text-disabled);
+}
+.web-shell .ui-app-layout-content::-webkit-scrollbar-track,
+.web-detail-main::-webkit-scrollbar-track,
+.web-detail-rail::-webkit-scrollbar-track,
+.web-table-wrap::-webkit-scrollbar-track,
+.web-tabs::-webkit-scrollbar-track,
+.web-tree-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* Visible gold focus ring on everything the new components render. The class
    list also covers the dialogs, which portal outside `.web-shell`. */
 :where(.web-btn, .web-nav-item, .web-tab, .web-menu-item, .web-topbar-search, .web-avatar-button, .web-logo-trigger):focus-visible {
@@ -154,6 +202,16 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+/* A page built on `WebPage` (every detail page) owns its scroll areas (main
+   + rail), so the content area itself must not scroll: `WebPage` fills it and
+   the detail grid below the fixed header splits the remaining height. */
+.web-shell .ui-app-layout-content:has(> .web-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .web-topbar {
@@ -309,10 +367,12 @@ body {
   align-self: stretch;
   align-items: center;
 }
+/* Floating layer: rendered in a portal on <body> with `position: fixed` and
+   coordinates computed from the trigger (see menu.tsx), so no scroll area can
+   clip it. */
 .web-menu-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  z-index: 60;
+  position: fixed;
+  z-index: 110;
   min-width: 200px;
   padding: 4px;
   background: var(--surface-card);
@@ -320,18 +380,6 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
   color: var(--text-ink);
-}
-.web-menu-popover[data-align="end"] {
-  right: 0;
-}
-.web-menu-popover[data-align="start"] {
-  left: 0;
-}
-/* A menu trigger that stretches over the full topbar height has no gap to
-   leave: the popover opens directly under the bar. */
-.web-topbar .web-menu-popover {
-  top: 100%;
-  margin-top: 0;
 }
 .web-menu-item {
   display: flex;
@@ -517,12 +565,14 @@ body {
 .web-page {
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
   margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x));
-  min-height: calc(100% + 2 * var(--ui-page-inset-y));
 }
 
 .web-page-header {
   position: relative;
+  flex: none;
   padding: 16px var(--space-page-x) 0;
   background: var(--surface-card);
   border-bottom: 1px solid var(--border-default);
@@ -533,8 +583,11 @@ body {
 }
 .web-breadcrumb ol {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   gap: var(--space-2);
   margin: 0;
   padding: 0;
@@ -545,7 +598,21 @@ body {
 .web-breadcrumb li {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: var(--space-2);
+}
+/* The record crumb (the last one, or the one before "Edit") may be truncated
+   so the header keeps its height. */
+.web-breadcrumb li:last-child,
+.web-breadcrumb li:has(+ li > [data-edit-crumb="true"]) {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.web-breadcrumb li > span:not([data-edit-crumb]),
+.web-breadcrumb li > a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .web-breadcrumb li + li::before {
   content: "/";
@@ -578,9 +645,11 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 .web-page-header-text {
+  flex: 1 1 auto;
   min-width: 0;
 }
 .web-page-header-logo {
@@ -642,33 +711,59 @@ body {
   font: 400 28px/34px var(--font-serif);
   letter-spacing: -0.01em;
   color: var(--text-ink);
-  overflow-wrap: anywhere;
+  /* One line, always: a long name is cut with an ellipsis (full text in the
+     `title` attribute) so the header is the same height in every state. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* Badge row and edit-status row are both exactly 22px and one line. */
 .web-badge-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 22px;
+  display: block;
+  height: 22px;
   margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 22px;
+}
+.web-badge-row > .web-badge {
+  vertical-align: top;
+}
+.web-badge-row > .web-badge + .web-badge {
+  margin-left: var(--space-2);
 }
 .web-edit-status {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
-  min-height: 22px;
+  height: 22px;
   margin-top: 6px;
+  overflow: hidden;
+  white-space: nowrap;
   font: 400 12.5px/17px var(--font-sans);
   color: var(--text-secondary);
 }
+.web-edit-status > * {
+  flex-shrink: 0;
+}
+.web-edit-status > .web-edit-status-problem {
+  flex-shrink: 1;
+  min-width: 0;
+}
 .web-edit-status-problem {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--danger-text);
   font-weight: 600;
+}
+.web-edit-status-problem > .web-error-mark {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 6px;
 }
 .web-edit-status-problem a {
   color: var(--danger-text);
@@ -683,6 +778,7 @@ body {
   align-items: flex-end;
   gap: 6px;
   flex-shrink: 0;
+  max-width: 50%;
 }
 .web-page-header-buttons {
   display: flex;
@@ -693,8 +789,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+  white-space: nowrap;
   font: 400 12.5px/17px var(--font-sans);
   color: var(--text-muted);
+}
+.web-page-header-owner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .web-page-header-owner .web-owner-avatar {
   display: inline-flex;
@@ -725,8 +828,15 @@ body {
   align-items: flex-end;
   gap: var(--space-tabs);
   margin-top: 14px;
+  /* Tab counters are tabular so the tabs never shift when a count changes.
+     Many tabs on a narrow window scroll sideways instead of widening the
+     page. */
+  font-variant-numeric: tabular-nums;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .web-tab {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -769,9 +879,11 @@ body {
  * Detail layout — main + 340px rail
  * ---------------------------------------------------------------------- */
 .web-detail {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
 }
 @media (max-width: 1279px) {
@@ -786,15 +898,31 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.web-detail-main {
+/* The two scroll areas of a detail page (01 section 5): the centre and the
+   rail scroll independently; the gutter is always reserved so nothing jumps
+   sideways when a scrollbar or a validation message appears. */
+.web-detail-main,
+.web-detail-rail {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.web-detail-main {
   padding: var(--space-page-y) var(--space-page-x);
   background: var(--surface-page);
 }
 .web-detail-rail {
-  min-width: 0;
   background: var(--surface-card);
   border-left: 1px solid var(--border-default);
+}
+/* Fields scrolled into view by validation keep 16px of air above them. */
+.web-field,
+.web-textarea-field,
+.web-card {
+  scroll-margin-top: 16px;
 }
 .web-detail-rail-lock {
   padding: 8px var(--space-4);
@@ -1613,4 +1741,298 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.web-progress {
+  height: 6px;
+  margin: 8px 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.web-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--success-fill);
+}
+.web-progress[data-tone="warning"] .web-progress-fill {
+  background: var(--brand-gold);
+}
+.web-progress[data-tone="danger"] .web-progress-fill {
+  background: var(--danger-fill);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Sticky FilterBar + column headers on full tables (01 section 5)
+ * ---------------------------------------------------------------------- */
+.web-dt {
+  display: contents;
+}
+.web-dt[data-sticky="true"] .web-filterbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.web-dt[data-sticky="true"] .web-table th {
+  position: sticky;
+  top: var(--web-filterbar-h, 51px);
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--border-soft);
+}
+/* Wider than the card: scroll sideways inside the card, never the page. */
+.web-table-wrap[data-scroll-x="true"] {
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------------------- *
+ * StructureTree
+ * ---------------------------------------------------------------------- */
+.web-tree {
+  --web-tree-status-w: 130px;
+  --web-tree-qty-w: 80px;
+  --web-tree-actions-w: 44px;
+}
+.web-tree-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-card);
+}
+.web-tree-head,
+.web-tree-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--web-tree-status-w) var(--web-tree-actions-w);
+  align-items: center;
+}
+.web-tree[data-quantity="true"] .web-tree-head,
+.web-tree[data-quantity="true"] .web-tree-row {
+  grid-template-columns: minmax(0, 1fr) var(--web-tree-status-w) var(--web-tree-qty-w) var(--web-tree-actions-w);
+}
+.web-tree-head {
+  padding: 7px 0 7px var(--space-card-x);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border-soft);
+}
+.web-tree-qty {
+  text-align: right;
+  font: 400 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  padding-right: 12px;
+}
+.web-tree-head .web-tree-qty {
+  font: 400 10px/14px var(--font-mono);
+}
+.web-tree-row {
+  position: relative;
+  min-height: 36px;
+  padding: 0 0 0 var(--space-card-x);
+  border-bottom: 1px solid var(--border-row);
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-ink);
+}
+.web-tree-row:hover {
+  background: var(--surface-subtle);
+}
+.web-tree-row[data-current="true"] {
+  background: var(--warning-bg);
+}
+.web-tree-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(199, 154, 62, 0.65);
+}
+.web-tree-cell {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+}
+.web-tree-cell > :not(.web-tree-guides) {
+  align-self: center;
+}
+.web-tree-guides {
+  display: flex;
+  flex-shrink: 0;
+  align-self: stretch;
+  margin-bottom: -1px;
+  margin-right: -8px;
+}
+.web-tree-guide {
+  position: relative;
+  flex: 0 0 24px;
+}
+.web-tree-guide[data-line="through"]::before,
+.web-tree-guide[data-line="tee"]::before,
+.web-tree-guide[data-line="elbow"]::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-disabled);
+}
+.web-tree-guide[data-line="elbow"]::before {
+  bottom: 50%;
+}
+.web-tree-guide[data-line="tee"]::after,
+.web-tree-guide[data-line="elbow"]::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--text-disabled);
+}
+.web-tree-chevron,
+.web-tree-chevron-space {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+.web-tree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.web-tree-chevron:hover:not(:disabled) {
+  color: var(--text-ink);
+  background: var(--surface-sunken);
+}
+.web-tree-chevron:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.web-tree-id {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 12px/16px var(--font-mono);
+  color: var(--text-link);
+  text-decoration: none;
+}
+a.web-tree-id:hover {
+  color: var(--text-ink);
+  text-decoration: underline;
+}
+.web-tree-id[data-plain="true"] {
+  color: var(--text-ink);
+}
+.web-tree-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-tree-secondary {
+  flex-shrink: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 12px/16px var(--font-mono);
+  color: var(--text-muted);
+}
+.web-tree-here {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 8px;
+  font: 600 11.5px/15px var(--font-sans);
+  color: var(--warning-text);
+  white-space: nowrap;
+}
+.web-tree-hit {
+  font-weight: 600;
+}
+.web-tree-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-tree-actions {
+  display: flex;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------------- *
+ * LivePanel
+ * ---------------------------------------------------------------------- */
+.web-live {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 13px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.web-live[data-variant="urgent"] {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.web-live-value {
+  font: 400 26px/32px var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+.web-live-context {
+  font: 400 12.5px/17px var(--font-sans);
+  color: var(--text-secondary);
+}
+.web-live-actions {
+  display: flex;
+  gap: 7px;
+}
+.web-live-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 29px;
+  padding: 0 10px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  color: var(--text-ink);
+  font: 400 12.5px/17px var(--font-sans);
+  text-decoration: none;
+  cursor: pointer;
+}
+.web-live-button[data-primary="true"] {
+  background: var(--brand-gold);
+  border-color: var(--brand-gold-border);
+  color: var(--brand-navy);
+  font-weight: 600;
+}
+.web-live-others {
+  display: block;
+  margin-top: 8px;
+}
+
+/* Rail path (StructureTree rail section): MAIN_2882 > SUB_8282 */
+.web-rail-path {
+  margin: 0 0 6px;
+  font: 400 12px/17px var(--font-mono);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.web-rail-path a {
+  color: var(--text-link);
+  text-decoration: none;
+}
+.web-rail-path a:hover {
+  color: var(--text-ink);
+  text-decoration: underline;
 }

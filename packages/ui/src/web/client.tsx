@@ -25,9 +25,15 @@ import {
 } from "./primitives";
 import { WebMenu, type WebMenuItem } from "./menu";
 import type { ConfirmState, EditStatus, FieldBinding } from "./edit-mode";
+import { scrollMainToTop } from "./scroll";
 
 export { useEditMode } from "./edit-mode";
 export { WebMenu } from "./menu";
+export { scrollMainToTop } from "./scroll";
+export { LivePanel } from "./live-panel";
+export type { LivePanelAction, LivePanelData, LivePanelVariant } from "./live-panel";
+export { StructureTree } from "./structure-tree";
+export type { StructureTreeNode, StructureTreeProps } from "./structure-tree";
 export type { WebMenuItem, WebMenuProps } from "./menu";
 export {
   FilterBar,
@@ -217,7 +223,7 @@ function EditStatusRegion({ mode, status }: { mode: "edit" | "new"; status?: Edi
   let body: ReactNode;
   if (status?.serverError) {
     body = (
-      <span className="web-edit-status-problem">
+      <span className="web-edit-status-problem" title={`Save failed: ${status.serverError}. Try again.`}>
         <span className="web-error-mark" aria-hidden="true">
           !
         </span>
@@ -227,7 +233,10 @@ function EditStatusRegion({ mode, status }: { mode: "edit" | "new"; status?: Edi
   } else if (errors.length > 0) {
     body = (
       <>
-        <span className="web-edit-status-problem">
+        <span
+          className="web-edit-status-problem"
+          title={`${errors.length} ${errors.length === 1 ? "field needs" : "fields need"} attention: ${errors.map((error) => error.label).join(" · ")}`}
+        >
           <span className="web-error-mark" aria-hidden="true">
             !
           </span>
@@ -324,6 +333,7 @@ export function PageHeader({
       const target = tabs[next];
       if (!target) return;
       onTabChange(target.id);
+      scrollMainToTop();
       requestAnimationFrame(() => document.getElementById(webTabIds(target.id).tab)?.focus());
     },
     [activeTab, editing, onTabChange, tabs],
@@ -337,7 +347,9 @@ export function PageHeader({
         <div className="web-page-header-left">
           {logo ? <div className="web-page-header-logo">{logo}</div> : null}
           <div className="web-page-header-text">
-            <h1 className="web-page-title">{title}</h1>
+            <h1 className="web-page-title" title={title}>
+              {title}
+            </h1>
             {editing ? (
               <EditStatusRegion mode={mode === "new" ? "new" : "edit"} status={editStatus} />
             ) : visibleBadges.length > 0 ? (
@@ -403,8 +415,10 @@ export function PageHeader({
               <span className="web-owner-avatar" aria-hidden="true">
                 {initialsOf(owner.name)}
               </span>
-              {owner.name}
-              {owner.role ? ` · ${owner.role}` : ""}
+              <span className="web-page-header-owner-text">
+                {owner.name}
+                {owner.role ? ` · ${owner.role}` : ""}
+              </span>
             </span>
           ) : null}
         </div>
@@ -428,7 +442,9 @@ export function PageHeader({
                 aria-disabled={editing ? "true" : undefined}
                 tabIndex={selected && !editing ? 0 : -1}
                 onClick={() => {
-                  if (!locked && !selected) onTabChange?.(tab.id);
+                  if (locked || selected) return;
+                  onTabChange?.(tab.id);
+                  scrollMainToTop();
                 }}
               >
                 {tab.label}

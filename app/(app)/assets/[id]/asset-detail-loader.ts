@@ -2,33 +2,39 @@ import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, canAny, type PermissionActor } from "@/lib/rbac/permissions";
+import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { getAsset } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
-import { countContractsForAsset } from "@/app/(app)/contracts/actions";
+import { listAssetContractCoverage } from "@/app/(app)/contracts/actions";
 import { listActivities } from "@/app/(app)/activities/actions";
-import type { RecentAssetActivityItem } from "../components/asset-recent-activities";
-import type { AssetScreenProps } from "../components/asset-screen";
+import { getAssetCompositionTree } from "../components-actions";
+import { ASSET_DETAIL_VIEW_KEY } from "../components/constants";
+import type { AssetDetailTab, AssetScreenProps } from "../components/asset-screen";
 import { getAssetVolumes } from "@/lib/asset-volumes/actions";
-import { workOrderLabel } from "@/lib/format/work-order-label";
 
-/** Both the "Recent activities" feed's row count and the per-source fetch
- * limit — five of each source is plenty to always have five real rows after
- * merging/sorting/truncating (`[id]/page.tsx`/`edit/page.tsx` never need
- * more than this many for a summary feed, unlike the module's own paginated
- * list views). */
-const RECENT_ITEMS_LIMIT = 5;
+/** High enough for "every work order/activity of this asset" in one request —
+ * an asset page is a bounded, per-record view (same convention the client
+ * detail page uses for its own tabs). */
+const ALL_ASSET_ROWS_LIMIT = 500;
+
+const TAB_IDS: AssetDetailTab[] = ["overview", "workOrders", "activities", "contracts", "structure", "volumes"];
 
 /**
  * Shared data-fetching + RBAC gating behind `/assets/[id]` and
  * `/assets/[id]/edit` — both routes render the exact same `AssetScreen` with
- * the exact same props (asset new/edit design handoff v3: "not a distinct
- * mode, just another route rendering it"), so this is the one place that
- * logic lives rather than being duplicated across both `page.tsx` files.
+ * the exact same props, so this is the one place that logic lives.
+ *
+ * Every related list (work orders, activities, contract coverage, volumes) is
+ * fetched only when its module is entitled AND the actor may read it —
+ * resolved here, before anything renders, so a tab the tenant/role can't use
+ * never exists (not merely disabled). The composition tree is part of the
+ * `assets` module itself.
  */
 export async function loadAssetScreenProps(
   id: string,
-): Promise<Omit<AssetScreenProps, "breadcrumbItems" | "cancelHref">> {
+  requestedTab?: string,
+): Promise<Omit<AssetScreenProps, "cancelHref">> {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
   if (!(await hasFeature(session.organization, "assets"))) notFound();
@@ -47,55 +53,63 @@ export async function loadAssetScreenProps(
   const canEdit = can(actor, "assets", "update") || can(actor, "assets", "update_own");
   const canDelete = can(actor, "assets", "delete");
 
-  // "New activity" entry point (issue #59) — a separately-entitled module,
-  // gated the same way every other cross-module surface on this page is
-  // (checked here, before rendering, not just disabled).
+  const activitiesEnabled = await hasFeature(session.organization, "activities");
   const canCreateActivityFromAsset =
-    (await hasFeature(session.organization, "activities")) &&
-    canAccessModule(actor, "activities") &&
-    canAny(actor, "activities", ["create", "create_own"]);
+    activitiesEnabled && canAccessModule(actor, "activities") && canAny(actor, "activities", ["create", "create_own"]);
+  const canSeeActivities =
+    activitiesEnabled && canAccessModule(actor, "activities") && canAny(actor, "activities", ["read", "read_own"]);
 
+  const planningEnabled = await hasFeature(session.organization, "planning");
   const canSeeWorkOrders =
-    (await hasFeature(session.organization, "planning")) &&
-    canAccessModule(actor, "planning") &&
-    canAny(actor, "planning", ["read", "read_own"]);
+    planningEnabled && canAccessModule(actor, "planning") && canAny(actor, "planning", ["read", "read_own"]);
+  const canCreateWorkOrder = planningEnabled && canAccessModule(actor, "planning") && can(actor, "planning", "create");
+
   const canSeeContracts =
     (await hasFeature(session.organization, "contracts")) &&
     canAccessModule(actor, "contracts") &&
     canAny(actor, "contracts", ["read"]);
-  const activitiesEnabled = await hasFeature(session.organization, "activities");
-  const canSeeActivities =
-    activitiesEnabled && canAccessModule(actor, "activities") && canAny(actor, "activities", ["read", "read_own"]);
 
   // Volumes tab (issue #221): part of the `assets` feature (checked above);
   // only rendered when the actor can read asset_volumes.
   const canSeeVolumes = canAny(actor, "asset_volumes", ["read", "read_own"]);
 
-  const [workOrdersResult, contractCountResult, activitiesResult, volumesResult] = await Promise.all([
-    canSeeWorkOrders ? listWorkOrders({ assetId: asset.id, limit: RECENT_ITEMS_LIMIT }) : Promise.resolve(null),
-    canSeeContracts ? countContractsForAsset(asset.id) : Promise.resolve(null),
-    canSeeActivities ? listActivities({ assetId: asset.id, limit: RECENT_ITEMS_LIMIT }) : Promise.resolve(null),
+  const [workOrdersResult, coverageResult, activitiesResult, volumesResult, treeResult, lastUsedTab] = await Promise.all([
+    canSeeWorkOrders ? listWorkOrders({ assetId: asset.id, limit: ALL_ASSET_ROWS_LIMIT }) : Promise.resolve(null),
+    canSeeContracts ? listAssetContractCoverage(asset.id) : Promise.resolve(null),
+    canSeeActivities ? listActivities({ assetId: asset.id, limit: ALL_ASSET_ROWS_LIMIT }) : Promise.resolve(null),
     canSeeVolumes ? getAssetVolumes(asset.id) : Promise.resolve(null),
+    getAssetCompositionTree(asset.id),
+    preferencesStore.getLastUsedView(session.userId, ASSET_DETAIL_VIEW_KEY),
   ]);
 
-  const recentItems: RecentAssetActivityItem[] = [
-    ...(activitiesResult?.data?.activities ?? []).map((activity) => ({
-      key: `activity-${activity.id}`,
-      kind: "activity" as const,
-      href: `/activities/${activity.id}`,
-      title: activity.description,
-      date: activity.reported_at,
-    })),
-    ...(workOrdersResult?.data?.workOrders ?? []).map((workOrder) => ({
-      key: `workorder-${workOrder.id}`,
-      kind: "workorder" as const,
-      href: `/work-orders/${workOrder.id}`,
-      title: workOrderLabel(workOrder),
-      date: workOrder.scheduled_at ?? workOrder.created_at,
-    })),
-  ]
-    .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-    .slice(0, RECENT_ITEMS_LIMIT);
+  const volumes = volumesResult?.data ?? null;
+  const workOrders = canSeeWorkOrders ? (workOrdersResult?.data?.workOrders ?? []) : null;
+  const activities = canSeeActivities ? (activitiesResult?.data?.activities ?? []) : null;
+  const contractCoverage = canSeeContracts ? (coverageResult?.data?.coverage ?? []) : null;
+
+  // `?tab=` (explicit deep link, e.g. `?tab=volumes`) beats the last-used-view
+  // cookie; either falls back to Overview when that tab does not exist for
+  // this actor.
+  const available = (rawTab: string | null | undefined): AssetDetailTab | null => {
+    // "components" is the legacy value (tab renamed to Structure) that an old
+    // last-used-view cookie may still hold.
+    const tab = rawTab === "components" ? "structure" : rawTab;
+    if (!tab || !TAB_IDS.includes(tab as AssetDetailTab)) return null;
+    switch (tab as AssetDetailTab) {
+      case "workOrders":
+        return workOrders ? "workOrders" : null;
+      case "activities":
+        return activities ? "activities" : null;
+      case "contracts":
+        return contractCoverage ? "contracts" : null;
+      case "volumes":
+        return volumes ? "volumes" : null;
+      case "structure":
+        return "structure";
+      default:
+        return "overview";
+    }
+  };
 
   return {
     mode: "edit",
@@ -105,15 +119,12 @@ export async function loadAssetScreenProps(
     readOnly: !canEdit,
     canDelete,
     canCreateActivityFromAsset,
-    workOrderCount: workOrdersResult?.data?.count ?? 0,
-    contractCount: contractCountResult?.data?.count ?? 0,
-    activityCount: activitiesResult?.data?.count ?? 0,
-    recentItems,
-    volumes: volumesResult?.data ?? null,
-    // The asset's own client's Activities tab isn't asset-filtered (that tab
-    // has no `?assetId=` scoping of its own today), but it's the closest
-    // honest destination — `/assets/[id]` itself has no tabs to link into,
-    // per this component's own doc comment.
-    viewAllHref: canSeeActivities ? `/clients/${asset.client_id}?tab=activities` : undefined,
+    canCreateWorkOrder,
+    workOrders,
+    activities,
+    contractCoverage,
+    tree: treeResult.data?.tree ?? null,
+    volumes,
+    defaultTab: available(requestedTab) ?? available(lastUsedTab) ?? "overview",
   };
 }
