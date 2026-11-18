@@ -40,6 +40,16 @@ function optionalText(max: number) {
   return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
 }
 
+/** Blank string / `null` => `null` ("clear this field"); `undefined` stays
+ * "not provided". Update-only (see `activityUpdateSchema`). */
+function blankToNull(value: unknown): unknown {
+  return value === null || (typeof value === "string" && value.trim() === "") ? null : value;
+}
+
+function clearable<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(blankToNull, schema.nullable().optional());
+}
+
 function optionalUuid(message: string) {
   return z.preprocess(emptyToUndefined, z.string().uuid(message).optional());
 }
@@ -165,7 +175,19 @@ export type ActivityCreateInput = z.infer<typeof activityCreateSchema>;
  * would carry over the "at least one of clientId/assetId" refinement, which
  * makes no sense for a partial edit that may touch neither field. Built from
  * `activityBaseSchema` (the plain object, pre-refinement) instead. */
-export const activityUpdateSchema = activityBaseSchema.partial();
+export const activityUpdateSchema = activityBaseSchema.partial().extend({
+  // Blank / `null` clears the optional field (the detail page's Edit mode must
+  // be able to empty Asset, Contact person, the contact overrides and
+  // Solution); `undefined` still means "not provided". `toActivityUpdateRow`
+  // in `actions.ts` already maps `null` to the column's `null`. Create keeps
+  // the base shape (blank => omitted).
+  assetId: clearable(z.string().uuid("Invalid asset id.")),
+  contactPersonId: clearable(z.string().uuid("Invalid contact person.")),
+  contactName: clearable(z.string().trim().max(200)),
+  contactPhone: clearable(z.string().trim().max(50)),
+  contactEmail: clearable(z.string().trim().email("Invalid email address.").max(320)),
+  solution: clearable(z.string().trim().max(5000)),
+});
 
 export type ActivityUpdateInput = z.infer<typeof activityUpdateSchema>;
 

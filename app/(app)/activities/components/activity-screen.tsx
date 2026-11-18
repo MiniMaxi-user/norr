@@ -1,155 +1,120 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, DetailColumns, Stack, Text, type BreadcrumbItem } from "@yourorg/ui";
-import { createActivity, updateActivity, type ActivityRecord } from "../actions";
+import { toast } from "@yourorg/ui";
+import { SidebarSection, WebDetailLayout, WebPage, type WebBadgeVariant, type WebBreadcrumbItem } from "@yourorg/ui/web";
+import {
+  EditDiscardDialog,
+  PageHeader,
+  scrollMainToTop,
+  toneFromColor,
+  useEditMode,
+  webTabIds,
+  type PageHeaderBadge,
+  type PageHeaderTab,
+  type WebMenuItem,
+} from "@yourorg/ui/web-client";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
-import type { OrgMemberRecord } from "@/lib/members/actions";
-import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
-import type { ActivityNoteRecord } from "../notes-actions";
+import type { OrgMemberRecord } from "@/lib/members/actions";
+import { memberDisplayName } from "@/lib/members/format";
+import { setLastUsedView } from "@/lib/preferences/actions";
+import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import type { ActivityRecord } from "../actions";
 import type { ActivityEventRecord } from "../history-actions";
-import type { ActivitySubtypeRecord } from "../subtypes-actions";
+import type { ActivityNoteRecord } from "../notes-actions";
 import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
-import { findActivitySubtype, flattenActivitySubtypes, topActivitySubtypeAncestorId } from "../subtype-tree";
-import { usePageHeader } from "@/components/shell/page-header-context";
-import { ActivityDetailActions } from "../[id]/activity-detail-actions";
-import { ActivityHero } from "./activity-hero";
-import { ActivityTypeSection } from "./activity-type-section";
-import { ActivityAssignmentSection } from "./activity-assignment-section";
-import { ActivitySolutionSection } from "./activity-solution-section";
-import { ActivityNotesSection } from "./activity-notes-section";
-import { ActivityContactSection } from "./activity-contact-section";
-import { ActivityLinkedWorkOrders } from "./activity-linked-work-orders";
-import { ActivityHistorySection } from "./activity-history-section";
+import { flattenSolutionSubtypes } from "../solution-subtype-tree";
+import type { ActivitySubtypeRecord } from "../subtypes-actions";
+import { flattenActivitySubtypes } from "../subtype-tree";
+import { ACTIVITY_DETAIL_VIEW_KEY } from "./constants";
+import { draftFromActivity, emptyDraft, type ActivityDraft } from "./activity-draft";
+import { buildActivitySchema, createActivityFromDraft, saveActivityEdits } from "./activity-form-schema";
+import { ActivityNotesPanel } from "./activity-notes-panel";
+import { ActivityOverviewCards } from "./activity-overview-cards";
+import { ActivityRail } from "./activity-rail";
+import { buildActivityTimeline } from "./activity-timeline";
+import { ActivityWorkOrdersPanel } from "./activity-work-orders-panel";
+import { DeleteActivityDialog } from "./delete-activity-dialog";
 import { useClientScopedActivityLists } from "./use-client-scoped-activity-lists";
-import { draftFromActivity, draftToInput, emptyDraft, type ActivityDraft } from "./activity-draft";
+
+export type ActivityDetailTab = "overview" | "notes" | "workorders";
 
 export interface ActivityScreenProps {
   mode: "create" | "edit";
-  /** Built by the server `page.tsx` and pushed into the Topbar via
-   * `usePageHeader` below — never rendered inline in the page body, matching
-   * `client-detail.tsx`/`WorkOrderScreen`'s own pattern. */
-  breadcrumbItems: BreadcrumbItem[];
+  breadcrumbItems: WebBreadcrumbItem[];
 
   /** Required for `mode: "edit"`. */
   activity?: ActivityRecord;
   client?: ClientRecord | null;
   asset?: AssetRecord | null;
+  /** No update permission: the Edit button is omitted entirely. */
   readOnly?: boolean;
   clients: ClientRecord[];
   activityTypes: ReferenceListItemRecord[];
   activityStatuses: ReferenceListItemRecord[];
-  /** The org's whole flat Activity Subtype tree (issues #134/#138) — fetched
-   * once by `[id]/page.tsx`/`new/page.tsx`, same pattern every other
-   * reference list here follows. Threaded down to
-   * `ActivityAssignmentSection`'s own `SubtypeCascadePicker`, and used here
-   * (via `subtype-tree.ts`'s helpers) for the Type-changed-clears-subtype
-   * effect in `updateDraft` below. */
+  /** The org's whole flat Activity / Solution Subtype trees. */
   activitySubtypes: ActivitySubtypeRecord[];
-  /** Same shape as `activitySubtypes`, for `solution_subtypes` — never
-   * Type-scoped, so `updateDraft` below has no equivalent auto-clear for it. */
   solutionSubtypes: SolutionSubtypeRecord[];
   members: OrgMemberRecord[];
-  /** Locks the Action holder select to the caller's own id — see
-   * `getActivityFormContext` in `../actions.ts`. */
+  /** Locks Action holder to the caller (an engineer). */
   canAssignOthers: boolean;
   lockedClientId?: string;
   lockedAssetId?: string;
-  /** `mode: "create"` only — pins "Action holder" for a caller who can't
-   * assign others (an engineer, `create_own` only), resolved server-side by
-   * `new/page.tsx`. */
+  /** `mode: "create"` only — pins Action holder for a caller who can't assign others. */
   initialActionHolderId?: string;
   cancelHref?: string;
 
+  // ---- edit-mode only ----
   canDelete?: boolean;
-  /** `can(actor, "planning", "create")`, gated behind the `planning` feature
-   * being entitled/accessible for this actor at all (issue #87). Consumed by
-   * the "Linked work orders" section's own "+ Work order" button (issue
-   * #118 moved it there from the deleted standalone `CreateWorkOrderCallout`
-   * card). `mode: "edit"` only. */
+  /** `can(actor, "planning", "create")`, gated behind the planning module. */
   canCreateWorkOrder?: boolean;
-  /** `listWorkOrders({ sourceActivityId: activity.id })`'s result, fetched by
-   * `[id]/page.tsx` only when the actor can read the `planning` module at
-   * all — `undefined` (not merely empty) skips rendering the section
-   * entirely, same "don't fetch/render what can't render" convention every
-   * other conditional section in this app follows. */
+  /** `undefined` = the caller cannot read planning: no Work orders tab. */
   linkedWorkOrders?: WorkOrderRecord[];
-  /** `listActivityNotes(activity.id)`'s result — `mode: "edit"` only, always
-   * fetched by `[id]/page.tsx` for any caller who can view the activity at
-   * all (see that page's own comment for the gate). `undefined` in
-   * `mode: "create"` (nothing to fetch yet). */
   notes?: ActivityNoteRecord[];
-  /** `listActivityEvents(activity.id)`'s result — same `mode: "edit"`-only
-   * shape as `notes` above. */
   events?: ActivityEventRecord[];
+  defaultTab?: ActivityDetailTab;
+}
+
+const STATUS_BADGE: Record<string, WebBadgeVariant> = {
+  success: "success",
+  warning: "warning",
+  danger: "danger",
+  info: "info",
+  neutral: "neutral",
+};
+
+/** First line of the description is the human name of the activity. */
+function activityTitle(description: string, typeLabel: string | undefined, isCreate: boolean) {
+  if (isCreate) return "New activity";
+  const line = description
+    .split("\n")
+    .map((part) => part.trim())
+    .find(Boolean);
+  return line || typeLabel || "Activity";
 }
 
 /**
- * The single shared screen behind both `/activities/new` (`mode: "create"`)
- * and the activity detail page (`mode: "edit"`) — mirrors
- * `app/(app)/work-orders/components/work-order-screen.tsx`'s own "one real
- * screen, not two" shape (issue #89), applied to Activities by issue #118
- * (replacing the old `ActivityFormPanel` slide-in, see
- * `docs/ARCHITECTURE.md`'s "Popup vs. full page" section for the history).
+ * The single shared screen behind `/activities/new` (`mode: "create"`) and
+ * `/activities/[id]` (`mode: "edit"`) on the web design system (issue #222),
+ * built like the Work order and Article pages:
  *
- * *** Issue #118 *** rebuilt the body onto Pattern A's two-column
- * `DetailColumns` layout (`.design-handoff/melding_detail/README.md`): Type/
- * Assignment/Notes on the left, Contact person/Linked work orders/Historie
- * on the right — replacing the old single-column stack of just Assignment +
- * a standalone `CreateWorkOrderCallout` card.
+ *  - `PageHeader`: short id (mono) in the breadcrumb, the first line of the
+ *    description as title, badges (status → type → activity subtype), ONE Edit
+ *    button (Overview only, omitted without update permission), the ··· menu
+ *    (Delete) and tabs with counts, the action holder as owner line. No navy
+ *    primary and no LivePanel: an activity has no deadline, SLA or timer, and
+ *    status is a plain editable field;
+ *  - centre: Overview (ONE two-column Details card + Description / Solution)
+ *    or a related list: Notes (feed), Work orders (card + FilterBar + table);
+ *  - rail: Reported · Object · TIMELINE.
  *
- * *** Issue #152 *** split Solution + Solution subtype out of Assignment
- * into their own `ActivitySolutionSection`, rendered right below Assignment
- * in that same left column (`mode: "edit"` only — nothing to solve on a
- * brand-new activity), and laid each subtype picker side by side with its
- * paired free-text field (`FormGrid`) instead of stacked above it.
- *
- * *** Issue #133 *** ("Aanpassing Activity") replaced the old "every section
- * auto-saves the instant it's touched, no page-wide Save/Cancel" design: every
- * field now writes straight into the shared `draft` (`updateDraft`, passed
- * down as each section's own `onFieldChange`), and one Save/Cancel pair in
- * the hero's `actions` slot commits (or discards) the whole accumulated
- * `draft` in one shot.
- *
- * A same-day follow-up (still issue #133) then dropped the header-pencil/
- * `pageEditing` toggle this originally shipped with (`ArticleScreen`'s own
- * single-header-pencil model, still the right fit for Articles/Assets/
- * Clients) — the product owner wants Activities to have no separate read-vs-
- * edit mode at all: every gated field (Type/Description/Solution/Contact-
- * person) is now simply ALWAYS rendered as its editable input for anyone who
- * can write at all (`editing={!readOnly}` passed to each section below,
- * replacing the old `pageEditing`-driven `sectionEditing`), and a genuinely
- * `readOnly` viewer (no update permission whatsoever) gets the same plain
- * read view each section already had for that case. There is no header
- * pencil anymore (`ActivityHero`'s own `onEditHeader` was removed along with
- * it) — Save/Cancel are the only editing-related controls left in the hero.
- *
- * The Save/Cancel pair's visibility is gated on `isDirty` (a real "did
- * anything actually change" flag) — set by every field-change path through
- * `updateDraft` and cleared on Cancel or a successful Save. Action holder
- * (and, per the same follow-up, Status too — see `ActivityAssignmentSection`'s
- * own doc comment) live as always-editable inline controls right in that
- * section, no different from every other field now that there's no edit-mode
- * gate left to be an exception to.
- *
- * The Client/Asset/Contract/Contact-person `RelationCard`s are UNTOUCHED by
- * issue #133 (same "cards keep their own pencil" precedent `ArticleScreen`'s
- * module comment documents for Articles/Assets/Clients) — they keep
- * committing immediately through `commitPatch` below, exactly as before. The
- * Status badge's own pencil/dialog, by contrast, IS gone (moved into
- * `ActivityAssignmentSection` as a plain draft field, no longer a card-style
- * instant-save popup) — the hero still shows the status as a read-only badge
- * for at-a-glance context, same as the Type badge already does.
- *
- * `mode: "create"` needs none of the above: every section there is already
- * effectively "always live" (nothing to gate before the record even exists),
- * so it just writes straight into the shared `draft` via the same
- * `updateDraft`/`onFieldChange` plumbing, with no network call until the
- * hero's own "Create activity" action fires `createActivity` with the whole
- * accumulated draft and navigates to the new record.
+ * Editing is `useEditMode` through the existing `updateActivity` /
+ * `createActivity` actions (RBAC, DB triggers and RLS untouched). `mode:
+ * "create"` is the same page in new mode: Overview only, gold "Create
+ * activity", pre-scoped through `?clientId=` / `?assetId=`.
  */
 export function ActivityScreen({
   mode,
@@ -172,282 +137,235 @@ export function ActivityScreen({
   canDelete,
   canCreateWorkOrder,
   linkedWorkOrders,
-  notes,
-  events,
+  notes = [],
+  events = [],
+  defaultTab = "overview",
 }: ActivityScreenProps) {
   const router = useRouter();
+  const isCreate = mode === "create";
+  const [tab, setTab] = useState<ActivityDetailTab>(defaultTab);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [, startTransition] = useTransition();
 
-  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
-  usePageHeader(breadcrumbNode);
+  const flatActivitySubtypes = useMemo(() => flattenActivitySubtypes(activitySubtypes), [activitySubtypes]);
+  const flatSolutionSubtypes = useMemo(() => flattenSolutionSubtypes(solutionSubtypes), [solutionSubtypes]);
 
-  const [draft, setDraft] = useState<ActivityDraft>(() =>
-    activity
-      ? draftFromActivity(activity)
-      : emptyDraft({ lockedClientId, lockedAssetId, initialActionHolderId }),
+  // ---- Edit mode ------------------------------------------------------------
+  const record = useMemo<ActivityDraft>(
+    () => (activity ? draftFromActivity(activity) : emptyDraft({ lockedClientId, lockedAssetId, initialActionHolderId })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activity],
   );
 
-  // Set by every field-change path through `updateDraft` below — the Save/
-  // Cancel pair in the hero's `actions` slot renders whenever this is `true`.
-  // Cleared on Cancel and on a successful Save.
-  const [isDirty, setIsDirty] = useState(false);
+  // Labels for "Changed · was …" messages come from whatever is loaded.
+  const scopedRef = useRef<ReturnType<typeof useClientScopedActivityLists> | null>(null);
+  const schema = useMemo(
+    () =>
+      buildActivitySchema({
+        typeValueFor: (typeId) => activityTypes.find((item) => item.id === typeId)?.value ?? "",
+        labelFor: (key, id) => {
+          switch (key) {
+            case "clientId":
+              return clients.find((item) => item.id === id)?.name ?? (client?.id === id ? client.name : "");
+            case "assetId":
+              return scopedRef.current?.assets.find((item) => item.id === id)?.name ?? (asset?.id === id ? asset.name : "");
+            case "typeId":
+              return activityTypes.find((item) => item.id === id)?.label ?? "";
+            case "statusId":
+              return activityStatuses.find((item) => item.id === id)?.label ?? "";
+            case "contactPersonId":
+              return scopedRef.current?.contacts.find((item) => item.id === id)?.name ?? "";
+            case "actionHolderId":
+              return memberDisplayName(members.find((item) => item.id === id));
+            case "activitySubtypeId":
+              return flatActivitySubtypes.find((item) => item.id === id)?.path ?? "";
+            case "solutionSubtypeId":
+              return flatSolutionSubtypes.find((item) => item.id === id)?.path ?? "";
+          }
+        },
+      }),
+    [clients, client, asset, activityTypes, activityStatuses, members, flatActivitySubtypes, flatSolutionSubtypes],
+  );
 
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  // The client currently being PREVIEWED for the relation cards + the
-  // relations dialog's own asset/contact pickers — kept separate from
-  // `draft.clientId` so opening the dialog and trying a different client
-  // updates both live, without touching the actually-saved value until Save
-  // is clicked. Self-heals back to `draft.clientId` the moment that value
-  // legitimately changes — same pattern `WorkOrderScreen`'s own
-  // `scopingClientId` uses.
-  const [scopingClientId, setScopingClientId] = useState(draft.clientId);
-  useEffect(() => {
-    setScopingClientId(draft.clientId);
-  }, [draft.clientId]);
-  const clientScoped = useClientScopedActivityLists(scopingClientId, !readOnly);
-
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  /** The Client/Asset/Contract/Contact-person `RelationCard`s' own small
-   * `ActivityRelationsDialog` popup still calls this directly, UNCHANGED by
-   * issue #133 (out of scope — see this component's own doc comment):
-   * `mode: "edit"` persists immediately (`updateActivity`) and refreshes the
-   * server-rendered data; `mode: "create"` only ever merges into local draft
-   * state. Deliberately does NOT set `isDirty` — that popup already has its
-   * own Save/Cancel and persists (or discards) on its own, independent of
-   * the page's own Save. */
-  async function commitPatch(patch: Partial<ActivityDraft>): Promise<{ ok: boolean; error?: string }> {
-    if (mode === "edit" && activity) {
-      const result = await updateActivity(activity.id, draftToInput(patch));
-      if (!result.data) return { ok: false, error: result.error };
-      setDraft((prev) => ({ ...prev, ...patch }));
-      router.refresh();
-      return { ok: true };
-    }
-    setDraft((prev) => ({ ...prev, ...patch }));
-    return { ok: true };
-  }
-
-  // The org's whole flat Activity Subtype tree, pre-flattened once (issues
-  // #134/#138) — `updateDraft` below walks this to answer "does the
-  // currently-picked Activity subtype's root ancestor still match the
-  // Activity Type the user just picked".
-  const flatActivitySubtypes = useMemo(() => flattenActivitySubtypes(activitySubtypes), [activitySubtypes]);
-
-  /** Every OTHER section's own field change calls this directly — a
-   * local-only merge into the shared `draft`, never posted to the server
-   * until `mode: "edit"`'s own page-wide Save (`handleEditSave` below) or
-   * `mode: "create"`'s "Create activity" (`handleCreate` below). Always
-   * marks the draft dirty, in both modes — harmless in `mode: "create"`
-   * (nothing reads `isDirty` there; Cancel/Create render unconditionally).
-   *
-   * *** Type-changed-clears-subtype (issues #134/#138) ***: this is the one
-   * place that sees both `typeId` and `activitySubtypeId` changes together,
-   * so it's where the "Activity Type changed, so the old Activity subtype
-   * pick may no longer be valid" reset belongs — rather than leaving a stale,
-   * now-invalid subtype silently sitting in the draft until a rejected Save
-   * surfaces the DB's own root-type-match check (`activityUpdateSchema`'s
-   * `activitySubtypeId` cross-check in `../schema.ts`). Only fires when
-   * `typeId` is ACTUALLY changing (not merely present in the patch) and a
-   * subtype is currently picked; walks the picked subtype's root ancestor
-   * (`topActivitySubtypeAncestorId`) and compares ITS `typeId` (only a root
-   * ever carries one) against the newly-picked `typeId` — a mismatch clears
-   * `activitySubtypeId` back to `""` in the very same patch. */
-  function updateDraft(patch: Partial<ActivityDraft>) {
-    setDraft((prev) => {
-      const next = { ...prev, ...patch };
-      if (patch.typeId !== undefined && patch.typeId !== prev.typeId && next.activitySubtypeId) {
-        const rootId = topActivitySubtypeAncestorId(flatActivitySubtypes, next.activitySubtypeId);
-        const root = findActivitySubtype(flatActivitySubtypes, rootId);
-        if (!root || root.typeId !== next.typeId) {
-          next.activitySubtypeId = "";
+  const createdIdRef = useRef<string | null>(null);
+  const edit = useEditMode<ActivityDraft>({
+    record,
+    schema,
+    initialMode: isCreate ? "new" : "read",
+    canEdit: !isCreate && !readOnly,
+    idPrefix: "activity",
+    firstFieldKey: isCreate ? (lockedClientId || lockedAssetId ? "typeId" : "clientId") : "statusId",
+    navigate: (href) => router.push(href),
+    onCancelNew: () => router.push(cancelHref ?? "/activities"),
+    onSave: async (draft, dirty) => {
+      if (isCreate) {
+        if (createdIdRef.current) {
+          router.push(`/activities/${createdIdRef.current}`);
+          return { ok: true };
         }
+        const { result, activityId } = await createActivityFromDraft(draft);
+        if (!result.ok || !activityId) return result;
+        createdIdRef.current = activityId;
+        toast({ title: "Activity created", tone: "success", duration: 3000 });
+        router.push(`/activities/${activityId}`);
+        return { ok: true };
       }
-      return next;
+      return saveActivityEdits(activity!.id, draft, dirty);
+    },
+    onSaved: () => {
+      if (isCreate) return;
+      toast({ title: "Saved", tone: "success", duration: 3000 });
+      router.refresh();
+    },
+  });
+  const editing = edit.isEditing;
+
+  // Assets/contacts/contracts of the draft's client.
+  const clientScoped = useClientScopedActivityLists(edit.draft.clientId, editing);
+  scopedRef.current = clientScoped;
+
+  // ---- Derived data ---------------------------------------------------------
+  const saved = edit.record;
+  const status =
+    activityStatuses.find((item) => item.id === saved.statusId) ??
+    (saved.statusId === activity?.status_id ? activity?.activity_status : null);
+  const typeItem =
+    activityTypes.find((item) => item.id === saved.typeId) ??
+    (saved.typeId === activity?.type_id ? activity?.activity_type : null);
+  const subtypeName = flatActivitySubtypes.find((item) => item.id === saved.activitySubtypeId)?.name ??
+    (saved.activitySubtypeId === activity?.activity_subtype_id ? activity?.activity_subtype?.name : undefined);
+  const holder = saved.actionHolderId ? members.find((item) => item.id === saved.actionHolderId) : undefined;
+  const isDone = status?.value === "completed";
+
+  const timeline = useMemo(() => (activity ? buildActivityTimeline({ events, notes }) : []), [activity, events, notes]);
+
+  // ---- Tabs -----------------------------------------------------------------
+  function selectTab(next: ActivityDetailTab) {
+    if (editing) return;
+    setTab(next);
+    scrollMainToTop();
+    startTransition(() => {
+      void setLastUsedView(ACTIVITY_DETAIL_VIEW_KEY, next);
     });
-    setIsDirty(true);
   }
 
-  function handleEditCancel() {
-    if (!activity) return;
-    setDraft(draftFromActivity(activity));
-    setEditError(null);
-    setIsDirty(false);
+  const showNotesTab = !isCreate && Boolean(activity) && (!readOnly || notes.length > 0);
+  const showWorkOrdersTab = !isCreate && linkedWorkOrders !== undefined;
+
+  const tabs = useMemo<PageHeaderTab[]>(
+    () => [
+      { id: "overview", label: "Overview" },
+      ...(showNotesTab ? [{ id: "notes", label: "Notes", count: notes.length }] : []),
+      ...(showWorkOrdersTab ? [{ id: "workorders", label: "Work orders", count: linkedWorkOrders?.length ?? 0 }] : []),
+    ],
+    [showNotesTab, showWorkOrdersTab, notes.length, linkedWorkOrders],
+  );
+
+  useEffect(() => {
+    if (!tabs.some((entry) => entry.id === tab)) setTab("overview");
+  }, [tabs, tab]);
+
+  // ---- Header ---------------------------------------------------------------
+  const title = activityTitle(saved.description, typeItem?.label, isCreate);
+
+  const badges: PageHeaderBadge[] = [];
+  if (!isCreate) {
+    if (status) badges.push({ label: status.label, variant: STATUS_BADGE[toneFromColor(status.color)] ?? "neutral" });
+    if (typeItem) badges.push({ label: typeItem.label });
+    if (subtypeName) badges.push({ label: subtypeName });
   }
 
-  async function handleEditSave() {
-    if (!activity) return;
-    if (!draft.description.trim()) {
-      setEditError("Description is required.");
-      return;
-    }
-    setEditError(null);
-    setSaving(true);
-    const result = await updateActivity(activity.id, draftToInput(draft));
-    setSaving(false);
-    if (!result.data) {
-      const fieldMessages = Object.values(result.fieldErrors ?? {})
-        .flatMap((messages) => messages ?? [])
-        .filter(Boolean);
-      setEditError(
-        fieldMessages.length > 0
-          ? fieldMessages.join(" ")
-          : result.error ?? "Could not save.",
-      );
-      return;
-    }
-    router.refresh();
-    setIsDirty(false);
+  const overflow: WebMenuItem[] = [];
+  if (canDelete && activity) {
+    overflow.push({ key: "delete", label: "Delete activity", danger: true, onSelect: () => setDeleteOpen(true) });
   }
 
-  async function handleCreate() {
-    if (!draft.typeId) {
-      setCreateError("Select an activity type.");
-      return;
-    }
-    if (!draft.clientId && !draft.assetId) {
-      setCreateError("Select a client or an asset.");
-      return;
-    }
-    if (!draft.description.trim()) {
-      setCreateError("Description is required.");
-      return;
-    }
-    setCreateError(null);
-    setCreating(true);
-    const result = await createActivity(draftToInput(draft));
-    setCreating(false);
-    if (!result.data) {
-      setCreateError(result.error ?? "Could not create this activity.");
-      return;
-    }
-    router.push(`/activities/${result.data.activity.id}`);
-  }
+  const header = (
+    <PageHeader
+      breadcrumb={breadcrumbItems}
+      title={title}
+      badges={badges}
+      mode={edit.mode}
+      actions={{
+        canEdit: !isCreate && !readOnly && tab === "overview",
+        onEdit: edit.startEdit,
+        overflow,
+        onSave: () => void edit.save(),
+        onCancel: edit.requestCancel,
+        saving: edit.saving,
+        saveLabel: isCreate ? "Create activity" : "Save",
+      }}
+      owner={holder ? { name: memberDisplayName(holder), role: "Action holder" } : null}
+      tabs={tabs}
+      activeTab={tab}
+      onTabChange={(id) => selectTab(id as ActivityDetailTab)}
+      tabsLabel="Activity sections"
+      editStatus={edit.status}
+    />
+  );
 
-  const heroActions =
-    mode === "edit" && activity ? (
-      isDirty ? (
-        <>
-          <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </>
-      ) : (
-        <ActivityDetailActions activity={activity} canDelete={Boolean(canDelete)} />
-      )
+  // ---- Rail -----------------------------------------------------------------
+  const rail =
+    isCreate || !activity ? (
+      <SidebarSection title="After creating">
+        <p className="web-rail-empty">Notes and work orders open on the activity&apos;s own page once it is created.</p>
+      </SidebarSection>
     ) : (
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push(cancelHref ?? "/activities")}
-          disabled={creating}
-        >
-          Cancel
-        </Button>
-        <Button type="button" variant="primary" onClick={handleCreate} disabled={creating}>
-          {creating ? "Creating…" : "Create activity"}
-        </Button>
-      </>
+      <ActivityRail activity={activity} assetRecord={asset?.id === saved.assetId ? asset : null} isDone={isDone} />
     );
 
-  // Notes section render gate (issue #118 — see `ActivityNotesSection`'s own
-  // doc comment for the full reasoning): a read-only viewer with zero notes
-  // never sees an empty "Notes" section, but anyone who can actually add one
-  // always does, even before the first note exists.
-  const showNotes = mode === "edit" && Boolean(activity) && (!readOnly || (notes?.length ?? 0) > 0);
-
-  // Drives Type/Description/Solution/Contact-person between their read and
-  // editable states — always "editable" for anyone who can write at all
-  // (there is no separate edit-mode toggle anymore, per issue #133's
-  // follow-up: "standaard openen als Edit, read-only scherm is niet meer
-  // nodig"); a genuinely `readOnly` viewer (no update permission whatsoever)
-  // still gets each section's own plain read view.
-  const sectionEditing = !readOnly;
+  const ids = webTabIds(tab);
 
   return (
-    <Stack gap="lg">
-      {createError && <Text tone="danger">{createError}</Text>}
-      {editError && <Text tone="danger">{editError}</Text>}
+    <WebPage>
+      <WebDetailLayout
+        header={header}
+        rail={rail}
+        timeline={{
+          items: timeline,
+          emptyText: isCreate ? "The timeline starts once this record is created." : "No activity yet",
+        }}
+        locked={editing && !isCreate}
+        mainProps={{ role: "tabpanel", id: ids.panel, "aria-labelledby": ids.tab }}
+      >
+        {tab === "overview" && (
+          <ActivityOverviewCards
+            edit={edit}
+            activity={activity}
+            client={client}
+            asset={asset}
+            clients={clients}
+            clientScoped={clientScoped}
+            activityTypes={activityTypes}
+            activityStatuses={activityStatuses}
+            activitySubtypes={flatActivitySubtypes}
+            solutionSubtypes={flatSolutionSubtypes}
+            members={members}
+            canAssignOthers={canAssignOthers}
+            lockedClientId={lockedClientId}
+            lockedAssetId={lockedAssetId}
+            isNew={isCreate}
+          />
+        )}
 
-      <ActivityHero
-        mode={mode}
-        draft={draft}
-        activity={activity}
-        client={client}
-        asset={asset}
-        clients={clients}
-        activityTypes={activityTypes}
-        activityStatuses={activityStatuses}
-        lockedClientId={lockedClientId}
-        lockedAssetId={lockedAssetId}
-        clientScoped={clientScoped}
-        readOnly={readOnly}
-        actions={heroActions}
-        onClientChange={setScopingClientId}
-        onRelationsSave={commitPatch}
-      />
+        {tab === "notes" && activity && showNotesTab && (
+          <ActivityNotesPanel activityId={activity.id} notes={notes} readOnly={readOnly} />
+        )}
 
-      <DetailColumns
-        left={
-          <>
-            <ActivityTypeSection
-              typeId={draft.typeId}
-              activityTypes={activityTypes}
-              editing={sectionEditing}
-              onFieldChange={updateDraft}
-            />
+        {tab === "workorders" && activity && showWorkOrdersTab && (
+          <ActivityWorkOrdersPanel
+            activityId={activity.id}
+            workOrders={linkedWorkOrders ?? []}
+            canCreate={Boolean(canCreateWorkOrder)}
+          />
+        )}
+      </WebDetailLayout>
 
-            <ActivityAssignmentSection
-              mode={mode}
-              draft={draft}
-              activity={activity}
-              members={members}
-              canAssignOthers={canAssignOthers}
-              activityStatuses={activityStatuses}
-              activitySubtypes={activitySubtypes}
-              typeId={draft.typeId}
-              editing={sectionEditing}
-              readOnly={readOnly}
-              onFieldChange={updateDraft}
-            />
+      <EditDiscardDialog confirm={edit.confirm} />
 
-            {mode === "edit" && (
-              <ActivitySolutionSection
-                draft={draft}
-                activity={activity}
-                solutionSubtypes={solutionSubtypes}
-                editing={sectionEditing}
-                onFieldChange={updateDraft}
-              />
-            )}
-
-            {showNotes && activity && (
-              <ActivityNotesSection activityId={activity.id} notes={notes ?? []} readOnly={readOnly} />
-            )}
-          </>
-        }
-        right={
-          <>
-            <ActivityContactSection draft={draft} editing={sectionEditing} onFieldChange={updateDraft} />
-
-            {mode === "edit" && activity && linkedWorkOrders !== undefined && (
-              <ActivityLinkedWorkOrders
-                activity={activity}
-                workOrders={linkedWorkOrders}
-                canCreateWorkOrder={canCreateWorkOrder}
-              />
-            )}
-
-            {mode === "edit" && events !== undefined && <ActivityHistorySection events={events} />}
-          </>
-        }
-      />
-    </Stack>
+      {!isCreate && activity && deleteOpen && (
+        <DeleteActivityDialog activity={activity} open onOpenChange={setDeleteOpen} redirectOnDelete />
+      )}
+    </WebPage>
   );
 }

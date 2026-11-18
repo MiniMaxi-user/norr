@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { canAccessModule, canAny, can, type PermissionActor } from "@/lib/rbac/permissions";
+import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { getActivity } from "../actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { getAsset } from "@/app/(app)/assets/actions";
@@ -12,37 +13,33 @@ import { listActivityNotes } from "../notes-actions";
 import { listActivityEvents } from "../history-actions";
 import { listActivitySubtypes } from "../subtypes-actions";
 import { listSolutionSubtypes } from "../solution-subtype-actions";
-import { ActivityScreen } from "../components/activity-screen";
+import { ACTIVITY_DETAIL_VIEW_KEY } from "../components/constants";
+import { ActivityScreen, type ActivityDetailTab } from "../components/activity-screen";
+
+const TAB_IDS: ActivityDetailTab[] = ["overview", "notes", "workorders"];
 
 export const metadata = { title: "Activity" };
 
 interface ActivityDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=notes` etc. deep-links straight to a tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /**
  * Activity detail page — renders the same shared `ActivityScreen`
  * (`../components/activity-screen.tsx`, `mode="edit"`) that `/activities/new`
- * renders with `mode="create"`, mirroring `app/(app)/work-orders/[id]/page.tsx`
- * exactly (issue #89's pattern, applied to Activities by issue #118). No
- * separate `/activities/[id]/edit` route — every field is directly
- * inline-editable right here (issue #133's follow-up: no read-vs-edit mode
- * toggle, every gated field just always renders as its editable input for a
- * writer), except the Client/Asset/Contact-person relation cards, which
- * still edit through their own small `ActivityRelationsDialog` popup.
+ * renders with `mode="create"` (web design system, issue #222). Overview +
+ * Notes / Work orders tabs; one Edit button for a caller with update rights.
  *
- * Replaces the old `ActivityFormPanel` (`Dialog size="panel"`, deleted) —
- * see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section for the full
- * history of why Activities carved out of, and issue #118 back into, the
- * standard top-level-module-gets-a-real-page rule.
- *
- * `readOnly` (exactly `!canEdit` below) hides every Edit affordance across
- * the hero/sections for a `finance`/`administratie` viewer (plain `read`) —
- * never a 404, never a disabled-but-technically-interactive control RLS
- * would just reject.
+ * `readOnly` (exactly `!canEdit` below) omits the Edit button and every other
+ * write affordance for a `finance`/`administratie` viewer (plain `read`) —
+ * never a 404, never a disabled-but-technically-interactive control RLS would
+ * just reject.
  */
-export default async function ActivityDetailPage({ params }: ActivityDetailPageProps) {
+export default async function ActivityDetailPage({ params, searchParams }: ActivityDetailPageProps) {
   const { id } = await params;
+  const { tab: requestedTab } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -64,16 +61,13 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
   // than re-fetches.
   const canAssignOthers = can(actor, "activities", "create");
 
-  // "Create work order" call to action (issue #87) — gated on the
-  // (separately-entitled) `planning` module, same pattern
-  // `app/(app)/activities/page.tsx` already uses.
+  // "+ Work order" (issue #87) — gated on the (separately-entitled) `planning`
+  // module, same pattern `app/(app)/activities/page.tsx` already uses.
   const planningEnabled = await hasFeature(session.organization, "planning");
   const canAccessPlanning = planningEnabled && canAccessModule(actor, "planning");
   const canCreateWorkOrder = canAccessPlanning && can(actor, "planning", "create");
-  // "Linked work orders" section (issue #118) — only fetched/rendered for a
-  // caller who can read the `planning` module at all, same "don't
-  // fetch/render what can't render" convention every other conditional
-  // section in this app follows.
+  // Work orders tab (issue #118) — only fetched/rendered for a caller who can
+  // read the `planning` module at all.
   const canViewWorkOrders = canAccessPlanning && canAny(actor, "planning", ["read", "read_own"]);
 
   const [
@@ -88,6 +82,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
     workOrdersResult,
     notesResult,
     eventsResult,
+    lastUsedTab,
   ] = await Promise.all([
     getClient(activity.client_id),
     activity.asset_id ? getAsset(activity.asset_id) : Promise.resolve(null),
@@ -95,25 +90,18 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
     listReferenceItems("activity_type"),
     listReferenceItems("activity_status"),
     // Activity/Solution subtype trees (issues #134/#138) — fetched once
-    // server-side, same "fetch once, pass down" pattern every other reference
-    // list here follows, always fetched for any caller who can view the
-    // activity at all (not gated behind `canEdit`, same as Notes/Historie
-    // below — a read-only viewer's plain read view still needs these to
-    // resolve a path, though today it only shows `activity_subtype`'s own
-    // shallow `name`).
+    // server-side, always for any caller who can view the activity.
     listActivitySubtypes(),
     listSolutionSubtypes(),
-    // Client picker — skipped for a read-only viewer, same "don't fetch
-    // what can't render" reasoning `[id]/page.tsx`'s Work Orders sibling
-    // already documents for its own `canEdit`-gated fetches.
+    // Client picker — skipped for a read-only viewer ("don't fetch what can't
+    // render").
     canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
     canViewWorkOrders ? listWorkOrders({ sourceActivityId: activity.id }) : Promise.resolve(null),
-    // Notes/Historie (issue #118) — always fetched for any caller who can
-    // view the activity at all (the same `canAny(actor, "activities",
-    // ["read", "read_own"])` gate `getActivity` above already enforces),
-    // unlike the `canEdit`/`canViewWorkOrders`-gated fetches above.
+    // Notes/history — always fetched for any caller who can view the activity
+    // at all (the same gate `getActivity` above already enforces).
     listActivityNotes(activity.id),
     listActivityEvents(activity.id),
+    preferencesStore.getLastUsedView(session.userId, ACTIVITY_DETAIL_VIEW_KEY),
   ]);
 
   const client = clientResult.data?.client ?? null;
@@ -128,11 +116,26 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
   const notes = notesResult.data?.notes ?? [];
   const events = eventsResult.data?.events ?? [];
 
+  // `?tab=` (explicit deep link) beats the last-used-view cookie; either
+  // falls back to Overview when that tab does not exist for this actor.
+  const available = (tab: string | null | undefined): ActivityDetailTab | null => {
+    if (!tab || !TAB_IDS.includes(tab as ActivityDetailTab)) return null;
+    if (tab === "workorders") return linkedWorkOrders === undefined ? null : "workorders";
+    if (tab === "notes") return canEdit || notes.length > 0 ? "notes" : null;
+    return tab as ActivityDetailTab;
+  };
+
   return (
     <ActivityScreen
       key={activity.updated_at}
       mode="edit"
-      breadcrumbItems={[{ label: "Activities", href: "/activities" }, { label: activity.activity_type?.label ?? "Activity" }]}
+      breadcrumbItems={[
+        { label: "Activities", href: "/activities" },
+        // Activities have no number: a short id fragment stands in (same
+        // placeholder the linked work-order rows used before).
+        { label: `ACT-${activity.id.slice(0, 8).toUpperCase()}`, mono: true },
+      ]}
+      defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
       activity={activity}
       client={client}
       asset={asset}

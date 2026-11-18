@@ -1,9 +1,8 @@
-import { RouteLoading } from "@/components/shell/route-loading";
+import { ClientDetailSkeleton } from "@/app/(app)/clients/[id]/client-detail-skeleton";
 
-// Route-level Suspense fallback (issue #140) for `/activities/[id]` — this
-// detail page has no bespoke skeleton of its own, so it uses the shared
-// minimal fallback (see `components/shell/route-loading.tsx`) rather than a
-// new hand-built layout skeleton.
+// Route-level Suspense fallback (issue #140) for `/activities/[id]` — the
+// shaped detail-page skeleton of the web design system (issue #222): white
+// header, key/value cards, rail. Same layout classes as the real page.
 export default function ActivityDetailLoading() {
-  return <RouteLoading />;
+  return <ClientDetailSkeleton />;
 }

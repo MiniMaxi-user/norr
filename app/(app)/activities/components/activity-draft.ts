@@ -1,15 +1,12 @@
 import type { ActivityRecord } from "../actions";
 
 /**
- * An activity's own editable fields, as one flat draft object — same
- * single-source-of-truth shape `WorkOrderDraft` (`app/(app)/work-orders/components/work-order-draft.ts`)
- * established for the "one screen, inline-editable, no separate edit route"
- * pattern (issue #89, applied to Activities by issue #118). `ActivityScreen`
- * owns this; `ActivityHero`/`ActivityRelationsDialog`/`ActivityAssignmentSection`
- * all read from it and write back through `ActivityScreen`'s own
- * `commitPatch`/`updateDraft`.
+ * An activity's editable fields as one flat draft of strings — the raw-input
+ * shape `useEditMode` works with (design system, issue #222). `""` means
+ * "unset" for every optional field. A `type` alias (not an interface) so it is
+ * assignable to the edit-mode record.
  */
-export interface ActivityDraft {
+export type ActivityDraft = {
   clientId: string;
   assetId: string;
   typeId: string;
@@ -19,32 +16,15 @@ export interface ActivityDraft {
   contactPhone: string;
   contactEmail: string;
   description: string;
-  /** How this melding was resolved (issue #121) — `mode: "edit"` only, see
-   * `ActivityAssignmentSection`'s own doc comment. Always `""` (never
-   * populated) in `mode: "create"`, mirroring every other field with no
-   * create-time entry point. */
+  /** How the activity was resolved — edit only (nothing to solve yet on a new one). */
   solution: string;
-  /** `""` means "unassigned" — same optional-uuid convention every other
-   * optional-uuid draft field here already uses (`contactPersonId`, etc.).
-   * Owner/planner may leave this unset (issue #133 — Action holder is no
-   * longer required); an engineer's own create/update always pins it
-   * server-side regardless of what's sent (`createActivity`/`updateActivity`
-   * in `../actions.ts`). */
+  /** `""` = unassigned. An engineer's own create/update is pinned server-side. */
   actionHolderId: string;
-  /** The single deepest `activity_subtypes` node picked via the 3-level
-   * cascading `SubtypeCascadePicker` (issues #134/#138), above Description.
-   * `""` = none picked — same optional-uuid convention as every other
-   * optional-uuid draft field here. Needs the SAME `"" -> null` `draftToInput`
-   * treatment `actionHolderId` got (see that function's own doc comment) —
-   * `""` here means "the user explicitly cleared their pick" (e.g. via the
-   * cascade's own reset control, or the Activity-Type-changed auto-clear in
-   * `activity-screen.tsx`), not "this field wasn't touched". */
+  /** The deepest `activity_subtypes` node picked (any level). */
   activitySubtypeId: string;
-  /** Same shape as `activitySubtypeId` above, for `solution_subtypes` — above
-   * Solution. `mode: "edit"` only in practice (Solution itself is), but the
-   * field always exists on the draft like every other field here. */
+  /** The deepest `solution_subtypes` node picked (any level). */
   solutionSubtypeId: string;
-}
+};
 
 export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
   return {
@@ -65,19 +45,11 @@ export function draftFromActivity(activity: ActivityRecord): ActivityDraft {
 }
 
 export function emptyDraft(options: {
-  /** Pre-scopes (and hides the picker for) a single client — mirrors
-   * `WorkOrderDraft`'s `emptyDraft`'s `lockedClientId`. When `lockedAssetId`
-   * is also set, `new/page.tsx` has already resolved this to that asset's own
-   * `client_id` (an asset's own client is always the source of truth — see
-   * that page's own doc comment) before it ever reaches here, so it's used
-   * as-is either way — the Client relation card would otherwise render empty
-   * even though the client is already known and locked. */
+  /** Pre-scopes (and locks) the client — `?clientId=` / the asset's own client. */
   lockedClientId?: string;
+  /** Pre-scopes (and locks) the asset — `?assetId=`. */
   lockedAssetId?: string;
-  /** Pins "Action holder" for a caller who can't assign others (mirrors the
-   * old panel's `canAssignOthers` pinning) — never combined with a real
-   * pre-fill from another record, since Activities (unlike Work Orders) are
-   * never themselves created "from" another entity. */
+  /** Pins "Action holder" for a caller who can't assign others (an engineer). */
   initialActionHolderId?: string;
 }): ActivityDraft {
   return {
@@ -97,43 +69,30 @@ export function emptyDraft(options: {
   };
 }
 
-/** Converts a draft (or a partial patch of one) into the shape
- * `createActivity`/`updateActivity` (`../actions.ts`) expect — empty-string
- * "unset" values become `undefined` (not sent) rather than an empty string
- * that would fail the schema's `uuid()` shape check. `description` is the one
- * exception (always sent as-is, even `""`, since it's a plain required string
- * field, not an optional uuid).
- *
- * `actionHolderId` is a SECOND exception (issue #133 bugfix): `""` there
- * means the caller explicitly picked the Action holder `<Select>`'s
- * "Unassigned" option, not merely "this field wasn't touched" — collapsing
- * it to `undefined` like every other optional-uuid field made a real
- * unassign silently no-op, since `undefined` is exactly what a field being
- * absent from a partial patch already looks like. Converts to `null` instead,
- * which `activityBaseSchema`'s own `actionHolderId` schema now accepts as a
- * distinct value ("clear it") from `undefined` ("don't touch it") — see that
- * field's own doc comment in `../schema.ts`.
- *
- * `activitySubtypeId`/`solutionSubtypeId` (issues #134/#138) get the SAME
- * treatment, for the same reason: `""` there means the user explicitly
- * cleared their cascade pick (the picker's own reset control, or the
- * Activity-Type-changed auto-clear in `activity-screen.tsx`), not "untouched"
- * — collapsing it to `undefined` here would make exactly the same "clear my
- * pick" action silently no-op that bit `actionHolderId`. Both schema fields
- * are `.nullable()` for the same "`null` clears, `undefined` don't touch"
- * reason (`../schema.ts`). */
+/**
+ * Converts a draft (or a partial patch of one) into the input
+ * `createActivity`/`updateActivity` expect. Blank optional fields are sent as
+ * `""`: the create schema drops them, the update schema turns them into
+ * `null` (clear). The four nullable pickers (action holder, both subtypes)
+ * send an explicit `null` for "cleared", never `undefined` ("don't touch").
+ */
 export function draftToInput(patch: Partial<ActivityDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
-  if (patch.clientId !== undefined) input.clientId = patch.clientId || undefined;
-  if (patch.assetId !== undefined) input.assetId = patch.assetId || undefined;
-  if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
-  if (patch.statusId !== undefined) input.statusId = patch.statusId || undefined;
-  if (patch.contactPersonId !== undefined) input.contactPersonId = patch.contactPersonId || undefined;
-  if (patch.contactName !== undefined) input.contactName = patch.contactName || undefined;
-  if (patch.contactPhone !== undefined) input.contactPhone = patch.contactPhone || undefined;
-  if (patch.contactEmail !== undefined) input.contactEmail = patch.contactEmail || undefined;
-  if (patch.description !== undefined) input.description = patch.description;
-  if (patch.solution !== undefined) input.solution = patch.solution;
+  const copy = [
+    "clientId",
+    "assetId",
+    "typeId",
+    "statusId",
+    "contactPersonId",
+    "contactName",
+    "contactPhone",
+    "contactEmail",
+    "description",
+    "solution",
+  ] as const;
+  for (const key of copy) {
+    if (patch[key] !== undefined) input[key] = patch[key];
+  }
   if (patch.actionHolderId !== undefined) input.actionHolderId = patch.actionHolderId === "" ? null : patch.actionHolderId;
   if (patch.activitySubtypeId !== undefined) {
     input.activitySubtypeId = patch.activitySubtypeId === "" ? null : patch.activitySubtypeId;

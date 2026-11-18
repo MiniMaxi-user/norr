@@ -1134,6 +1134,34 @@ html:has(.web-shell) body {
   padding: 10px var(--space-card-x);
 }
 
+/* Feed of short free-text entries inside a card (activity notes): the text,
+   then a muted "Author · date" byline; rows separated by a hairline. */
+.web-note-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.web-note {
+  padding: 11px var(--space-card-x);
+  border-bottom: 1px solid var(--border-row);
+}
+.web-note:last-child {
+  border-bottom: 0;
+}
+.web-note-text {
+  margin: 0;
+  max-width: var(--text-measure);
+  font: 400 13.5px/22px var(--font-sans);
+  color: var(--text-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.web-note-meta {
+  margin: 2px 0 0;
+  font: 400 12px/17px var(--font-sans);
+  color: var(--text-muted);
+}
+
 .web-kv {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
