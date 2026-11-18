@@ -14,7 +14,7 @@ export interface CreateWorkOrderButtonProps {
   clientId?: string;
   label?: string;
   /** Every client in scope for the picker's own Client `<Select>` —
-   * `work-orders-screen.tsx`'s already-fetched `clients` list. Omitted
+   * `work-orders-list.tsx`'s already-fetched `clients` list. Omitted
    * (defaults to empty) when `clientId` is set, since the picker hides that
    * field entirely once locked to a single client. */
   clients?: ClientRecord[];
@@ -28,6 +28,9 @@ export interface CreateWorkOrderButtonProps {
    * text, no icon) instead of the standard `Button` — used by the
    * related-list tabs of a detail page (issue #222). */
   filterBar?: boolean;
+  /** `primary`: the list page header's navy WebButton (issue #222); `link`:
+   * the empty state's inline text link. */
+  webStyle?: "primary" | "link";
 }
 
 /**
@@ -47,12 +50,20 @@ export interface CreateWorkOrderButtonProps {
  * the mandatory relations before dropping the user into that unchanged
  * screen for the actual Save.
  */
-export function CreateWorkOrderButton({ clientId, label, clients = [], size, filterBar }: CreateWorkOrderButtonProps) {
+export function CreateWorkOrderButton({ clientId, label, clients = [], size, filterBar, webStyle }: CreateWorkOrderButtonProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <>
-      {filterBar ? (
+      {webStyle === "primary" ? (
+        <WebButton variant="primary" onClick={() => setPickerOpen(true)}>
+          {label ?? "New work order"}
+        </WebButton>
+      ) : webStyle === "link" ? (
+        <button type="button" className="web-rail-link" onClick={() => setPickerOpen(true)}>
+          {label ?? "New work order"}
+        </button>
+      ) : filterBar ? (
         <WebButton size="filter" onClick={() => setPickerOpen(true)}>
           {label ?? "New work order"}
         </WebButton>

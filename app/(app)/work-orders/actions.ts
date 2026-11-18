@@ -271,8 +271,30 @@ export interface ListWorkOrdersOptions {
   /** Filters OUT work orders whose `status_id` is one of these (issue #207,
    * the overview's catch-all Orders tab). An empty array excludes nothing. */
   excludeStatusIds?: string[];
+  /**
+   * List-page filters (web design system list shell, issue #222). All
+   * optional and additive — other callers are unaffected.
+   * `search` matches work order number, external reference, description, the
+   * client name, the status/priority label and any assignee in
+   * `searchAssigneeIds` (the page resolves member names to ids, since members
+   * are not queryable from here).
+   */
+  search?: string;
+  searchAssigneeIds?: string[];
+  priorityId?: string;
+  /** Sort column; unknown values fall back to the default queue order. */
+  sort?: "work_order_number" | "scheduled_at";
+  direction?: "asc" | "desc";
+  /** When true, the result also carries `unfilteredCount`: every work order
+   * the caller can see, before any filter, for the "3 of 12" count. */
+  withUnfilteredCount?: boolean;
   limit?: number;
   offset?: number;
+}
+
+/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()%*\\"':]/g, " ").replace(/ +/g, " ").trim().slice(0, 80);
 }
 
 /**
@@ -296,8 +318,9 @@ export interface ListWorkOrdersOptions {
  */
 export async function listWorkOrders(
   options: ListWorkOrdersOptions = {},
-): Promise<ActionResult<{ workOrders: WorkOrderRecord[]; count: number }>> {
+): Promise<ActionResult<{ workOrders: WorkOrderRecord[]; count: number; unfilteredCount?: number }>> {
   for (const [label, value] of [
+    ["priority id filter", options.priorityId],
     ["client id filter", options.clientId],
     ["site id filter", options.siteId],
     ["asset id filter", options.assetId],
@@ -319,6 +342,9 @@ export async function listWorkOrders(
   }
   for (const id of [...(options.statusIds ?? []), ...(options.excludeStatusIds ?? [])]) {
     if (!uuidSchema.safeParse(id).success) return fail("Invalid status id filter.");
+  }
+  for (const id of options.searchAssigneeIds ?? []) {
+    if (!uuidSchema.safeParse(id).success) return fail("Invalid assignee filter.");
   }
 
   const ctx = await requireModuleContext("planning");
@@ -348,14 +374,59 @@ export async function listWorkOrders(
   if (options.excludeStatusIds?.length) {
     query = query.not("status_id", "in", `(${options.excludeStatusIds.join(",")})`);
   }
-  query = query
-    .order("scheduled_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+  if (options.priorityId) query = query.eq("priority_id", options.priorityId);
 
-  const { data, error, count } = await query;
+  const term = sanitizeSearchTerm(options.search ?? "");
+  if (term) {
+    // Client / status / priority label are other tables: resolve their
+    // matches first and fold the ids into the same `or()`.
+    const [clientMatches, itemMatches] = await Promise.all([
+      supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(100),
+      supabase.from("reference_list_items").select("id").ilike("label", `%${term}%`).limit(100),
+    ]);
+    const ids = (rows: { id: string }[] | null) => (rows ?? []).map((row) => row.id);
+    const clientIds = ids(clientMatches.data);
+    const itemIds = ids(itemMatches.data);
+    const assigneeIds = options.searchAssigneeIds ?? [];
+    query = query.or(
+      [
+        `work_order_number.ilike.%${term}%`,
+        `external_reference.ilike.%${term}%`,
+        `description.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+        ...(itemIds.length > 0 ? [`status_id.in.(${itemIds.join(",")})`, `priority_id.in.(${itemIds.join(",")})`] : []),
+        ...(assigneeIds.length > 0 ? [`assigned_to.in.(${assigneeIds.join(",")})`] : []),
+      ].join(","),
+    );
+  }
+
+  if (options.sort === "work_order_number") {
+    query = query
+      .order("work_order_number", { ascending: options.direction !== "desc" })
+      .order("created_at", { ascending: false });
+  } else if (options.sort === "scheduled_at") {
+    query = query
+      .order("scheduled_at", { ascending: options.direction !== "desc", nullsFirst: false })
+      .order("created_at", { ascending: false });
+  } else {
+    query = query
+      .order("scheduled_at", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false });
+  }
+  query = query.range(offset, offset + limit - 1);
+
+  const [{ data, error, count }, unfiltered] = await Promise.all([
+    query,
+    options.withUnfilteredCount
+      ? supabase.from("work_orders").select("id", { count: "exact", head: true })
+      : Promise.resolve(null),
+  ]);
   if (error) return fail(mapDbError(error));
-  return ok({ workOrders: (data ?? []) as WorkOrderRecord[], count: count ?? 0 });
+  return ok({
+    workOrders: (data ?? []) as WorkOrderRecord[],
+    count: count ?? 0,
+    ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
+  });
 }
 
 export async function getWorkOrder(id: string): Promise<ActionResult<{ workOrder: WorkOrderRecord }>> {
