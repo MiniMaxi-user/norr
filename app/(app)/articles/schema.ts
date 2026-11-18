@@ -18,12 +18,26 @@ function emptyToUndefined(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? undefined : value;
 }
 
+/** Blank string / `null` => `null` ("clear this field"); `undefined` stays
+ * "not provided, don't touch it". Lets the detail page's Edit mode empty an
+ * optional field (MPN, EAN, GTIN, photo URL, manufacturer, group, prices):
+ * `toArticleInsertRow`/`toArticleUpdateRow` already map a `null` to the
+ * column's `null`. */
+function blankToNull(value: unknown): unknown {
+  return value === null || (typeof value === "string" && value.trim() === "") ? null : value;
+}
+
 function optionalText(max: number) {
-  return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
+  return z.preprocess(blankToNull, z.string().trim().max(max).nullable().optional());
 }
 
 function optionalUuid(label: string) {
   return z.preprocess(emptyToUndefined, z.string().uuid(`Invalid ${label}.`).optional());
+}
+
+/** Like `optionalUuid`, but a blank value clears the (nullable) column. */
+function clearableUuid(label: string) {
+  return z.preprocess(blankToNull, z.string().uuid(`Invalid ${label}.`).nullable().optional());
 }
 
 /**
@@ -41,7 +55,7 @@ function optionalUuid(label: string) {
 function optionalMoneySchema(fieldLabel: string, decimals = 4) {
   const factor = 10 ** decimals;
   return z.preprocess(
-    emptyToUndefined,
+    blankToNull,
     z.coerce
       .number({ invalid_type_error: `${fieldLabel} must be a number.` })
       .finite(`${fieldLabel} must be a finite number.`)
@@ -49,6 +63,7 @@ function optionalMoneySchema(fieldLabel: string, decimals = 4) {
       .refine((value) => Math.abs(value - Math.round(value * factor) / factor) < 1e-9, {
         message: `${fieldLabel} must have at most ${decimals} decimal places.`,
       })
+      .nullable()
       .optional(),
   );
 }
@@ -71,10 +86,10 @@ export const articleCreateSchema = z.object({
   unitItemId: optionalUuid("unit"),
   /** FK into this org's `article_manufacturer` reference list. Nullable —
    * not every article has a known manufacturer. */
-  manufacturerItemId: optionalUuid("manufacturer"),
+  manufacturerItemId: clearableUuid("manufacturer"),
   /** FK into `article_groups` (this org's Article Group tree). Nullable —
    * grouping is a tenant-configured convenience. */
-  groupId: optionalUuid("group"),
+  groupId: clearableUuid("group"),
   purchasePrice: optionalMoneySchema("Purchase price"),
   salePrice: optionalMoneySchema("Sale price"),
   /** FK into this org's `vat_rate` reference list. Optional on create — same

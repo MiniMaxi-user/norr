@@ -10,7 +10,7 @@ export interface DeleteArticleDialogProps {
   article: ArticleRecord | null;
   /** Navigate back to the Articles overview after a successful delete
    * instead of just refreshing in place — used from the detail page's own
-   * Delete action (`../[id]/article-detail-actions.tsx`), same
+   * Delete action (the page header's ··· menu in `article-screen.tsx`), same
    * `redirectOnDelete` convention `DeleteActivityDialog`/`DeleteAssetDialog`
    * use for themselves. */
   redirectOnDelete?: boolean;

@@ -279,3 +279,43 @@ export async function getArticleComponentTree(
 
   return ok({ tree });
 }
+
+/** One composite article this article is a component of — the "Part of" rows
+ * of the Article page's rail (web design system, issue #222). */
+export interface ArticleParentRecord {
+  /** The `article_components` row id. */
+  id: string;
+  quantity: number;
+  parent_article: { id: string; article_number: string; description: string } | null;
+}
+
+/**
+ * The composite articles whose bill of materials directly contains
+ * `articleId` (one level up; `getArticleComponentTree` only walks downward).
+ * Read-only, same `articles` read gate as the other component reads.
+ */
+export async function listArticleParents(
+  articleId: string,
+): Promise<ActionResult<{ parents: ArticleParentRecord[] }>> {
+  const idResult = uuidSchema.safeParse(articleId);
+  if (!idResult.success) return fail("Invalid article id.");
+
+  const ctx = await requireModuleContext("articles");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "articles", "read")) {
+    return fail("You do not have permission to view this article's composites.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("article_components")
+    .select(
+      "id, quantity, parent_article:articles!article_components_parent_article_id_fkey(id,article_number,description)",
+    )
+    .eq("component_article_id", idResult.data)
+    .order("created_at", { ascending: true });
+
+  if (error) return fail(mapDbError(error));
+  return ok({ parents: (data ?? []) as unknown as ArticleParentRecord[] });
+}

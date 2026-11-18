@@ -5,28 +5,19 @@ export const metadata = { title: "Article details" };
 
 interface ArticleDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=bom` deep-links straight to a tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /**
- * `/articles/[id]` — the "landing" route for an existing article: renders
- * the shared `ArticleScreen` read-first, every field inline-editable behind
- * the hero's single page-level pencil (see `article-screen.tsx`'s own module
- * doc comment) for a caller with edit rights; a caller without them
- * (`readOnly`, from `loadArticleScreenProps`) gets the exact same layout with
- * the pencil omitted instead of a separate read-only component.
- *
- * Does NOT pass `startInEditMode` — unlike `../[id]/edit/page.tsx`, visiting
- * an existing article this way always starts read-only-until-clicked, same as
- * any other existing record.
+ * Renders the shared `ArticleScreen` (web design system, issue #222) in read
+ * mode, with one Edit button for a caller with update rights — a caller
+ * without them gets the same page with the button omitted entirely.
  */
-export default async function ArticleDetailPage({ params }: ArticleDetailPageProps) {
+export default async function ArticleDetailPage({ params, searchParams }: ArticleDetailPageProps) {
   const { id } = await params;
-  const props = await loadArticleScreenProps(id);
+  const { tab } = await searchParams;
+  const props = await loadArticleScreenProps(id, tab);
 
-  return (
-    <ArticleScreen
-      {...props}
-      breadcrumbItems={[{ label: "Articles", href: "/articles" }, { label: props.article.article_number }]}
-    />
-  );
+  return <ArticleScreen {...props} />;
 }

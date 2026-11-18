@@ -1,5 +1,4 @@
-import { ArticleScreen } from "../../components/article-screen";
-import { loadArticleScreenProps } from "../article-detail-loader";
+import { redirect } from "next/navigation";
 
 export const metadata = { title: "Edit article" };
 
@@ -8,27 +7,11 @@ interface EditArticlePageProps {
 }
 
 /**
- * `/articles/[id]/edit` — renders the exact same `ArticleScreen` as
- * `/articles/[id]` (same shared `loadArticleScreenProps`, same props), with
- * one difference: `startInEditMode` is passed `true`, seeding `pageEditing`
- * so every section starts already in its inline-edit state instead of
- * requiring a click on the hero's own pencil first. `CreateArticleButton`
- * (`../../components/create-article-button.tsx`) navigates a just-created
- * article straight here so the caller can immediately fill in every
- * placeholder field and hit Save — there is no separate `/articles/new` form
- * page. This route has real, standing meaning beyond that one flow too: it's
- * simply "open this article ready to edit," useful any time a caller already
- * knows they want to edit rather than just look.
+ * `/articles/[id]/edit` — kept only so old links keep working. Editing is
+ * inline on the detail page (one Edit button, `useEditMode`), so this route
+ * just forwards to it; the detail page does its own `hasFeature()`/RBAC gating.
  */
 export default async function EditArticlePage({ params }: EditArticlePageProps) {
   const { id } = await params;
-  const props = await loadArticleScreenProps(id);
-
-  return (
-    <ArticleScreen
-      {...props}
-      startInEditMode
-      breadcrumbItems={[{ label: "Articles", href: "/articles" }, { label: props.article.article_number }]}
-    />
-  );
+  redirect(`/articles/${id}`);
 }

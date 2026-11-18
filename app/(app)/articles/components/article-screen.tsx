@@ -1,263 +1,312 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Breadcrumbs, Button, DetailColumns, Stack, Text, type BreadcrumbItem } from "@yourorg/ui";
-import { updateArticle, type ArticleComponentLineRecord, type ArticleRecord } from "../actions";
+import { toast } from "@yourorg/ui";
+import { SidebarSection, WebDetailLayout, WebPage } from "@yourorg/ui/web";
+import {
+  EditDiscardDialog,
+  PageHeader,
+  scrollMainToTop,
+  useEditMode,
+  webTabIds,
+  type PageHeaderBadge,
+  type PageHeaderTab,
+  type WebMenuItem,
+} from "@yourorg/ui/web-client";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
-import type { FlattenedArticleGroup } from "../group-tree";
+import { setLastUsedView } from "@/lib/preferences/actions";
+import type { ArticleComponentLineRecord, ArticleRecord } from "../actions";
 import type { ArticleComponentTreeNode } from "../component-tree";
-import { usePageHeader } from "@/components/shell/page-header-context";
-import { ArticleDetailActions } from "../[id]/article-detail-actions";
-import { ArticleHero } from "./article-hero";
-import { ArticleInfoSection } from "./article-info-section";
-import { ArticleMediaSection } from "./article-media-section";
-import { ArticleClassificationSection } from "./article-classification-section";
-import { ArticlePricingSection } from "./article-pricing-section";
-import { ArticleStatusSection } from "./article-status-section";
-import { draftFromArticle, draftToInput, type ArticleDraft } from "./article-draft";
+import type { ArticleParentRecord } from "../components-actions";
+import { findArticleGroup, type FlattenedArticleGroup } from "../group-tree";
+import { ARTICLE_DETAIL_VIEW_KEY } from "./constants";
+import { draftFromArticle, emptyDraft, type ArticleDraft } from "./article-draft";
+import { buildArticleSchema, createArticleFromDraft, saveArticleEdits } from "./article-form-schema";
+import { ArticleOverviewCards, type ArticleReferenceLists } from "./article-overview-cards";
+import { ArticleRail } from "./article-rail";
+import { ArticleBomPanel, bomComponentCount } from "./article-bom-panel";
+import { buildArticleTimeline } from "./article-timeline";
+import { DeleteArticleDialog } from "./delete-article-dialog";
+
+export type ArticleDetailTab = "overview" | "bom";
 
 export interface ArticleScreenProps {
-  /** Built by the server `page.tsx` and pushed into the Topbar via
-   * `usePageHeader` — never rendered inline in the page body, matching
-   * `client-detail.tsx`/`WorkOrderScreen`/`ActivityScreen`'s own pattern. */
-  breadcrumbItems: BreadcrumbItem[];
+  mode: "create" | "edit";
 
-  article: ArticleRecord;
-  /** `getArticle`'s own BOM lines. */
+  /** Required for `mode: "edit"`. */
+  article?: ArticleRecord;
+  /** `getArticle`'s own BOM lines (the timeline's "component added" events). */
   components?: ArticleComponentLineRecord[];
-  /** `getArticleComponentTree`'s full recursive descendant tree, rooted at
-   * this article — `article.is_composite === true` only (see
-   * `loadArticleScreenProps`'s own gate); `undefined` otherwise. Fetched
-   * server-side alongside `article`/`components`, same "passed down from the
-   * page, fetched once" shape every other prop on this screen already
-   * follows (issue #124). */
+  /** The full downward bill-of-materials tree, rooted at this article —
+   * fetched for a composite article only. */
   componentTree?: ArticleComponentTreeNode;
-  /** Never render an edit affordance RLS would reject — a `planner`/
-   * `engineer`/`finance` viewer (plain `read`, per `lib/rbac/permissions.ts`'s
-   * `articles` entry) gets a fully read-only render (no pencils anywhere),
-   * same convention `AssetScreen`'s own `readOnly` documents. */
-  readOnly?: boolean;
-  /** The org's whole flattened Article Group tree, plus the `article_unit`/
-   * `article_manufacturer`/`vat_rate` reference lists — fetched once by the
-   * server `page.tsx` and passed down, same "passed down from the page,
-   * fetched once" shape `ArticlesScreen` already uses for the list view. */
+  /** The composite articles this article is a component of. */
+  parents?: ArticleParentRecord[];
+  /** The org's flattened Article Group tree and the `article_unit`/
+   * `article_manufacturer`/`vat_rate` reference lists. */
   groups: FlattenedArticleGroup[];
   units: ReferenceListItemRecord[];
   manufacturers: ReferenceListItemRecord[];
   vatRates: ReferenceListItemRecord[];
-
+  /** `can(actor, "articles", ...)`. Never render an affordance RLS would reject. */
+  canCreate?: boolean;
+  canUpdate?: boolean;
   canDelete?: boolean;
-
-  /** Seeds `pageEditing` (below) to `true` on mount instead of `false` — set
-   * by `/articles/[id]/edit`'s own `page.tsx` only, never
-   * `/articles/[id]`'s. `CreateArticleButton` (`./create-article-button.tsx`)
-   * creates a bare placeholder article and navigates straight to
-   * `/articles/[id]/edit` so the caller lands with every section already in
-   * its inline-edit state — as if the hero's own pencil were already
-   * clicked — ready to overwrite every placeholder field and hit the one
-   * Save button, rather than requiring an extra click first. Ignored (forced
-   * to `false`) for a `readOnly` viewer — see this component's own state
-   * initializer below.
-   */
-  startInEditMode?: boolean;
+  cancelHref?: string;
+  defaultTab?: ArticleDetailTab;
 }
 
 /**
- * The single shared screen behind `/articles/[id]` and `/articles/[id]/edit`
- * (identical props except `startInEditMode`, see both those routes' own
- * `page.tsx`) — one real screen, not two, replacing the old `ArticleFormPanel`
- * slide-in (issue #123, "Article popup" — see `docs/ARCHITECTURE.md`'s "Popup
- * vs. full page" section for the history). There is no `/articles/new` create
- * form and no `mode` prop: `CreateArticleButton` creates a bare placeholder
- * article immediately and navigates straight here, exactly the way
- * `ContractScreen`/`CreateContractButton` already do for Contracts (see `git
- * show a4bbd4c`) — the only difference from that precedent is that Articles
- * lands with editing already active (`startInEditMode`) instead of every
- * section closed, per the product owner's explicit ask. Mirrors `AssetScreen`'s
- * per-section `EditableSection` shape rather than `ActivityScreen`'s "relation
- * cards + dialogs" one: an Article has no client/site/model relation of its
- * own to surface as a `RelationCard`, so there's nothing here that needs a
- * small edit-popup — every field is a plain value grouped into one of five
- * flat sections (Article / Photo / Classification / Pricing & VAT / Status &
- * composite).
+ * The single shared screen behind `/articles/new` (`mode: "create"`) and
+ * `/articles/[id]` (`mode: "edit"`) on the web design system (issue #222),
+ * built exactly like the Asset and Quote pages:
  *
- * Owns one flat `ArticleDraft` (`./article-draft.ts`) as the source of truth
- * for every editable field, seeded from the server `article` record. There is
- * exactly ONE editing surface for the whole screen, not five independent
- * ones: the hero's own pencil (`ArticleHero`'s `onEditHeader`, next to the
- * title/badges) opens every section (Info/Pricing/Status/Media/
- * Classification) into its inline-edit state at once, driven by the single
- * `pageEditing` boolean below (each section's own per-section pencil is gone
- * as a natural consequence — see each section's own `onEdit` computation,
- * now always omitted) — every field writes straight into the shared `draft`
- * on every change (`updateDraft`, passed down as each section's own
- * `onFieldChange`), and the ONE Save/Cancel pair rendered in the hero's
- * `actions` slot (replacing `ArticleDetailActions` while `pageEditing`)
- * commits the whole `draft` in a single `commitPatch` call, or discards it
- * and re-derives `draft` from the server record. Required-field validation
- * (Article number/Description) lives in this screen's own `handleEditSave`.
+ *  - `PageHeader`: breadcrumb (`Articles / number`), title (the article's
+ *    description, falling back to the number), badges (status → composite → group), ONE Edit button (Overview
+ *    only, omitted without update permission), the ··· menu (Delete) and tabs.
+ *    No navy primary and no LivePanel: the page holds no stock level, deadline
+ *    or running timer, so there is nothing to act on right now;
+ *  - centre: the active tab — Overview (ONE two-column Details card) or, for a
+ *    composite article, Bill of materials (a StructureTree);
+ *  - rail: Photo · Pricing · Structure (only when composite / part of one) ·
+ *    TIMELINE.
+ *
+ * Editing is `useEditMode` through the existing `updateArticle` /
+ * `createArticle` actions (RBAC and RLS untouched). `mode: "create"` is the
+ * same page in new mode: Overview only, "After creating" rail, gold "Create
+ * article".
  */
 export function ArticleScreen({
-  breadcrumbItems,
+  mode,
   article,
-  components,
+  components = [],
   componentTree,
-  readOnly,
+  parents = [],
   groups,
   units,
   manufacturers,
   vatRates,
-  canDelete,
-  startInEditMode,
+  canCreate = false,
+  canUpdate = false,
+  canDelete = false,
+  cancelHref,
+  defaultTab = "overview",
 }: ArticleScreenProps) {
   const router = useRouter();
+  const isCreate = mode === "create";
+  const [tab, setTab] = useState<ArticleDetailTab>(defaultTab);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [, startTransition] = useTransition();
 
-  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
-  usePageHeader(breadcrumbNode);
-
-  const [draft, setDraft] = useState<ArticleDraft>(() => draftFromArticle(article));
-
-  // The ONE editing surface for this whole screen (see this component's own
-  // doc comment) — seeded `true` by `startInEditMode` (the `/edit` route) so
-  // a just-created article lands ready to fill in immediately; forced `false`
-  // regardless of `startInEditMode` for a `readOnly` viewer, same "never
-  // render an edit affordance RLS would reject" convention this screen's own
-  // `readOnly` prop documents elsewhere.
-  const [pageEditing, setPageEditing] = useState(() => Boolean(startInEditMode) && !readOnly);
-
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  /** The page's single Save (`handleEditSave` below) calls this once with the
-   * whole accumulated `draft`. Surfaces `fieldErrors` alongside the generic
-   * `error` — the server's own validation message (e.g. "Purchase price must
-   * be zero or more.") is what actually tells the caller which field is
-   * wrong; the previous per-section Save flow never needed this because each
-   * section only ever sent its OWN few fields, so a stray bad value
-   * elsewhere in the draft could never block an unrelated section's save the
-   * way it now can with one page-wide Save. */
-  async function commitPatch(
-    patch: Partial<ArticleDraft>,
-  ): Promise<{ ok: boolean; error?: string; fieldErrors?: Record<string, string[] | undefined> }> {
-    const result = await updateArticle(article.id, draftToInput(patch));
-    if (!result.data) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
-    setDraft((prev) => ({ ...prev, ...patch }));
-    router.refresh();
-    return { ok: true };
-  }
-
-  /** Every section's own field change calls this directly — a local-only
-   * merge into the shared `draft`, never posted to the server until the
-   * page's own Save (`handleEditSave` below). */
-  function updateDraft(patch: Partial<ArticleDraft>) {
-    setDraft((prev) => ({ ...prev, ...patch }));
-  }
-
-  function handleEditCancel() {
-    setDraft(draftFromArticle(article));
-    setEditError(null);
-    setPageEditing(false);
-  }
-
-  async function handleEditSave() {
-    if (!draft.articleNumber.trim()) {
-      setEditError("Article number is required.");
-      return;
-    }
-    if (!draft.description.trim()) {
-      setEditError("Description is required.");
-      return;
-    }
-    setEditError(null);
-    setSaving(true);
-    const result = await commitPatch(draft);
-    setSaving(false);
-    if (!result.ok) {
-      const fieldMessages = Object.values(result.fieldErrors ?? {})
-        .flatMap((messages) => messages ?? [])
-        .filter(Boolean);
-      setEditError(
-        fieldMessages.length > 0
-          ? fieldMessages.join(" ")
-          : result.error ?? "Could not save.",
-      );
-      return;
-    }
-    setPageEditing(false);
-  }
-
-  const heroActions = pageEditing ? (
-    <>
-      <Button type="button" variant="outline" onClick={handleEditCancel} disabled={saving}>
-        Cancel
-      </Button>
-      <Button type="button" variant="primary" onClick={handleEditSave} disabled={saving}>
-        {saving ? "Saving…" : "Save"}
-      </Button>
-    </>
-  ) : (
-    <ArticleDetailActions article={article} canDelete={Boolean(canDelete)} />
+  const lists = useMemo<ArticleReferenceLists>(
+    () => ({ groups, units, manufacturers, vatRates }),
+    [groups, units, manufacturers, vatRates],
   );
 
+  // ---- Edit mode ------------------------------------------------------------
+  const record = useMemo<ArticleDraft>(
+    () => (article ? draftFromArticle(article, groups) : emptyDraft({ units, vatRates })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [article],
+  );
+
+  const schema = useMemo(
+    () =>
+      buildArticleSchema({
+        labelFor: (key, id) => {
+          switch (key) {
+            case "groupId":
+            case "subgroupId":
+              return findArticleGroup(groups, id)?.name ?? "";
+            case "manufacturerItemId":
+              return manufacturers.find((item) => item.id === id)?.label ?? "";
+            case "unitItemId":
+              return units.find((item) => item.id === id)?.label ?? "";
+            case "vatRateItemId":
+              return vatRates.find((item) => item.id === id)?.label ?? "";
+          }
+        },
+      }),
+    [groups, manufacturers, units, vatRates],
+  );
+
+  const createdIdRef = useRef<string | null>(null);
+  const edit = useEditMode<ArticleDraft>({
+    record,
+    schema,
+    initialMode: isCreate ? "new" : "read",
+    canEdit: !isCreate && canUpdate,
+    idPrefix: "article",
+    firstFieldKey: "articleNumber",
+    navigate: (href) => router.push(href),
+    onCancelNew: () => router.push(cancelHref ?? "/articles"),
+    onSave: async (draft, dirty) => {
+      if (isCreate) {
+        if (createdIdRef.current) {
+          router.push(`/articles/${createdIdRef.current}`);
+          return { ok: true };
+        }
+        const { result, articleId } = await createArticleFromDraft(draft);
+        if (!result.ok || !articleId) return result;
+        createdIdRef.current = articleId;
+        toast({ title: "Article created", tone: "success", duration: 3000 });
+        router.push(`/articles/${articleId}`);
+        return { ok: true };
+      }
+      return saveArticleEdits(article!.id, draft, dirty);
+    },
+    onSaved: () => {
+      if (isCreate) return;
+      toast({ title: "Saved", tone: "success", duration: 3000 });
+      router.refresh();
+    },
+  });
+  const editing = edit.isEditing;
+
+  // ---- Derived data ---------------------------------------------------------
+  const saved = edit.record;
+  const savedLeafGroup = findArticleGroup(groups, saved.subgroupId || saved.groupId);
+  const showBomTab = !isCreate && Boolean(article?.is_composite);
+  const componentCount = useMemo(() => bomComponentCount(componentTree), [componentTree]);
+  const timeline = useMemo(() => (article ? buildArticleTimeline({ article, components }) : []), [article, components]);
+
+  // ---- Tabs -----------------------------------------------------------------
+  function selectTab(next: ArticleDetailTab) {
+    if (editing) return;
+    setTab(next);
+    scrollMainToTop();
+    startTransition(() => {
+      void setLastUsedView(ARTICLE_DETAIL_VIEW_KEY, next);
+    });
+  }
+
+  const tabs = useMemo<PageHeaderTab[]>(
+    () => [
+      { id: "overview", label: "Overview" },
+      ...(showBomTab ? [{ id: "bom", label: "Bill of materials", count: componentCount }] : []),
+    ],
+    [showBomTab, componentCount],
+  );
+
+  useEffect(() => {
+    if (!tabs.some((entry) => entry.id === tab)) setTab("overview");
+  }, [tabs, tab]);
+
+  // ---- Header ---------------------------------------------------------------
+  const title = isCreate
+    ? "New article"
+    : saved.description || saved.articleNumber || article?.article_number || "Article";
+
+  const badges: PageHeaderBadge[] = [];
+  if (article) {
+    badges.push({ label: saved.isActive ? "Active" : "Inactive", variant: saved.isActive ? "success" : "neutral" });
+    if (saved.isComposite) badges.push({ label: "Composite", variant: "info" });
+    const groupText = savedLeafGroup?.path ?? article.article_group?.name;
+    if (groupText) badges.push({ label: groupText });
+  }
+
+  const overflow: WebMenuItem[] = [];
+  if (canDelete && article) {
+    overflow.push({ key: "delete", label: "Delete article", danger: true, onSelect: () => setDeleteOpen(true) });
+  }
+
+  const breadcrumb = isCreate
+    ? [{ label: "Articles", href: "/articles" }, { label: "New article" }]
+    : [{ label: "Articles", href: "/articles" }, { label: article?.article_number ?? "Article", mono: true }];
+
+  const header = (
+    <PageHeader
+      breadcrumb={breadcrumb}
+      title={title}
+      badges={badges}
+      mode={edit.mode}
+      actions={{
+        canEdit: !isCreate && canUpdate && tab === "overview",
+        onEdit: edit.startEdit,
+        overflow,
+        onSave: () => void edit.save(),
+        onCancel: edit.requestCancel,
+        saving: edit.saving,
+        saveLabel: isCreate ? "Create article" : "Save",
+      }}
+      tabs={tabs}
+      activeTab={tab}
+      onTabChange={(id) => selectTab(id as ArticleDetailTab)}
+      tabsLabel="Article sections"
+      editStatus={edit.status}
+    />
+  );
+
+  // ---- Rail -----------------------------------------------------------------
+  const savedVat = vatRates.find((item) => item.id === saved.vatRateItemId);
+  const vatNumber = savedVat ? Number(savedVat.value) : article?.vat_rate ? Number(article.vat_rate.value) : NaN;
+  const priceOrNull = (value: string) => {
+    if (!value.trim()) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const rail =
+    isCreate || !article ? (
+      <SidebarSection title="After creating">
+        <p className="web-rail-empty">
+          The article opens on its own page. For a composite article, build its bill of materials from the tab there.
+        </p>
+      </SidebarSection>
+    ) : (
+      <ArticleRail
+        articleNumber={saved.articleNumber}
+        imageUrl={saved.imageUrl.trim()}
+        pricing={{
+          purchase: priceOrNull(saved.purchasePrice),
+          sale: priceOrNull(saved.salePrice),
+          vatPercent: Number.isFinite(vatNumber) ? vatNumber : null,
+        }}
+        parents={parents}
+        componentCount={componentCount}
+        isComposite={article.is_composite}
+        onShowBom={showBomTab ? () => selectTab("bom") : undefined}
+      />
+    );
+
+  const ids = webTabIds(tab);
+
   return (
-    <Stack gap="lg">
-      {editError && <Text tone="danger">{editError}</Text>}
+    <WebPage>
+      <WebDetailLayout
+        header={header}
+        rail={rail}
+        timeline={{
+          items: timeline,
+          emptyText: isCreate ? "The timeline starts once this record is created." : "No activity yet",
+        }}
+        locked={editing && !isCreate}
+        mainProps={{ role: "tabpanel", id: ids.panel, "aria-labelledby": ids.tab }}
+      >
+        {tab === "overview" && (
+          <div className="web-tab-stack">
+            <ArticleOverviewCards edit={edit} article={article} lists={lists} isNew={isCreate} />
+          </div>
+        )}
 
-      <ArticleHero
-        draft={draft}
-        article={article}
-        groups={groups}
-        actions={heroActions}
-        readOnly={readOnly}
-        onEditHeader={!readOnly && !pageEditing ? () => setPageEditing(true) : undefined}
-      />
+        {tab === "bom" && article && showBomTab && (
+          <ArticleBomPanel
+            articleId={article.id}
+            tree={componentTree}
+            canCreate={canCreate}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
+            onChange={() => router.refresh()}
+          />
+        )}
+      </WebDetailLayout>
 
-      <DetailColumns
-        left={
-          <>
-            <ArticleInfoSection draft={draft} article={article} editing={pageEditing} onFieldChange={updateDraft} />
+      <EditDiscardDialog confirm={edit.confirm} />
 
-            <ArticlePricingSection
-              draft={draft}
-              article={article}
-              vatRates={vatRates}
-              editing={pageEditing}
-              onFieldChange={updateDraft}
-            />
-
-            <ArticleStatusSection
-              draft={draft}
-              article={article}
-              components={components}
-              componentTree={componentTree}
-              editing={pageEditing}
-              readOnly={readOnly}
-              onFieldChange={updateDraft}
-            />
-          </>
-        }
-        right={
-          <>
-            <ArticleMediaSection
-              draft={draft}
-              articleNumber={draft.articleNumber || undefined}
-              editing={pageEditing}
-              onFieldChange={updateDraft}
-            />
-
-            <ArticleClassificationSection
-              draft={draft}
-              article={article}
-              groups={groups}
-              units={units}
-              manufacturers={manufacturers}
-              editing={pageEditing}
-              onFieldChange={updateDraft}
-            />
-          </>
-        }
-      />
-    </Stack>
+      {!isCreate && article && deleteOpen && (
+        <DeleteArticleDialog article={article} open onOpenChange={setDeleteOpen} redirectOnDelete />
+      )}
+    </WebPage>
   );
 }
