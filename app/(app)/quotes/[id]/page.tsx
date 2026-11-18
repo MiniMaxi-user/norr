@@ -2,64 +2,51 @@ import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { getQuote, listQuoteLineItems } from "../actions";
 import { getInvoiceForQuote } from "../invoice-actions";
 import { getContract } from "@/app/(app)/contracts/actions";
 import { getClient, listClients } from "@/app/(app)/clients/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
+import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listOrgMembers } from "@/lib/members/actions";
 import { getWorkOrder } from "@/app/(app)/work-orders/actions";
-import { QuoteDetail } from "./quote-detail";
+import { QuoteScreen, type QuoteDetailTab } from "../components/quote-screen";
+import { QUOTE_DETAIL_VIEW_KEY } from "../components/constants";
 
 export const metadata = { title: "Quote details" };
 
 interface QuoteDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=lineItems` deep-links straight to a tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /** High enough for "every asset of this quote's client" in one request — a
  * quote detail page is a bounded, per-record view, same reasoning as
- * `ALL_CLIENT_ASSETS_LIMIT` in `app/(app)/contracts/[id]/page.tsx`/
- * `app/(app)/clients/[id]/page.tsx`. */
+ * `ALL_CLIENT_ASSETS_LIMIT` in `app/(app)/contracts/[id]/page.tsx`. */
 const ALL_CLIENT_ASSETS_LIMIT = 500;
 
+const TAB_IDS: QuoteDetailTab[] = ["overview", "lineItems"];
+
 /**
- * Quote detail page — data-fetching Server Component only. Rendering
- * (breadcrumb-in-topbar, `RecordHeroBand`, relation cards, the line items
- * table) lives in `./quote-detail.tsx`, a client component, same Server/
- * Client split `app/(app)/clients/[id]/page.tsx` -> `client-detail.tsx`
- * establishes (`usePageHeader` is a client-side hook, so whatever calls it
- * must be a client component).
+ * Quote detail page — renders the shared `QuoteScreen` (web design system,
+ * issue #222) in read mode, with one Edit button for a caller with update
+ * rights. Same "fetch once, pass down" convention as every other module's
+ * detail page; `hasFeature()`/RBAC are resolved before anything renders.
  *
- * *** Pattern A migration (docs/ARCHITECTURE.md "Two detail-page header
- * patterns") *** — Quotes moved off `DetailHero`/`DetailLayout` (Pattern B)
- * onto `RecordHeroBand` + flat sections (Pattern A), the same shape Work
- * Orders/Assets/Contracts already use. This is also why the quote's own linked
- * work order (when it has one, issue #109's `work_order_id` traceability
- * column) is fetched here: a `RelationCard` needs the real `WorkOrderRecord`,
- * not a formatted string. A quote has no site.
- *
- * Fetches, in one `Promise.all`:
- *  - the quote's own client (for its own `RelationCard`);
- *  - this org's clients (`listClients`, issue #95 redesign — the relations
- *    dialog's Client `<Select>`, same list `quote-form.tsx` already uses);
- *  - the quote's line items (embedding each one's linked article — see
- *    `QUOTE_LINE_ITEM_SELECT` in `../actions.ts`);
- *  - the quote client's own assets (issue #95 criterion 16 — the line item
- *    asset picker must resolve inline, no navigation to `/assets/[id]`);
- *  - this org's members (`listOrgMembers`, issue #95 — resolves a line
- *    item's `engineer_user_id` to a display name/picker options);
- *  - this org's active articles (`listArticlesForSelect`, issue #95 — the
- *    line item article search-picker, with EAN/GTIN/MPN already included in
- *    the projection for `Combobox`'s `keywords` filtering);
- *  - when `quote.work_order_id` is set, the source work order (`getWorkOrder`,
- *    for the optional "Source" `RelationCard`) — gracefully `null` (no crash,
- *    the card just doesn't render) if the caller can't read `planning` at
- *    all, since `getWorkOrder` has its own independent module/RBAC gate.
+ * Invoicing (issue #119): owner/administratie-only and only when the
+ * `invoicing` feature is entitled — folded into `canInvoice` here so the
+ * screen never reasons about entitlement itself; `getInvoiceForQuote` is only
+ * called when the caller can read invoices. The Contract relation is only
+ * resolved when the caller may read contracts; the source work order
+ * (`quote.work_order_id`, issue #109) is `null` when the caller cannot read
+ * planning (`getWorkOrder` has its own gate).
  */
-export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) {
+export default async function QuoteDetailPage({ params, searchParams }: QuoteDetailPageProps) {
   const { id } = await params;
+  const { tab: requestedTab } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -72,21 +59,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   if (!quoteResult.data) notFound();
   const quote = quoteResult.data.quote;
 
-  // Invoicing (issue #119): owner/administratie-only, and only when the
-  // `invoicing` feature is entitled to this org — `hasFeature` +
-  // `canAccessModule` are folded into these booleans here so the render
-  // side (`quote-detail.tsx` -> `quote-detail-actions.tsx` ->
-  // `quote-invoice-actions.tsx`) never has to reason about entitlement
-  // itself, same "resolve once in the page, pass a plain boolean down"
-  // convention as `canEdit`/`canDelete` below. `getInvoiceForQuote` is only
-  // called when the caller can even read invoices, so a role with no
-  // invoicing access never triggers (and never sees the result of) that
-  // extra query.
   const invoicingEnabled = await hasFeature(session.organization, "invoicing");
   const canReadInvoice = invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "read");
-  const canGenerateInvoice =
-    invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "create");
-  // Contract relation card (issue #210) - only when the caller may read contracts.
+  const canInvoice = invoicingEnabled && canAccessModule(actor, "invoicing") && can(actor, "invoicing", "create");
   const canReadContract =
     (await hasFeature(session.organization, "contracts")) && canAccessModule(actor, "contracts");
 
@@ -100,6 +75,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     workOrderResult,
     invoiceResult,
     contractResult,
+    statusesResult,
+    lastUsedTab,
   ] = await Promise.all([
     getClient(quote.client_id),
     listClients({ limit: 200 }),
@@ -110,42 +87,32 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     quote.work_order_id ? getWorkOrder(quote.work_order_id) : Promise.resolve(null),
     canReadInvoice ? getInvoiceForQuote(quote.id) : Promise.resolve(null),
     quote.contract_id && canReadContract ? getContract(quote.contract_id) : Promise.resolve(null),
+    listReferenceItems("quote_status"),
+    preferencesStore.getLastUsedView(session.userId, QUOTE_DETAIL_VIEW_KEY),
   ]);
 
-  const client = clientResult.data?.client ?? null;
-  const clients = clientsResult.data?.clients ?? [];
-  const lineItems = lineItemsResult.data?.lineItems ?? [];
-  const clientAssets = clientAssetsResult.data?.assets ?? [];
-  const members = membersResult.data?.members ?? [];
-  const articles = articlesResult.data?.articles ?? [];
-  const sourceWorkOrder = workOrderResult?.data?.workOrder ?? null;
-  const invoice = invoiceResult?.data?.invoice ?? null;
-  const contract = contractResult?.data?.contract ?? null;
-
-  const canEdit = can(actor, "quotes", "update");
-  const canDelete = can(actor, "quotes", "delete");
-  const canCreateLineItems = can(actor, "quotes", "create");
-  const canEditLineItems = can(actor, "quotes", "update");
-  const canDeleteLineItems = can(actor, "quotes", "delete");
+  const available = (raw: string | null | undefined): QuoteDetailTab | null =>
+    raw && TAB_IDS.includes(raw as QuoteDetailTab) ? (raw as QuoteDetailTab) : null;
 
   return (
-    <QuoteDetail
+    <QuoteScreen
+      mode="edit"
       quote={quote}
-      client={client}
-      clients={clients}
-      sourceWorkOrder={sourceWorkOrder}
-      lineItems={lineItems}
-      clientAssets={clientAssets}
-      articles={articles}
-      members={members}
-      canEdit={canEdit}
-      canDelete={canDelete}
-      canCreateLineItems={canCreateLineItems}
-      canEditLineItems={canEditLineItems}
-      canDeleteLineItems={canDeleteLineItems}
-      invoice={invoice}
-      canGenerateInvoice={canGenerateInvoice}
-      contract={contract}
+      client={clientResult.data?.client ?? null}
+      clients={clientsResult.data?.clients ?? []}
+      statuses={statusesResult.data?.items ?? []}
+      canCreate={can(actor, "quotes", "create")}
+      canUpdate={can(actor, "quotes", "update")}
+      canDelete={can(actor, "quotes", "delete")}
+      lineItems={lineItemsResult.data?.lineItems ?? []}
+      clientAssets={clientAssetsResult.data?.assets ?? []}
+      articles={articlesResult.data?.articles ?? []}
+      members={membersResult.data?.members ?? []}
+      sourceWorkOrder={workOrderResult?.data?.workOrder ?? null}
+      contract={contractResult?.data?.contract ?? null}
+      invoice={invoiceResult?.data?.invoice ?? null}
+      canInvoice={canInvoice}
+      defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
     />
   );
 }

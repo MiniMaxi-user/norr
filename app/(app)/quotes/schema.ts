@@ -46,7 +46,14 @@ const requiredIsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format.");
 
-const optionalIsoDateSchema = z.preprocess(emptyToUndefined, requiredIsoDateSchema.optional());
+/** Blank string / `null` => `null` ("clear this field"); `undefined` stays
+ * "not provided". Lets the detail page's Edit mode empty Valid until / Notes:
+ * `toQuoteUpdateRow` already maps a `null` to the column's `null`. */
+function blankToNull(value: unknown): unknown {
+  return value === null || (typeof value === "string" && value.trim() === "") ? null : value;
+}
+
+const optionalIsoDateSchema = z.preprocess(blankToNull, requiredIsoDateSchema.nullable().optional());
 
 export const quoteCreateSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
@@ -57,7 +64,7 @@ export const quoteCreateSchema = z.object({
    * `contracts.typeId`/`work_orders.statusId`. */
   statusId: optionalUuid("Invalid quote status."),
   validUntil: optionalIsoDateSchema,
-  notes: optionalText(5000),
+  notes: z.preprocess(blankToNull, z.string().trim().max(5000).nullable().optional()),
 });
 
 export type QuoteCreateInput = z.infer<typeof quoteCreateSchema>;

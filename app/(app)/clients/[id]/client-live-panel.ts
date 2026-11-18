@@ -1,6 +1,7 @@
 import type { LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateWeb } from "@/lib/format/web";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
+import { sentQuoteExpiry } from "@/app/(app)/quotes/components/quote-status";
 
 /** The signed-in viewer. The client page has no per-user trigger today (no
  * timers, approvals or acceptances live on a client record), so nothing reads
@@ -14,14 +15,6 @@ export interface ClientLivePanelRecord {
   quotes: QuoteRecord[] | null;
   /** Today in Europe/Amsterdam as `YYYY-MM-DD` (injected for testability). */
   today: string;
-}
-
-/** Days after expiry in which a still-open quote counts as "just expired". */
-const RECENTLY_EXPIRED_DAYS = 7;
-const DAY = 24 * 60 * 60 * 1000;
-
-function daysBetween(from: string, to: string) {
-  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / DAY);
 }
 
 /**
@@ -38,14 +31,8 @@ export function getLivePanel(record: ClientLivePanelRecord, _viewer: LivePanelVi
   void _viewer;
   if (!record.quotes) return null;
 
-  const open = record.quotes.filter(
-    (quote) => quote.quote_status?.value === "sent" && !quote.is_auto_draft && quote.valid_until,
-  );
-  const expiring = open.filter((quote) => quote.valid_until === record.today);
-  const expired = open.filter((quote) => {
-    const age = daysBetween(quote.valid_until as string, record.today);
-    return age > 0 && age <= RECENTLY_EXPIRED_DAYS;
-  });
+  const expired = record.quotes.filter((quote) => sentQuoteExpiry(quote, record.today) === "expired");
+  const expiring = record.quotes.filter((quote) => sentQuoteExpiry(quote, record.today) === "today");
 
   const toPanel = (quote: QuoteRecord, variant: "attention" | "urgent"): LivePanelData => ({
     variant,

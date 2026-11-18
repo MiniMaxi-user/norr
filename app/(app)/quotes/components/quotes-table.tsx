@@ -27,7 +27,7 @@ export interface QuotesTableProps {
  * over the current page, row click navigates to the detail page. Row-level
  * "Edit" navigates to that same detail page (Pattern A migration deleted
  * `/quotes/[id]/edit` — every field that page used to own is inline-editable
- * on the detail page now, see `[id]/quote-detail.tsx`'s own doc comment) —
+ * on the detail page now, see `components/quote-screen.tsx`'s own doc comment) —
  * same "Edit is just a second, discoverable way to reach the detail page"
  * precedent `app/(app)/work-orders/components/work-orders-table.tsx` already
  * establishes (issue #89). Delete stays a lightweight confirm `Dialog`.
