@@ -1,15 +1,15 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Checkbox, Dialog, Heading, Inline, Input, Label, Select, Stack, Text, Textarea } from "@yourorg/ui";
+import { StatusText, toneFromColor } from "@yourorg/ui/web-client";
 import {
   createReferenceItem,
   updateReferenceItem,
   type ReferenceListItemRecord,
 } from "@/lib/reference-lists/actions";
 import { REFERENCE_ITEM_COLOR_PALETTE } from "@/lib/reference-lists/schema";
+import { DialogField, SettingsFormDialog } from "./settings-dialog-kit";
 
 interface FormState {
   error?: string;
@@ -144,205 +144,157 @@ export function ReferenceItemFormDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
 
+  const parentName = (parentListTitle ?? "parent").toLowerCase();
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>{isEdit ? "Edit value" : "Add value"}</Heading>
-      </Dialog.Header>
-      <form action={formAction}>
-        <Dialog.Body>
-          <Stack gap="md">
-            {state.error && <Text tone="danger">{state.error}</Text>}
+    <SettingsFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEdit ? "Edit value" : "Add value"}
+      submitLabel={isEdit ? "Save changes" : "Add value"}
+      formAction={formAction}
+      error={state.error}
+    >
+      <DialogField id="ref-item-label" label="Label" errors={state.fieldErrors?.label}>
+        <input
+          id="ref-item-label"
+          className="web-input"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          required
+          maxLength={200}
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="ref-item-label">Label</Label>
-              <Input
-                id="ref-item-label"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                required
-                maxLength={200}
-              />
-              {state.fieldErrors?.label?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField id="ref-item-description" label="Description" errors={state.fieldErrors?.description}>
+        <textarea
+          id="ref-item-description"
+          className="web-textarea"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          maxLength={500}
+          rows={3}
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="ref-item-description">Description</Label>
-              <Textarea
-                id="ref-item-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                maxLength={500}
-                rows={3}
-              />
-              {state.fieldErrors?.description?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      {isDependent && (
+        <DialogField
+          id="ref-item-parent"
+          label={parentListTitle ?? "Parent"}
+          hint={`Every value on this list belongs under one ${parentName} value.`}
+          errors={[
+            ...(state.fieldErrors?.parentItemId ?? []),
+            ...(parentItems.length === 0 ? [`No ${parentName} values exist yet — add one there first.`] : []),
+          ]}
+        >
+          <select
+            id="ref-item-parent"
+            className="web-select"
+            value={parentItemId}
+            onChange={(event) => setParentItemId(event.target.value)}
+            required
+          >
+            <option value="" disabled>
+              Select a {parentName}…
+            </option>
+            {parentItems.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </DialogField>
+      )}
 
-            {isDependent && (
-              <Stack gap="xs">
-                <Label htmlFor="ref-item-parent">{parentListTitle ?? "Parent"}</Label>
-                <Select
-                  id="ref-item-parent"
-                  value={parentItemId}
-                  onChange={(event) => setParentItemId(event.target.value)}
-                  required
-                >
-                  <option value="" disabled>
-                    Select a {(parentListTitle ?? "parent").toLowerCase()}…
-                  </option>
-                  {parentItems.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-                <Text tone="muted">
-                  Every value on this list belongs under one {(parentListTitle ?? "parent").toLowerCase()} value.
-                </Text>
-                {state.fieldErrors?.parentItemId?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-                {parentItems.length === 0 && (
-                  <Text tone="danger">
-                    No {(parentListTitle ?? "parent").toLowerCase()} values exist yet — add one there first.
-                  </Text>
-                )}
-              </Stack>
-            )}
+      <DialogField
+        id="ref-item-value"
+        label="Value (stable id)"
+        hint="Lowercase letters, numbers, and underscores only. Not shown anywhere — only the Label is user-facing."
+        errors={state.fieldErrors?.value}
+      >
+        <input
+          id="ref-item-value"
+          className="web-input"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          required
+          maxLength={100}
+          placeholder="e.g. hvac"
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="ref-item-value">Value (stable id)</Label>
-              <Input
-                id="ref-item-value"
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                required
-                maxLength={100}
-                placeholder="e.g. hvac"
-              />
-              <Text tone="muted">
-                Lowercase letters, numbers, and underscores only. Not shown anywhere — only the Label is
-                user-facing.
-              </Text>
-              {state.fieldErrors?.value?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField
+        id="ref-item-color"
+        label="Color"
+        hint={`One of: ${REFERENCE_ITEM_COLOR_PALETTE.join(", ")} — or a hex code (e.g. #22c55e). Leave blank for no color.`}
+        errors={state.fieldErrors?.color}
+      >
+        <input
+          id="ref-item-color"
+          className="web-input"
+          value={color}
+          onChange={(event) => setColor(event.target.value)}
+          placeholder="blue, green, #22c55e…"
+          maxLength={20}
+        />
+        {color ? (
+          <p className="web-rail-empty">
+            Preview: <StatusText tone={toneFromColor(color)}>{label || "Preview"}</StatusText>
+          </p>
+        ) : null}
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="ref-item-color">Color</Label>
-              <Input
-                id="ref-item-color"
-                value={color}
-                onChange={(event) => setColor(event.target.value)}
-                placeholder="blue, green, #22c55e…"
-                maxLength={20}
-              />
-              <Text tone="muted">
-                One of: {REFERENCE_ITEM_COLOR_PALETTE.join(", ")} — or a hex code (e.g. #22c55e). Leave blank for
-                no color.
-              </Text>
-              {color && (
-                <div>
-                  <Badge color={color}>{label || "Preview"}</Badge>
-                </div>
-              )}
-              {state.fieldErrors?.color?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      {showDefaultDuration && (
+        <DialogField
+          id="ref-item-default-duration"
+          label="Default duration (minutes)"
+          hint="Optional. Used later to size work items for this type in Planning."
+          errors={state.fieldErrors?.defaultDurationMinutes}
+        >
+          <input
+            id="ref-item-default-duration"
+            className="web-input"
+            type="number"
+            data-numeric="true"
+            min={0}
+            step={1}
+            value={defaultDurationMinutes}
+            onChange={(event) => setDefaultDurationMinutes(event.target.value)}
+            placeholder="e.g. 60"
+          />
+        </DialogField>
+      )}
 
-            {showDefaultDuration && (
-              <Stack gap="xs">
-                <Label htmlFor="ref-item-default-duration">Default duration (minutes)</Label>
-                <Input
-                  id="ref-item-default-duration"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={defaultDurationMinutes}
-                  onChange={(event) => setDefaultDurationMinutes(event.target.value)}
-                  placeholder="e.g. 60"
-                />
-                <Text tone="muted">
-                  Optional. Used later to size work items for this type in Planning.
-                </Text>
-                {state.fieldErrors?.defaultDurationMinutes?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-              </Stack>
-            )}
+      {showInvoiceInterval && (
+        <DialogField
+          id="ref-item-interval-months"
+          label="Invoice interval (months)"
+          hint="Leave empty for non-recurring terms such as per-visit or one-time."
+          errors={state.fieldErrors?.intervalMonths}
+        >
+          <input
+            id="ref-item-interval-months"
+            className="web-input"
+            type="number"
+            data-numeric="true"
+            min={1}
+            step={1}
+            value={intervalMonths}
+            onChange={(event) => setIntervalMonths(event.target.value)}
+            placeholder="e.g. 3"
+          />
+        </DialogField>
+      )}
 
-            {showInvoiceInterval && (
-              <Stack gap="xs">
-                <Label htmlFor="ref-item-interval-months">Invoice interval (months)</Label>
-                <Input
-                  id="ref-item-interval-months"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={intervalMonths}
-                  onChange={(event) => setIntervalMonths(event.target.value)}
-                  placeholder="e.g. 3"
-                />
-                <Text tone="muted">Leave empty for non-recurring terms such as per-visit or one-time.</Text>
-                {state.fieldErrors?.intervalMonths?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-              </Stack>
-            )}
-
-            <Stack gap="xs">
-              <Inline gap="sm" align="center">
-                <Checkbox
-                  id="ref-item-is-active"
-                  checked={isActive}
-                  onChange={(event) => setIsActive(event.target.checked)}
-                />
-                <Label htmlFor="ref-item-is-active">Active</Label>
-              </Inline>
-              {state.fieldErrors?.isActive?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-          </Stack>
-        </Dialog.Body>
-        <Dialog.Footer>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <SubmitButton isEdit={isEdit} />
-        </Dialog.Footer>
-      </form>
-    </Dialog>
-  );
-}
-
-function SubmitButton({ isEdit }: { isEdit: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? "Saving…" : isEdit ? "Save changes" : "Add value"}
-    </Button>
+      <label className="web-field-checkbox" htmlFor="ref-item-is-active">
+        <input
+          id="ref-item-is-active"
+          type="checkbox"
+          checked={isActive}
+          onChange={(event) => setIsActive(event.target.checked)}
+        />
+        Active
+      </label>
+    </SettingsFormDialog>
   );
 }

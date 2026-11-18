@@ -1,9 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Heading, Input, Label, Select, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import {
   createActivitySubtype,
   updateActivitySubtype,
@@ -11,64 +9,37 @@ import {
 } from "@/app/(app)/activities/subtypes-actions";
 import { flattenActivitySubtypes } from "@/app/(app)/activities/subtype-tree";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { DialogField, SettingsFormDialog, type DialogFormState } from "./settings-dialog-kit";
 
-interface FormState {
-  error?: string;
-  fieldErrors?: Record<string, string[] | undefined>;
-  success?: boolean;
-}
-
-const initialState: FormState = {};
+const initialState: DialogFormState = {};
 
 export interface ActivitySubtypeFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Present for edit, absent for create — same `isEdit = Boolean(subtype)`
-   * convention as `ArticleGroupFormDialog`. */
+  /** Present for edit, absent for create. */
   subtype?: ActivitySubtypeRecord | null;
   /** Pre-selects the Parent subtype field — set when this dialog was opened
-   * via a node's own "Add subtype" action; still a plain, changeable
-   * `<Select>` field, not locked, since the user may want a different parent
-   * than the one they clicked from. */
+   * via a node's own "Add subtype" action; still a changeable select. */
   parentSubtypeId?: string;
   /** The org's whole flat subtype tree, for the Parent subtype picker. */
   subtypes: ActivitySubtypeRecord[];
   /** This org's `activity_type` reference-list items, for the root-only
-   * Activity Type field below. */
+   * Activity Type field. */
   typeItems: ReferenceListItemRecord[];
 }
 
 /**
- * Create/edit dialog for a single `activity_subtypes` row (issues #134/#138)
- * — with one real twist: the DB's `activity_subtypes_root_xor_parent` CHECK
- * requires a root node (`parent_subtype_id is null`) to carry a `type_id`,
- * and a non-root node to NOT carry one. The form reflects that rule directly
- * rather than only failing server-side: the Activity Type field only renders
- * (and is only required) while the Parent picker is set to "No parent
- * (top-level)".
+ * Create/edit dialog for a single `activity_subtypes` row (issues #134/#138).
+ * The DB's `activity_subtypes_root_xor_parent` CHECK requires a root node
+ * (no parent) to carry a `type_id` and a non-root node not to, so the
+ * Activity type field only renders (and is only required) while the Parent
+ * picker is set to "No parent (top-level subtype)".
  *
- * Every field is CONTROLLED (issue #136-class bugfix, same one already
- * applied to `reference-item-form-dialog.tsx`): a plain uncontrolled
- * (`defaultValue`-only) field gets reset by React's own `useActionState`/
- * `<form action>` machinery after EVERY submission, success or failure — a
- * failed save (e.g. a duplicate `value`, or this table's own root-xor-parent
- * rejection) used to wipe the whole form back to blank the instant the error
- * appeared. `ActivitySubtypeManager` also now only mounts this component
- * while `formState.open` is true (was previously always-mounted, just
- * toggling an `open` prop) — every OTHER dialog in this codebase already
- * conditionally renders; staying mounted meant `useActionState`'s own state
- * (error text, the `success` flag) never reset between sessions, so
- * reopening this dialog for a brand new subtype could still show a stale
- * error from an unrelated previous attempt. Together: every field's
- * `useState` initializer reads straight from `subtype` — safe with no
- * re-seed effect needed, since a fresh mount happens on every open.
- *
- * Cross-org parent / self-reference / cycle / root-type-link checks are all
- * enforced by the DB's `validate_activity_subtype_parent` trigger (see
- * `subtypes-actions.ts`'s own doc comment) — this dialog only excludes the
- * subtype being edited from its own Parent picker (an obviously-invalid
- * self-parent) and hides/shows the Type field; everything else is surfaced
- * via whatever error text a rejected submission comes back with.
+ * Every field is controlled and the manager mounts this only while open, so a
+ * failed save keeps what was typed and a reopened dialog starts clean.
+ * Cross-org parent / self-reference / cycle checks are enforced by the DB's
+ * `validate_activity_subtype_parent` trigger; this dialog only excludes the
+ * subtype being edited from its own Parent picker.
  */
 export function ActivitySubtypeFormDialog({
   open,
@@ -80,7 +51,6 @@ export function ActivitySubtypeFormDialog({
 }: ActivitySubtypeFormDialogProps) {
   const isEdit = Boolean(subtype);
   const router = useRouter();
-  useEscapeToClose(open, onOpenChange);
 
   const [name, setName] = useState(subtype?.name ?? "");
   const [parentValue, setParentValue] = useState(subtype?.parent_subtype_id ?? parentSubtypeId ?? "");
@@ -90,15 +60,10 @@ export function ActivitySubtypeFormDialog({
 
   const parentOptions = useMemo(() => {
     const flattened = flattenActivitySubtypes(subtypes);
-    // A subtype can't be its own parent — the DB trigger would reject a
-    // self-reference regardless, this just keeps the picker from offering an
-    // option that always fails. Deeper cycles (picking one of this subtype's
-    // OWN descendants) aren't filtered out here — surfaced via the trigger's
-    // rejection message instead, per this task's own scope note.
     return subtype ? flattened.filter((item) => item.id !== subtype.id) : flattened;
   }, [subtypes, subtype]);
 
-  async function action(): Promise<FormState> {
+  async function action(): Promise<DialogFormState> {
     const input = {
       name,
       parentSubtypeId: parentValue || undefined,
@@ -122,94 +87,60 @@ export function ActivitySubtypeFormDialog({
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>{isEdit ? "Edit subtype" : "Add subtype"}</Heading>
-      </Dialog.Header>
-      <form action={formAction}>
-        <Dialog.Body>
-          <Stack gap="md">
-            {state.error && <Text tone="danger">{state.error}</Text>}
+    <SettingsFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEdit ? "Edit subtype" : "Add subtype"}
+      submitLabel={isEdit ? "Save changes" : "Add subtype"}
+      formAction={formAction}
+      error={state.error}
+    >
+      <DialogField id="activity-subtype-name" label="Name" errors={state.fieldErrors?.name}>
+        <input
+          id="activity-subtype-name"
+          className="web-input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          required
+          maxLength={200}
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="activity-subtype-name">Name</Label>
-              <Input
-                id="activity-subtype-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                maxLength={200}
-              />
-              {state.fieldErrors?.name?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField id="parentSubtypeId" label="Parent subtype" errors={state.fieldErrors?.parentSubtypeId}>
+        <select
+          id="parentSubtypeId"
+          className="web-select"
+          value={parentValue}
+          onChange={(event) => setParentValue(event.target.value)}
+        >
+          <option value="">No parent (top-level subtype)</option>
+          {parentOptions.map((item) => (
+            <option key={item.id} value={item.id}>
+              {"— ".repeat(item.depth)}
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="parentSubtypeId">Parent subtype</Label>
-              <Select
-                id="parentSubtypeId"
-                value={parentValue}
-                onChange={(event) => setParentValue(event.target.value)}
-              >
-                <option value="">No parent (top-level subtype)</option>
-                {parentOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {"— ".repeat(item.depth)}
-                    {item.name}
-                  </option>
-                ))}
-              </Select>
-              {state.fieldErrors?.parentSubtypeId?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-
-            {isRoot && (
-              <Stack gap="xs">
-                <Label htmlFor="activity-subtype-type">Activity type</Label>
-                <Select
-                  id="activity-subtype-type"
-                  value={typeId}
-                  onChange={(event) => setTypeId(event.target.value)}
-                  required
-                >
-                  <option value="">Select an activity type…</option>
-                  {typeItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </Select>
-                {state.fieldErrors?.typeId?.map((message) => (
-                  <Text key={message} tone="danger">
-                    {message}
-                  </Text>
-                ))}
-              </Stack>
-            )}
-          </Stack>
-        </Dialog.Body>
-        <Dialog.Footer>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <SubmitButton isEdit={isEdit} />
-        </Dialog.Footer>
-      </form>
-    </Dialog>
-  );
-}
-
-function SubmitButton({ isEdit }: { isEdit: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? "Saving…" : isEdit ? "Save changes" : "Add subtype"}
-    </Button>
+      {isRoot && (
+        <DialogField id="activity-subtype-type" label="Activity type" errors={state.fieldErrors?.typeId}>
+          <select
+            id="activity-subtype-type"
+            className="web-select"
+            value={typeId}
+            onChange={(event) => setTypeId(event.target.value)}
+            required
+          >
+            <option value="">Select an activity type…</option>
+            {typeItems.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </DialogField>
+      )}
+    </SettingsFormDialog>
   );
 }

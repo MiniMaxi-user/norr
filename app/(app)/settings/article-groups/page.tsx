@@ -1,4 +1,3 @@
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
@@ -27,16 +26,12 @@ export default async function ArticleGroupsPage() {
   const result = await listArticleGroups();
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Article Groups"
-        subtitle="Hierarchical categories for your article catalog — group articles into nested categories for browsing and reporting."
-      />
+    <div className="web-tab-stack">
       <ArticleGroupManager
         groups={result.data?.groups ?? []}
         loadError={result.error}
         canWrite={canWriteArticleGroups}
       />
-    </Stack>
+    </div>
   );
 }

@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteAssetModel, type AssetModelRecord } from "@/lib/asset-models/actions";
+import { SettingsDeleteDialog } from "./settings-dialog-kit";
 
 export interface DeleteAssetModelDialogProps {
   open: boolean;
@@ -10,18 +9,10 @@ export interface DeleteAssetModelDialogProps {
   model: AssetModelRecord | null;
 }
 
-/**
- * Delete confirmation for a single Asset Model — same shape as
- * `DeleteReferenceItemDialog`. `deleteAssetModel`'s own doc comment notes
- * there is no dependency-count helper needed yet (nothing references
- * `asset_models` today; issue #53's Asset form Model picker is on hold), so
- * a delete attempt simply succeeds or fails cleanly.
- */
+/** Delete confirmation for a single Asset Model. */
 export function DeleteAssetModelDialog({ open, onOpenChange, model }: DeleteAssetModelDialogProps) {
-  const router = useRouter();
-
   return (
-    <ConfirmDeleteDialog
+    <SettingsDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Delete ${model?.name ?? "model"}?`}
@@ -30,8 +21,8 @@ export function DeleteAssetModelDialog({ open, onOpenChange, model }: DeleteAsse
         const result = await deleteAssetModel(model.id);
         return { error: result.error };
       }}
-      onDeleted={() => router.refresh()}
-      confirmLabel="Delete"
-    />
+    >
+      This cannot be undone.
+    </SettingsDeleteDialog>
   );
 }

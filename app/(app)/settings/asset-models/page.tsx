@@ -1,4 +1,3 @@
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAssetModels, listVolumeCounterOptions } from "@/lib/asset-models/actions";
@@ -30,11 +29,6 @@ export default async function AssetModelsPage() {
   ]);
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Asset Model"
-        subtitle="Manufacturer/model combinations for your assets, each tied to a Brand, Type, and Sub-type."
-      />
       <AssetModelManager
         models={modelsResult.data?.models ?? []}
         loadError={modelsResult.error}
@@ -44,6 +38,5 @@ export default async function AssetModelsPage() {
         subtypeItems={subtypeResult.data?.items ?? []}
         volumeOptions={volumeResult.data?.items ?? []}
       />
-    </Stack>
   );
 }

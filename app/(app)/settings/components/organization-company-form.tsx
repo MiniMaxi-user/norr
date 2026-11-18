@@ -1,157 +1,134 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Card, CompanyLogo, DefinitionList, Heading, Label, Select, Stack, Text } from "@yourorg/ui";
-import { Building2 } from "@yourorg/ui/icons";
+import { WebHint } from "@yourorg/ui/web";
+import { KeyValueCard, type EditSchema, type SaveResult } from "@yourorg/ui/web-client";
+import { ClientLogoSlot } from "@/app/(app)/clients/components/client-logo-uploader";
 import {
   updateOrganizationOwnClient,
   type OrganizationOwnClientSettings,
+  type OwnClientOption,
 } from "../company-actions";
+import { firstFieldErrors, SettingsFormPage, useSettingsEdit } from "./settings-form-page";
 
 export interface OrganizationCompanyFormProps {
   initial: OrganizationOwnClientSettings;
   /** `listClientsForOwnClientSelect()`'s result — every client in the org,
-   * for the "own Client" `<Select>` below. */
-  clients: { id: string; name: string }[];
+   * for the "own client" select (and the live preview of the picked one). */
+  clients: OwnClientOption[];
   /** `can(actor, "settings", "update")` — owner-only, matching
-   * `updateOrganizationOwnClient`'s own gate. A non-owner never sees the
-   * `<Select>`, only the read-only preview — same "hide, don't just
-   * disable" pattern `OrganizationDefaultRateForm` already uses. */
+   * `updateOrganizationOwnClient`'s own gate. Without it the page has no Edit
+   * button, only the read view. */
   canWrite: boolean;
+  /** `can(actor, "clients", "update")` — whether the logo of the own client may
+   * be replaced from here (the upload action checks it too). */
+  canEditLogo: boolean;
 }
 
-interface FormState {
-  error?: string;
-  fieldErrors?: Record<string, string[] | undefined>;
-  success?: boolean;
-  saved?: OrganizationOwnClientSettings;
-}
-
-const initialState: FormState = {};
+type CompanyDraft = {
+  ownClientId: string;
+};
 
 /**
- * Org-level "own Client" picker (issue #120) — which of the tenant's own
- * `clients` rows represents the organization itself. Modeled directly on
- * `OrganizationDefaultRateForm` (same `useActionState`/`useFormStatus`
- * shape, same owner-only `<Select>` vs. everyone-else-gets-a-summary split).
- *
- * Per docs/ARCHITECTURE.md's "Relational detail pages" convention, this does
- * NOT duplicate an editable copy of the chosen client's own business fields
- * (name/KvK/VAT/IBAN/logo) here — the read-only preview below links out to
- * that client's own detail page (`/clients/{id}`) for actually editing them,
- * including uploading its logo (issue #120's `ClientLogoUploader`).
+ * Org-level "own Client" picker (issue #120) on the web design system (issue
+ * #222): one "Company" card — the select, plus the picked client's name, KvK,
+ * VAT and IBAN as grey derived values that follow the selection live (they are
+ * edited on the client's own page, so there is no editable copy here). The logo
+ * sits in the header like on the client page; in edit mode it can be uploaded,
+ * replaced or removed (it persists immediately, independent of Save).
  */
-export function OrganizationCompanyForm({ initial, clients, canWrite }: OrganizationCompanyFormProps) {
-  const [ownClientId, setOwnClientId] = useState(initial.ownClientId ?? "");
-  const [preview, setPreview] = useState(initial.ownClient);
+export function OrganizationCompanyForm({ initial, clients, canWrite, canEditLogo }: OrganizationCompanyFormProps) {
+  const record = useMemo<CompanyDraft>(() => ({ ownClientId: initial.ownClientId ?? "" }), [initial.ownClientId]);
 
-  async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
-    const input = {
-      ownClientId: (formData.get("ownClientId") as string) || null,
-    };
-    const result = await updateOrganizationOwnClient(input);
-    if (result.error || !result.data) {
-      return { error: result.error ?? "Could not save the organization's own client.", fieldErrors: result.fieldErrors };
-    }
-    return { success: true, saved: result.data };
-  }
-
-  const [state, formAction] = useActionState(action, initialState);
-
-  useEffect(() => {
-    if (state.success && state.saved) {
-      setOwnClientId(state.saved.ownClientId ?? "");
-      setPreview(state.saved.ownClient);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.success]);
-
-  if (!canWrite) {
-    return (
-      <Card>
-        <Stack gap="md">
-          <OwnClientPreview client={initial.ownClient} />
-          <Text tone="muted">Only the organization owner can change this selection.</Text>
-        </Stack>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <form action={formAction}>
-        <Stack gap="lg">
-          {state.error && <Text tone="danger">{state.error}</Text>}
-          {state.success && <Text tone="success">Company settings saved.</Text>}
-
-          <Stack gap="xs">
-            <Label htmlFor="own-client-select">Own client</Label>
-            <Select
-              id="own-client-select"
-              name="ownClientId"
-              value={ownClientId}
-              onChange={(event) => setOwnClientId(event.target.value)}
-            >
-              <option value="">Not set</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </Select>
-            {state.fieldErrors?.ownClientId?.map((message) => (
-              <Text key={message} tone="danger">
-                {message}
-              </Text>
-            ))}
-          </Stack>
-
-          <OwnClientPreview client={preview} />
-
-          <div>
-            <SubmitButton />
-          </div>
-        </Stack>
-      </form>
-    </Card>
+  const schema = useMemo<EditSchema<CompanyDraft>>(
+    () => ({
+      ownClientId: {
+        label: "Own client",
+        format: (value) => clients.find((client) => client.id === value)?.name ?? "",
+      },
+    }),
+    [clients],
   );
-}
 
-function OwnClientPreview({ client }: { client: OrganizationOwnClientSettings["ownClient"] }) {
-  if (!client) {
-    return <Text tone="muted">No client selected yet — pick one above to preview its business details here.</Text>;
+  const edit = useSettingsEdit<CompanyDraft>({
+    record,
+    schema,
+    canEdit: canWrite,
+    idPrefix: "company",
+    firstFieldKey: "ownClientId",
+    onSave: async (draft): Promise<SaveResult<CompanyDraft>> => {
+      const result = await updateOrganizationOwnClient({ ownClientId: draft.ownClientId || null });
+      if (result.error || !result.data) {
+        return {
+          ok: false,
+          error: result.error ?? "Could not save the organization's own client",
+          fieldErrors: firstFieldErrors<"ownClientId">(result.fieldErrors),
+        };
+      }
+      return { ok: true };
+    },
+  });
+
+  // Local echo of the logo so an upload shows at once.
+  const savedClient = initial.ownClient;
+  const [logoUrl, setLogoUrl] = useState<string | null>(savedClient?.logoUrl ?? null);
+  useEffect(() => setLogoUrl(savedClient?.logoUrl ?? null), [savedClient?.logoUrl, savedClient?.id]);
+
+  const shownId = edit.isEditing ? edit.draft.ownClientId : edit.record.ownClientId;
+  const shown: OwnClientOption | null =
+    clients.find((client) => client.id === shownId) ?? (savedClient && savedClient.id === shownId ? savedClient : null);
+  const options = clients.map((client) => ({ value: client.id, label: client.name }));
+  if (savedClient && !options.some((option) => option.value === savedClient.id)) {
+    options.push({ value: savedClient.id, label: savedClient.name });
   }
+  const dash = "";
+
+  const logo = savedClient ? (
+    <ClientLogoSlot
+      clientId={savedClient.id}
+      clientName={savedClient.name}
+      logoUrl={logoUrl}
+      onLogoChange={setLogoUrl}
+      editable={edit.isEditing && canEditLogo}
+    />
+  ) : undefined;
 
   return (
-    <Stack gap="sm">
-      <Heading level={6}>
-        <Link href={`/clients/${client.id}`}>{client.name}</Link>
-      </Heading>
-      <Stack gap="sm">
-        <CompanyLogo logoUrl={client.logoUrl} alt={`${client.name} logo`} fallback={<Building2 />} />
-        <DefinitionList
-          items={[
-            { label: "KvK", value: client.kvkNumber || <Text tone="muted">—</Text> },
-            { label: "VAT", value: client.vatNumber || <Text tone="muted">—</Text> },
-            { label: "IBAN", value: client.iban || <Text tone="muted">—</Text> },
-          ]}
-        />
-      </Stack>
-      <Text tone="muted">
-        Edit these details, including the logo, on <Link href={`/clients/${client.id}`}>{client.name}</Link>&rsquo;s
-        own client page.
-      </Text>
-    </Stack>
-  );
-}
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? "Saving…" : "Save changes"}
-    </Button>
+    <SettingsFormPage
+      navKey="company"
+      edit={edit}
+      logo={logo}
+      readOnlyNote="Only the organization owner can change this selection."
+    >
+      <KeyValueCard
+        title="Company"
+        edit={edit}
+        fields={[
+          {
+            key: "ownClientId",
+            label: "Own client",
+            kind: "select",
+            read: shown ? <Link href={`/clients/${shown.id}`}>{shown.name}</Link> : dash,
+            options,
+            emptyLabel: "Not set",
+          },
+          { key: "kvk", label: "KvK", kind: "derived", mono: true, read: shown?.kvkNumber ?? dash },
+          { key: "vat", label: "VAT", kind: "derived", mono: true, read: shown?.vatNumber ?? dash },
+          { key: "iban", label: "IBAN", kind: "derived", mono: true, read: shown?.iban ?? dash, note: "Edit these details on the client's own page" },
+        ]}
+      />
+      <WebHint>
+        Pick which of your own clients represents this organization. Its name, KvK, VAT, IBAN and logo are the details a
+        future Invoicing module will use as the &lsquo;from&rsquo; party.{" "}
+        {shown ? (
+          <>
+            Edit them on <Link href={`/clients/${shown.id}`}>{shown.name}</Link>&rsquo;s own page.
+          </>
+        ) : (
+          "Pick a client to preview its business details here."
+        )}
+      </WebHint>
+    </SettingsFormPage>
   );
 }

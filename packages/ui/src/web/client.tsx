@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { Dialog } from "../components/dialog";
+import { useEscapeToClose } from "../use-escape-to-close";
 import { Check, Pencil } from "../icons";
 import {
   WebBadge,
@@ -101,8 +102,13 @@ export function WebConfirmDialog({
   onCancel,
   onConfirm,
 }: WebConfirmDialogProps) {
+  const handleOpenChange = (next: boolean) => {
+    if (!next && !pending) onCancel();
+  };
+  // The shared Dialog has no Escape handling of its own (see dialog.tsx).
+  useEscapeToClose(open, handleOpenChange);
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && !pending && onCancel()} size="sm">
+    <Dialog open={open} onOpenChange={handleOpenChange} size="sm">
       <Dialog.Header>
         <h2 className="web-dialog-title">{title}</h2>
       </Dialog.Header>

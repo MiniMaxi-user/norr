@@ -2,41 +2,57 @@
 
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import Cropper, { type Area } from "react-easy-crop";
-import { Avatar, Button, Inline, Slider, Stack, Text } from "@yourorg/ui";
-import { Camera, Trash2 } from "@yourorg/ui/icons";
+import { Dialog, Slider, toast, useEscapeToClose } from "@yourorg/ui";
+import { Camera } from "@yourorg/ui/icons";
+import { WebButton } from "@yourorg/ui/web";
+import { WebMenu } from "@yourorg/ui/web-client";
 import { getCroppedImageBlob } from "./crop-image";
 import { removeAvatar, uploadAvatar } from "./actions";
 
 const CROP_ASPECT = 1;
 // 512px keeps the exported webp small (the crop always starts from the
 // user's already-cropped, largely-headshot-sized selection) while still
-// looking sharp at any size this app currently renders an avatar
-// (`Avatar`'s largest variant, `lg`, is 56px — 512px source is comfortably
-// ahead of any realistic future @2x/@3x use).
+// looking sharp at any size this app renders an avatar.
 const OUTPUT_SIZE = 512;
 
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
+
+function AvatarImage({ avatarUrl, name }: { avatarUrl: string | null; name: string }) {
+  if (!avatarUrl) {
+    return (
+      <span aria-hidden="true" style={{ font: "600 16px/1 var(--font-sans)", color: "var(--text-secondary)" }}>
+        {initialsOf(name)}
+      </span>
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={avatarUrl} alt={`${name} photo`} />;
+}
+
 /**
- * Avatar section of `ProfilePanel` (issue #49): shows the current photo (or
- * initials fallback), and drives the whole select → crop/zoom (round frame)
- * → upload flow, plus "Remove". Owns all of that flow's local state itself
- * so `ProfilePanel` doesn't need to know about crop mechanics — it only
- * gets notified of the end result via `onAvatarChange`, the same "tell the
- * parent what changed, not how" shape `ProfilePanel` itself uses for the
- * rest of the form.
- *
- * `react-easy-crop`'s `cropShape="round"` gives the "rond kader" (round
- * frame) requirement natively — no custom mask needed — and `zoom` is
- * driven by `@yourorg/ui`'s new `Slider` primitive (added in this change,
- * this app's first slider need).
+ * Photo slot of the Profile page header (web design system, issue #222; before:
+ * the "Photo" section of the profile slide-over). Read mode shows the photo (or
+ * the initials); in edit mode the slot becomes a menu to upload/change/remove
+ * it, exactly like the client logo slot. The select, crop (round frame, zoom)
+ * and upload flow is unchanged: a chosen file opens a crop dialog, "Save photo"
+ * uploads the cropped webp. Photo changes persist immediately (independent of
+ * the Save button), so they are never part of the "unsaved changes" count.
  */
-export function AvatarUploader({
+export function ProfileAvatarSlot({
   name,
   avatarUrl,
   onAvatarChange,
+  editable,
 }: {
   name: string;
   avatarUrl: string | null;
   onAvatarChange: (avatarUrl: string | null) => void;
+  editable: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -54,12 +70,21 @@ export function AvatarUploader({
     setZoom(1);
   }
 
+  function closeDialog() {
+    if (isSaving) return;
+    setError(null);
+    resetCropState();
+  }
+  useEscapeToClose(Boolean(imageSrc), (open) => {
+    if (!open) closeDialog();
+  });
+
   function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = ""; // lets the same file be re-selected later
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+      toast({ title: "Photo not changed", description: "Choose an image file (PNG, JPG or WebP).", tone: "danger", duration: 6000 });
       return;
     }
     setError(null);
@@ -81,91 +106,62 @@ export function AvatarUploader({
         formData.set("file", blob, "avatar.webp");
         const result = await uploadAvatar(formData);
         if (result.error || !result.data) {
-          setError(result.error ?? "Could not upload the photo.");
+          setError(result.error ?? "Could not upload the photo. Try again.");
           return;
         }
         onAvatarChange(result.data.avatarUrl);
         resetCropState();
+        toast({ title: "Photo saved", tone: "success", duration: 3000 });
       } catch {
-        setError("Could not process the photo.");
+        setError("Could not process the photo. Try another file.");
       }
     });
   }
 
   function handleRemove() {
-    setError(null);
     startRemoving(async () => {
       const result = await removeAvatar();
       if (result.error) {
-        setError(result.error);
+        toast({ title: "Photo not removed", description: result.error, tone: "danger", duration: 6000 });
         return;
       }
       onAvatarChange(null);
     });
   }
 
-  if (imageSrc) {
-    return (
-      <Stack gap="md">
-        {/* Fixed-height, `position: relative` container — `Cropper` fills
-            its parent absolutely, same "size the third-party widget's
-            container with an inline style" precedent already used for
-            `MapContainer` in `app/(app)/assets/components/asset-map.tsx`
-            (only Leaflet's other browser-only embed in this app). */}
-        <div style={{ position: "relative", width: "100%", height: "280px" }}>
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={CROP_ASPECT}
-            cropShape="round"
-            showGrid={false}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={(_croppedArea, pixels) => setCroppedAreaPixels(pixels)}
-          />
-        </div>
-        <Stack gap="xs">
-          <Text tone="muted">Zoom</Text>
-          <Slider
-            min={1}
-            max={3}
-            step={0.01}
-            value={zoom}
-            onChange={(event) => setZoom(Number(event.target.value))}
-            aria-label="Zoom"
-          />
-        </Stack>
-        {error && <Text tone="danger">{error}</Text>}
-        <Inline gap="sm">
-          <Button type="button" variant="outline" onClick={resetCropState} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button type="button" variant="primary" onClick={handleSaveCrop} disabled={isSaving || !croppedAreaPixels}>
-            {isSaving ? "Saving…" : "Save photo"}
-          </Button>
-        </Inline>
-      </Stack>
-    );
-  }
+  if (!editable && !imageSrc) return <AvatarImage avatarUrl={avatarUrl} name={name} />;
 
+  const pending = isSaving || isRemoving;
   return (
-    <Stack gap="sm">
-      <Inline gap="md" align="center">
-        <Avatar name={name} size="lg" photoUrl={avatarUrl} />
-        <Inline gap="sm">
-          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <Camera aria-hidden />
-            {avatarUrl ? "Change photo" : "Upload photo"}
-          </Button>
-          {avatarUrl && (
-            <Button type="button" variant="outline" onClick={handleRemove} disabled={isRemoving}>
-              <Trash2 aria-hidden />
-              {isRemoving ? "Removing…" : "Remove"}
-            </Button>
-          )}
-        </Inline>
-      </Inline>
+    <>
+      {editable ? (
+        <WebMenu
+          label={avatarUrl ? "Change photo" : "Upload photo"}
+          align="start"
+          triggerClassName="web-logo-trigger"
+          trigger={
+            <>
+              <AvatarImage avatarUrl={avatarUrl} name={name} />
+              <span className="web-logo-trigger-badge" aria-hidden="true">
+                <Camera />
+              </span>
+            </>
+          }
+          items={[
+            {
+              key: "upload",
+              label: isRemoving ? "Removing…" : avatarUrl ? "Change photo" : "Upload photo",
+              disabled: pending,
+              onSelect: () => fileInputRef.current?.click(),
+            },
+            ...(avatarUrl
+              ? [{ key: "remove", label: "Remove photo", danger: true, disabled: pending, onSelect: handleRemove }]
+              : []),
+          ]}
+        />
+      ) : (
+        <AvatarImage avatarUrl={avatarUrl} name={name} />
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -173,8 +169,61 @@ export function AvatarUploader({
         onChange={handleFileSelected}
         className="ui-visually-hidden"
         aria-label="Upload profile photo"
+        tabIndex={-1}
       />
-      {error && <Text tone="danger">{error}</Text>}
-    </Stack>
+
+      <Dialog open={Boolean(imageSrc)} onOpenChange={(next) => !next && closeDialog()} size="sm">
+        <Dialog.Header>
+          <h2 className="web-dialog-title">Crop photo</h2>
+        </Dialog.Header>
+        <Dialog.Body>
+          {/* Fixed-height, `position: relative` container — `Cropper` fills its
+              parent absolutely. */}
+          <div style={{ position: "relative", width: "100%", height: "280px" }}>
+            {imageSrc ? (
+              <Cropper
+                image={imageSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={CROP_ASPECT}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_croppedArea, pixels) => setCroppedAreaPixels(pixels)}
+              />
+            ) : null}
+          </div>
+          <div className="web-dialog-text">
+            <label htmlFor="profile-photo-zoom">Zoom</label>
+            <Slider
+              id="profile-photo-zoom"
+              min={1}
+              max={3}
+              step={0.01}
+              value={zoom}
+              onChange={(event) => setZoom(Number(event.target.value))}
+              aria-label="Zoom"
+            />
+          </div>
+          {error ? (
+            <p className="web-dialog-error" role="alert">
+              <span className="web-error-mark" aria-hidden="true">
+                !
+              </span>
+              {error}
+            </p>
+          ) : null}
+        </Dialog.Body>
+        <Dialog.Footer>
+          <WebButton onClick={closeDialog} disabled={isSaving}>
+            Cancel
+          </WebButton>
+          <WebButton variant="save" loading={isSaving} disabled={!croppedAreaPixels} onClick={handleSaveCrop}>
+            {isSaving ? "Saving…" : "Save photo"}
+          </WebButton>
+        </Dialog.Footer>
+      </Dialog>
+    </>
   );
 }

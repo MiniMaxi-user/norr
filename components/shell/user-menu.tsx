@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { WebBadge } from "@yourorg/ui/web";
 import { WebMenu, type WebMenuItem } from "@yourorg/ui/web-client";
 import { LogOut, UserRound } from "@yourorg/ui/icons";
 import { logOutAction } from "@/lib/auth/actions";
-import { ProfilePanel } from "@/app/(app)/profile/profile-panel";
-import type { Locale } from "@/lib/profile/locale";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -34,23 +32,16 @@ function initials(name: string) {
 export function UserMenu({
   name,
   role,
-  email,
-  fullName,
   avatarUrl,
-  locale,
   isPlatformAdmin,
   menuLinks,
 }: {
   name: string;
   role?: string | null;
-  email: string;
-  fullName: string | null;
   avatarUrl: string | null;
-  locale: Locale;
   isPlatformAdmin: boolean;
   menuLinks: { href: string; label: string; icon: ReactNode }[];
 }) {
-  const [profileOpen, setProfileOpen] = useState(false);
   const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : null;
 
   const items: WebMenuItem[] = [
@@ -74,7 +65,7 @@ export function UserMenu({
       key: "profile",
       label: "Profile",
       icon: <UserRound aria-hidden />,
-      onSelect: () => setProfileOpen(true),
+      href: "/profile",
     },
     ...menuLinks.map((link) => ({
       key: link.href,
@@ -111,14 +102,6 @@ export function UserMenu({
           )
         }
         items={items}
-      />
-      <ProfilePanel
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        email={email}
-        fullName={fullName}
-        avatarUrl={avatarUrl}
-        locale={locale}
       />
     </>
   );

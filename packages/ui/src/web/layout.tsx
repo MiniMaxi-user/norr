@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
 import { cx } from "../cx";
-import { WebBadge, WebBreadcrumb } from "./primitives";
+import { WebBadge, WebBreadcrumb, type WebBreadcrumbItem } from "./primitives";
 
 /**
  * Detail-page skeleton (issue #222): `WebPage` (full-bleed canvas),
@@ -358,5 +358,145 @@ export function WebListSkeleton({ module, title, rows = 8, columns = 5 }: WebLis
         </section>
       </div>
     </WebPage>
+  );
+}
+
+/* ---------------------------------------------------------------------- *
+ * Settings frame (issue #222) — a left section nav next to a header + one
+ * scroll area. Hook-free; the active section is resolved by the caller.
+ * ---------------------------------------------------------------------- */
+
+export interface WebSettingsNavGroup {
+  label: string;
+  items: { key: string; label: string; href: string }[];
+}
+
+export interface WebSettingsPageProps {
+  /** `WebSettingsNav`, or omit for a full-width page (the landing). */
+  nav?: ReactNode;
+  /** Header (`WebSettingsHeader` or `PageHeader`) followed by `WebSettingsMain`. */
+  children: ReactNode;
+}
+
+/** Settings page frame: nav column (own scroll) + a column holding the header
+ * and the one scroll area. The browser page never scrolls. */
+export function WebSettingsPage({ nav, children }: WebSettingsPageProps) {
+  return (
+    <WebPage>
+      <div className="web-settings" data-nav={nav ? "true" : "false"}>
+        {nav ? <aside className="web-settings-nav">{nav}</aside> : null}
+        <div className="web-settings-body">{children}</div>
+      </div>
+    </WebPage>
+  );
+}
+
+/** Grouped section list; the group titles are mono overlines. */
+export function WebSettingsNav({ groups, activeHref }: { groups: WebSettingsNavGroup[]; activeHref?: string | null }) {
+  return (
+    <nav aria-label="Settings sections">
+      {groups.map((group) => (
+        <div className="web-settings-nav-group" key={group.label}>
+          <h2 className="web-overline">{group.label}</h2>
+          <ul>
+            {group.items.map((item) => {
+              const active = item.href === activeHref;
+              return (
+                <li key={item.key}>
+                  <Link href={item.href} className="web-settings-nav-link" aria-current={active ? "page" : undefined}>
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+export interface WebSettingsHeaderProps {
+  breadcrumb: WebBreadcrumbItem[];
+  title: string;
+  /** Optional neutral badge next to the title (the section's group). */
+  badge?: string | null;
+}
+
+/** Plain header of a settings section without edit controls (the editable
+ * form pages use `PageHeader`). */
+export function WebSettingsHeader({ breadcrumb, title, badge }: WebSettingsHeaderProps) {
+  return (
+    <header className="web-page-header" data-mode="read" data-kind="list">
+      <WebBreadcrumb items={breadcrumb} />
+      <div className="web-page-header-row">
+        <div className="web-page-header-left">
+          <div className="web-page-header-text">
+            <h1 className="web-page-title" title={title}>
+              {title}
+            </h1>
+          </div>
+          {badge ? <WebBadge>{badge}</WebBadge> : null}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** The one scroll area of a settings section (`scrollbar-gutter: stable`). */
+export function WebSettingsMain({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cx("web-settings-main", className)} data-web-main="" {...rest}>
+      {children}
+    </div>
+  );
+}
+
+/** Responsive grid of cards (landing). */
+export function WebCardGrid({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cx("web-card-grid", className)} {...rest}>
+      {children}
+    </div>
+  );
+}
+
+/** A link row inside a card: label left, optional mono count right. */
+export function WebLinkRow({ href, label, count }: { href: string; label: string; count?: number | null }) {
+  return (
+    <Link href={href} className="web-link-row">
+      <span>{label}</span>
+      {typeof count === "number" ? <span className="web-link-row-count">{count}</span> : null}
+    </Link>
+  );
+}
+
+/** Muted helper paragraph under a card. */
+export function WebHint({ className, children, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
+  return (
+    <p className={cx("web-hint", className)} {...rest}>
+      {children}
+    </p>
+  );
+}
+
+/** Placeholder card for Suspense / `loading.tsx` (a head bar and `rows` rows). */
+export function WebCardSkeleton({ rows = 4, title = true }: { rows?: number; title?: boolean }) {
+  return (
+    <section className="web-card" aria-hidden="true">
+      {title ? (
+        <header className="web-card-head">
+          <span className="web-skeleton-bar" style={{ width: 120 }} />
+        </header>
+      ) : null}
+      <div className="web-card-body">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div className="web-kv-row" key={index}>
+            <span className="web-skeleton-bar" style={{ width: 110 }} />
+            <span className="web-skeleton-bar" style={{ width: 160 }} />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

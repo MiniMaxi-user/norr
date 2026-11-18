@@ -2,7 +2,7 @@ import { SettingsLandingSkeleton } from "./components/settings-landing-skeleton"
 
 // Route-level Suspense fallback (issue #140) for `/settings` — reuses the
 // exact skeleton `page.tsx` already renders as its own `<Suspense>`
-// fallback around `SettingsLandingScreen`.
+// fallback around `SettingsLandingScreen`. The frame supplies the header.
 export default function SettingsLoading() {
   return <SettingsLandingSkeleton />;
 }

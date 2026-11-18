@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Button, CompositionTree, EmptyState, Inline, Stack, Text } from "@yourorg/ui";
-import { AlertTriangle } from "@yourorg/ui/icons";
+import { useMemo, useState } from "react";
+import { WebButton } from "@yourorg/ui/web";
+import { StructureTree, type StructureTreeNode, type WebMenuItem } from "@yourorg/ui/web-client";
 import type { ActivitySubtypeRecord } from "@/app/(app)/activities/subtypes-actions";
 import { buildActivitySubtypeTree, type ActivitySubtypeTreeNode } from "@/app/(app)/activities/subtype-tree";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -11,42 +11,24 @@ import { DeleteActivitySubtypeDialog } from "./delete-activity-subtype-dialog";
 
 export interface ActivitySubtypeManagerProps {
   subtypes: ActivitySubtypeRecord[];
-  /** This org's `activity_type` reference-list items, for the Activity
-   * Subtype form dialog's root-only Activity Type field. */
+  /** This org's `activity_type` reference-list items, for the form dialog's
+   * root-only Activity Type field and the tree's Activity type column. */
   typeItems: ReferenceListItemRecord[];
-  /** Non-fatal — same "still render with whatever it got" convention every
-   * other manager on this board uses for its own `loadError`. */
+  /** Non-fatal: still renders the tree (empty) with this message. */
   loadError?: string;
-  /** Owner-only, per the `settings` RBAC entry — matches this table's own
-   * owner-only write RLS with zero gap (see `subtypes-actions.ts`'s module
-   * comment). */
+  /** Owner-only, per the `settings` RBAC entry. */
   canWrite: boolean;
 }
 
 /**
- * "Activity Subtypes" settings leaf (issues #134/#138) — `activity_subtypes`
- * is its own table (not a `reference_list_items` row) and an unlimited-depth
- * parent/child tree. Rendered with the same `CompositionTree` primitive the
- * Asset/Article composite (bill-of-materials) trees already use (issues
- * #134/#138 follow-up: "gebruik de layout van subtypes dezelfde geneste
- * layout van composite articles en composite assets"), replacing the
- * earlier nested-`Disclosure` rendering this leaf originally shipped with —
- * one `CompositionTree` per top-level subtype (this org can have several
- * independent root subtypes, one per `activity_type` branch), since that
- * primitive itself renders exactly one rooted tree. Each tree's own root
- * card gets a distinct background (`ui-composition-tree-root-tinted`, see
- * that class's own comment in `packages/ui/src/styles.css`) so a top-level
- * parent reads as visually distinct from the plain-background cards nested
- * beneath it, per the same follow-up ask.
- *
- * The one twist vs. `ArticleGroupManager`/`SolutionSubtypeManager`: a
- * root-level (`parent_subtype_id is null`) subtype MUST carry a `type_id`
- * (enforced by the DB's `activity_subtypes_root_xor_parent` CHECK) — handled
- * entirely inside `ActivitySubtypeFormDialog`, not here; this manager just
- * threads `typeItems` down to it.
+ * "Activity subtypes" settings leaf (issues #134/#138; design system #222) —
+ * an unlimited-depth parent/child tree rendered with the shared
+ * `StructureTree`. A top-level subtype must carry an Activity type (a DB
+ * CHECK; the form dialog handles it) and shows it in the tree's right-hand
+ * column. `+ Subtype` adds a top-level subtype in the toolbar; each row's ···
+ * menu has Add subtype (pre-scoped to that subtype), Edit and Delete.
  */
 export function ActivitySubtypeManager({ subtypes, typeItems, loadError, canWrite }: ActivitySubtypeManagerProps) {
-  const tree = buildActivitySubtypeTree(subtypes);
   const [formState, setFormState] = useState<{
     open: boolean;
     subtype: ActivitySubtypeRecord | null;
@@ -54,82 +36,69 @@ export function ActivitySubtypeManager({ subtypes, typeItems, loadError, canWrit
   }>({ open: false, subtype: null });
   const [deleteTarget, setDeleteTarget] = useState<ActivitySubtypeRecord | null>(null);
 
-  function openAddTopLevel() {
-    setFormState({ open: true, subtype: null, parentSubtypeId: undefined });
-  }
-
-  function openAddChild(parent: ActivitySubtypeRecord) {
-    setFormState({ open: true, subtype: null, parentSubtypeId: parent.id });
-  }
-
-  function openEdit(subtype: ActivitySubtypeRecord) {
-    setFormState({ open: true, subtype, parentSubtypeId: subtype.parent_subtype_id ?? undefined });
-  }
-
-  function renderNode(node: ActivitySubtypeTreeNode) {
-    return (
-      <Inline gap="sm" align="center" justify="between" style={{ width: "100%" }}>
-        <Text>{node.subtype.name}</Text>
-        {canWrite && (
-          <Inline gap="xs">
-            <Button type="button" variant="outline" size="sm" onClick={() => openAddChild(node.subtype)}>
-              Add subtype
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => openEdit(node.subtype)}>
-              Edit
-            </Button>
-            <Button type="button" variant="danger" size="sm" onClick={() => setDeleteTarget(node.subtype)}>
-              Delete
-            </Button>
-          </Inline>
-        )}
-      </Inline>
-    );
-  }
+  const nodes = useMemo<StructureTreeNode[]>(() => {
+    const typeLabels = new Map(typeItems.map((item) => [item.id, item.label]));
+    function convert(node: ActivitySubtypeTreeNode): StructureTreeNode {
+      const subtype = node.subtype;
+      const actions: WebMenuItem[] = canWrite
+        ? [
+            {
+              key: "add",
+              label: "Add subtype…",
+              onSelect: () => setFormState({ open: true, subtype: null, parentSubtypeId: subtype.id }),
+            },
+            {
+              key: "edit",
+              label: "Edit…",
+              onSelect: () =>
+                setFormState({ open: true, subtype, parentSubtypeId: subtype.parent_subtype_id ?? undefined }),
+            },
+            { type: "separator", key: "sep" },
+            { key: "delete", label: "Delete", danger: true, onSelect: () => setDeleteTarget(subtype) },
+          ]
+        : [];
+      const typeLabel = subtype.type_id ? typeLabels.get(subtype.type_id) : undefined;
+      return {
+        id: subtype.id,
+        label: subtype.name,
+        status: typeLabel ? { label: typeLabel, tone: "neutral" } : null,
+        actions,
+        children: node.children.map(convert),
+      };
+    }
+    return buildActivitySubtypeTree(subtypes).map(convert);
+  }, [subtypes, typeItems, canWrite]);
 
   return (
-    <Stack gap="md">
-      {loadError && <Text tone="danger">{loadError}</Text>}
+    <div className="web-tab-stack">
+      {loadError ? (
+        <p className="web-dialog-error" role="alert">
+          {loadError}
+        </p>
+      ) : null}
 
-      {canWrite && (
-        <div>
-          <Button variant="primary" size="sm" onClick={openAddTopLevel}>
-            Add subtype
-          </Button>
-        </div>
-      )}
+      <StructureTree
+        title="Activity subtypes"
+        nodes={nodes}
+        noun="subtypes"
+        currentLabel="this subtype"
+        childNoun="subtypes"
+        treeHeader="Subtype"
+        statusHeader="Activity type"
+        ariaLabel="Activity subtypes"
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={() => setFormState({ open: true, subtype: null, parentSubtypeId: undefined })}>
+              + Subtype
+            </WebButton>
+          ) : undefined
+        }
+        emptyText={canWrite ? "No activity subtypes yet. Use + Subtype to add the first one." : "No activity subtypes yet."}
+      />
 
-      {tree.length === 0 ? (
-        <EmptyState
-          icon={<AlertTriangle />}
-          heading="No activity subtypes yet"
-          text={canWrite ? "Add the first subtype." : "Nothing configured yet."}
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={openAddTopLevel}>
-                Add subtype
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Stack gap="md">
-          {tree.map((node) => (
-            <CompositionTree
-              key={node.subtype.id}
-              className="ui-composition-tree-root-tinted"
-              root={node}
-              getChildren={(n) => n.children}
-              getKey={(n) => n.subtype.id}
-              renderNode={renderNode}
-            />
-          ))}
-        </Stack>
-      )}
-
-      {canWrite && (
+      {canWrite ? (
         <>
-          {formState.open && (
+          {formState.open ? (
             <ActivitySubtypeFormDialog
               open
               onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
@@ -138,7 +107,7 @@ export function ActivitySubtypeManager({ subtypes, typeItems, loadError, canWrit
               subtypes={subtypes}
               typeItems={typeItems}
             />
-          )}
+          ) : null}
           <DeleteActivitySubtypeDialog
             open={Boolean(deleteTarget)}
             onOpenChange={(open) => {
@@ -147,7 +116,7 @@ export function ActivitySubtypeManager({ subtypes, typeItems, loadError, canWrit
             subtype={deleteTarget}
           />
         </>
-      )}
-    </Stack>
+      ) : null}
+    </div>
   );
 }

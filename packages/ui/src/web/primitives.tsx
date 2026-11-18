@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import Link from "next/link";
 import { cx } from "../cx";
 
@@ -250,3 +250,54 @@ export function WebDataTable({ className, children, ...rest }: HTMLAttributes<HT
 export function WebDataTableEmpty({ children }: { children: ReactNode }) {
   return <p className="web-table-empty">{children}</p>;
 }
+
+/* ---------------------------------------------------------------------- *
+ * Field — a labelled input row for a card that is not driven by `useEditMode`
+ * (e.g. a separate "Change password" card).
+ * ---------------------------------------------------------------------- */
+
+export interface WebFieldProps {
+  label: string;
+  /** `id` of the control inside (wires the label). */
+  htmlFor: string;
+  required?: boolean;
+  /** Message that says what is wrong and how to fix it. */
+  error?: string | null;
+  /** id of the message element, for `aria-describedby` on the control. */
+  messageId?: string;
+  children: ReactNode;
+}
+
+/** Same row as an edit-mode `KeyValueCard` field: label left, control right,
+ * error line (with the "!" mark) under the control. */
+export function WebField({ label, htmlFor, required, error, messageId, children }: WebFieldProps) {
+  return (
+    <div className="web-field" data-state={error ? "error" : "normal"} data-has-message={error ? "true" : undefined}>
+      <label className="web-field-label" htmlFor={htmlFor}>
+        {label}
+        {required ? (
+          <span className="web-field-required" aria-hidden="true">
+            *
+          </span>
+        ) : null}
+      </label>
+      <div className="web-field-control">{children}</div>
+      {error ? (
+        <div id={messageId} className="web-field-message">
+          <span className="web-error-mark" aria-hidden="true">
+            !
+          </span>
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The web text input (`web-input`). */
+export const WebInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function WebInput(
+  { className, ...rest },
+  ref,
+) {
+  return <input ref={ref} className={cx("web-input", className)} {...rest} />;
+});

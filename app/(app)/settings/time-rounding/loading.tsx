@@ -1,8 +1,6 @@
-import { RouteLoading } from "@/components/shell/route-loading";
+import { SettingsFormSkeleton } from "../components/settings-section-skeleton";
 
-// Route-level Suspense fallback (issue #140) for `/settings/time-rounding` —
-// this leaf has no `Suspense`/skeleton of its own; uses the shared minimal
-// fallback, same as `../default-rates/loading.tsx`.
-export default function TimeRoundingLoading() {
-  return <RouteLoading />;
+// Route-level Suspense fallback for `/settings/time-rounding`: the real header plus placeholder cards.
+export default function TimeRoundingSettingsLoading() {
+  return <SettingsFormSkeleton navKey="time_rounding" cards={2} />;
 }

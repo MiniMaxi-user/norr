@@ -1,22 +1,15 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Checkbox, Dialog, Heading, Inline, Input, Label, Stack, Text } from "@yourorg/ui";
 import {
   createChecklistTemplateItem,
   updateChecklistTemplateItem,
   type ChecklistTemplateItemRecord,
 } from "@/lib/checklist-templates/actions";
+import { DialogField, SettingsFormDialog, type DialogFormState } from "../../components/settings-dialog-kit";
 
-interface FormState {
-  error?: string;
-  fieldErrors?: Record<string, string[] | undefined>;
-  success?: boolean;
-}
-
-const initialState: FormState = {};
+const initialState: DialogFormState = {};
 
 export interface ChecklistTemplateItemFormDialogProps {
   open: boolean;
@@ -27,12 +20,10 @@ export interface ChecklistTemplateItemFormDialogProps {
 }
 
 /**
- * Create/edit dialog for a single item within a checklist template. `sortOrder`
- * is deliberately not a field here — ordering is handled by the up/down move
- * affordance in `ChecklistTemplateItemsManager` (same split
- * `ReferenceListManager`/`ReferenceItemFormDialog` establish for reference
- * items), so a brand-new item is simply appended (DB default `0`, correctable
- * afterwards with the arrows).
+ * Create/edit dialog for a single item within a checklist template.
+ * `sortOrder` is deliberately not a field: ordering is Move up / Move down in
+ * the tree's row menu, so a new item is appended (DB default `0`, correctable
+ * afterwards).
  */
 export function ChecklistTemplateItemFormDialog({
   open,
@@ -43,7 +34,7 @@ export function ChecklistTemplateItemFormDialog({
   const isEdit = Boolean(item);
   const router = useRouter();
 
-  async function action(_prevState: FormState, formData: FormData): Promise<FormState> {
+  async function action(_prevState: DialogFormState, formData: FormData): Promise<DialogFormState> {
     const input = {
       label: formData.get("label"),
       isRequired: formData.get("isRequired") === "on",
@@ -68,54 +59,35 @@ export function ChecklistTemplateItemFormDialog({
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>{isEdit ? "Edit item" : "Add item"}</Heading>
-      </Dialog.Header>
-      <form action={formAction}>
-        <Dialog.Body>
-          <Stack gap="md">
-            {state.error && <Text tone="danger">{state.error}</Text>}
+    <SettingsFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEdit ? "Edit item" : "Add item"}
+      submitLabel={isEdit ? "Save changes" : "Add item"}
+      formAction={formAction}
+      error={state.error}
+    >
+      <DialogField id="checklist-item-label" label="Label" errors={state.fieldErrors?.label}>
+        <input
+          id="checklist-item-label"
+          className="web-input"
+          name="label"
+          defaultValue={item?.label}
+          required
+          maxLength={500}
+          placeholder="e.g. Check refrigerant level"
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="checklist-item-label">Label</Label>
-              <Input
-                id="checklist-item-label"
-                name="label"
-                defaultValue={item?.label}
-                required
-                maxLength={500}
-                placeholder="e.g. Check refrigerant level"
-              />
-              {state.fieldErrors?.label?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-
-            <Inline gap="sm" align="center">
-              <Checkbox id="checklist-item-required" name="isRequired" defaultChecked={item?.is_required ?? false} />
-              <Label htmlFor="checklist-item-required">Required</Label>
-            </Inline>
-          </Stack>
-        </Dialog.Body>
-        <Dialog.Footer>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <SubmitButton isEdit={isEdit} />
-        </Dialog.Footer>
-      </form>
-    </Dialog>
-  );
-}
-
-function SubmitButton({ isEdit }: { isEdit: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? "Saving…" : isEdit ? "Save changes" : "Add item"}
-    </Button>
+      <label className="web-field-checkbox" htmlFor="checklist-item-required">
+        <input
+          id="checklist-item-required"
+          type="checkbox"
+          name="isRequired"
+          defaultChecked={item?.is_required ?? false}
+        />
+        Required
+      </label>
+    </SettingsFormDialog>
   );
 }

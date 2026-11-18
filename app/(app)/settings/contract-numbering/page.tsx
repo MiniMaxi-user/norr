@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -26,13 +25,5 @@ export default async function ContractNumberingPage() {
 
   const settings = await getContractNumberingSettings();
 
-  return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Contract numbering"
-        subtitle="Every contract gets a unique number automatically: the prefix followed by a running number."
-      />
-      <ContractNumberingForm initial={settings} canWrite={canWrite} />
-    </Stack>
-  );
+  return <ContractNumberingForm initial={settings} canWrite={canWrite} />;
 }

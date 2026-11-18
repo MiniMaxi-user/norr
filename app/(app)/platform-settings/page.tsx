@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Card, Heading, Stack, Text } from "@yourorg/ui";
+import { WebCard, WebDataTableEmpty, WebSettingsHeader, WebSettingsMain, WebSettingsPage } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 
@@ -30,21 +30,16 @@ export default async function PlatformSettingsPage() {
   if (!canAccessModule(actor, "platform")) notFound();
 
   return (
-    <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={1}>Platform settings</Heading>
-        <Text tone="muted">Cross-tenant configuration for Norr&rsquo;s own operators.</Text>
-      </Stack>
-
-      <Card>
-        <Stack gap="xs">
-          <Heading level={3}>Nothing configurable yet</Heading>
-          <Text tone="muted">
+    <WebSettingsPage>
+      <WebSettingsHeader breadcrumb={[{ label: "Platform settings" }]} title="Platform settings" />
+      <WebSettingsMain>
+        <WebCard title="Nothing configurable yet">
+          <WebDataTableEmpty>
             This is a placeholder. Platform-wide settings (e.g. default module bundles for new tenants, platform
-            billing) will land here in a future stage.
-          </Text>
-        </Stack>
-      </Card>
-    </Stack>
+            billing) will land here in a future stage. Cross-tenant configuration for Norr&rsquo;s own operators.
+          </WebDataTableEmpty>
+        </WebCard>
+      </WebSettingsMain>
+    </WebSettingsPage>
   );
 }

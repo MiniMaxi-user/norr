@@ -1,8 +1,8 @@
-import { OverviewHeroBand, Stack, Text } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getOrganizationTimeRoundingSettings } from "../organization-time-rounding-actions";
 import { OrganizationTimeRoundingForm } from "../components/organization-time-rounding-form";
+import { SettingsLoadError } from "../components/settings-load-error";
 
 export const metadata = { title: "Time Rounding" };
 
@@ -24,17 +24,9 @@ export default async function TimeRoundingPage() {
 
   const settingsResult = await getOrganizationTimeRoundingSettings();
 
-  return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Time Rounding"
-        subtitle="Minimum billable duration and rounding rules applied separately to logged Travel time and Work time — e.g. a 25 min work entry rounds up to 30 min, or a 40 min travel entry floors up to a 60 min minimum. Applied wherever hours are billed; the raw clocked times are always kept as logged."
-      />
-      {settingsResult.data ? (
-        <OrganizationTimeRoundingForm initial={settingsResult.data.settings} canWrite={canWrite} />
-      ) : (
-        <Text tone="danger">{settingsResult.error ?? "Could not load time rounding settings."}</Text>
-      )}
-    </Stack>
-  );
+  if (!settingsResult.data) {
+    return <SettingsLoadError navKey="time_rounding" message={settingsResult.error ?? "Could not load time rounding settings."} />;
+  }
+
+  return <OrganizationTimeRoundingForm initial={settingsResult.data.settings} canWrite={canWrite} />;
 }

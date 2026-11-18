@@ -34,6 +34,16 @@ import { getClientLogoUrl } from "@/lib/clients/logo-url";
  * settings.
  */
 
+/** One row of the "own client" picker: the business details are what the
+ * settings page previews for the selected client. */
+export interface OwnClientOption {
+  id: string;
+  name: string;
+  kvkNumber: string | null;
+  vatNumber: string | null;
+  iban: string | null;
+}
+
 export interface OrganizationOwnClientSettings {
   ownClientId: string | null;
   ownClient: {
@@ -116,7 +126,7 @@ export async function getOrganizationCompanySettings(): Promise<ActionResult<Org
  * `"clients"` (not `"settings"`) since this is a plain client listing, same
  * module boundary `can(actor, "clients", "read")` already governs elsewhere.
  */
-export async function listClientsForOwnClientSelect(): Promise<ActionResult<{ clients: { id: string; name: string }[] }>> {
+export async function listClientsForOwnClientSelect(): Promise<ActionResult<{ clients: OwnClientOption[] }>> {
   const ctx = await requireModuleContext("clients");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -125,11 +135,23 @@ export async function listClientsForOwnClientSelect(): Promise<ActionResult<{ cl
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("clients").select("id, name").order("name", { ascending: true });
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, name, kvk_number, vat_number, iban")
+    .order("name", { ascending: true });
 
   if (error) return fail(mapDbError(error));
 
-  return ok({ clients: (data ?? []) as { id: string; name: string }[] });
+  const rows = (data ?? []) as { id: string; name: string; kvk_number: string | null; vat_number: string | null; iban: string | null }[];
+  return ok({
+    clients: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      kvkNumber: row.kvk_number,
+      vatNumber: row.vat_number,
+      iban: row.iban,
+    })),
+  });
 }
 
 const updateOwnClientSchema = z.object({

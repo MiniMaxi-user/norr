@@ -1,4 +1,3 @@
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listSolutionSubtypes } from "@/app/(app)/activities/solution-subtype-actions";
@@ -22,16 +21,12 @@ export default async function SolutionSubtypesPage() {
   const result = await listSolutionSubtypes();
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Solution Subtypes"
-        subtitle="Hierarchical, unlimited-depth subtypes describing how an Activity was resolved."
-      />
+    <div className="web-tab-stack">
       <SolutionSubtypeManager
         subtypes={result.data?.subtypes ?? []}
         loadError={result.error}
         canWrite={canWrite}
       />
-    </Stack>
+    </div>
   );
 }

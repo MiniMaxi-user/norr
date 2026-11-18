@@ -1,38 +1,43 @@
 "use client";
 
-import { useState } from "react";
-import { Badge, Button, Disclosure, EmptyState, Inline, Stack, Text } from "@yourorg/ui";
-import { FileText } from "@yourorg/ui/icons";
-import type { ChecklistTemplateItemRecord, ChecklistTemplateRecord } from "@/lib/checklist-templates/actions";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { WebButton } from "@yourorg/ui/web";
+import { StructureTree, type StructureTreeNode, type WebMenuItem } from "@yourorg/ui/web-client";
+import {
+  updateChecklistTemplateItem,
+  type ChecklistTemplateItemRecord,
+  type ChecklistTemplateRecord,
+} from "@/lib/checklist-templates/actions";
 import { ChecklistTemplateFormDialog } from "./checklist-template-form-dialog";
+import { ChecklistTemplateItemFormDialog } from "./checklist-template-item-form-dialog";
 import { DeleteChecklistTemplateDialog } from "./delete-checklist-template-dialog";
-import { ChecklistTemplateItemsManager } from "./checklist-template-items-manager";
+import { DeleteChecklistTemplateItemDialog } from "./delete-checklist-template-item-dialog";
 
 export interface ChecklistTemplatesManagerProps {
   templates: ChecklistTemplateRecord[];
-  /** Every template's items, keyed by `checklist_template_id` — see
-   * `ChecklistTemplatesBoard`'s doc comment for why this is fetched eagerly
-   * for every template rather than lazily per `Disclosure` expand. */
+  /** Every template's items, keyed by `checklist_template_id`, fetched
+   * eagerly for all templates in one bulk query (see
+   * `ChecklistTemplatesBoard`). */
   itemsByTemplateId: Record<string, ChecklistTemplateItemRecord[]>;
-  /** Non-fatal — `listChecklistTemplates` failing still renders this
-   * component with whatever it got, plus this message, same "don't crash the
-   * whole screen" precedent `ReferenceListManager` establishes. */
+  /** Non-fatal: `listChecklistTemplates` failing still renders the tree
+   * (empty) with this message. */
   loadError?: string;
-  /** `can(actor, "settings", "create")` — owner only, per the `settings`
-   * RBAC row (same tier as Reference Lists). `false` renders every template
-   * and its items read-only, same "everyone views, only the owner edits"
-   * split `ReferenceListManager` uses. */
+  /** `can(actor, "settings", "create")`, owner only. `false` renders every
+   * template and its items read-only. */
   canWrite: boolean;
 }
 
 /**
- * Top-level "manage checklist templates" screen: a create/rename/delete
- * affordance per template (small popup dialogs — correct per docs/
- * ARCHITECTURE.md "Popup vs. full page": these are small, flat config
- * records, not a top-level module record), and each template expands via
- * `Disclosure` to manage its own items — the natural "template has items"
- * sub-grouping, same reasoning `AssetsPanel` groups assets under `Disclosure`
- * per site rather than one flat table.
+ * Checklist templates (issue #14; design system #222) as a two-level
+ * `StructureTree`: each template is a root, its items are the rows below it —
+ * the same "template has items" relation the old Disclosure list showed, now
+ * the shared tree used by asset Structure / article Bill of materials.
+ * `+ Template` sits in the toolbar. A template's ··· menu has Add item
+ * (pre-scoped to it), Rename and Delete template; an item's menu has Edit,
+ * Move up / Move down (its order within the template, by swapping
+ * `sort_order` with the neighbour) and Delete. Required items show
+ * "Required" in the status column. Forms stay small dialogs.
  */
 export function ChecklistTemplatesManager({
   templates,
@@ -40,101 +45,161 @@ export function ChecklistTemplatesManager({
   loadError,
   canWrite,
 }: ChecklistTemplatesManagerProps) {
-  const [formState, setFormState] = useState<{ open: boolean; template: ChecklistTemplateRecord | null }>({
+  const router = useRouter();
+  const [templateForm, setTemplateForm] = useState<{ open: boolean; template: ChecklistTemplateRecord | null }>({
     open: false,
     template: null,
   });
-  const [deleteTarget, setDeleteTarget] = useState<ChecklistTemplateRecord | null>(null);
+  const [deleteTemplate, setDeleteTemplate] = useState<ChecklistTemplateRecord | null>(null);
+  const [itemForm, setItemForm] = useState<{
+    open: boolean;
+    templateId: string;
+    item: ChecklistTemplateItemRecord | null;
+  } | null>(null);
+  const [deleteItem, setDeleteItem] = useState<ChecklistTemplateItemRecord | null>(null);
+  const [, startReordering] = useTransition();
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  function openAdd() {
-    setFormState({ open: true, template: null });
+  function move(sorted: ChecklistTemplateItemRecord[], index: number, direction: -1 | 1) {
+    const current = sorted[index];
+    const target = sorted[index + direction];
+    if (!current || !target) return;
+    setActionError(null);
+    startReordering(async () => {
+      const [currentResult, targetResult] = await Promise.all([
+        updateChecklistTemplateItem(current.id, { sortOrder: target.sort_order }),
+        updateChecklistTemplateItem(target.id, { sortOrder: current.sort_order }),
+      ]);
+      if (!currentResult.data || !targetResult.data) {
+        setActionError(currentResult.error ?? targetResult.error ?? "Could not reorder these items.");
+        return;
+      }
+      router.refresh();
+    });
   }
 
-  function openRename(template: ChecklistTemplateRecord) {
-    setFormState({ open: true, template });
-  }
+  const nodes = useMemo<StructureTreeNode[]>(
+    () =>
+      templates.map((template) => {
+        const sorted = [...(itemsByTemplateId[template.id] ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+        const templateActions: WebMenuItem[] = canWrite
+          ? [
+              {
+                key: "add",
+                label: "Add item…",
+                onSelect: () => setItemForm({ open: true, templateId: template.id, item: null }),
+              },
+              { key: "rename", label: "Rename…", onSelect: () => setTemplateForm({ open: true, template }) },
+              { type: "separator", key: "sep" },
+              { key: "delete", label: "Delete template", danger: true, onSelect: () => setDeleteTemplate(template) },
+            ]
+          : [];
+        return {
+          id: template.id,
+          label: template.name,
+          status: { label: `${sorted.length} item${sorted.length === 1 ? "" : "s"}`, tone: "neutral" },
+          actions: templateActions,
+          children: sorted.map((item, index): StructureTreeNode => ({
+            id: item.id,
+            label: item.label,
+            status: item.is_required ? { label: "Required", tone: "warning" } : null,
+            actions: canWrite
+              ? [
+                  {
+                    key: "edit",
+                    label: "Edit…",
+                    onSelect: () => setItemForm({ open: true, templateId: template.id, item }),
+                  },
+                  { key: "up", label: "Move up", disabled: index === 0, onSelect: () => move(sorted, index, -1) },
+                  {
+                    key: "down",
+                    label: "Move down",
+                    disabled: index === sorted.length - 1,
+                    onSelect: () => move(sorted, index, 1),
+                  },
+                  { type: "separator", key: "sep" },
+                  { key: "delete", label: "Delete", danger: true, onSelect: () => setDeleteItem(item) },
+                ]
+              : [],
+            children: [],
+          })),
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [templates, itemsByTemplateId, canWrite],
+  );
 
   return (
-    <Stack gap="md">
-      {loadError && <Text tone="danger">{loadError}</Text>}
+    <div className="web-tab-stack">
+      {loadError ? (
+        <p className="web-dialog-error" role="alert">
+          {loadError}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="web-dialog-error" role="alert">
+          {actionError}
+        </p>
+      ) : null}
 
-      {canWrite && (
-        <div>
-          <Button variant="primary" size="sm" onClick={openAdd}>
-            Add template
-          </Button>
-        </div>
-      )}
+      <StructureTree
+        title="Checklist templates"
+        nodes={nodes}
+        noun="templates and items"
+        currentLabel="this template"
+        childNoun="items"
+        treeHeader="Template / item"
+        statusHeader="Items / required"
+        ariaLabel="Checklist templates"
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={() => setTemplateForm({ open: true, template: null })}>
+              + Template
+            </WebButton>
+          ) : undefined
+        }
+        emptyText={
+          canWrite
+            ? "No checklist templates yet. Use + Template to add one you can attach to any work order."
+            : "No checklist templates yet."
+        }
+      />
 
-      {templates.length === 0 ? (
-        <EmptyState
-          icon={<FileText />}
-          heading="No checklist templates yet"
-          text={
-            canWrite
-              ? "Add your first checklist template — you'll be able to attach it to any work order."
-              : "Nothing configured yet."
-          }
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={openAdd}>
-                Add template
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Stack gap="sm">
-          {templates.map((template) => {
-            const items = itemsByTemplateId[template.id] ?? [];
-            return (
-              <Disclosure key={template.id} defaultOpen={templates.length === 1}>
-                <Disclosure.Summary
-                  meta={
-                    <Badge variant="muted">
-                      {items.length} item{items.length === 1 ? "" : "s"}
-                    </Badge>
-                  }
-                >
-                  {template.name}
-                </Disclosure.Summary>
-                <Disclosure.Content>
-                  <Stack gap="md">
-                    {canWrite && (
-                      <Inline gap="sm">
-                        <Button variant="outline" size="sm" onClick={() => openRename(template)}>
-                          Rename
-                        </Button>
-                        <Button variant="danger" size="sm" onClick={() => setDeleteTarget(template)}>
-                          Delete template
-                        </Button>
-                      </Inline>
-                    )}
-                    <ChecklistTemplateItemsManager templateId={template.id} items={items} canWrite={canWrite} />
-                  </Stack>
-                </Disclosure.Content>
-              </Disclosure>
-            );
-          })}
-        </Stack>
-      )}
-
-      {canWrite && (
+      {canWrite ? (
         <>
-          <ChecklistTemplateFormDialog
-            open={formState.open}
-            onOpenChange={(open) => setFormState((state) => ({ ...state, open }))}
-            template={formState.template}
-          />
+          {templateForm.open ? (
+            <ChecklistTemplateFormDialog
+              open
+              onOpenChange={(open) => setTemplateForm((state) => ({ ...state, open }))}
+              template={templateForm.template}
+            />
+          ) : null}
           <DeleteChecklistTemplateDialog
-            open={Boolean(deleteTarget)}
+            open={Boolean(deleteTemplate)}
             onOpenChange={(open) => {
-              if (!open) setDeleteTarget(null);
+              if (!open) setDeleteTemplate(null);
             }}
-            template={deleteTarget}
+            template={deleteTemplate}
+          />
+          {itemForm?.open ? (
+            <ChecklistTemplateItemFormDialog
+              open
+              onOpenChange={(open) => {
+                if (!open) setItemForm(null);
+              }}
+              templateId={itemForm.templateId}
+              item={itemForm.item}
+            />
+          ) : null}
+          <DeleteChecklistTemplateItemDialog
+            open={Boolean(deleteItem)}
+            onOpenChange={(open) => {
+              if (!open) setDeleteItem(null);
+            }}
+            item={deleteItem}
           />
         </>
-      )}
-    </Stack>
+      ) : null}
+    </div>
   );
 }

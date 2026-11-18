@@ -1,24 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Avatar,
-  Badge,
-  Button,
-  Dialog,
-  EmptyState,
-  Heading,
-  Inline,
-  Input,
-  Select,
-  Stack,
-  Table,
-  Text,
-  useEscapeToClose,
-} from "@yourorg/ui";
-import { Mail } from "@yourorg/ui/icons";
-import { formatDateTime } from "@/lib/format/date";
+import { Dialog, useEscapeToClose } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
+import { StatusText, WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
+import { formatDateTimeWeb } from "@/lib/format/web";
 import {
   cancelTeamInvite,
   listTeamMembers,
@@ -35,20 +22,14 @@ import { roleLabel } from "./role-label";
 export interface TeamManagerProps {
   members: TeamMemberRecord[];
   pendingInvites: PendingTeamInviteRecord[];
-  /** Non-fatal — `listTeamMembers` failing still renders this component with
-   * whatever it got, plus this message, same convention every other manager
-   * on this settings surface uses (`AccountManagerManager`,
-   * `ChecklistTemplatesManager`, `ReferenceListManager`). */
+  /** Non-fatal: `listTeamMembers` failing still renders the card with this
+   * message. */
   loadError?: string;
-  /** Owner only, per the `settings` RBAC row (owner: CRUD, everyone else:
-   * read-only) — a non-owner sees a plain read-only member list with no
-   * pending-invites section (they can't see those either: `invites_select_
-   * owner` RLS means `listTeamMembers` already comes back with an empty
-   * `pendingInvites` for them). */
+  /** Owner only, per the `settings` RBAC row. A non-owner sees a read-only
+   * member list (and no pending invites: RLS returns none for them). */
   canWrite: boolean;
-  /** `session.userId` (issue #91) — identifies the caller's own row so it can
-   * be rendered protected (role locked, no Remove) below, matching the
-   * server-side self-change guards in `lib/team/actions.ts`. */
+  /** `session.userId` — identifies the caller's own row so it is protected
+   * (role locked, no Remove), matching the server-side guards. */
   currentUserId: string;
 }
 
@@ -58,47 +39,30 @@ interface RevealedLink {
   link: string;
 }
 
+type TeamRow =
+  | { kind: "member"; id: string; member: TeamMemberRecord }
+  | { kind: "invite"; id: string; invite: PendingTeamInviteRecord };
+
+const rowEmail = (row: TeamRow) => (row.kind === "member" ? row.member.email : row.invite.email);
+const rowName = (row: TeamRow) => (row.kind === "member" ? row.member.fullName || "" : "");
+const rowRole = (row: TeamRow): TenantRole => (row.kind === "member" ? row.member.role : row.invite.role);
+const rowDate = (row: TeamRow) => (row.kind === "member" ? row.member.createdAt : row.invite.createdAt);
+
 /**
- * "Team" settings screen (issue #88) — lists active members (avatar, name,
- * email, role, joined date, actions) and pending invites, backed by
- * `lib/team/actions.ts`. Modeled on two existing precedents rather than
- * invented fresh:
- *  - `AccessPanel` (`app/(app)/clients/[id]/access-panel.tsx`) for the
- *    "reveal a copyable link" popup — there's no outbound email in this repo,
- *    so an invite/password-reset both resolve to a link the owner copies and
- *    sends manually.
- *  - `AccountManagerManager`/`ReferenceListManager` for the table +
- *    form-dialog + `ConfirmDeleteDialog` CRUD shape.
+ * "Team" settings page (issue #88; design system #222): the organisation's
+ * members and pending invites in one card with a FilterBar (search, Role
+ * dropdown, Active / Invited / All) and a table. `+ Invite teammate` sits in
+ * the FilterBar. A row click opens the member's own detail page
+ * (`/settings/team/[userId]`, issue #192); the row's ··· menu has Edit,
+ * Change role (one entry per other role), Reset password and Remove for a
+ * member, and Cancel invite for a pending invite. Menus are owner only.
  *
- * A role change is a plain inline `<Select>` per row that calls
- * `updateTeamMemberRole` immediately on change (no separate "Save" step) —
- * there's no existing inline-select-edit precedent elsewhere in the app, so
- * this establishes the pattern for this screen; reverting the `<select>`'s
- * displayed value on failure falls out for free since it's controlled by
- * `members` state, which is only updated on a *successful* change.
+ * Own-row / Platform Admin protection (issue #91): the caller's own row and
+ * the cross-tenant Platform Admin never offer Change role or Remove, mirroring
+ * the server-side guards in `lib/team/actions.ts`.
  *
- * Issue #91: the caller's own row (`currentUserId`) always renders its role
- * as a plain `Badge` (never a `<Select>`) and never shows "Remove" — an
- * owner shouldn't be able to lock themselves out of their own org from this
- * panel. Same treatment for whichever row `isPlatformAdmin`, regardless of
- * who's viewing: that account's role/membership is protected from every
- * owner, not just itself. Both mirror real guards in
- * `lib/team/actions.ts` (`updateTeamMemberRole`/`removeTeamMember`) — this is
- * just keeping the UI from offering a control that would only fail
- * server-side.
- *
- * Issue #192: a row click navigates to that member's own
- * `/settings/team/[userId]` detail page (same `router.push` convention
- * `clients-table.tsx` uses for its own rows) — available to every viewer,
- * not just `canWrite`, since the detail page itself renders every section
- * read-only for a caller without write access. The row's own "Edit" button
- * is just a second, explicit affordance to the SAME destination (not a
- * dialog — `EditTeamMemberDialog` was removed once its last field, Name,
- * moved onto the detail page too); it still stops click propagation so it
- * doesn't also trigger the row's own `onClick` (harmless either way since
- * both land on the same URL, but consistent with `Reset password`/`Remove`
- * needing that same guard for real). "Reset password"/"Remove" stay
- * row-level actions, still `canWrite`-gated.
+ * There is no outbound email, so an invite and a password reset both resolve
+ * to a link the owner copies and sends by hand (`RevealedLinkDialog`).
  */
 export function TeamManager({
   members: initialMembers,
@@ -110,35 +74,34 @@ export function TeamManager({
   const router = useRouter();
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
-  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<RevealedLink | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<TeamMemberRecord | null>(null);
 
-  function clearRowError(key: string) {
-    setRowErrors((prev) => ({ ...prev, [key]: "" }));
-  }
+  const rows = useMemo<TeamRow[]>(
+    () => [
+      ...members.map((member): TeamRow => ({ kind: "member", id: member.userId, member })),
+      ...(canWrite ? pendingInvites : []).map((invite): TeamRow => ({ kind: "invite", id: `invite-${invite.id}`, invite })),
+    ],
+    [members, pendingInvites, canWrite],
+  );
 
   async function handleRoleChange(member: TeamMemberRecord, role: TenantRole) {
-    clearRowError(member.userId);
-    setPendingId(member.userId);
+    setActionError(null);
     const result = await updateTeamMemberRole(member.userId, role);
-    setPendingId(null);
     if (result.error || !result.data) {
-      setRowErrors((prev) => ({ ...prev, [member.userId]: result.error ?? "Could not change this teammate's role." }));
+      setActionError(result.error ?? "Could not change this teammate's role.");
       return;
     }
     setMembers((prev) => prev.map((m) => (m.userId === member.userId ? { ...m, role: result.data!.role } : m)));
   }
 
   async function handleResetPassword(member: TeamMemberRecord) {
-    clearRowError(member.userId);
-    setPendingId(member.userId);
+    setActionError(null);
     const result = await resetTeamMemberPassword(member.userId);
-    setPendingId(null);
     if (result.error || !result.data) {
-      setRowErrors((prev) => ({ ...prev, [member.userId]: result.error ?? "Could not generate a reset link." }));
+      setActionError(result.error ?? "Could not generate a reset link.");
       return;
     }
     setRevealed({
@@ -149,12 +112,10 @@ export function TeamManager({
   }
 
   async function handleCancelInvite(invite: PendingTeamInviteRecord) {
-    clearRowError(invite.id);
-    setPendingId(invite.id);
+    setActionError(null);
     const result = await cancelTeamInvite(invite.id);
-    setPendingId(null);
     if (result.error) {
-      setRowErrors((prev) => ({ ...prev, [invite.id]: result.error ?? "Could not cancel this invite." }));
+      setActionError(result.error ?? "Could not cancel this invite.");
       return;
     }
     setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
@@ -163,166 +124,152 @@ export function TeamManager({
   async function handleInvited(inviteUrl: string) {
     setRevealed({
       heading: "Invitation link",
-      description: "Send this link to your new teammate — there's no outbound email yet, so this is the only way for them to get it.",
+      description:
+        "Send this link to your new teammate — there's no outbound email yet, so this is the only way for them to get it.",
       link: inviteUrl,
     });
-    // The invite dialog only returns the link, not the created row's real
-    // id/created-at — a targeted re-list keeps the pending-invites table
-    // authoritative without a full page reload.
+    // The invite dialog only returns the link; a targeted re-list keeps the
+    // pending invites authoritative without a full page reload.
     const result = await listTeamMembers();
     if (result.data) setPendingInvites(result.data.pendingInvites);
   }
 
-  return (
-    <Stack gap="lg">
-      {loadError && <Text tone="danger">{loadError}</Text>}
-
-      <Stack gap="sm">
-        <Inline gap="sm" align="center">
-          <Heading level={3}>Members</Heading>
-          {canWrite && (
-            <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
-              Invite teammate
-            </Button>
-          )}
-        </Inline>
-
-        <Table>
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Name</Table.HeaderCell>
-              <Table.HeaderCell>Email</Table.HeaderCell>
-              <Table.HeaderCell>Role</Table.HeaderCell>
-              <Table.HeaderCell>Joined</Table.HeaderCell>
-              {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {members.map((member) => {
-              const isPending = pendingId === member.userId;
-              const rowError = rowErrors[member.userId];
-              // Issue #91: an owner can't change their own role or remove
-              // themselves from this panel (mirrors the server-side guards in
-              // `lib/team/actions.ts` — this just keeps the UI from offering
-              // a control that would only fail), and the cross-tenant
-              // Platform Admin's role/membership is protected from EVERY
-              // owner, not just themselves.
-              const isSelf = member.userId === currentUserId;
-              const roleLocked = isSelf || member.isPlatformAdmin;
-              return (
-                <Table.Row key={member.userId} onClick={() => router.push(`/settings/team/${member.userId}`)}>
-                  <Table.Cell>
-                    <Inline gap="sm" align="center">
-                      <Avatar name={member.fullName || member.email} size="sm" photoUrl={member.avatarUrl} />
-                      {member.fullName ? <Text>{member.fullName}</Text> : <Text tone="muted">No name set</Text>}
-                      {isSelf && <Badge variant="muted">You</Badge>}
-                    </Inline>
-                  </Table.Cell>
-                  <Table.Cell>{member.email}</Table.Cell>
-                  <Table.Cell>
-                    {canWrite && !roleLocked ? (
-                      <span onClick={(event) => event.stopPropagation()}>
-                        <Select
-                          aria-label={`Role for ${member.fullName || member.email}`}
-                          value={member.role}
-                          disabled={isPending}
-                          onChange={(event) => handleRoleChange(member, event.target.value as TenantRole)}
-                        >
-                          {TENANT_ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {roleLabel(role)}
-                            </option>
-                          ))}
-                        </Select>
-                      </span>
-                    ) : (
-                      <Badge variant="muted">{roleLabel(member.role)}</Badge>
-                    )}
-                  </Table.Cell>
-                  <Table.Cell>{formatDateTime(member.createdAt)}</Table.Cell>
-                  {canWrite && (
-                    <Table.Cell align="center">
-                      <Stack gap="xs">
-                        <span className="ui-row-actions" onClick={(event) => event.stopPropagation()}>
-                          <Inline gap="xs">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => router.push(`/settings/team/${member.userId}`)}
-                              disabled={isPending}
-                            >
-                              Edit
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleResetPassword(member)} disabled={isPending}>
-                              {isPending ? "Working…" : "Reset password"}
-                            </Button>
-                            {!isSelf && !member.isPlatformAdmin && (
-                              <Button variant="danger" size="sm" onClick={() => setRemoveTarget(member)} disabled={isPending}>
-                                Remove
-                              </Button>
-                            )}
-                          </Inline>
-                        </span>
-                        {rowError && <Text tone="danger">{rowError}</Text>}
-                      </Stack>
-                    </Table.Cell>
-                  )}
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table>
-      </Stack>
-
-      {canWrite && (
-        <Stack gap="sm">
-          <Heading level={3}>Pending invites</Heading>
-          {pendingInvites.length === 0 ? (
-            <EmptyState icon={<Mail />} heading="No pending invites" text="Everyone you've invited has already joined." />
+  const columns = useMemo<WebColumn<TeamRow>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        sortValue: (row) => rowName(row),
+        render: (row) => {
+          if (row.kind === "invite") return "—";
+          const suffix = row.member.userId === currentUserId ? " (you)" : "";
+          return row.member.fullName ? (
+            `${row.member.fullName}${suffix}`
           ) : (
-            <Table>
-              <Table.Head>
-                <Table.Row>
-                  <Table.HeaderCell>Email</Table.HeaderCell>
-                  <Table.HeaderCell>Role</Table.HeaderCell>
-                  <Table.HeaderCell>Invited</Table.HeaderCell>
-                  <Table.HeaderCell align="center">Action</Table.HeaderCell>
-                </Table.Row>
-              </Table.Head>
-              <Table.Body>
-                {pendingInvites.map((invite) => {
-                  const isPending = pendingId === invite.id;
-                  const rowError = rowErrors[invite.id];
-                  return (
-                    <Table.Row key={invite.id}>
-                      <Table.Cell>{invite.email}</Table.Cell>
-                      <Table.Cell>
-                        <Badge variant="warning">{roleLabel(invite.role)}</Badge>
-                      </Table.Cell>
-                      <Table.Cell>{formatDateTime(invite.createdAt)}</Table.Cell>
-                      <Table.Cell align="center">
-                        <Stack gap="xs">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleCancelInvite(invite)}
-                            disabled={isPending}
-                          >
-                            {isPending ? "Cancelling…" : "Cancel"}
-                          </Button>
-                          {rowError && <Text tone="danger">{rowError}</Text>}
-                        </Stack>
-                      </Table.Cell>
-                    </Table.Row>
-                  );
-                })}
-              </Table.Body>
-            </Table>
-          )}
-        </Stack>
-      )}
+            <span className="web-muted-cell">No name set{suffix}</span>
+          );
+        },
+      },
+      { id: "email", header: "Email", sortValue: (row) => rowEmail(row), render: (row) => rowEmail(row) },
+      { id: "role", header: "Role", sortValue: (row) => roleLabel(rowRole(row)), render: (row) => roleLabel(rowRole(row)) },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (row) => (row.kind === "member" ? 0 : 1),
+        render: (row) =>
+          row.kind === "member" ? (
+            <StatusText tone="success">Active</StatusText>
+          ) : (
+            <StatusText tone="warning">Invited</StatusText>
+          ),
+      },
+      {
+        id: "date",
+        header: "Joined / invited",
+        sortValue: (row) => rowDate(row),
+        render: (row) => formatDateTimeWeb(rowDate(row)),
+      },
+    ],
+    [currentUserId],
+  );
 
-      {canWrite && (
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "role",
+        label: "Role",
+        options: TENANT_ROLES.map((role) => ({ value: role, label: roleLabel(role) })),
+        getOptions: (row: TeamRow) => [{ value: rowRole(row), label: roleLabel(rowRole(row)) }],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show team",
+      defaultValue: "all",
+      options: [
+        { value: "active", label: "Active", match: (row: TeamRow) => row.kind === "member" },
+        { value: "invited", label: "Invited", match: (row: TeamRow) => row.kind === "invite" },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
+
+  const rowActions = (row: TeamRow): WebMenuItem[] => {
+    if (!canWrite) return [];
+    if (row.kind === "invite") {
+      return [{ key: "cancel", label: "Cancel invite", danger: true, onSelect: () => void handleCancelInvite(row.invite) }];
+    }
+    const member = row.member;
+    const isSelf = member.userId === currentUserId;
+    const roleLocked = isSelf || member.isPlatformAdmin;
+    const items: WebMenuItem[] = [
+      { key: "edit", label: "Edit…", href: `/settings/team/${member.userId}` },
+      { key: "reset", label: "Reset password", onSelect: () => void handleResetPassword(member) },
+    ];
+    if (!roleLocked) {
+      items.push({ type: "separator", key: "sep-role" }, { type: "label", key: "role-label", node: "Change role" });
+      for (const role of TENANT_ROLES) {
+        if (role === member.role) continue;
+        items.push({ key: `role-${role}`, label: roleLabel(role), onSelect: () => void handleRoleChange(member, role) });
+      }
+      items.push({ type: "separator", key: "sep-remove" }, {
+        key: "remove",
+        label: "Remove",
+        danger: true,
+        onSelect: () => setRemoveTarget(member),
+      });
+    }
+    return items;
+  };
+
+  return (
+    <div className="web-tab-stack">
+      {loadError ? (
+        <p className="web-dialog-error" role="alert">
+          {loadError}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="web-dialog-error" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
+      <WebDataTableCard
+        note={
+          canWrite
+            ? "Invite colleagues, manage their role, and reset access when needed."
+            : "Everyone in your organization — only the owner can invite, change roles, or remove access."
+        }
+        rows={rows}
+        getRowKey={(row) => row.id}
+        columns={columns}
+        searchText={(row) => `${rowName(row)} ${rowEmail(row)} ${roleLabel(rowRole(row))}`}
+        noun="teammates"
+        dropdowns={dropdowns}
+        segment={segment}
+        urlPrefix="team"
+        defaultSort={{ columnId: "name", direction: "asc" }}
+        onRowClick={(row) => {
+          if (row.kind === "member") router.push(`/settings/team/${row.member.userId}`);
+        }}
+        rowActions={canWrite ? rowActions : undefined}
+        rowLabel={(row) => rowName(row) || rowEmail(row)}
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={() => setInviteOpen(true)}>
+              + Invite teammate
+            </WebButton>
+          ) : undefined
+        }
+        emptyAction={canWrite ? "Use + Invite teammate to add the first one." : undefined}
+      />
+
+      {canWrite ? (
         <>
           <InviteTeamMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={handleInvited} />
           <RemoveTeamMemberDialog
@@ -337,7 +284,7 @@ export function TeamManager({
             }}
           />
         </>
-      )}
+      ) : null}
 
       <RevealedLinkDialog
         open={revealed !== null}
@@ -346,16 +293,14 @@ export function TeamManager({
         }}
         state={revealed}
       />
-    </Stack>
+    </div>
   );
 }
 
 /**
- * Popup revealing an invite/password-reset link — same shape as
- * `AccessPanel`'s own `RevealedLinkDialog`: a read-only, selectable `Input`
- * next to a best-effort "Copy" button (falls back to silently doing nothing
- * if `navigator.clipboard` isn't available; the input stays selectable text
- * either way).
+ * Popup revealing an invite / password-reset link: a read-only, selectable
+ * field next to a best-effort Copy button (the field stays selectable text if
+ * the clipboard API is unavailable).
  */
 function RevealedLinkDialog({
   open,
@@ -376,31 +321,37 @@ function RevealedLinkDialog({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API unavailable/denied — the field below is still
-      // selectable text, so the owner can copy it by hand.
+      // Clipboard API unavailable or denied: the field is still selectable.
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="sm">
       <Dialog.Header>
-        <Heading level={3}>{state?.heading ?? "Link"}</Heading>
+        <h2 className="web-dialog-title">{state?.heading ?? "Link"}</h2>
       </Dialog.Header>
       <Dialog.Body>
-        <Stack gap="sm">
-          <Text tone="muted">{state?.description}</Text>
-          <Inline gap="xs">
-            <Input readOnly value={state?.link ?? ""} onFocus={(event) => event.currentTarget.select()} />
-            <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </Inline>
-        </Stack>
+        <div className="web-dialog-form">
+          <p className="web-dialog-text">{state?.description}</p>
+          <div className="web-dialog-field">
+            <label className="web-field-label" htmlFor="team-revealed-link">
+              Link
+            </label>
+            <input
+              id="team-revealed-link"
+              className="web-input"
+              readOnly
+              value={state?.link ?? ""}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </div>
+        </div>
       </Dialog.Body>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <WebButton onClick={() => void handleCopy()}>{copied ? "Copied" : "Copy link"}</WebButton>
+        <WebButton variant="primary" onClick={() => onOpenChange(false)}>
           Done
-        </Button>
+        </WebButton>
       </Dialog.Footer>
     </Dialog>
   );

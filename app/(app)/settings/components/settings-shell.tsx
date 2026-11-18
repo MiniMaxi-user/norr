@@ -1,45 +1,49 @@
 "use client";
 
-import { useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { Breadcrumbs } from "@yourorg/ui";
-import { usePageHeader } from "@/components/shell/page-header-context";
-import { findSettingsNavItem } from "./settings-nav-items";
+import { WebSettingsHeader, WebSettingsMain, WebSettingsNav, WebSettingsPage } from "@yourorg/ui/web";
+import { findSettingsNavItem, SETTINGS_NAV_GROUPS } from "./settings-nav-items";
 
 /**
- * The Settings shell (issue #110, rail removed by the "Settings landing
- * redesign" handoff): sets the Topbar breadcrumb (`Settings / X`) for every
- * settings route via `usePageHeader`. Used to also render a persistent
- * grouped left rail beside `children` — that rail was removed once
- * `/settings` itself became a real landing page (a card grid over the same
- * `SETTINGS_NAV_GROUPS`, see `settings-landing-view.tsx`): a permanent rail
- * duplicating the same links the landing page already surfaces added no
- * value and ate horizontal space on every settings leaf page for no
- * benefit. Leaf pages now rely on the landing page + this breadcrumb for
- * navigation, same as every other top-level module's detail pages
- * (`app/(app)/work-orders/[id]/page.tsx` etc. have no persistent rail of
- * their own either).
+ * The Settings frame (issue #110, restyled for the web design system in
+ * #222): a grouped section nav on the left (its own scroll, active section
+ * marked), and on the right a header plus ONE scroll area
+ * (`scrollbar-gutter: stable`) — the browser page never scrolls.
  *
- * Breadcrumb label resolves from `usePathname()` client-side, same
- * reasoning `components/shell/active-nav-item.tsx` gives for why that check
- * can't live in a Server Component.
+ *  - `/settings` (the landing) is full width without the nav: its cards already
+ *    link to every section.
+ *  - A list/tree section renders inside the frame unchanged: the frame adds a
+ *    header (breadcrumb `Settings / <section>`, title = section name) and puts
+ *    `children` in the scroll area.
+ *  - A form-type section (`ownHeader` in `settings-nav-items.ts`) renders its
+ *    own `PageHeader` (Edit / Save live in the header) followed by
+ *    `WebSettingsMain`, so the frame only supplies the nav column.
+ *
+ * The active section comes from `usePathname()` client-side, same reasoning
+ * `components/shell/active-nav-item.tsx` gives for why that check can't live in
+ * a Server Component.
  */
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isLanding = pathname === "/settings";
   const current = findSettingsNavItem(pathname);
-  const currentLabel = current?.item.label;
 
-  const breadcrumbItems = useMemo(
-    () => [{ label: "Settings", href: "/settings" }, ...(currentLabel ? [{ label: currentLabel }] : [])],
-    [currentLabel],
+  const nav = isLanding ? undefined : <WebSettingsNav groups={SETTINGS_NAV_GROUPS} activeHref={current?.item.href ?? null} />;
+
+  if (current?.item.ownHeader) {
+    return <WebSettingsPage nav={nav}>{children}</WebSettingsPage>;
+  }
+
+  const title = current?.item.label ?? "Settings";
+  const breadcrumb = isLanding
+    ? [{ label: "Settings" }]
+    : [{ label: "Settings", href: "/settings" }, ...(current ? [{ label: current.item.label }] : [])];
+  const badge = current && current.group.label !== current.item.label ? current.group.label : null;
+
+  return (
+    <WebSettingsPage nav={nav}>
+      <WebSettingsHeader breadcrumb={breadcrumb} title={title} badge={badge} />
+      <WebSettingsMain>{children}</WebSettingsMain>
+    </WebSettingsPage>
   );
-  // The element itself (not just `breadcrumbItems`) must be memoized — see
-  // the "MUST be referentially stable" warning on `usePageHeader`'s doc
-  // comment; an inline `<Breadcrumbs items={breadcrumbItems} />` here would
-  // be a fresh element every render and infinite-loop. Same pattern as
-  // `app/(app)/clients/[id]/client-detail.tsx`.
-  const breadcrumbNode = useMemo(() => <Breadcrumbs items={breadcrumbItems} />, [breadcrumbItems]);
-  usePageHeader(breadcrumbNode);
-
-  return <>{children}</>;
 }

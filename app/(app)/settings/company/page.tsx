@@ -1,8 +1,8 @@
-import { OverviewHeroBand, Stack, Text } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { getOrganizationCompanySettings, listClientsForOwnClientSelect } from "../company-actions";
 import { OrganizationCompanyForm } from "../components/organization-company-form";
+import { SettingsLoadError } from "../components/settings-load-error";
 
 export const metadata = { title: "Company" };
 
@@ -21,27 +21,23 @@ export default async function CompanySettingsPage() {
   const session = await getCurrentSession();
   const actor: PermissionActor = { role: session?.role ?? null, isPlatformAdmin: session?.isPlatformAdmin ?? false };
   const canWrite = can(actor, "settings", "update");
+  const canEditLogo = canWrite && can(actor, "clients", "update");
 
   const [settingsResult, clientsResult] = await Promise.all([
     getOrganizationCompanySettings(),
     listClientsForOwnClientSelect(),
   ]);
 
+  if (!settingsResult.data) {
+    return <SettingsLoadError navKey="company" message={settingsResult.error ?? "Could not load company settings."} />;
+  }
+
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Company"
-        subtitle="Pick which of your own Clients represents this organization — its name, KvK/VAT/IBAN and logo are the details a future Invoicing module will use as the &lsquo;from&rsquo; party. Edit those fields on the client&rsquo;s own detail page, including its logo."
-      />
-      {settingsResult.data ? (
-        <OrganizationCompanyForm
-          initial={settingsResult.data}
-          clients={clientsResult.data?.clients ?? []}
-          canWrite={canWrite}
-        />
-      ) : (
-        <Text tone="danger">{settingsResult.error ?? "Could not load company settings."}</Text>
-      )}
-    </Stack>
+    <OrganizationCompanyForm
+      initial={settingsResult.data}
+      clients={clientsResult.data?.clients ?? []}
+      canWrite={canWrite}
+      canEditLogo={canEditLogo}
+    />
   );
 }

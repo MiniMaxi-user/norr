@@ -2170,3 +2170,135 @@ a.web-tree-id:hover {
   padding: var(--space-card-x);
   overflow-x: auto;
 }
+
+/* ---------------------------------------------------------------------- *
+ * Settings frame (issue #222) — left section nav + header + one scroll area
+ * ---------------------------------------------------------------------- */
+.web-settings {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  flex: 1 1 0;
+  min-height: 0;
+}
+.web-settings[data-nav="false"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.web-settings-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.web-settings-nav {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: var(--space-page-y) 12px var(--space-page-y) var(--space-page-x);
+  background: var(--surface-card);
+  border-right: 1px solid var(--border-default);
+}
+.web-settings-nav-group + .web-settings-nav-group {
+  margin-top: 16px;
+}
+.web-settings-nav-group h2 {
+  padding: 0 8px 4px;
+}
+.web-settings-nav-group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.web-settings-nav-link {
+  display: block;
+  padding: 5px 8px;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-secondary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-settings-nav-link:hover {
+  background: var(--surface-sunken);
+  color: var(--text-ink);
+}
+.web-settings-nav-link[aria-current="page"] {
+  background: var(--surface-sunken);
+  border-left-color: var(--brand-gold);
+  color: var(--text-ink);
+  font-weight: 600;
+}
+.web-settings-nav-link:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: -2px;
+}
+.web-settings-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: var(--space-page-y) var(--space-page-x);
+  background: var(--surface-page);
+}
+@media (max-width: 899px) {
+  .web-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .web-settings-nav {
+    display: none;
+  }
+}
+.web-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.web-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+  padding: var(--space-row-y) var(--space-card-x);
+  border-bottom: 1px solid var(--border-row);
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-ink);
+  text-decoration: none;
+}
+.web-card-body > .web-link-row:last-child {
+  border-bottom: 0;
+}
+.web-link-row:hover {
+  background: var(--surface-subtle);
+  color: var(--text-link);
+}
+.web-link-row:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: -2px;
+}
+.web-link-row-count {
+  font: 400 11px/16px var(--font-mono);
+  color: var(--text-muted);
+}
+.web-hint {
+  max-width: calc(var(--kv-column-max) + 2px);
+  margin: 0;
+  font: 400 12.5px/17px var(--font-sans);
+  color: var(--text-muted);
+}
+.web-settings-search {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+}

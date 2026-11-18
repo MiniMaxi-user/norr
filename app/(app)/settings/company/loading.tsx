@@ -1,8 +1,6 @@
-import { RouteLoading } from "@/components/shell/route-loading";
+import { SettingsFormSkeleton } from "../components/settings-section-skeleton";
 
-// Route-level Suspense fallback (issue #140) for `/settings/company` — this
-// leaf has no `Suspense`/skeleton of its own; uses the shared minimal
-// fallback.
+// Route-level Suspense fallback for `/settings/company`: the real header plus placeholder cards.
 export default function CompanySettingsLoading() {
-  return <RouteLoading />;
+  return <SettingsFormSkeleton navKey="company" cards={1} />;
 }

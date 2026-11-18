@@ -1,4 +1,3 @@
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listActivitySubtypes } from "@/app/(app)/activities/subtypes-actions";
@@ -37,11 +36,7 @@ export default async function ActivitySubtypesPage() {
   const [subtypesResult, typeResult] = await Promise.all([listActivitySubtypes(), listReferenceItems("activity_type")]);
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Activity Subtypes"
-        subtitle="Hierarchical, unlimited-depth subtypes for Activities — each top-level subtype is tied to an Activity Type."
-      />
+    <div className="web-tab-stack">
       <ActivityTypesPanel
         items={typeResult.data?.items ?? []}
         loadError={typeResult.error}
@@ -53,6 +48,6 @@ export default async function ActivitySubtypesPage() {
         loadError={subtypesResult.error ?? typeResult.error}
         canWrite={canWrite}
       />
-    </Stack>
+    </div>
   );
 }

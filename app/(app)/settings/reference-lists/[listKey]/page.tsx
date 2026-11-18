@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -64,19 +63,17 @@ export default async function ReferenceListLeafPage({ params }: ReferenceListLea
   }
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand title={section.title} subtitle={section.description} />
-      <ReferenceListManager
-        listKey={section.key}
-        items={items}
-        loadError={loadError}
-        canWrite={canWrite}
-        parentListKey={parentListKey}
-        parentListTitle={parentListTitle}
-        parentItems={parentItems}
-        showDefaultDuration={section.showDefaultDuration}
-        showInvoiceInterval={section.showInvoiceInterval}
-      />
-    </Stack>
+    <ReferenceListManager
+      listKey={section.key}
+      description={section.description}
+      items={items}
+      loadError={loadError}
+      canWrite={canWrite}
+      parentListKey={parentListKey}
+      parentListTitle={parentListTitle}
+      parentItems={parentItems}
+      showDefaultDuration={section.showDefaultDuration}
+      showInvoiceInterval={section.showInvoiceInterval}
+    />
   );
 }

@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { TeamBoard } from "./team-board";
@@ -31,19 +30,8 @@ export default async function TeamPage() {
   const canWrite = can(actor, "settings", "update");
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Team"
-        subtitle={
-          canWrite
-            ? "Invite colleagues, manage their role, and reset access when needed."
-            : "Everyone in your organization — only the owner can invite, change roles, or remove access."
-        }
-      />
-
-      <Suspense fallback={<TeamSkeleton />}>
-        <TeamBoard canWrite={canWrite} currentUserId={session.userId} />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<TeamSkeleton />}>
+      <TeamBoard canWrite={canWrite} currentUserId={session.userId} />
+    </Suspense>
   );
 }

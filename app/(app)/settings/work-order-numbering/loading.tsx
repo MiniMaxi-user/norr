@@ -1,6 +1,6 @@
-import { RouteLoading } from "@/components/shell/route-loading";
+import { SettingsFormSkeleton } from "../components/settings-section-skeleton";
 
-// Route-level Suspense fallback for `/settings/work-order-numbering`.
+// Route-level Suspense fallback for `/settings/work-order-numbering`: the real header plus a placeholder card.
 export default function WorkOrderNumberingLoading() {
-  return <RouteLoading />;
+  return <SettingsFormSkeleton navKey="work_order_numbering" />;
 }

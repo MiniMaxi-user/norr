@@ -4,7 +4,6 @@ import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listTeamMembers } from "@/lib/team/actions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
-import { SETTINGS_NAV_GROUPS } from "./settings-nav-items";
 import { SettingsLandingView } from "./settings-landing-view";
 
 /**
@@ -48,8 +47,5 @@ export async function SettingsLandingScreen() {
   if (teamResult.data) counts.team = teamResult.data.members.length;
   if (accountManagersResult.data) counts.account_managers = accountManagersResult.data.accountManagers.length;
 
-  const totalItems = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).length;
-  const totalGroups = SETTINGS_NAV_GROUPS.length;
-
-  return <SettingsLandingView counts={counts} totalItems={totalItems} totalGroups={totalGroups} />;
+  return <SettingsLandingView counts={counts} />;
 }

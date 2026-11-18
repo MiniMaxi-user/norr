@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Badge, Button, EmptyState, Inline, Stack, Table, Text } from "@yourorg/ui";
-import { Settings } from "@yourorg/ui/icons";
+import { useMemo, useState } from "react";
+import { WebButton } from "@yourorg/ui/web";
+import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import type { AssetModelRecord, VolumeCounterOption } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { AssetModelFormDialog } from "./asset-model-form-dialog";
@@ -10,13 +10,10 @@ import { DeleteAssetModelDialog } from "./delete-asset-model-dialog";
 
 export interface AssetModelManagerProps {
   models: AssetModelRecord[];
-  /** Non-fatal — `listAssetModels` failing (e.g. transient network) still
-   * renders this component with whatever it got (`models` empty), plus this
-   * message, rather than crashing the whole tab (same convention
-   * `ReferenceListManager` uses for its own `loadError`). */
+  /** Non-fatal: `listAssetModels` failing still renders the card (empty) with
+   * this message. */
   loadError?: string;
-  /** Owner only, per the `settings` RBAC entry — same as every other
-   * reference-list-style manager on this screen. */
+  /** Owner only, per the `settings` RBAC entry. */
   canWrite: boolean;
   brandItems: ReferenceListItemRecord[];
   typeItems: ReferenceListItemRecord[];
@@ -26,11 +23,12 @@ export interface AssetModelManagerProps {
 }
 
 /**
- * "Asset Model" tab on the Reference Lists settings screen (issue #54) — a
- * dedicated manager, not the generic `ReferenceListManager`, because a Model
- * has three simultaneous reference-list relationships (Brand/Type/Sub-type)
- * plus its own `default_warranty_months` field (see the design note atop
- * `supabase/migrations/20260826160000_asset_brand_and_models.sql`).
+ * Asset models (issue #54; design system #222): manufacturer/model
+ * combinations, each tied to a Brand, Type, optional Sub-type and counters.
+ * One card with FilterBar (search, Brand / Type / Sub-type dropdowns with the
+ * Sub-type disabled until a Type is chosen, With volumes / Without volumes /
+ * All) and a table; `+ Model` sits in the FilterBar, Edit and Delete in the
+ * row's ··· menu (owner only). The create/edit form stays a small dialog.
  */
 export function AssetModelManager({
   models,
@@ -47,114 +45,140 @@ export function AssetModelManager({
   });
   const [deleteTarget, setDeleteTarget] = useState<AssetModelRecord | null>(null);
 
-  const volumeLabels = new Map(volumeOptions.map((option) => [option.id, option.label]));
+  const volumeLabels = useMemo(() => new Map(volumeOptions.map((option) => [option.id, option.label])), [volumeOptions]);
+  const volumeText = (model: AssetModelRecord) =>
+    model.volumeItemIds.map((id) => volumeLabels.get(id) ?? "Unknown counter").join(", ");
 
-  function openAdd() {
-    setFormState({ open: true, model: null });
-  }
+  const columns = useMemo<WebColumn<AssetModelRecord>[]>(
+    () => [
+      { id: "name", header: "Name", sortValue: (row) => row.name, render: (row) => row.name },
+      {
+        id: "brand",
+        header: "Brand",
+        sortValue: (row) => row.brand?.label ?? "",
+        render: (row) => row.brand?.label ?? "—",
+      },
+      {
+        id: "type",
+        header: "Type",
+        sortValue: (row) => row.type?.label ?? "",
+        render: (row) => row.type?.label ?? "—",
+      },
+      {
+        id: "subtype",
+        header: "Sub-type",
+        sortValue: (row) => row.subtype?.label ?? "",
+        render: (row) => row.subtype?.label ?? "—",
+      },
+      {
+        id: "volumes",
+        header: "Volumes",
+        render: (row) => (row.volumeItemIds.length === 0 ? "—" : volumeText(row)),
+      },
+      {
+        id: "warranty",
+        header: "Default warranty",
+        align: "end",
+        sortValue: (row) => row.default_warranty_months,
+        render: (row) => `${row.default_warranty_months} ${row.default_warranty_months === 1 ? "month" : "months"}`,
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [volumeLabels],
+  );
 
-  function openEdit(model: AssetModelRecord) {
-    setFormState({ open: true, model });
-  }
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "brand",
+        label: "Brand",
+        getOptions: (row: AssetModelRecord) => (row.brand ? [{ value: row.brand_item_id, label: row.brand.label }] : []),
+      },
+      {
+        id: "type",
+        label: "Type",
+        resets: ["subtype"],
+        getOptions: (row: AssetModelRecord) => (row.type ? [{ value: row.type_item_id, label: row.type.label }] : []),
+      },
+      {
+        id: "subtype",
+        label: "Sub-type",
+        disabledWhen: (values: Record<string, string>) => !values.type,
+        getOptions: (row: AssetModelRecord) =>
+          row.subtype && row.subtype_item_id ? [{ value: row.subtype_item_id, label: row.subtype.label }] : [],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show asset models",
+      defaultValue: "all",
+      options: [
+        { value: "with", label: "With volumes", match: (row: AssetModelRecord) => row.volumeItemIds.length > 0 },
+        { value: "without", label: "Without volumes", match: (row: AssetModelRecord) => row.volumeItemIds.length === 0 },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
+
+  const rowActions = (row: AssetModelRecord): WebMenuItem[] =>
+    canWrite
+      ? [
+          { key: "edit", label: "Edit…", onSelect: () => setFormState({ open: true, model: row }) },
+          { type: "separator", key: "sep" },
+          { key: "delete", label: "Delete", danger: true, onSelect: () => setDeleteTarget(row) },
+        ]
+      : [];
 
   return (
-    <Stack gap="md">
-      {loadError && <Text tone="danger">{loadError}</Text>}
+    <div className="web-tab-stack">
+      {loadError ? (
+        <p className="web-dialog-error" role="alert">
+          {loadError}
+        </p>
+      ) : null}
 
-      {canWrite && (
-        <div>
-          <Button variant="primary" size="sm" onClick={openAdd}>
-            Add model
-          </Button>
-        </div>
-      )}
+      <WebDataTableCard
+        note="Manufacturer and model combinations for your assets, each tied to a Brand, Type and Sub-type."
+        rows={models}
+        getRowKey={(row) => row.id}
+        columns={columns}
+        searchText={(row) =>
+          `${row.name} ${row.brand?.label ?? ""} ${row.type?.label ?? ""} ${row.subtype?.label ?? ""} ${volumeText(row)}`
+        }
+        noun="asset models"
+        dropdowns={dropdowns}
+        segment={segment}
+        urlPrefix="models"
+        defaultSort={{ columnId: "name", direction: "asc" }}
+        rowActions={canWrite ? rowActions : undefined}
+        rowLabel={(row) => row.name}
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={() => setFormState({ open: true, model: null })}>
+              + Model
+            </WebButton>
+          ) : undefined
+        }
+        emptyAction={canWrite ? "Use + Model to add the first one." : undefined}
+      />
 
-      {models.length === 0 ? (
-        <EmptyState
-          icon={<Settings />}
-          heading="No models yet"
-          text={canWrite ? "Add the first model." : "Nothing configured yet."}
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={openAdd}>
-                Add model
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Table>
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Name</Table.HeaderCell>
-              <Table.HeaderCell>Brand</Table.HeaderCell>
-              <Table.HeaderCell>Type</Table.HeaderCell>
-              <Table.HeaderCell>Sub-type</Table.HeaderCell>
-              <Table.HeaderCell>Volumes</Table.HeaderCell>
-              <Table.HeaderCell align="center">Default warranty</Table.HeaderCell>
-              {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {models.map((model) => (
-              <Table.Row key={model.id}>
-                <Table.Cell>
-                  <Text>{model.name}</Text>
-                </Table.Cell>
-                <Table.Cell>
-                  <Text tone="muted">{model.brand?.label ?? "—"}</Text>
-                </Table.Cell>
-                <Table.Cell>
-                  <Text tone="muted">{model.type?.label ?? "—"}</Text>
-                </Table.Cell>
-                <Table.Cell>
-                  <Text tone="muted">{model.subtype?.label ?? "—"}</Text>
-                </Table.Cell>
-                <Table.Cell>
-                  {model.volumeItemIds.length === 0 ? (
-                    <Text tone="muted">—</Text>
-                  ) : (
-                    <Inline gap="xs" wrap>
-                      {model.volumeItemIds.map((id) => (
-                        <Badge key={id} variant="muted">
-                          {volumeLabels.get(id) ?? "Unknown counter"}
-                        </Badge>
-                      ))}
-                    </Inline>
-                  )}
-                </Table.Cell>
-                <Table.Cell align="center">
-                  <Text tone="muted">
-                    {model.default_warranty_months} {model.default_warranty_months === 1 ? "month" : "months"}
-                  </Text>
-                </Table.Cell>
-                {canWrite && (
-                  <Table.Cell align="center">
-                    <Button variant="outline" size="sm" onClick={() => openEdit(model)}>
-                      Edit
-                    </Button>{" "}
-                    <Button variant="danger" size="sm" onClick={() => setDeleteTarget(model)}>
-                      Delete
-                    </Button>
-                  </Table.Cell>
-                )}
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
-      )}
-
-      {canWrite && (
+      {canWrite ? (
         <>
-          <AssetModelFormDialog
-            open={formState.open}
-            onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
-            model={formState.model}
-            brandItems={brandItems}
-            typeItems={typeItems}
-            subtypeItems={subtypeItems}
-            volumeOptions={volumeOptions}
-          />
+          {formState.open ? (
+            <AssetModelFormDialog
+              open
+              onOpenChange={(open) => setFormState((s) => ({ ...s, open }))}
+              model={formState.model}
+              brandItems={brandItems}
+              typeItems={typeItems}
+              subtypeItems={subtypeItems}
+              volumeOptions={volumeOptions}
+            />
+          ) : null}
           <DeleteAssetModelDialog
             open={Boolean(deleteTarget)}
             onOpenChange={(open) => {
@@ -163,7 +187,7 @@ export function AssetModelManager({
             model={deleteTarget}
           />
         </>
-      )}
-    </Stack>
+      ) : null}
+    </div>
   );
 }

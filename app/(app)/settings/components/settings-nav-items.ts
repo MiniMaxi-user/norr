@@ -16,6 +16,9 @@ export interface SettingsNavItem {
   key: string;
   label: string;
   href: string;
+  /** Form-type sections render their own `PageHeader` (Edit / Save in the
+   * header, issue #222); the settings frame then skips its default header. */
+  ownHeader?: boolean;
 }
 
 export interface SettingsNavGroup {
@@ -65,7 +68,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         href: "/settings/reference-lists/work_order_priority",
       },
       // Issue #218 - per-tenant work order number prefix + next number.
-      { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering" },
+      { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering", ownHeader: true },
     ],
   },
   {
@@ -95,7 +98,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // though it's a *dependent* list on article_unit under the hood.
       { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume" },
       // Issue #216 - per-tenant contract number prefix + next number.
-      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering" },
+      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering", ownHeader: true },
     ],
   },
   {
@@ -136,15 +139,15 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: "Billing",
     icon: CreditCard,
     items: [
-      { key: "default_rates", label: "Default Rates", href: "/settings/default-rates" },
+      { key: "default_rates", label: "Default Rates", href: "/settings/default-rates", ownHeader: true },
       // Issue #198 — org-configurable travel/work minimum-duration +
       // rounding settings ("Afronding reistijd werktijd"). Grouped next to
       // "Default Rates" (same "Billing" group) since it's the other half of
       // how a logged time entry becomes a billed duration — a rate setting,
       // not an article catalog entry or a reference-list picklist.
-      { key: "time_rounding", label: "Time Rounding", href: "/settings/time-rounding" },
+      { key: "time_rounding", label: "Time Rounding", href: "/settings/time-rounding", ownHeader: true },
       // Issues #210/#211 - per-tenant invoice email (sender, CC, subject, body).
-      { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email" },
+      { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email", ownHeader: true },
     ],
   },
   {
@@ -170,11 +173,11 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     // existing group already covers.
     label: "Company",
     icon: Building2,
-    items: [{ key: "company", label: "Company", href: "/settings/company" }],
+    items: [{ key: "company", label: "Company", href: "/settings/company", ownHeader: true }],
   },
 ];
 
-interface FlatSettingsNavEntry {
+export interface FlatSettingsNavEntry {
   group: SettingsNavGroup;
   item: SettingsNavItem;
 }
@@ -190,12 +193,22 @@ const FLAT_SETTINGS_NAV_ITEMS: FlatSettingsNavEntry[] = SETTINGS_NAV_GROUPS.flat
 
 /**
  * Resolves the current route to its nav group + item, e.g. for
- * `SettingsShell` to derive the active breadcrumb label and highlight the
- * matching rail entry. Matches on exact `href` — every settings leaf route
- * maps 1:1 to one nav entry, unlike the primary sidebar's
- * `startsWith`-based `ActiveNavItem` (no settings leaf route has its own
- * sub-routes today).
+ * `SettingsShell` to derive the header title and highlight the matching nav
+ * entry. Exact `href` match first; otherwise the item whose `href` is a
+ * path prefix (a nested route such as `/settings/team/[userId]` belongs to
+ * "Team").
  */
 export function findSettingsNavItem(pathname: string): FlatSettingsNavEntry | null {
-  return FLAT_SETTINGS_NAV_ITEMS.find((entry) => entry.item.href === pathname) ?? null;
+  return (
+    FLAT_SETTINGS_NAV_ITEMS.find((entry) => entry.item.href === pathname) ??
+    FLAT_SETTINGS_NAV_ITEMS.find((entry) => pathname.startsWith(`${entry.item.href}/`)) ??
+    null
+  );
+}
+
+/** Looks a nav entry up by its stable `key` (used by the form pages). */
+export function findSettingsNavItemByKey(key: string): FlatSettingsNavEntry {
+  const entry = FLAT_SETTINGS_NAV_ITEMS.find((candidate) => candidate.item.key === key);
+  if (!entry) throw new Error(`settings-nav-items: no nav item with key "${key}"`);
+  return entry;
 }

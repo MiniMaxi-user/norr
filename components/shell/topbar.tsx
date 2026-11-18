@@ -50,10 +50,7 @@ export function Topbar({
         <UserMenu
           name={displayName}
           role={user.role}
-          email={user.email}
-          fullName={user.fullName}
           avatarUrl={user.avatarUrl}
-          locale={user.locale}
           isPlatformAdmin={isPlatformAdmin}
           menuLinks={toClientEntries(menu)}
         />

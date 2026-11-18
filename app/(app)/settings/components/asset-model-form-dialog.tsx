@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Button, Checkbox, Combobox, Dialog, Heading, Inline, Input, Label, Stack, Text } from "@yourorg/ui";
+import { Combobox } from "@yourorg/ui";
 import { createAssetModel, updateAssetModel, type AssetModelRecord, type VolumeCounterOption } from "@/lib/asset-models/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
+import { DialogField, SettingsFormDialog } from "./settings-dialog-kit";
 
 interface FormState {
   error?: string;
@@ -133,157 +133,111 @@ export function AssetModelFormDialog({
   }, [state.success]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} size="sm">
-      <Dialog.Header>
-        <Heading level={3}>{isEdit ? "Edit model" : "Add model"}</Heading>
-      </Dialog.Header>
-      <form action={formAction}>
-        <Dialog.Body>
-          <Stack gap="md">
-            {state.error && <Text tone="danger">{state.error}</Text>}
+    <SettingsFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEdit ? "Edit model" : "Add model"}
+      submitLabel={isEdit ? "Save changes" : "Add model"}
+      formAction={formAction}
+      error={state.error}
+    >
+      <DialogField id="asset-model-brand" label="Brand" errors={state.fieldErrors?.brandItemId}>
+        <Combobox
+          id="asset-model-brand"
+          name="brandItemId"
+          options={brandOptions}
+          value={brandItemId}
+          onChange={setBrandItemId}
+          placeholder="Search brands…"
+          required
+          emptyMessage="No brand values yet — add one on the Asset Brand list first."
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="asset-model-brand">Brand</Label>
-              <Combobox
-                id="asset-model-brand"
-                name="brandItemId"
-                options={brandOptions}
-                value={brandItemId}
-                onChange={setBrandItemId}
-                placeholder="Search brands…"
-                required
-                emptyMessage="No brand values yet — add one on the Asset Brand tab first."
-              />
-              {state.fieldErrors?.brandItemId?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField id="asset-model-type" label="Type" errors={state.fieldErrors?.typeItemId}>
+        <Combobox
+          id="asset-model-type"
+          name="typeItemId"
+          options={typeOptions}
+          value={typeItemId}
+          onChange={handleTypeChange}
+          placeholder="Search types…"
+          required
+          emptyMessage="No type values yet — add one on the Asset Type list first."
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="asset-model-type">Type</Label>
-              <Combobox
-                id="asset-model-type"
-                name="typeItemId"
-                options={typeOptions}
-                value={typeItemId}
-                onChange={handleTypeChange}
-                placeholder="Search types…"
-                required
-                emptyMessage="No type values yet — add one on the Asset Type tab first."
-              />
-              {state.fieldErrors?.typeItemId?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField
+        id="asset-model-subtype"
+        label="Sub-type"
+        hint="Optional — only sub-types that belong under the selected Type are shown."
+        errors={state.fieldErrors?.subtypeItemId}
+      >
+        <Combobox
+          id="asset-model-subtype"
+          name="subtypeItemId"
+          options={subtypeOptions}
+          value={subtypeItemId}
+          onChange={setSubtypeItemId}
+          placeholder={typeItemId ? "Search sub-types… (optional)" : "Select a type first…"}
+          disabled={!typeItemId}
+          clearable
+          emptyMessage="No sub-type values under this type."
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="asset-model-subtype">Sub-type</Label>
-              <Combobox
-                id="asset-model-subtype"
-                name="subtypeItemId"
-                options={subtypeOptions}
-                value={subtypeItemId}
-                onChange={setSubtypeItemId}
-                placeholder={typeItemId ? "Search sub-types… (optional)" : "Select a type first…"}
-                disabled={!typeItemId}
-                clearable
-                emptyMessage="No sub-type values under this type."
-              />
-              <Text tone="muted">Optional — only sub-types that belong under the selected Type are shown.</Text>
-              {state.fieldErrors?.subtypeItemId?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField id="asset-model-name" label="Name" errors={state.fieldErrors?.name}>
+        <input
+          id="asset-model-name"
+          className="web-input"
+          name="name"
+          defaultValue={model?.name}
+          required
+          maxLength={200}
+          placeholder="e.g. TASKalfa 3554ci"
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="asset-model-name">Name</Label>
-              <Input
-                id="asset-model-name"
-                name="name"
-                defaultValue={model?.name}
-                required
-                maxLength={200}
-                placeholder="e.g. TASKalfa 3554ci"
-              />
-              {state.fieldErrors?.name?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
+      <DialogField id="asset-model-warranty" label="Default warranty (months)" errors={state.fieldErrors?.defaultWarrantyMonths}>
+        <input
+          id="asset-model-warranty"
+          className="web-input"
+          name="defaultWarrantyMonths"
+          type="number"
+          data-numeric="true"
+          min={1}
+          max={600}
+          step={1}
+          defaultValue={model?.default_warranty_months ?? 24}
+          required
+        />
+      </DialogField>
 
-            <Stack gap="xs">
-              <Label htmlFor="asset-model-warranty">Default warranty (months)</Label>
-              <Input
-                id="asset-model-warranty"
-                name="defaultWarrantyMonths"
-                type="number"
-                min={1}
-                max={600}
-                step={1}
-                defaultValue={model?.default_warranty_months ?? 24}
-                required
-              />
-              {state.fieldErrors?.defaultWarrantyMonths?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-
-            <Stack gap="xs">
-              <Text>Volumes (counters)</Text>
-              {selectableVolumes.length === 0 ? (
-                <Text tone="muted">No counters yet — add one under Settings, Reference Lists, Volume first.</Text>
-              ) : (
-                <Stack gap="xs" role="group" aria-label="Volumes (counters)">
-                  {selectableVolumes.map((option) => (
-                    <Inline key={option.id} gap="sm" align="center">
-                      <Checkbox
-                        id={`asset-model-volume-${option.id}`}
-                        checked={volumeItemIds.includes(option.id)}
-                        onChange={(event) => toggleVolume(option.id, event.target.checked)}
-                      />
-                      <Label htmlFor={`asset-model-volume-${option.id}`}>
-                        {option.label}
-                        {option.unitLabel ? ` (${option.unitLabel})` : ""}
-                        {option.isActive ? "" : " — retired"}
-                      </Label>
-                    </Inline>
-                  ))}
-                </Stack>
-              )}
-              <Text tone="muted">Counters whose readings can be recorded on assets of this model.</Text>
-              {state.fieldErrors?.volumeItemIds?.map((message) => (
-                <Text key={message} tone="danger">
-                  {message}
-                </Text>
-              ))}
-            </Stack>
-          </Stack>
-        </Dialog.Body>
-        <Dialog.Footer>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <SubmitButton isEdit={isEdit} />
-        </Dialog.Footer>
-      </form>
-    </Dialog>
-  );
-}
-
-function SubmitButton({ isEdit }: { isEdit: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? "Saving…" : isEdit ? "Save changes" : "Add model"}
-    </Button>
+      <DialogField
+        id="asset-model-volumes"
+        label="Volumes (counters)"
+        hint="Counters whose readings can be recorded on assets of this model."
+        errors={state.fieldErrors?.volumeItemIds}
+      >
+        {selectableVolumes.length === 0 ? (
+          <p className="web-rail-empty">No counters yet — add one under Settings, Reference Lists, Volume first.</p>
+        ) : (
+          <div className="web-dialog-form" role="group" aria-label="Volumes (counters)" id="asset-model-volumes">
+            {selectableVolumes.map((option) => (
+              <label key={option.id} className="web-field-checkbox">
+                <input
+                  type="checkbox"
+                  checked={volumeItemIds.includes(option.id)}
+                  onChange={(event) => toggleVolume(option.id, event.target.checked)}
+                />
+                {option.label}
+                {option.unitLabel ? ` (${option.unitLabel})` : ""}
+                {option.isActive ? "" : " — retired"}
+              </label>
+            ))}
+          </div>
+        )}
+      </DialogField>
+    </SettingsFormDialog>
   );
 }

@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
@@ -26,13 +25,5 @@ export default async function WorkOrderNumberingPage() {
 
   const settings = await getWorkOrderNumberingSettings();
 
-  return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Work order numbering"
-        subtitle="every work order gets a unique number automatically: the prefix followed by a running number."
-      />
-      <WorkOrderNumberingForm initial={settings} canWrite={canWrite} />
-    </Stack>
-  );
+  return <WorkOrderNumberingForm initial={settings} canWrite={canWrite} />;
 }

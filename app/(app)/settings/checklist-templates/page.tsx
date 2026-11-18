@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { OverviewHeroBand, Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { ChecklistTemplatesBoard } from "./checklist-templates-board";
@@ -22,19 +21,8 @@ export default async function ChecklistTemplatesPage() {
   const canWrite = can(actor, "settings", "create");
 
   return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Checklist templates"
-        subtitle={
-          canWrite
-            ? "Build reusable inspection/checklist forms that can be attached to any work order — add, rename, or remove a template, and manage the items inside it."
-            : "Reusable inspection/checklist forms attachable to work orders — only the organization owner can change them."
-        }
-      />
-
-      <Suspense fallback={<ChecklistTemplatesSkeleton />}>
-        <ChecklistTemplatesBoard canWrite={canWrite} />
-      </Suspense>
-    </Stack>
+    <Suspense fallback={<ChecklistTemplatesSkeleton />}>
+      <ChecklistTemplatesBoard canWrite={canWrite} />
+    </Suspense>
   );
 }

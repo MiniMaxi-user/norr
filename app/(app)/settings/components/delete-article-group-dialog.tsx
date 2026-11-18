@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { ConfirmDeleteDialog, Text } from "@yourorg/ui";
 import { deleteArticleGroup, getArticleGroupDependencyCounts, type ArticleGroupRecord } from "@/app/(app)/articles/groups-actions";
+import { SettingsDeleteDialog } from "./settings-dialog-kit";
 
 export interface DeleteArticleGroupDialogProps {
   open: boolean;
@@ -11,22 +10,16 @@ export interface DeleteArticleGroupDialogProps {
 }
 
 /**
- * Delete confirmation for an Article Group. Calls `getArticleGroupDependencyCounts`
- * first (same `checkDependencies` convention `DeleteClientDialog` establishes)
- * — unlike clients' sites/assets, subgroups/articles do NOT cascade here
- * (`deleteArticleGroup`'s own doc comment: no `on delete cascade`/`set null`
- * at the DB level either), so this warning is a hard blocker, not a
- * cascade-preview.
+ * Delete confirmation for an Article Group. Checks subgroups and articles
+ * first: they do not cascade, so a group that still has either cannot be
+ * deleted (the server rejects it; the message says why up front).
  */
 export function DeleteArticleGroupDialog({ open, onOpenChange, group }: DeleteArticleGroupDialogProps) {
-  const router = useRouter();
-
   return (
-    <ConfirmDeleteDialog
+    <SettingsDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Delete ${group?.name ?? "group"}?`}
-      checkKey={group?.id ?? null}
       checkingMessage="Checking subgroups and articles…"
       checkDependencies={async () => {
         if (!group) return { message: null };
@@ -38,23 +31,21 @@ export function DeleteArticleGroupDialog({ open, onOpenChange, group }: DeleteAr
         if (childGroups > 0 || articles > 0) {
           return {
             message: (
-              <Text tone="danger">
+              <span style={{ color: "var(--danger-text)" }}>
                 This group has {childGroups} subgroup{childGroups === 1 ? "" : "s"} and {articles} article
                 {articles === 1 ? "" : "s"}. Move or delete {childGroups + articles === 1 ? "it" : "them"} first —
                 deleting a group with subgroups or articles still assigned isn&rsquo;t allowed.
-              </Text>
+              </span>
             ),
           };
         }
-        return { message: <Text tone="muted">This group has no subgroups or articles. This action cannot be undone.</Text> };
+        return { message: "This group has no subgroups or articles. This action cannot be undone." };
       }}
       onConfirm={async () => {
         if (!group) return { error: "No group selected." };
         const result = await deleteArticleGroup(group.id);
         return { error: result.error };
       }}
-      onDeleted={() => router.refresh()}
-      confirmLabel="Delete group"
     />
   );
 }

@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { ConfirmDeleteDialog } from "@yourorg/ui";
 import { deleteAccountManager, type AccountManagerRecord } from "@/lib/account-managers/actions";
+import { SettingsDeleteDialog } from "./settings-dialog-kit";
 
 export interface DeleteAccountManagerDialogProps {
   open: boolean;
@@ -11,29 +10,26 @@ export interface DeleteAccountManagerDialogProps {
 }
 
 /**
- * Delete confirmation for a single Account Manager — same shape as
- * `DeleteAssetModelDialog`. No dependency-count check needed: deleting an
- * Account Manager just `set null`s `account_manager_id` on any client
- * currently pointing at it (`deleteAccountManager`'s own doc comment), unlike
- * `deleteClient`'s cascade-delete warning.
+ * Delete confirmation for a single Account Manager. Deleting only clears
+ * `account_manager_id` on clients that point at it (see
+ * `deleteAccountManager`), so there is no dependency check.
  */
 export function DeleteAccountManagerDialog({ open, onOpenChange, accountManager }: DeleteAccountManagerDialogProps) {
-  const router = useRouter();
   const name = accountManager ? `${accountManager.first_name} ${accountManager.last_name}` : "account manager";
 
   return (
-    <ConfirmDeleteDialog
+    <SettingsDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Delete ${name}?`}
-      fallbackMessage="This cannot be undone. Any client currently assigned to this account manager will simply have no account manager afterwards."
       onConfirm={async () => {
         if (!accountManager) return { error: "No account manager selected." };
         const result = await deleteAccountManager(accountManager.id);
         return { error: result.error };
       }}
-      onDeleted={() => router.refresh()}
-      confirmLabel="Delete"
-    />
+    >
+      This cannot be undone. Any client currently assigned to this account manager will simply have no account manager
+      afterwards.
+    </SettingsDeleteDialog>
   );
 }

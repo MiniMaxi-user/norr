@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { OverviewHeroBand, Stack, Text } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getInvoiceEmailSettings } from "@/app/(app)/quotes/invoice-email-settings-actions";
 import { InvoiceEmailSettingsForm } from "../components/invoice-email-settings-form";
+import { SettingsLoadError } from "../components/settings-load-error";
 
 export const metadata = { title: "Invoice email" };
 
@@ -27,17 +27,9 @@ export default async function InvoiceEmailSettingsPage() {
 
   const settingsResult = await getInvoiceEmailSettings();
 
-  return (
-    <Stack gap="lg">
-      <OverviewHeroBand
-        title="Invoice email"
-        subtitle="How invoices are emailed to your clients' invoice contact: sender, CC, subject and message. Leave a field empty to use the default."
-      />
-      {settingsResult.data ? (
-        <InvoiceEmailSettingsForm initial={settingsResult.data.settings} canWrite={canWrite} />
-      ) : (
-        <Text tone="danger">{settingsResult.error ?? "Could not load invoice email settings."}</Text>
-      )}
-    </Stack>
-  );
+  if (!settingsResult.data) {
+    return <SettingsLoadError navKey="invoice_email" message={settingsResult.error ?? "Could not load invoice email settings."} />;
+  }
+
+  return <InvoiceEmailSettingsForm initial={settingsResult.data.settings} canWrite={canWrite} />;
 }
