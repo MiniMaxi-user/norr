@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { preferencesStore } from "@/lib/preferences/cookie-store";
 import {
   getContract,
   listContractAssets,
@@ -9,40 +10,42 @@ import {
   listContractArticleRules,
   listContractLineItems,
 } from "../actions";
-import { getClient, listClients } from "@/app/(app)/clients/actions";
+import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { listAssets } from "@/app/(app)/assets/actions";
 import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions";
-import { ContractScreen } from "../components/contract-screen";
+import { ContractScreen, type ContractDetailTab } from "../components/contract-screen";
+import { CONTRACT_DETAIL_VIEW_KEY } from "../components/constants";
 
 export const metadata = { title: "Contract details" };
 
 interface ContractDetailPageProps {
   params: Promise<{ id: string }>;
+  /** `?tab=assets` etc. deep-links straight to a tab. */
+  searchParams: Promise<{ tab?: string }>;
 }
 
 /** High enough for "every asset of this contract's client" in one request —
  * a contract detail page is a bounded, per-record view, same reasoning as
- * `ALL_CLIENT_ASSETS_LIMIT` in `app/(app)/clients/[id]/page.tsx`/
- * `app/(app)/work-orders/components/work-order-form.tsx`. */
+ * `ALL_CLIENT_ASSETS_LIMIT` in `app/(app)/clients/[id]/page.tsx`. */
 const ALL_CLIENT_ASSETS_LIMIT = 500;
 
+const TAB_IDS: ContractDetailTab[] = ["overview", "lineItems", "coverage", "assets", "quotes"];
+
 /**
- * Contract detail/edit page — one unified screen (issue #122, superseding the
- * separate `/contracts/[id]/edit` route, and later `/contracts/new` too once
- * `CreateContractButton` started creating a bare contract and navigating
- * straight here) rendered by `ContractScreen`: a `RecordHeroBand`,
- * inline-editable Terms/Dates/Notes sections, and the contract's own
- * sub-entities (Line items, Article coverage, Linked assets). Same "fetch
- * once, pass down" convention every other module's detail page uses — every
- * list below is fetched once here
- * and handed to `ContractScreen` as props, never re-fetched client-side.
+ * Contract detail page — renders the shared `ContractScreen` (web design
+ * system, issue #222) in read mode, with one Edit button for a caller with
+ * update rights. Same "fetch once, pass down" convention every other module's
+ * detail page uses: every list below is fetched once here and handed to the
+ * screen as props. `hasFeature()`/RBAC are resolved before anything renders;
+ * the Quotes tab only exists for a caller who can see the Quotes module.
  */
-export default async function ContractDetailPage({ params }: ContractDetailPageProps) {
+export default async function ContractDetailPage({ params, searchParams }: ContractDetailPageProps) {
   const { id } = await params;
+  const { tab: requestedTab } = await searchParams;
 
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
@@ -55,12 +58,11 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
   if (!contractResult.data) notFound();
   const contract = contractResult.data.contract;
 
-  // Quotes panel (issue #211) - only for callers who can see the Quotes module.
+  // Quotes tab (issue #211) - only for callers who can see the Quotes module.
   const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
 
   const [
     clientResult,
-    clientsResult,
     contractAssetsResult,
     clientAssetsResult,
     lineItemsResult,
@@ -73,9 +75,9 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
     billingTermsResult,
     billingPeriodsResult,
     quotesResult,
+    lastUsedTab,
   ] = await Promise.all([
     getClient(contract.client_id),
-    listClients({ limit: 200 }),
     listContractAssets(contract.id),
     listAssets({ clientId: contract.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
     listContractLineItems(contract.id),
@@ -88,54 +90,47 @@ export default async function ContractDetailPage({ params }: ContractDetailPageP
     listReferenceItems("billing_terms"),
     listReferenceItems("billing_period"),
     canSeeQuotes ? listQuotesForContract(contract.id) : Promise.resolve(null),
+    preferencesStore.getLastUsedView(session.userId, CONTRACT_DETAIL_VIEW_KEY),
   ]);
 
   const client = clientResult.data?.client ?? null;
-  const clients = clientsResult.data?.clients ?? [];
   const sites = clientResult.data?.sites ?? [];
   const siteLabelById = new Map(sites.map((site) => [site.id, formatSiteAddressShort(site)]));
-  const contractAssets = contractAssetsResult.data?.contractAssets ?? [];
-  const clientAssets = clientAssetsResult.data?.assets ?? [];
-  const lineItems = lineItemsResult.data?.lineItems ?? [];
-  const groupRules = groupRulesResult.data?.rules ?? [];
-  const articleRules = articleRulesResult.data?.rules ?? [];
-  const articleGroups = articleGroupsResult.data?.groups ?? [];
-  const articles = articlesResult.data?.articles ?? [];
-  const contractTypes = contractTypesResult.data?.items ?? [];
-  const slaTiers = slaTiersResult.data?.items ?? [];
-  const billingTerms = billingTermsResult.data?.items ?? [];
-  const billingPeriods = billingPeriodsResult.data?.items ?? [];
-  const contractQuotes = quotesResult?.data?.quotes ?? null;
+  const quotes = canSeeQuotes ? (quotesResult?.data?.quotes ?? []) : null;
 
-  const canCreate = can(actor, "contracts", "create");
-  const canUpdate = can(actor, "contracts", "update");
-  const canDelete = can(actor, "contracts", "delete");
-
-  const breadcrumbItems = [{ label: "Contracts", href: "/contracts" }, { label: contract.contract_number }];
+  // `?tab=` (explicit deep link) beats the last-used-view cookie; either falls
+  // back to Overview when that tab does not exist for this caller.
+  const available = (raw: string | null | undefined): ContractDetailTab | null => {
+    if (!raw || !TAB_IDS.includes(raw as ContractDetailTab)) return null;
+    if (raw === "quotes") return quotes ? "quotes" : null;
+    return raw as ContractDetailTab;
+  };
 
   return (
     <ContractScreen
-      breadcrumbItems={breadcrumbItems}
+      mode="edit"
       contract={contract}
       client={client}
-      clients={clients}
-      contractTypes={contractTypes}
-      slaTiers={slaTiers}
-      billingTerms={billingTerms}
-      billingPeriods={billingPeriods}
-      readOnly={!canUpdate}
-      canCreate={canCreate}
-      canUpdate={canUpdate}
-      canDelete={canDelete}
-      lineItems={lineItems}
-      articles={articles}
-      articleGroups={articleGroups}
-      groupRules={groupRules}
-      articleRules={articleRules}
-      contractAssets={contractAssets}
-      clientAssets={clientAssets}
+      lists={{
+        contractTypes: contractTypesResult.data?.items ?? [],
+        slaTiers: slaTiersResult.data?.items ?? [],
+        billingTerms: billingTermsResult.data?.items ?? [],
+        billingPeriods: billingPeriodsResult.data?.items ?? [],
+      }}
+      readOnly={!can(actor, "contracts", "update")}
+      canCreate={can(actor, "contracts", "create")}
+      canUpdate={can(actor, "contracts", "update")}
+      canDelete={can(actor, "contracts", "delete")}
+      lineItems={lineItemsResult.data?.lineItems ?? []}
+      articles={articlesResult.data?.articles ?? []}
+      articleGroups={articleGroupsResult.data?.groups ?? []}
+      groupRules={groupRulesResult.data?.rules ?? []}
+      articleRules={articleRulesResult.data?.rules ?? []}
+      contractAssets={contractAssetsResult.data?.contractAssets ?? []}
+      clientAssets={clientAssetsResult.data?.assets ?? []}
       siteLabelById={siteLabelById}
-      quotes={contractQuotes}
+      quotes={quotes}
+      defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
     />
   );
 }

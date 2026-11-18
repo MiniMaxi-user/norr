@@ -1,18 +1,19 @@
 import type { ContractRecord } from "../actions";
 
 /**
- * The contract's own editable fields, as one flat draft object — the single
- * source of truth `ContractScreen` (`/contracts/[id]`) owns for its edit
- * view (issue #122, mirroring `app/(app)/assets/components/asset-draft.ts`).
- * Every section of the page (Terms/Dates/Notes) reads from this and writes
- * back through `ContractScreen`'s own `commitPatch`.
+ * The contract's own editable fields, as one flat draft object — the raw
+ * input-shaped record `useEditMode` (web design system, issue #222) edits on
+ * `/contracts/[id]` and `/contracts/new`. Strings for every input
+ * (`value` is the typed amount), a real boolean for `autoRenew`;
+ * `draftToInput` below does the coercion `contractCreateSchema`/
+ * `contractUpdateSchema` (`../schema.ts`) expect.
  *
- * `value`/`autoRenew` mirror every other free-text/date field here as plain
- * strings (`value`) or a real boolean (`autoRenew`) — `draftToInput` below is
- * what does the actual coercion `contractCreateSchema`/`contractUpdateSchema`
- * (`../schema.ts`) expect.
+ * `clientId` is part of the draft so the new page can validate it, but it is
+ * never sent on update (a contract's client is fixed at creation, issue #217).
  */
-export interface ContractDraft {
+// A `type` alias (not an `interface`) so it is assignable to the
+// `Record<string, string | boolean>` `useEditMode` edits.
+export type ContractDraft = {
   clientId: string;
   externalReference: string;
   typeId: string;
@@ -24,7 +25,7 @@ export interface ContractDraft {
   autoRenew: boolean;
   value: string;
   notes: string;
-}
+};
 
 export function draftFromContract(contract: ContractRecord): ContractDraft {
   return {
@@ -42,21 +43,47 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
   };
 }
 
+export function todayIso(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** Empty draft of the new page: start date today, client pre-scoped when the
+ * user came from a client's Contracts tab. */
+export function emptyDraft(options: { lockedClientId?: string; defaultTypeId?: string } = {}): ContractDraft {
+  return {
+    clientId: options.lockedClientId ?? "",
+    externalReference: "",
+    typeId: options.defaultTypeId ?? "",
+    slaTierId: "",
+    billingTermsId: "",
+    billingPeriodId: "",
+    startDate: todayIso(),
+    endDate: "",
+    autoRenew: false,
+    value: "",
+    notes: "",
+  };
+}
+
 /** Converts a draft (or a partial patch of one) into the shape
- * `createContract`/`updateContract` (`../actions.ts`) expect — empty-string
- * "unset" values become `undefined` (not sent) rather than an empty string
- * that would fail the schema's `uuid()`/date shape checks. */
+ * `createContract`/`updateContract` (`../actions.ts`) expect. An emptied
+ * optional field is sent as an empty string, which the schema turns into
+ * `null` (clears the column); `typeId`/`startDate` are required, so an empty
+ * value there is simply not sent. */
 export function draftToInput(patch: Partial<ContractDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
-  if (patch.typeId !== undefined) input.typeId = patch.typeId || undefined;
-  if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId || undefined;
-  if (patch.billingTermsId !== undefined) input.billingTermsId = patch.billingTermsId || undefined;
-  if (patch.billingPeriodId !== undefined) input.billingPeriodId = patch.billingPeriodId || undefined;
-  if (patch.startDate !== undefined) input.startDate = patch.startDate || undefined;
-  if (patch.endDate !== undefined) input.endDate = patch.endDate || undefined;
+  if (patch.typeId) input.typeId = patch.typeId;
+  if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId;
+  if (patch.billingTermsId !== undefined) input.billingTermsId = patch.billingTermsId;
+  if (patch.billingPeriodId !== undefined) input.billingPeriodId = patch.billingPeriodId;
+  if (patch.startDate) input.startDate = patch.startDate;
+  if (patch.endDate !== undefined) input.endDate = patch.endDate;
   if (patch.autoRenew !== undefined) input.autoRenew = patch.autoRenew;
-  if (patch.value !== undefined) input.value = patch.value || undefined;
-  if (patch.notes !== undefined) input.notes = patch.notes || undefined;
+  if (patch.value !== undefined) input.value = patch.value;
+  if (patch.notes !== undefined) input.notes = patch.notes;
   return input;
 }

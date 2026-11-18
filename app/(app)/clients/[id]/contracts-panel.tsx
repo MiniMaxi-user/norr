@@ -19,7 +19,7 @@ export interface ContractsPanelProps {
  * table pattern, issue #222): one card with a FilterBar — Type dropdown and
  * Active · Ended · All (default Active; "ended" = end date in the past, the
  * same reading of "active" the client page's key figures use). "+ Contract"
- * creates the contract for this client and opens its page, as before.
+ * opens `/contracts/new` with this client pre-scoped.
  */
 export function ContractsPanel({ clientId, contracts, canCreate }: ContractsPanelProps) {
   const columns = useMemo<WebColumn<ContractRecord>[]>(

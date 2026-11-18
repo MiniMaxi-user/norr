@@ -15,8 +15,16 @@ function emptyToUndefined(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? undefined : value;
 }
 
-function optionalText(max: number) {
-  return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
+/** Blank string / `null` => `null` ("clear this field"); `undefined` stays
+ * "not provided". Lets the detail page's Edit mode empty an optional field
+ * (end date, SLA tier, value, notes…): `toContractUpdateRow` already maps a
+ * `null` to the column's `null`. */
+function blankToNull(value: unknown): unknown {
+  return value === null || (typeof value === "string" && value.trim() === "") ? null : value;
+}
+
+function clearable<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(blankToNull, schema.nullable().optional());
 }
 
 function optionalUuid(message: string) {
@@ -30,7 +38,7 @@ const requiredIsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format.");
 
-const optionalIsoDateSchema = z.preprocess(emptyToUndefined, requiredIsoDateSchema.optional());
+const optionalIsoDateSchema = clearable(requiredIsoDateSchema);
 
 /**
  * Optional money amount with at most 2 decimal places, matching
@@ -42,15 +50,13 @@ const optionalIsoDateSchema = z.preprocess(emptyToUndefined, requiredIsoDateSche
  * representation artifacts for this exact use case (e.g.
  * `0.01 * 3 = 0.030000000000000002`).
  */
-const optionalMoneySchema = z.preprocess(
-  emptyToUndefined,
+const optionalMoneySchema = clearable(
   z
     .coerce.number({ invalid_type_error: "Value must be a number." })
     .finite("Value must be a finite number.")
     .refine((value) => Math.abs(value - Math.round(value * 100) / 100) < 1e-9, {
       message: "Value must have at most 2 decimal places.",
-    })
-    .optional(),
+    }),
 );
 
 export const contractCreateSchema = z.object({
@@ -78,10 +84,10 @@ export const contractCreateSchema = z.object({
    * `work_orders.siteId`/`assetId` use, NOT the extra app-layer shape
    * pre-check `assets.subtypeId` gets (see `actions.ts`'s module comment for
    * why this module doesn't duplicate that pre-check). */
-  slaTierId: optionalUuid("Invalid SLA tier."),
+  slaTierId: clearable(z.string().uuid("Invalid SLA tier.")),
   /** FK into this org's `billing_terms` reference list. Nullable, standalone
    * (not a dependent list). Validated by `validate_contract_reference_items`. */
-  billingTermsId: optionalUuid("Invalid billing terms."),
+  billingTermsId: clearable(z.string().uuid("Invalid billing terms.")),
   /** FK into this org's `billing_period` reference list (issue #122).
    * Nullable, standalone (not a dependent list) — an independent SIBLING of
    * `billingTermsId`: `billingTermsId` is "how often this contract is
@@ -89,7 +95,7 @@ export const contractCreateSchema = z.object({
    * recurs" (e.g. a monthly value invoiced annually). No default-fill on
    * omission, matching `billingTermsId`'s own no-default-fill treatment.
    * Validated by `validate_contract_reference_items`. */
-  billingPeriodId: optionalUuid("Invalid billing period."),
+  billingPeriodId: clearable(z.string().uuid("Invalid billing period.")),
   startDate: requiredIsoDateSchema,
   /** Nullable — open-ended contracts are real. When set, must be >=
    * `startDate` (DB check constraint `contracts_end_date_after_start_date`;
@@ -98,7 +104,7 @@ export const contractCreateSchema = z.object({
   endDate: optionalIsoDateSchema,
   autoRenew: z.preprocess(emptyToUndefined, z.boolean().optional()),
   value: optionalMoneySchema,
-  notes: optionalText(5000),
+  notes: clearable(z.string().trim().max(5000)),
 });
 
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
