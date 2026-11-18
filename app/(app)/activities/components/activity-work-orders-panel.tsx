@@ -25,9 +25,9 @@ const isClosed = (order: WorkOrderRecord) => CLOSED_STATUS_VALUES.includes(order
  * Work orders tab of the Activity page (design system table pattern, issue
  * #222) — the jobs dispatched from this activity: one card with a FilterBar
  * (Type / Status dropdowns, Open · Done · All, default All so a fresh job is
- * never hidden). "+ Work order" creates a work order from this activity in
- * place (existing `createWorkOrderFromActivity`: you stay here and the new row
- * appears); a row opens the work order page. Never rendered for a caller who
+ * never hidden). "+ Work order" creates a work order from this activity
+ * (existing `createWorkOrderFromActivity`) and opens it, same as the header's
+ * "Create work order"; a row opens the work order page. Never rendered for a caller who
  * cannot read the planning module.
  */
 export function ActivityWorkOrdersPanel({ activityId, workOrders, canCreate }: ActivityWorkOrdersPanelProps) {
@@ -42,7 +42,7 @@ export function ActivityWorkOrdersPanel({ activityId, workOrders, canCreate }: A
         return;
       }
       toast({ tone: "success", title: "Work order created", description: result.data.workOrder.work_order_number });
-      router.refresh();
+      router.push(`/work-orders/${result.data.workOrder.id}`);
     });
   }
 
