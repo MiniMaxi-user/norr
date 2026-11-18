@@ -1,65 +1,54 @@
 import type { ReactNode } from "react";
-import { AppLayout } from "@yourorg/ui";
-import { AppSidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { ContextStrip } from "./page-header-context";
 import { resolveNavItems } from "./nav-items";
 import type { FeatureOrganization } from "@/lib/rbac/features";
 import type { CurrentSession } from "@/lib/auth/session";
 import type { PermissionActor } from "@/lib/rbac/permissions";
 
 interface AppShellProps {
-  defaultSidebarCollapsed: boolean;
   /** Current user's organization (see `lib/auth/session.ts`), or `null` for
    * a signed-in user with no tenant membership yet. Threaded through to
    * `resolveNavItems` for real `hasFeature()` gating (issue #4). */
   organization: FeatureOrganization | null;
-  /** Real signed-in user, for the topbar avatar/dropdown (issue #3's
-   * `requireSession()` guarantees one exists by the time this renders).
-   * `avatarUrl`/`locale` (issue #49) are threaded through to `UserMenu`'s
-   * `ProfilePanel`, not just displayed. */
+  /** Real signed-in user, for the topbar avatar menu (issue #3's
+   * `requireSession()` guarantees one exists by the time this renders). */
   user: Pick<CurrentSession, "email" | "fullName" | "role" | "avatarUrl" | "locale">;
-  /** `session.isPlatformAdmin` (issue #45) — threaded to `resolveNavItems`
-   * so the "Platform settings" nav item can resolve `enabled` outside the
-   * normal `hasFeature(organization, ...)` path (see that function's own
-   * comment for why), and to `Topbar`/`UserMenu` for the "Platform Admin"
-   * badge. */
+  /** `session.isPlatformAdmin` (issue #45) — resolves the "Platform settings"
+   * entry outside the normal `hasFeature()` path and marks the avatar menu
+   * with a "Platform Admin" badge. */
   isPlatformAdmin: boolean;
-  title?: ReactNode;
   children: ReactNode;
 }
 
 /**
- * Composition root for the authenticated app chrome. Stays a Server
- * Component — every interactive piece (sidebar collapse, theme toggle,
- * command palette) is already isolated to its own client leaf, so this
- * component just arranges server-rendered structure around them.
+ * Composition root for the authenticated WEB chrome (design system, issue
+ * #222): a navy topbar over a single scrolling content area — the old left
+ * sidebar is gone. Stays a Server Component; every interactive piece (module
+ * menu, command palette, avatar menu) is its own client leaf.
  *
- * Nav entitlement (`hasFeature()` per item) is resolved once here and
- * threaded down to both `AppSidebar` and `Topbar` (which passes it on to
- * `CommandPalette`) so the sidebar and command palette never disagree about
- * which modules are enabled.
+ * Nav entitlement (`hasFeature()` + RBAC per item) is resolved ONCE here via
+ * `resolveNavItems` and threaded down to the topbar and the command palette,
+ * so the two can never disagree about which modules exist.
+ *
+ * `ContextStrip` shows the breadcrumb pages not yet migrated to the new
+ * `PageHeader` still push through `usePageHeader` (the topbar itself carries
+ * no breadcrumb any more); it renders nothing when no page set one.
  *
  * Session resolution/redirect happens one level up, in
- * `app/(app)/layout.tsx` (via `requireSession()`) — by the time this
- * renders, a signed-in user is guaranteed to exist.
+ * `app/(app)/layout.tsx` (via `requireSession()`).
  */
-export async function AppShell({
-  defaultSidebarCollapsed,
-  organization,
-  user,
-  isPlatformAdmin,
-  title,
-  children,
-}: AppShellProps) {
+export async function AppShell({ organization, user, isPlatformAdmin, children }: AppShellProps) {
   const actor: PermissionActor = { role: user.role, isPlatformAdmin };
   const navItems = await resolveNavItems(organization, isPlatformAdmin, actor);
 
   return (
-    <AppLayout
-      sidebar={<AppSidebar defaultCollapsed={defaultSidebarCollapsed} items={navItems} />}
-      topbar={<Topbar title={title} navItems={navItems} user={user} isPlatformAdmin={isPlatformAdmin} />}
-    >
-      {children}
-    </AppLayout>
+    <div className="web-shell">
+      <Topbar navItems={navItems} user={user} isPlatformAdmin={isPlatformAdmin} />
+      <div className="web-shell-body">
+        <ContextStrip />
+        <main className="ui-app-layout-content">{children}</main>
+      </div>
+    </div>
   );
 }

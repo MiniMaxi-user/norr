@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button, type ButtonSize, type ButtonVariant } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 
 export interface CreateAssetButtonProps {
   /** Pre-scopes (and locks, via `/assets/new?clientId=...`) the Client
@@ -26,6 +27,10 @@ export interface CreateAssetButtonProps {
    * Left overridable for a future caller that genuinely needs a different
    * variant; unused by either current caller. */
   variant?: ButtonVariant;
+  /** Renders the design system's FilterBar add button (secondary, 30px,
+   * "+ Asset" text, no icon) instead of the standard `Button` — used by the
+   * related-list tabs of a detail page (issue #222). */
+  filterBar?: boolean;
 }
 
 /**
@@ -36,7 +41,7 @@ export interface CreateAssetButtonProps {
  * a real page — see `docs/ARCHITECTURE.md`'s "Popup vs. full page" section.
  * A plain Server Component `<Link>` again (no dialog `open` state to own).
  */
-export function CreateAssetButton({ clientId, siteId, label, size, variant }: CreateAssetButtonProps) {
+export function CreateAssetButton({ clientId, siteId, label, size, variant, filterBar }: CreateAssetButtonProps) {
   const params = new URLSearchParams();
   if (clientId) params.set("clientId", clientId);
   if (siteId) params.set("siteId", siteId);
@@ -44,9 +49,13 @@ export function CreateAssetButton({ clientId, siteId, label, size, variant }: Cr
 
   return (
     <Link href={query ? `/assets/new?${query}` : "/assets/new"}>
-      <Button type="button" variant={variant ?? "primary"} size={size}>
-        {label ?? "Add asset"}
-      </Button>
+      {filterBar ? (
+        <WebButton size="filter">{label ?? "Add asset"}</WebButton>
+      ) : (
+        <Button type="button" variant={variant ?? "primary"} size={size}>
+          {label ?? "Add asset"}
+        </Button>
+      )}
     </Link>
   );
 }

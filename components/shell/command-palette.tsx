@@ -2,14 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  CommandPalette as UiCommandPalette,
-  CommandGroup,
-  CommandItem,
-  Button,
-  Kbd,
-  useTheme,
-} from "@yourorg/ui";
+import { CommandPalette as UiCommandPalette, CommandGroup, CommandItem } from "@yourorg/ui";
 import { Search } from "@yourorg/ui/icons";
 import type { ReactNode } from "react";
 
@@ -25,32 +18,36 @@ import type { ReactNode } from "react";
  * by never letting a raw `ComponentType` cross into this file's props.
  */
 export interface CommandPaletteNavItem {
-  moduleKey: string;
   label: string;
   href: string;
   icon: ReactNode;
-  enabled: boolean;
 }
 
 /**
  * Global cmd/ctrl-K command palette. Owns its own open state and the
- * keyboard listener, and renders both the trigger button (shown in the
- * topbar) and the dialog — kept as one client leaf since both pieces share
- * the same state and there's no server-renderable part of a command
- * palette.
+ * keyboard listener, and renders both the trigger and the dialog — kept as
+ * one client leaf since both pieces share the same state and there's no
+ * server-renderable part of a command palette.
  *
- * Commands today are shell-level only (navigate to enabled modules, toggle
- * theme). `navItems` is resolved server-side via `resolveNavItems()`
- * (`hasFeature()` per item, issue #4) and passed down from `Topbar` — this
- * component can't call `hasFeature()` itself since it's a server-only
- * DB-backed helper and this is a "use client" leaf. TODO(frontend-ui-engineer):
- * once modules ship, register their commands here dynamically instead of
- * just navigation entries.
+ * The trigger is the topbar's search field (design system "Topbar", issue
+ * #222); clicking it and pressing Ctrl/Cmd+K open the same palette.
+ *
+ * Commands today are shell-level only (navigate to enabled modules).
+ * `navItems` is resolved server-side via `resolveNavItems()` (`hasFeature()`
+ * per item, issue #4), already filtered to the enabled ones by `Topbar` —
+ * this component can't call `hasFeature()` itself since it's a server-only
+ * DB-backed helper and this is a "use client" leaf. Theme switching is gone:
+ * web is light-only. TODO(frontend-ui-engineer): once modules ship, register
+ * their commands (and record search) here dynamically.
  */
 export function CommandPalette({ navItems }: { navItems: CommandPaletteNavItem[] }) {
   const [open, setOpen] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    setIsMac(/mac|iphone|ipad/i.test(navigator.platform));
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -72,42 +69,34 @@ export function CommandPalette({ navItems }: { navItems: CommandPaletteNavItem[]
     setOpen(false);
   }
 
-  const enabledNavItems = navItems.filter((item) => item.enabled);
-
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        aria-label="Open command palette"
+      <button
+        type="button"
+        className="web-topbar-search"
+        aria-label="Search modules and commands"
+        aria-keyshortcuts="Control+K Meta+K"
         onClick={() => setOpen(true)}
       >
         <Search aria-hidden />
-        Search…
-        <Kbd>Ctrl K</Kbd>
-      </Button>
+        <span className="web-topbar-search-label">Search modules and commands</span>
+        <span className="web-topbar-search-kbd" aria-hidden="true">
+          {isMac ? "⌘K" : "Ctrl K"}
+        </span>
+      </button>
 
       <UiCommandPalette open={open} onOpenChange={setOpen} placeholder="Type a command or search…">
         <CommandGroup heading="Navigate">
-          {enabledNavItems.map((item) => (
-            // `href`, not `moduleKey` — Planning and Work Orders now share
+          {navItems.map((item) => (
+            // `href`, not `moduleKey` — Planning and Work Orders share
             // `moduleKey: "planning"` (issue #164, see `nav-items.ts`'s
             // `requiredPermission` comment), so `href` is the only field
             // still guaranteed unique per nav entry.
-            <CommandItem
-              key={item.href}
-              onSelect={() => runAndClose(() => router.push(item.href))}
-            >
+            <CommandItem key={item.href} onSelect={() => runAndClose(() => router.push(item.href))}>
               {item.icon}
               {item.label}
             </CommandItem>
           ))}
-        </CommandGroup>
-
-        <CommandGroup heading="Preferences">
-          <CommandItem onSelect={() => runAndClose(() => setTheme(theme === "dark" ? "light" : "dark"))}>
-            Toggle theme
-          </CommandItem>
         </CommandGroup>
       </UiCommandPalette>
     </>

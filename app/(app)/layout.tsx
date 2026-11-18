@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { MainSkeleton } from "@/components/shell/main-skeleton";
-import { PageHeaderProvider, PageHeaderSlot } from "@/components/shell/page-header-context";
-import { preferencesStore } from "@/lib/preferences/cookie-store";
+import { PageHeaderProvider } from "@/components/shell/page-header-context";
 import { requireSession } from "@/lib/auth/session";
 
 // This route group is the authenticated app shell: everything rendered
-// through here gets the sidebar/topbar chrome. Marketing/auth pages
+// through here gets the topbar chrome (web design system, issue #222 — the
+// sidebar is gone). Marketing/auth pages
 // (login, signup, invite-accept) live in the sibling `app/(auth)/*` route
 // group, which does NOT import AppShell, so they render without this
 // chrome.
@@ -23,12 +23,10 @@ export default async function AppRouteLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession();
-  const defaultSidebarCollapsed = await preferencesStore.getSidebarCollapsed(session.userId);
 
   return (
     <PageHeaderProvider>
       <AppShell
-        defaultSidebarCollapsed={defaultSidebarCollapsed}
         organization={session.organization}
         user={{
           email: session.email,
@@ -38,7 +36,6 @@ export default async function AppRouteLayout({
           locale: session.locale,
         }}
         isPlatformAdmin={session.isPlatformAdmin}
-        title={<PageHeaderSlot />}
       >
         <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
       </AppShell>

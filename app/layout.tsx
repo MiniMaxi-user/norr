@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { ThemeProvider, ThemeScript, ToastProvider } from "@yourorg/ui";
+import { ToastProvider } from "@yourorg/ui";
 // Design tokens (color scales, spacing, typography, light/dark CSS
 // variables) ship from the design system itself per CLAUDE.md rule 4 — the
 // app never defines its own tokens or a local globals.css.
 import "@yourorg/ui/styles.css";
+// Web design system (issue #222): tokens + web-only component styles. Imported
+// ONLY here — the PWA never loads it (it imports styles.css alone), so none of
+// it can leak into the field app.
+import "@yourorg/ui/web.css";
 
 export const metadata: Metadata = {
   title: "Norr — Field Service Management",
@@ -20,42 +24,33 @@ export const metadata: Metadata = {
   },
 };
 
-// `suppressHydrationWarning` on <html> is required by every theme provider
-// of this shape (next-themes and equivalents): the class/attribute it
-// applies to <html> is set from localStorage before React hydrates, so a
-// client/server markup diff on that one attribute is expected and safe to
-// suppress — it must NOT be used more broadly than this.
-//
-// `ThemeScript` (bug report, 2026-09-14, found while fixing the PWA's own
-// offline-navigation flash — see `apps/pwa/app/layout.tsx`'s identical
-// comment) sets the theme class on <html> synchronously as the document
-// parses, before `ThemeProvider`'s own effect ever runs, so a fresh full
-// page load never paints one frame of the wrong (default light) theme
-// first. A manual <head> tag in a ROOT layout is Next's documented escape
-// hatch for exactly this ("content outside what the Metadata API covers");
-// it merges with the metadata-managed tags rather than replacing them. Must
-// be rendered first, and its `attribute`/`defaultTheme` props must match
-// `ThemeProvider`'s own below exactly — see that component's own doc
-// comment (`@yourorg/ui`) for why.
+// Web is LIGHT ONLY (issue #222; the design system defines a single light
+// theme and the theme toggle is hidden). Instead of `ThemeProvider`/
+// `ThemeScript` — which resolve the theme from localStorage/`prefers-color-
+// scheme` and could therefore still apply `html.dark` — the root element
+// carries a static `light` class and a tiny blocking script strips any
+// `dark` class before first paint. Nothing else in the web app ever adds one.
+// The PWA keeps its own forced-dark ThemeProvider (apps/pwa/app/layout.tsx).
+const FORCE_LIGHT_SCRIPT =
+  'document.documentElement.classList.remove("dark");document.documentElement.classList.add("light");';
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="light" suppressHydrationWarning>
       <head>
-        <ThemeScript attribute="class" defaultTheme="system" />
+        <script dangerouslySetInnerHTML={{ __html: FORCE_LIGHT_SCRIPT }} />
       </head>
       <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {/* Mounted once at the app root (issue #94, "Maak Quote" — its
            * first real caller, see `work-orders/[id]/work-order-detail-
            * actions.tsx`) so `toast()` can be called from anywhere in the
            * tree, including right before a `router.push()` navigates away —
            * a toast survives that navigation, an inline banner never could. */}
           <ToastProvider>{children}</ToastProvider>
-        </ThemeProvider>
         {/* Real-user Core Web Vitals (LCP/CLS/INP) reporting (issue #150,
          * performance breakdown from #139) — mounted once at the app root so
          * it covers every route, same placement Vercel's own docs show. Data

@@ -21,14 +21,24 @@
       "import": "./dist/icons.js",
       "require": "./dist/icons.cjs"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./dist/styles.css",
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "import": "./dist/web.js"
+    },
+    "./web-client": {
+      "types": "./dist/web-client.d.ts",
+      "import": "./dist/web-client.js"
+    },
+    "./web.css": "./dist/web.css"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup && node ./scripts/copy-css.mjs",
+    "build": "tsup && tsup --config tsup.web.config.ts && node ./scripts/copy-css.mjs",
     "dev": "tsup --watch --onSuccess \"node ./scripts/copy-css.mjs\"",
+    "dev:web": "tsup --config tsup.web.config.ts --watch",
     "typecheck": "tsc --noEmit",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build"

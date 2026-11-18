@@ -4,13 +4,13 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
-import { ClientCreateScreen } from "../components/client-create-screen";
+import { ClientNewScreen } from "./client-new-screen";
 
 export const metadata = { title: "New Client" };
 
 /**
- * `mode: "create"` render of the client Details fields (Client Details tab
- * redo) — replaces the old `NewClientPanel` slide-in dialog. Gated on
+ * `/clients/new` — the client detail page rendered in `mode="new"` (design
+ * system, issue #222), replacing the old separate create screen. Gated on
  * `can(actor, "clients", "create")` — owner only, matching `createClient`'s
  * own RBAC check (and the RLS INSERT policy) exactly, same pattern
  * `app/(app)/assets/new/page.tsx` uses for Assets.
@@ -30,8 +30,7 @@ export default async function NewClientPage() {
   ]);
 
   return (
-    <ClientCreateScreen
-      breadcrumbItems={[{ label: "Clients", href: "/clients" }, { label: "New client" }]}
+    <ClientNewScreen
       accountManagers={accountManagersResult.data?.accountManagers ?? []}
       articles={articlesResult.data?.articles ?? []}
       todayIso={new Date().toISOString().slice(0, 10)}

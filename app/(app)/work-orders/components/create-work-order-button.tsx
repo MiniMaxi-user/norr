@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, type ButtonSize } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import { NewWorkOrderPickerDialog } from "./new-work-order-picker-dialog";
 
@@ -23,6 +24,10 @@ export interface CreateWorkOrderButtonProps {
    * `SectionHeader` "+ X" button there — same `size` convention
    * `CreateAssetButton`/`CreateActivityButton` already use. */
   size?: ButtonSize;
+  /** Renders the design system's FilterBar add button (secondary, 30px, "+ X"
+   * text, no icon) instead of the standard `Button` — used by the
+   * related-list tabs of a detail page (issue #222). */
+  filterBar?: boolean;
 }
 
 /**
@@ -42,14 +47,20 @@ export interface CreateWorkOrderButtonProps {
  * the mandatory relations before dropping the user into that unchanged
  * screen for the actual Save.
  */
-export function CreateWorkOrderButton({ clientId, label, clients = [], size }: CreateWorkOrderButtonProps) {
+export function CreateWorkOrderButton({ clientId, label, clients = [], size, filterBar }: CreateWorkOrderButtonProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <>
-      <Button type="button" variant="primary" size={size} onClick={() => setPickerOpen(true)}>
-        {label ?? "New work order"}
-      </Button>
+      {filterBar ? (
+        <WebButton size="filter" onClick={() => setPickerOpen(true)}>
+          {label ?? "New work order"}
+        </WebButton>
+      ) : (
+        <Button type="button" variant="primary" size={size} onClick={() => setPickerOpen(true)}>
+          {label ?? "New work order"}
+        </Button>
+      )}
       {pickerOpen && (
         <NewWorkOrderPickerDialog open onOpenChange={setPickerOpen} clients={clients} lockedClientId={clientId} />
       )}

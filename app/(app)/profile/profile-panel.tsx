@@ -10,15 +10,12 @@ import {
   Heading,
   Input,
   Label,
-  RadioGroup,
-  RadioGroupItem,
   Select,
   Stack,
   Text,
   useEscapeToClose,
-  useTheme,
 } from "@yourorg/ui";
-import { Globe, Lock, Moon, Sun, UserRound } from "@yourorg/ui/icons";
+import { Globe, Lock, UserRound } from "@yourorg/ui/icons";
 import { AvatarUploader } from "./avatar-uploader";
 import { updatePassword, updateProfile } from "./actions";
 import { LOCALES, type Locale } from "@/lib/profile/locale";
@@ -41,9 +38,8 @@ import { LOCALES, type Locale } from "@/lib/profile/locale";
  * (or, for the avatar, its own buttons — see `AvatarUploader`) and its own
  * inline success/error feedback, and stays open after a successful save so
  * the user can keep adjusting other settings in the same visit. The footer
- * is just a "Close" button. Theme has no save step at all: `@yourorg/ui`'s
- * `useTheme()` already persists client-side (see `ThemeToggle`), so
- * flipping it here takes effect immediately, same as the topbar toggle.
+ * is just a "Close" button. There is no Appearance section: the web app is
+ * light-only (issue #222) and the theme toggle is hidden.
  */
 export function ProfilePanel({
   open,
@@ -103,7 +99,6 @@ export function ProfilePanel({
 
           <PasswordSection />
 
-          <AppearanceSection />
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>
@@ -258,26 +253,6 @@ function PasswordSection() {
           <SaveButton label="Change password" pendingLabel="Changing…" />
         </Stack>
       </form>
-    </FormSection>
-  );
-}
-
-function AppearanceSection() {
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
-
-  return (
-    <FormSection title="Appearance" icon={isDark ? <Moon /> : <Sun />}>
-      <RadioGroup>
-        <Stack gap="xs">
-          <Label>
-            <RadioGroupItem name="theme" checked={!isDark} onChange={() => setTheme("light")} /> Light
-          </Label>
-          <Label>
-            <RadioGroupItem name="theme" checked={isDark} onChange={() => setTheme("dark")} /> Dark
-          </Label>
-        </Stack>
-      </RadioGroup>
     </FormSection>
   );
 }

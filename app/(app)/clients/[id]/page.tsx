@@ -82,6 +82,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   }
 
   const canWrite = can(actor, "clients", "update");
+  const canDelete = can(actor, "clients", "delete");
 
   // Issue #45: the "Access"/"Modules" tabs are platform-admin-only, and only
   // once this client has actually been activated as a tenant
@@ -93,9 +94,9 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   // in at all, so managing their login access/modules is meaningless until
   // it's reactivated. Hidden outright rather than shown disabled, which also
   // means the `getTenantAccessStatus` lookup below is skipped for a
-  // deactivated org's contacts (nothing meaningful for it to return). Same
-  // condition `ClientDetail` itself re-derives for the tab triggers/panels
-  // (`tenantAccessVisible` there) — keep both in sync.
+  // deactivated org's contacts (nothing meaningful for it to return). Passed
+  // down to `ClientDetail` as a prop (gates the Access/Modules tabs and the
+  // rail's Platform section), so page and view can never disagree.
   const tenantAccessVisible = session.isPlatformAdmin && result.data.client.organization_is_active === true;
 
   // The Assets tab is itself a view onto the (separately-entitled) Assets
@@ -231,15 +232,14 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
   // currently-visible tab; an unrecognized/not-entitled value falls through
   // to the cookie exactly like an unrecognized cookie value already did.
   //
-  // "access"/"modules" are deliberately absent here (issue #113 moved them
-  // off the page's own `Tabs` into the rail Platform card's edit popup — see
-  // `client-detail.tsx`'s `PlatformDialogTab`) — an old cookie value or deep
-  // link naming either one now just falls through to the next candidate/
-  // "sites" like any other unrecognized value.
+  // "access"/"modules" are tabs again (issue #222, platform-admin-only and
+  // only for an ACTIVE tenant — `tenantAccessVisible` above); anyone else who
+  // follows an old link to them falls through to the next candidate.
   function resolveTab(candidate: string | null | undefined): ClientDetailTab | null {
     switch (candidate) {
-      case "details":
-        return "details";
+      case "overview":
+      case "details": // legacy name of the Overview tab (cookie / old deep links)
+        return "overview";
       case "assets":
         return assetsModuleVisible ? "assets" : null;
       case "volumes":
@@ -256,17 +256,22 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         return activitiesModuleVisible ? "activities" : null;
       case "sites":
         return "sites";
+      case "access":
+        return tenantAccessVisible ? "access" : null;
+      case "modules":
+        return tenantAccessVisible ? "modules" : null;
       default:
         return null;
     }
   }
-  const defaultTab: ClientDetailTab = resolveTab(requestedTabParam) ?? resolveTab(lastUsedTab) ?? "details";
+  const defaultTab: ClientDetailTab = resolveTab(requestedTabParam) ?? resolveTab(lastUsedTab) ?? "overview";
 
   return (
     <ClientDetail
       client={result.data.client}
       sites={result.data.sites}
       canWrite={canWrite}
+      canDelete={canDelete}
       assets={assetsResult?.data?.assets ?? []}
       assetsEnabled={assetsModuleVisible}
       canCreateAssets={assetsModuleVisible && can(actor, "assets", "create")}
@@ -289,6 +294,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       canCreateActivities={activitiesModuleVisible && canAny(actor, "activities", ["create", "create_own"])}
       canCreateWorkOrder={canCreateWorkOrder}
       isPlatformAdmin={session.isPlatformAdmin}
+      tenantAccessVisible={tenantAccessVisible}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
       defaultTab={defaultTab}
       accountManagers={accountManagersResult.data?.accountManagers ?? []}

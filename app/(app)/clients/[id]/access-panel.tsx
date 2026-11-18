@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Avatar, Badge, Button, Dialog, EmptyState, Heading, Inline, Input, Stack, Table, Text } from "@yourorg/ui";
-import { ShieldCheck } from "@yourorg/ui/icons";
+import { useMemo, useState } from "react";
+import { Button, Dialog, Heading, Inline, Input, Stack, Text } from "@yourorg/ui";
+import { StatusText, WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import type { ContactRecord } from "../contacts-actions";
 import {
   inviteTenantOwner,
@@ -120,79 +120,106 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
     setRowErrors((prev) => ({ ...prev, [contact.id]: "" }));
   }
 
-  if (contacts.length === 0) {
-    return (
-      <EmptyState
-        icon={<ShieldCheck />}
-        heading="No contacts yet"
-        text="Add a contact on the Contacts tab first, then invite them to log in here."
-      />
-    );
+  const columns = useMemo<WebColumn<ContactRecord>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Contact",
+        sortValue: (contact) => contact.name,
+        render: (contact) => (
+          <>
+            {contact.name}
+            {rowErrors[contact.id] ? (
+              <>
+                <br />
+                <StatusText tone="danger">{rowErrors[contact.id]}</StatusText>
+              </>
+            ) : null}
+          </>
+        ),
+      },
+      { id: "email", header: "Email", sortValue: (contact) => contact.email ?? "", render: (contact) => contact.email || "Add an email on the Contacts tab first" },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (contact) => STATUS_LABEL[statusFor(contact)],
+        render: (contact) => {
+          const status = statusFor(contact);
+          return <StatusText tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusText>;
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rowErrors, statusByEmail],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "status",
+        label: "Status",
+        getOptions: (contact: ContactRecord) => {
+          const status = statusFor(contact);
+          return [{ value: status, label: STATUS_LABEL[status] }];
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statusByEmail],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show contacts by access",
+      defaultValue: "all",
+      options: [
+        { value: "with", label: "With access", match: (contact: ContactRecord) => statusFor(contact) !== "none" },
+        { value: "without", label: "Without", match: (contact: ContactRecord) => statusFor(contact) === "none" },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statusByEmail],
+  );
+
+  function rowActions(contact: ContactRecord): WebMenuItem[] {
+    if (!contact.email) return [{ key: "no-email", label: "Add an email on the Contacts tab first", disabled: true }];
+    const status = statusFor(contact);
+    const isPending = pendingId === contact.id;
+    const items: WebMenuItem[] = [
+      status === "none"
+        ? { key: "invite", label: isPending ? "Sending…" : "Request access", disabled: isPending, onSelect: () => void handleInvite(contact) }
+        : {
+            key: "reset",
+            label: isPending ? "Working…" : status === "active" ? "Reset password" : "Resend request",
+            disabled: isPending,
+            onSelect: () => void handleReset(contact),
+          },
+    ];
+    if (status === "invited" || status === "active") {
+      items.push({ key: "disable", label: "Disable access", danger: true, disabled: isPending, onSelect: () => setDisableTarget(contact) });
+    }
+    return items;
   }
 
   return (
     <>
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeaderCell>Contact</Table.HeaderCell>
-            <Table.HeaderCell>Email</Table.HeaderCell>
-            <Table.HeaderCell align="center">Status</Table.HeaderCell>
-            <Table.HeaderCell align="center">Action</Table.HeaderCell>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {contacts.map((contact) => {
-            const status = statusFor(contact);
-            const isPending = pendingId === contact.id;
-            const rowError = rowErrors[contact.id];
-            return (
-              <Table.Row key={contact.id}>
-                <Table.Cell>
-                  <Inline gap="sm">
-                    <Avatar name={contact.name} size="sm" />
-                    <Text>{contact.name}</Text>
-                  </Inline>
-                </Table.Cell>
-                <Table.Cell>{contact.email || <Text tone="muted">—</Text>}</Table.Cell>
-                <Table.Cell align="center">
-                  <StatusBadge status={status} />
-                </Table.Cell>
-                <Table.Cell align="center">
-                  <Stack gap="xs">
-                    {!contact.email ? (
-                      <Text tone="muted">Add an email on this contact first</Text>
-                    ) : (
-                      <Inline gap="xs">
-                        {status === "none" ? (
-                          <Button variant="outline" size="sm" onClick={() => handleInvite(contact)} disabled={isPending}>
-                            {isPending ? "Sending…" : "Request access"}
-                          </Button>
-                        ) : (
-                          <Button variant="outline" size="sm" onClick={() => handleReset(contact)} disabled={isPending}>
-                            {isPending ? "Working…" : status === "active" ? "Reset password" : "Resend request"}
-                          </Button>
-                        )}
-                        {(status === "invited" || status === "active") && (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => setDisableTarget(contact)}
-                            disabled={isPending}
-                          >
-                            Disable access
-                          </Button>
-                        )}
-                      </Inline>
-                    )}
-                    {rowError && <Text tone="danger">{rowError}</Text>}
-                  </Stack>
-                </Table.Cell>
-              </Table.Row>
-            );
-          })}
-        </Table.Body>
-      </Table>
+      <WebDataTableCard
+        title="Access"
+        meta={String(contacts.length)}
+        rows={contacts}
+        getRowKey={(contact) => contact.id}
+        columns={columns}
+        searchText={(contact) => `${contact.name} ${contact.email ?? ""}`}
+        noun="contacts"
+        dropdowns={dropdowns}
+        segment={segment}
+        urlPrefix="access"
+        defaultSort={{ columnId: "name", direction: "asc" }}
+        rowActions={rowActions}
+        rowLabel={(contact) => contact.name}
+        emptyAction="Add a contact on the Contacts tab first, then invite them to log in here."
+      />
       <DisableAccessDialog
         open={disableTarget !== null}
         onOpenChange={(open) => {
@@ -215,11 +242,12 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
   );
 }
 
-function StatusBadge({ status }: { status: TenantAccessStatus }) {
-  if (status === "active") return <Badge variant="success">Active</Badge>;
-  if (status === "invited") return <Badge variant="warning">Invited</Badge>;
-  return <Badge variant="muted">No access</Badge>;
-}
+const STATUS_LABEL: Record<TenantAccessStatus, string> = { active: "Active", invited: "Invited", none: "No access" };
+const STATUS_TONE: Record<TenantAccessStatus, "success" | "warning" | "neutral"> = {
+  active: "success",
+  invited: "warning",
+  none: "neutral",
+};
 
 /**
  * Popup revealing the link a "Request access"/"Resend request"/"Reset

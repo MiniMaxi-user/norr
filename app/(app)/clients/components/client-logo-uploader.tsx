@@ -1,54 +1,62 @@
 "use client";
 
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
-import { Button, CompanyLogo, Inline, Stack, Text } from "@yourorg/ui";
-import { Building2, Camera, Trash2 } from "@yourorg/ui/icons";
+import { toast } from "@yourorg/ui";
+import { Building2, Camera } from "@yourorg/ui/icons";
+import { WebMenu } from "@yourorg/ui/web-client";
 import { compressLogoImage } from "./compress-logo";
 import { removeClientLogo, uploadClientLogo } from "../logo-actions";
 
 // 512px max dimension — plenty sharp for the tile sizes this app renders a
-// logo at today (`CompanyLogo`'s `lg` is 80px) and for the invoice PDF
-// render, while keeping the compressed PNG small. Same "generous headroom
-// over any realistic current use" reasoning `AvatarUploader`'s own
-// `OUTPUT_SIZE` comment gives.
+// logo at today and for the invoice PDF render, while keeping the compressed
+// PNG small.
 const MAX_DIMENSION = 512;
 
+function LogoImage({ logoUrl, name }: { logoUrl: string | null; name: string }) {
+  if (!logoUrl) return <Building2 aria-hidden style={{ width: 22, height: 22, color: "var(--text-muted)" }} />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={logoUrl} alt={`${name} logo`} />;
+}
+
 /**
- * Company-card logo control on the Client detail page (issue #120) —
- * upload/replace/remove, directly modeled on `app/(app)/profile/
- * avatar-uploader.tsx`'s affordance shape but without a crop step (see
- * `compress-logo.ts`'s doc comment for why: a logo isn't force-cropped to a
- * fixed shape). Renders via `getClientLogoUrl` server-side; this component
- * only ever receives the already-resolved `logoUrl`.
- *
- * Only ever rendered when the caller already knows `canWrite` is true (same
- * `can(actor, "clients", "update")` gate `ClientDetail` already threads
- * through to its other owner-only controls, e.g. the Edit/Delete hero
- * actions) — a non-owner never sees this control, only the plain
- * `CompanyLogo` preview `client-detail.tsx` renders directly.
+ * Logo slot of the Client page header (design system "PageHeader", issue
+ * #222; before: a separate "Company" rail card). Read mode shows the logo (or
+ * a neutral building glyph); in edit mode — only for someone who can update
+ * the client (`editable`) — the slot becomes a menu to upload/replace/remove
+ * it. Uploads go straight through `uploadClientLogo`/`removeClientLogo` (they
+ * persist to storage immediately, independent of the Save button — same as
+ * before issue #222), so a logo change is never part of the "unsaved changes"
+ * count. Not offered on the new-client page: a logo needs the client's id.
  */
-export function ClientLogoUploader({
+export function ClientLogoSlot({
   clientId,
   clientName,
   logoUrl,
   onLogoChange,
+  editable,
 }: {
   clientId: string;
   clientName: string;
   logoUrl: string | null;
   onLogoChange: (logoUrl: string | null) => void;
+  editable: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isUploading, startUploading] = useTransition();
   const [isRemoving, startRemoving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function fail(message: string) {
+    setError(message);
+    toast({ title: "Logo not changed", description: message, tone: "danger", duration: 6000 });
+  }
 
   function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = ""; // lets the same file be re-selected later
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+      fail("Choose an image file (PNG, JPG or SVG).");
       return;
     }
     setError(null);
@@ -59,12 +67,12 @@ export function ClientLogoUploader({
         formData.set("file", blob, "logo.png");
         const result = await uploadClientLogo(clientId, formData);
         if (result.error || !result.data) {
-          setError(result.error ?? "Could not upload the logo.");
+          fail(result.error ?? "Could not upload the logo. Try again.");
           return;
         }
         onLogoChange(result.data.logoUrl);
       } catch {
-        setError("Could not process the logo.");
+        fail("Could not process this image. Try another file.");
       }
     });
   }
@@ -74,38 +82,42 @@ export function ClientLogoUploader({
     startRemoving(async () => {
       const result = await removeClientLogo(clientId);
       if (result.error) {
-        setError(result.error);
+        fail(result.error);
         return;
       }
       onLogoChange(null);
     });
   }
 
-  const pending = isUploading || isRemoving;
+  if (!editable) return <LogoImage logoUrl={logoUrl} name={clientName} />;
 
+  const pending = isUploading || isRemoving;
   return (
-    <Stack gap="sm">
-      <Inline gap="md" align="center">
-        <CompanyLogo logoUrl={logoUrl} alt={`${clientName} logo`} fallback={<Building2 />} />
-        <Inline gap="sm">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pending}
-          >
-            <Camera aria-hidden />
-            {isUploading ? "Uploading…" : logoUrl ? "Change logo" : "Upload logo"}
-          </Button>
-          {logoUrl && (
-            <Button type="button" variant="outline" size="sm" onClick={handleRemove} disabled={pending}>
-              <Trash2 aria-hidden />
-              {isRemoving ? "Removing…" : "Remove"}
-            </Button>
-          )}
-        </Inline>
-      </Inline>
+    <>
+      <WebMenu
+        label={logoUrl ? "Change logo" : "Upload logo"}
+        align="start"
+        triggerClassName="web-logo-trigger"
+        trigger={
+          <>
+            <LogoImage logoUrl={logoUrl} name={clientName} />
+            <span className="web-logo-trigger-badge" aria-hidden="true">
+              <Camera />
+            </span>
+          </>
+        }
+        items={[
+          {
+            key: "upload",
+            label: pending ? (isUploading ? "Uploading…" : "Removing…") : logoUrl ? "Change logo" : "Upload logo",
+            disabled: pending,
+            onSelect: () => fileInputRef.current?.click(),
+          },
+          ...(logoUrl
+            ? [{ key: "remove", label: "Remove logo", danger: true, disabled: pending, onSelect: handleRemove }]
+            : []),
+        ]}
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -113,8 +125,13 @@ export function ClientLogoUploader({
         onChange={handleFileSelected}
         className="ui-visually-hidden"
         aria-label="Upload company logo"
+        tabIndex={-1}
       />
-      {error && <Text tone="danger">{error}</Text>}
-    </Stack>
+      {error ? (
+        <span className="ui-visually-hidden" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </>
   );
 }

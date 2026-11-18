@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Text, type ButtonSize } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 import { createContract } from "../actions";
 import type { ClientRecord } from "@/app/(app)/clients/actions";
 import { ContractClientDialog } from "./contract-client-dialog";
@@ -15,6 +16,10 @@ interface CreateContractButtonBaseProps {
    * `SectionHeader` "+ X" button there — same `size` convention
    * `CreateAssetButton`/`CreateWorkOrderButton` already use. */
   size?: ButtonSize;
+  /** Renders the design system's FilterBar add button (secondary, 30px, "+ X"
+   * text, no icon) instead of the standard `Button` — used by the
+   * related-list tabs of a detail page (issue #222). */
+  filterBar?: boolean;
 }
 
 interface CreateContractButtonLockedProps extends CreateContractButtonBaseProps {
@@ -53,7 +58,7 @@ function todayIso(): string {
  *   `clients` must be passed instead, and the click opens a small
  *   `ContractClientDialog` client-picker; picking one creates + navigates.
  */
-export function CreateContractButton({ clientId, clients, label, size }: CreateContractButtonProps) {
+export function CreateContractButton({ clientId, clients, label, size, filterBar }: CreateContractButtonProps) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +92,15 @@ export function CreateContractButton({ clientId, clients, label, size }: CreateC
 
   return (
     <>
-      <Button type="button" variant="primary" size={size} onClick={handleClick} disabled={creating}>
-        {creating && !pickerOpen ? "Creating…" : (label ?? "New contract")}
-      </Button>
+      {filterBar ? (
+        <WebButton size="filter" onClick={handleClick} loading={creating}>
+          {creating && !pickerOpen ? "Creating…" : (label ?? "New contract")}
+        </WebButton>
+      ) : (
+        <Button type="button" variant="primary" size={size} onClick={handleClick} disabled={creating}>
+          {creating && !pickerOpen ? "Creating…" : (label ?? "New contract")}
+        </Button>
+      )}
       {error && !pickerOpen && <Text tone="danger">{error}</Text>}
       {pickerOpen && (
         <ContractClientDialog

@@ -1,62 +1,98 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Badge, LinkedRecordsTable, SectionHeader, Stack } from "@yourorg/ui";
-import { ClipboardList } from "@yourorg/ui/icons";
+import { useMemo } from "react";
+import { StatusText, WebDataTableCard, toneFromColor, type WebColumn } from "@yourorg/ui/web-client";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
-import { formatDate } from "@/lib/format/date";
-import { formatCurrency } from "@/lib/format/currency";
+import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 
 export interface QuotesPanelProps {
   quotes: QuoteRecord[];
 }
 
+/** Quotes that are still in play (not yet decided or invoiced). */
+const OPEN_QUOTE_STATUS_VALUES = ["draft", "sent"];
+const isOpen = (quote: QuoteRecord) => OPEN_QUOTE_STATUS_VALUES.includes(quote.quote_status?.value ?? "");
+
 /**
- * Read-only "Quotes" tab on the Client detail page (docs/ARCHITECTURE.md
- * "Relational detail pages") — every pre-sale proposal for this client, each
- * row linking to the real Quotes module's detail page.
- *
- * Same `SectionHeader` title treatment as the sibling Work Orders/Contracts
- * tabs (issue #113 follow-up), deliberately with no add action in its
- * `actions` slot — explicit product-owner call, unlike Work Orders/Contracts:
- * `CreateQuoteButton`/`/quotes/new?clientId=…` exists and works the same
- * client-scoped way theirs do, it's just not surfaced from this tab (most
- * quotes arrive via a Work Order's auto-draft, issue #109, rather than a
- * bare "New Quote" click from the client page). Otherwise flat and
- * read-only: this task's scope is surfacing *visibility* of the
- * relationship, not duplicating the Quotes module's own create/edit/delete
- * affordances onto the Client page — those stay on `/quotes` and
- * `/quotes/[id]`.
+ * Quotes tab (docs/ARCHITECTURE.md "Relational detail pages"; design-system
+ * table pattern, issue #222) — every pre-sale proposal for this client, one
+ * card with a FilterBar: Status dropdown and Open · Closed · All (Open =
+ * draft or sent). Deliberately no add button — explicit product-owner call
+ * (most quotes arrive via a work order's auto-draft, issue #109); quotes are
+ * created from `/quotes`.
  */
 export function QuotesPanel({ quotes }: QuotesPanelProps) {
-  const router = useRouter();
+  const columns = useMemo<WebColumn<QuoteRecord>[]>(
+    () => [
+      { id: "name", header: "Name", primary: true, sortValue: (quote) => quote.name, render: (quote) => quote.name },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (quote) => quote.quote_status?.label ?? "",
+        render: (quote) =>
+          quote.quote_status ? (
+            <StatusText tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "validUntil",
+        header: "Valid until",
+        sortValue: (quote) => quote.valid_until,
+        render: (quote) => formatDateWeb(quote.valid_until),
+      },
+      {
+        id: "total",
+        header: "Total",
+        align: "end",
+        sortValue: (quote) => quote.total,
+        render: (quote) => formatMoneyWeb(quote.total),
+      },
+    ],
+    [],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "status",
+        label: "Status",
+        getOptions: (quote: QuoteRecord) =>
+          quote.quote_status ? [{ value: quote.quote_status.value, label: quote.quote_status.label }] : [],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show quotes",
+      defaultValue: "all",
+      options: [
+        { value: "open", label: "Open", match: isOpen },
+        { value: "closed", label: "Closed", match: (quote: QuoteRecord) => !isOpen(quote) },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
 
   return (
-    <Stack gap="md">
-      <SectionHeader icon={ClipboardList} title="Quotes" />
-
-      <LinkedRecordsTable
-        records={quotes}
-        getKey={(quote) => quote.id}
-        onRowClick={(quote) => router.push(`/quotes/${quote.id}`)}
-        emptyIcon={<ClipboardList />}
-        emptyHeading="No quotes yet"
-        emptyText="Pre-sale proposals for this client will show up here."
-        columns={[
-          { header: "Name", render: (quote) => quote.name },
-          {
-            header: "Status",
-            align: "center",
-            render: (quote) => (
-              <Badge color={quote.quote_status?.color} variant="muted">
-                {quote.quote_status?.label ?? "—"}
-              </Badge>
-            ),
-          },
-          { header: "Valid until", render: (quote) => formatDate(quote.valid_until) },
-          { header: "Total", render: (quote) => formatCurrency(quote.total) },
-        ]}
-      />
-    </Stack>
+    <WebDataTableCard
+      title="Quotes"
+      meta={String(quotes.length)}
+      rows={quotes}
+      getRowKey={(quote) => quote.id}
+      columns={columns}
+      searchText={(quote) => `${quote.name} ${quote.quote_status?.label ?? ""}`}
+      noun="quotes"
+      dropdowns={dropdowns}
+      segment={segment}
+      urlPrefix="quotes"
+      defaultSort={{ columnId: "name", direction: "asc" }}
+      rowHref={(quote) => `/quotes/${quote.id}`}
+      rowLabel={(quote) => quote.name}
+    />
   );
 }

@@ -1,11 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Badge, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
-import { Bell } from "@yourorg/ui/icons";
+import { useMemo } from "react";
+import { StatusText, WebDataTableCard, toneFromColor, type WebColumn } from "@yourorg/ui/web-client";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
-import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
 import { CreateActivityButton } from "@/app/(app)/activities/components/create-activity-button";
+import { formatDateTimeWeb } from "@/lib/format/web";
 import { memberDisplayName } from "@/lib/members/format";
 
 export interface ActivitiesPanelProps {
@@ -14,91 +13,126 @@ export interface ActivitiesPanelProps {
   canCreate: boolean;
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const isDone = (activity: ActivityRecord) => activity.activity_status?.value === "completed";
 
 /**
- * "Activiteiten" tab on the Client detail page (issue #59, AC: "Activiteit
- * is vanaf de klant aan te maken") — per docs/ARCHITECTURE.md "Relational
- * detail pages", this is a sub-entity view scoped to the parent client
- * already on screen, not a link out to the standalone `/activities` module
- * list.
- *
- * "Create in context": the tab's own "+ Activity" button (in a
- * `SectionHeader`, same small-primary tab-panel "Add X" convention as
- * Sites/Contacts/Assets — issue #113, `docs/ARCHITECTURE.md`'s "Row and
- * tab-panel conventions") pre-scopes `CreateActivityButton`'s target
- * `/activities/new?clientId=...` to this client.
- *
- * Issue #118 replaced the row click's old `ActivityFormPanel` (a slide-in
- * `Dialog`, deleted) with a plain navigation to the real `/activities/[id]`
- * detail page — that page renders read-only for a caller without edit
- * rights and owns its own Delete action, so this tab no longer needs
- * `canEdit`/`canDelete`/`canCreateWorkOrder` props of its own.
+ * Activities tab (issue #59; design-system table pattern, issue #222) — one
+ * card with a FilterBar: Type / Status / Action holder dropdowns and
+ * Open · Done · All (default Open; Done = status "completed"). "+ Activity"
+ * opens the create page pre-scoped to this client (`/activities/new?
+ * clientId=…`); a row opens the real `/activities/[id]` page, which owns edit
+ * and delete.
  */
 export function ActivitiesPanel({ clientId, activities, canCreate }: ActivitiesPanelProps) {
-  const router = useRouter();
+  const columns = useMemo<WebColumn<ActivityRecord>[]>(
+    () => [
+      {
+        id: "type",
+        header: "Type",
+        primary: true,
+        sortValue: (activity) => activity.activity_type?.label ?? "",
+        render: (activity) => activity.activity_type?.label ?? "—",
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (activity) => activity.activity_status?.label ?? "",
+        render: (activity) =>
+          activity.activity_status ? (
+            <StatusText tone={toneFromColor(activity.activity_status.color)}>{activity.activity_status.label}</StatusText>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "description",
+        header: "Description",
+        render: (activity) =>
+          activity.description.length > 60 ? `${activity.description.slice(0, 60)}…` : activity.description,
+      },
+      {
+        id: "holder",
+        header: "Action holder",
+        sortValue: (activity) => (activity.action_holder ? memberDisplayName(activity.action_holder) : ""),
+        render: (activity) => (activity.action_holder ? memberDisplayName(activity.action_holder) : "—"),
+      },
+      {
+        id: "reported",
+        header: "Reported",
+        sortValue: (activity) => activity.reported_at,
+        render: (activity) => formatDateTimeWeb(activity.reported_at),
+      },
+    ],
+    [],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "type",
+        label: "Type",
+        getOptions: (activity: ActivityRecord) =>
+          activity.activity_type ? [{ value: activity.activity_type.value, label: activity.activity_type.label }] : [],
+      },
+      {
+        id: "status",
+        label: "Status",
+        getOptions: (activity: ActivityRecord) =>
+          activity.activity_status
+            ? [{ value: activity.activity_status.value, label: activity.activity_status.label }]
+            : [],
+      },
+      {
+        id: "holder",
+        label: "Action holder",
+        getOptions: (activity: ActivityRecord) =>
+          activity.action_holder
+            ? [{ value: activity.action_holder.id, label: memberDisplayName(activity.action_holder) }]
+            : [],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show activities",
+      defaultValue: "open",
+      options: [
+        { value: "open", label: "Open", match: (activity: ActivityRecord) => !isDone(activity) },
+        { value: "done", label: "Done", match: isDone },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
 
   return (
-    <Stack gap="md">
-      <SectionHeader
-        icon={Bell}
-        title="Activities"
-        actions={canCreate && <CreateActivityButton clientId={clientId} label="+ Activity" size="sm" />}
-      />
-
-      {activities.length === 0 ? (
-        <EmptyState
-          icon={<Bell />}
-          heading="No activities yet"
-          text="Log a call, breakdown, maintenance, appointment, or email follow-up for this client."
-          action={canCreate ? <CreateActivityButton clientId={clientId} label="New activity" /> : undefined}
-        />
-      ) : (
-        <Table>
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Type</Table.HeaderCell>
-              <Table.HeaderCell align="center">Status</Table.HeaderCell>
-              <Table.HeaderCell>Description</Table.HeaderCell>
-              <Table.HeaderCell>Action holder</Table.HeaderCell>
-              <Table.HeaderCell>Reported</Table.HeaderCell>
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {activities.map((activity) => {
-              const TypeIcon = resolveActivityTypeIcon(activity.activity_type?.icon);
-              return (
-                <Table.Row key={activity.id} onClick={() => router.push(`/activities/${activity.id}`)}>
-                  <Table.Cell>
-                    <Inline gap="xs" align="center">
-                      <TypeIcon aria-hidden="true" />
-                      <Text>{activity.activity_type?.label ?? "—"}</Text>
-                    </Inline>
-                  </Table.Cell>
-                  <Table.Cell align="center">
-                    <Badge color={activity.activity_status?.color} variant="muted">
-                      {activity.activity_status?.label ?? "—"}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell>{activity.description.length > 60 ? `${activity.description.slice(0, 60)}…` : activity.description}</Table.Cell>
-                  <Table.Cell>{memberDisplayName(activity.action_holder)}</Table.Cell>
-                  <Table.Cell>{formatDateTime(activity.reported_at)}</Table.Cell>
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table>
-      )}
-    </Stack>
+    <WebDataTableCard
+      title="Activities"
+      meta={`${activities.length} · ${activities.filter((activity) => !isDone(activity)).length} open`}
+      rows={activities}
+      getRowKey={(activity) => activity.id}
+      columns={columns}
+      searchText={(activity) =>
+        [
+          activity.activity_type?.label,
+          activity.activity_status?.label,
+          activity.description,
+          activity.action_holder ? memberDisplayName(activity.action_holder) : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      }
+      noun="activities"
+      dropdowns={dropdowns}
+      segment={segment}
+      urlPrefix="activities"
+      defaultSort={{ columnId: "reported", direction: "desc" }}
+      rowHref={(activity) => `/activities/${activity.id}`}
+      rowLabel={(activity) => activity.activity_type?.label ?? "activity"}
+      add={canCreate ? <CreateActivityButton clientId={clientId} label="+ Activity" filterBar /> : undefined}
+      emptyAction={canCreate ? "Use + Activity to log a call, breakdown or appointment." : undefined}
+    />
   );
 }

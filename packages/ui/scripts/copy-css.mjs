@@ -7,8 +7,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const from = join(packageRoot, "src", "styles.css");
-const to = join(packageRoot, "dist", "styles.css");
+const outDir = join(packageRoot, "dist");
+mkdirSync(outDir, { recursive: true });
 
-mkdirSync(dirname(to), { recursive: true });
-copyFileSync(from, to);
+// `styles.css` is shared by the web app and the PWA. `web.css` (issue #222,
+// the new web design system) is imported ONLY by the web app — it is a
+// separate file precisely so none of it can reach the PWA.
+for (const file of ["styles.css", "web.css"]) {
+  copyFileSync(join(packageRoot, "src", file), join(outDir, file));
+}

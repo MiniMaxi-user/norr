@@ -12,11 +12,11 @@ const PageHeaderContext = createContext<PageHeaderContextValue | null>(null);
 /**
  * Mounted once around `<AppShell>` in `app/(app)/layout.tsx` — a Client
  * Component wrapping the (still server-rendered) shell/page tree so a page
- * deep in that tree can push content up into the `Topbar`'s `title` slot
+ * deep in that tree can push content up into the shell's context strip
  * without `app/(app)/layout.tsx` (one shared layout for every route) having
  * to know about it.
  *
- * `<PageHeaderSlot />` (rendered as `Topbar`'s `title`) reads `content`;
+ * `<ContextStrip />` (rendered by `AppShell`) reads `content`;
  * `usePageHeader()` (called by a page) writes it. Whichever page called
  * `usePageHeader()` last "wins" — fine today since only one route renders
  * at a time and the hook cleans up on unmount (see its own doc comment).
@@ -28,14 +28,17 @@ export function PageHeaderProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Renders whatever the active page most recently set via `usePageHeader()`
- * — pass this as `Topbar`'s `title` prop (see `app/(app)/layout.tsx`). Falls
- * back to nothing for routes that haven't opted in yet (most of the app
- * today — see the narrow rollout note on `usePageHeader`).
+ * Thin bar under the topbar that renders whatever the active page most
+ * recently set via `usePageHeader()` (a breadcrumb trail for pages that have
+ * not been migrated to the design system's `PageHeader` yet — that one
+ * renders its own breadcrumb). Renders NOTHING when no page set content, so
+ * migrated pages show no empty bar. Mounted by `AppShell` (issue #222; it
+ * used to be the old topbar's `title` slot).
  */
-export function PageHeaderSlot() {
+export function ContextStrip() {
   const ctx = useContext(PageHeaderContext);
-  return <>{ctx?.content ?? null}</>;
+  if (!ctx?.content) return null;
+  return <div className="web-context-strip">{ctx.content}</div>;
 }
 
 /**

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Card, Inline, Stack, Switch, Table, Text } from "@yourorg/ui";
+import { useMemo, useState } from "react";
+import { Inline, Switch } from "@yourorg/ui";
+import { WebDataTableCard, type WebColumn } from "@yourorg/ui/web-client";
 
 /** Real shipped module names, matching `SHIPPED_FEATURES`/`FeatureKey` in
  * `lib/rbac/features.ts` (the story's own guidance: don't invent module
@@ -33,46 +34,76 @@ export function ModulesPanel() {
     Object.fromEntries(STUB_MODULES.map((module) => [module.key, true])),
   );
 
-  return (
-    <Stack gap="md">
-      <Card>
-        <Text tone="muted">
-          Module entitlements aren&apos;t persisted yet — this is a preview of the upcoming toggle UI. Flipping a
-          switch here doesn&apos;t change what this tenant can actually access.
-        </Text>
-      </Card>
+  const columns = useMemo<WebColumn<(typeof STUB_MODULES)[number]>[]>(
+    () => [
+      {
+        id: "module",
+        header: "Module",
+        sortValue: (module) => module.label,
+        render: (module) => (
+          <>
+            {module.label}
+            <br />
+            <span className="web-muted-cell">{module.description}</span>
+          </>
+        ),
+      },
+      {
+        id: "enabled",
+        header: "Enabled",
+        render: (module) => (
+          <Inline>
+            <Switch
+              aria-label={`Toggle ${module.label}`}
+              checked={enabled[module.key] ?? false}
+              onChange={(event) => setEnabled((prev) => ({ ...prev, [module.key]: event.currentTarget.checked }))}
+            />
+          </Inline>
+        ),
+      },
+    ],
+    [enabled],
+  );
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeaderCell>Module</Table.HeaderCell>
-            <Table.HeaderCell align="center">Enabled</Table.HeaderCell>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {STUB_MODULES.map((module) => (
-            <Table.Row key={module.key}>
-              <Table.Cell>
-                <Stack gap="xs">
-                  <Text>{module.label}</Text>
-                  <Text tone="muted">{module.description}</Text>
-                </Stack>
-              </Table.Cell>
-              <Table.Cell align="center">
-                <Inline justify="center">
-                  <Switch
-                    aria-label={`Toggle ${module.label}`}
-                    checked={enabled[module.key] ?? false}
-                    onChange={(event) =>
-                      setEnabled((prev) => ({ ...prev, [module.key]: event.currentTarget.checked }))
-                    }
-                  />
-                </Inline>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table>
-    </Stack>
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "module",
+        label: "Module",
+        getOptions: (module: (typeof STUB_MODULES)[number]) => [{ value: module.key, label: module.label }],
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show modules",
+      defaultValue: "all",
+      options: [
+        { value: "on", label: "Enabled", match: (module: (typeof STUB_MODULES)[number]) => enabled[module.key] ?? false },
+        { value: "off", label: "Disabled", match: (module: (typeof STUB_MODULES)[number]) => !(enabled[module.key] ?? false) },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [enabled],
+  );
+
+  return (
+    <WebDataTableCard
+      title="Modules"
+      meta="preview"
+      note="Module entitlements aren't persisted yet — this is a preview of the upcoming toggle UI. Flipping a switch here doesn't change what this tenant can actually access."
+      rows={STUB_MODULES}
+      getRowKey={(module) => module.key}
+      columns={columns}
+      searchText={(module) => `${module.label} ${module.description}`}
+      noun="modules"
+      dropdowns={dropdowns}
+      segment={segment}
+      urlPrefix="modules"
+      defaultSort={{ columnId: "module", direction: "asc" }}
+      rowLabel={(module) => module.label}
+    />
   );
 }

@@ -198,3 +198,36 @@ export async function resolveNavItems(
     return actor ? can(actor, item.requiredPermission.module, item.requiredPermission.action) : false;
   });
 }
+
+/**
+ * Topbar grouping (issue #222): the web design system allows at most 7 module
+ * items directly in the topbar. Everything else collapses into a "More"
+ * menu; Settings and Platform settings live in the avatar menu. This is a
+ * pure presentation split over the SAME resolved list (`resolveNavItems` —
+ * entitlement + RBAC gating stays the single source of truth), so the topbar
+ * can never show a module the command palette or a route guard would hide.
+ *
+ * Items that are not entitled (`enabled: false`) are omitted outright — the
+ * design system has no "Soon" treatment, and CLAUDE.md rule 3 says a module
+ * the tenant doesn't have must not render, not merely be disabled.
+ */
+const TOPBAR_PRIMARY_HREFS = ["/", "/clients", "/assets", "/contracts", "/activities", "/work-orders", "/planning"];
+const AVATAR_MENU_MODULE_KEYS: FeatureKey[] = ["settings", "platform"];
+
+export interface TopbarNavSplit {
+  primary: ResolvedNavItem[];
+  more: ResolvedNavItem[];
+  /** Settings / Platform settings — rendered in the avatar menu. */
+  menu: ResolvedNavItem[];
+}
+
+export function splitTopbarItems(items: ResolvedNavItem[]): TopbarNavSplit {
+  const enabled = items.filter((item) => item.enabled);
+  const menu = enabled.filter((item) => AVATAR_MENU_MODULE_KEYS.includes(item.moduleKey));
+  const rest = enabled.filter((item) => !AVATAR_MENU_MODULE_KEYS.includes(item.moduleKey));
+  const primary = TOPBAR_PRIMARY_HREFS.map((href) => rest.find((item) => item.href === href)).filter(
+    (item): item is ResolvedNavItem => Boolean(item),
+  );
+  const more = rest.filter((item) => !TOPBAR_PRIMARY_HREFS.includes(item.href));
+  return { primary, more, menu };
+}

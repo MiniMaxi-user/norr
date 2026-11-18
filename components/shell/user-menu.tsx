@@ -1,34 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Avatar, DropdownMenu, Inline, Stack, Text } from "@yourorg/ui";
-import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon, UserRound } from "@yourorg/ui/icons";
+import { useState, type ReactNode } from "react";
+import { WebBadge } from "@yourorg/ui/web";
+import { WebMenu, type WebMenuItem } from "@yourorg/ui/web-client";
+import { LogOut, UserRound } from "@yourorg/ui/icons";
 import { logOutAction } from "@/lib/auth/actions";
 import { ProfilePanel } from "@/app/(app)/profile/profile-panel";
 import type { Locale } from "@/lib/profile/locale";
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
+
 /**
- * Topbar avatar + dropdown menu. Owns its own open state (Escape-to-close +
- * outside-click, the latter via `DropdownMenu.Content`'s transparent
- * backdrop — same `open`/`onClose` contract as `Dialog`) since that's
- * genuinely interactive; `name`/`role`/`email`/`fullName`/`avatarUrl`/
- * `locale` are plain server-resolved values passed down from `Topbar`
- * (itself fed by `lib/auth/session.ts`'s `CurrentSession`), not fetched
- * here.
+ * Avatar menu of the topbar (design system "Topbar", issue #222): a 28px round
+ * avatar that opens profile, settings, platform settings (platform admins),
+ * the role / "Platform Admin" badge and log out. The theme toggle is NOT here
+ * — web is light-only.
  *
- * "Billing" has no real destination yet (`billing` isn't even in
- * `SHIPPED_FEATURES`, see lib/rbac/features.ts) — still rendered
- * disabled/inert per the product owner's note that non-functional chrome is
- * fine for now. "Profile" (issue #49) used to be disabled for the same
- * reason but now opens `ProfilePanel` — identity-level personal settings,
- * deliberately NOT gated by `hasFeature()` (every authenticated user has
- * one, regardless of role/org entitlements). "Settings" links to the
- * real `/settings` route (org-level module settings — a different surface
- * from "Profile"). "Log out" posts the real `logOutAction`.
+ * `menuLinks` are the Settings / Platform settings nav entries (already
+ * entitlement- and RBAC-resolved server-side by `splitTopbarItems`), so this
+ * menu can't offer a module the tenant doesn't have. "Profile" (issue #49) is
+ * identity-level and open to every authenticated user.
  *
- * The "Platform Admin" indicator (issue #45, `session.isPlatformAdmin`)
- * lives in `Topbar` itself now, to the left of the search bar — not here —
- * per explicit product feedback moving it out of this menu.
+ * "Log out" is a real `<form action={logOutAction}>` rendered as a custom
+ * menu entry: the menu must NOT close on click, because unmounting the form
+ * before the browser's native submit fires would silently cancel the logout
+ * (`logOutAction` redirects to /login, which unmounts everything anyway).
  */
 export function UserMenu({
   name,
@@ -37,6 +38,8 @@ export function UserMenu({
   fullName,
   avatarUrl,
   locale,
+  isPlatformAdmin,
+  menuLinks,
 }: {
   name: string;
   role?: string | null;
@@ -44,87 +47,71 @@ export function UserMenu({
   fullName: string | null;
   avatarUrl: string | null;
   locale: Locale;
+  isPlatformAdmin: boolean;
+  menuLinks: { href: string; label: string; icon: ReactNode }[];
 }) {
-  const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : null;
 
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  const items: WebMenuItem[] = [
+    {
+      type: "label",
+      key: "who",
+      node: (
+        <>
+          {name}
+          {roleLabel ? <span className="web-menu-sublabel">{roleLabel}</span> : null}
+          {isPlatformAdmin ? (
+            <span className="web-menu-sublabel">
+              <WebBadge variant="warning">Platform Admin</WebBadge>
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    { type: "separator", key: "sep-1" },
+    {
+      key: "profile",
+      label: "Profile",
+      icon: <UserRound aria-hidden />,
+      onSelect: () => setProfileOpen(true),
+    },
+    ...menuLinks.map((link) => ({
+      key: link.href,
+      label: link.label,
+      icon: link.icon,
+      href: link.href,
+    })),
+    { type: "separator", key: "sep-2" },
+    {
+      type: "custom",
+      key: "logout",
+      node: (
+        <form action={logOutAction}>
+          <button type="submit" role="menuitem" className="web-menu-item" data-danger="true">
+            <LogOut aria-hidden />
+            Log out
+          </button>
+        </form>
+      ),
+    },
+  ];
 
   return (
-    <DropdownMenu>
-      <DropdownMenu.Trigger>
-        <button
-          type="button"
-          className="ui-user-menu-trigger"
-          onClick={() => setOpen((value) => !value)}
-          aria-haspopup="menu"
-          aria-expanded={open}
-        >
-          <Avatar name={name} size="md" photoUrl={avatarUrl} />
-          <span className="ui-user-menu-trigger-meta">
-            <span className="ui-user-menu-trigger-name">{name}</span>
-            {roleLabel && <span className="ui-user-menu-trigger-role">{roleLabel}</span>}
-          </span>
-          <ChevronDown aria-hidden className="ui-user-menu-trigger-chevron" />
-        </button>
-      </DropdownMenu.Trigger>
-
-      <DropdownMenu.Content open={open} onClose={() => setOpen(false)} align="end">
-        <DropdownMenu.Label>
-          <Inline gap="sm" align="center">
-            <Avatar name={name} size="sm" photoUrl={avatarUrl} />
-            <Stack gap="xs">
-              <span>{name}</span>
-              {roleLabel && <Text tone="muted">{roleLabel}</Text>}
-            </Stack>
-          </Inline>
-        </DropdownMenu.Label>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item
-          icon={<UserRound aria-hidden />}
-          onClick={() => {
-            setOpen(false);
-            setProfileOpen(true);
-          }}
-        >
-          Profile
-        </DropdownMenu.Item>
-        <DropdownMenu.Item icon={<CreditCard aria-hidden />} disabled>
-          Billing
-        </DropdownMenu.Item>
-        <DropdownMenu.Item icon={<SettingsIcon aria-hidden />} href="/settings" onClick={() => setOpen(false)}>
-          Settings
-        </DropdownMenu.Item>
-        <DropdownMenu.Separator />
-        {/* No `onClick={() => setOpen(false)}` here (unlike "Instellingen"
-            above) — this is a `type="submit"` button inside a real `<form>`.
-            Synchronously closing the dropdown on click unmounts the form
-            before the browser's native `submit` event can fire on it,
-            silently cancelling the logout action entirely. `logOutAction`
-            redirects to `/login` server-side on success, which unmounts
-            this whole tree anyway, so there's nothing to manually close. */}
-        <form action={logOutAction}>
-          <DropdownMenu.Item icon={<LogOut aria-hidden />} type="submit" danger>
-            Log out
-          </DropdownMenu.Item>
-        </form>
-      </DropdownMenu.Content>
-
-      {/* `ProfilePanel` is a `Dialog size="panel"` — `Dialog` itself now
-          portals its whole return value to `document.body` (issue #101), so
-          it no longer matters that this tree sits inside `Topbar`'s
-          `.ui-toolbar` (`backdrop-filter: blur(10px)`, which would otherwise
-          establish a containing block for a `position: fixed` descendant
-          and mis-anchor it to the toolbar's own short box). No manual portal
-          needed here anymore — rendering it directly is correct. */}
+    <>
+      <WebMenu
+        label="Account menu"
+        triggerClassName="web-avatar-button"
+        trigger={
+          avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt="" />
+          ) : (
+            initials(name)
+          )
+        }
+        items={items}
+      />
       <ProfilePanel
         open={profileOpen}
         onOpenChange={setProfileOpen}
@@ -133,6 +120,6 @@ export function UserMenu({
         avatarUrl={avatarUrl}
         locale={locale}
       />
-    </DropdownMenu>
+    </>
   );
 }

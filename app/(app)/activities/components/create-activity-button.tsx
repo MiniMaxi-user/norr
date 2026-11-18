@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button, type ButtonSize } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 
 export interface CreateActivityButtonProps {
   /** Pre-scopes the create page to a single client (`/activities/new?clientId=...`)
@@ -11,6 +12,10 @@ export interface CreateActivityButtonProps {
   assetId?: string;
   label?: string;
   size?: ButtonSize;
+  /** Renders the design system's FilterBar add button (secondary, 30px,
+   * "+ Activity" text, no icon) instead of the standard `Button` — used by the
+   * related-list tabs of a detail page (issue #222). */
+  filterBar?: boolean;
 }
 
 /**
@@ -23,7 +28,7 @@ export interface CreateActivityButtonProps {
  * `create`/`create_own` on the `activities` module — an actor without either
  * never sees this at all.
  */
-export function CreateActivityButton({ clientId, assetId, label, size }: CreateActivityButtonProps) {
+export function CreateActivityButton({ clientId, assetId, label, size, filterBar }: CreateActivityButtonProps) {
   const params = new URLSearchParams();
   if (assetId) {
     params.set("assetId", assetId);
@@ -34,9 +39,13 @@ export function CreateActivityButton({ clientId, assetId, label, size }: CreateA
 
   return (
     <Link href={query ? `/activities/new?${query}` : "/activities/new"}>
-      <Button type="button" variant="primary" size={size}>
-        {label ?? "New activity"}
-      </Button>
+      {filterBar ? (
+        <WebButton size="filter">{label ?? "New activity"}</WebButton>
+      ) : (
+        <Button type="button" variant="primary" size={size}>
+          {label ?? "New activity"}
+        </Button>
+      )}
     </Link>
   );
 }

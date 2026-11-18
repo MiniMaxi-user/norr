@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Avatar, Badge, Button, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
-import { Users } from "@yourorg/ui/icons";
+import { WebButton } from "@yourorg/ui/web";
+import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import type { ContactRecord } from "../contacts-actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ContactFormDialog } from "../components/contact-form-dialog";
@@ -12,24 +12,19 @@ export interface ContactsPanelProps {
   clientId: string;
   contacts: ContactRecord[];
   /** This org's `contact_role` picklist values — used both to render each
-   * contact's role badge and to populate the create/edit dialog's role
-   * `<select>`. */
+   * contact's role and to populate the create/edit dialog's role `<select>`. */
   contactRoles: ReferenceListItemRecord[];
   /** Same "owner only" boundary the client/site write actions use — see
    * `contacts-actions.ts`'s module comment on why Contacts reuses the
-   * `clients` module's `can()` checks rather than a separate entry. Passed
-   * down as the same `canWrite` value the parent already computed for the
-   * client's own Edit/Delete affordances. */
+   * `clients` module's `can()` checks rather than a separate entry. */
   canWrite: boolean;
 }
 
 /**
- * Contacts tab on the Clients detail page (issue #26) — a client's contact
- * persons, created/edited pre-scoped to this client (docs/ARCHITECTURE.md
- * "Relational detail pages": never a bare disconnected form). Same
- * create/edit/delete flow shape as `SitesPanel`, with compound rows (initials
- * `Avatar` + name + a "Primary" `Badge`) rather than plain text, mirroring
- * `clients-table.tsx`'s row style.
+ * Contacts tab on the Clients detail page (issue #26; design-system table
+ * pattern, issue #222): ONE card with a FilterBar and a sortable table.
+ * "+ Contact" lives in the FilterBar; edit (row click / ··· menu) and delete
+ * (··· menu) reuse the existing dialogs, pre-scoped to this client.
  */
 export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: ContactsPanelProps) {
   const [contactForm, setContactForm] = useState<{ open: boolean; contact: ContactRecord | null }>({
@@ -38,105 +33,108 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
   });
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
 
-  const roleById = useMemo(
-    () => new Map(contactRoles.map((item) => [item.id, item])),
-    [contactRoles],
-  );
+  const roleById = useMemo(() => new Map(contactRoles.map((item) => [item.id, item])), [contactRoles]);
+  const roleLabel = (contact: ContactRecord) =>
+    (contact.role_item_id ? roleById.get(contact.role_item_id)?.label : undefined) ?? "";
 
   function openAddContact() {
     setContactForm({ open: true, contact: null });
   }
 
+  const columns = useMemo<WebColumn<ContactRecord>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Contact",
+        primary: true,
+        sortValue: (contact) => contact.name,
+        render: (contact) => (
+          <>
+            {contact.name}
+            {contact.is_primary ? <span className="web-muted-cell"> · Primary</span> : null}
+          </>
+        ),
+      },
+      {
+        id: "role",
+        header: "Role",
+        sortValue: (contact) => roleLabel(contact),
+        render: (contact) => roleLabel(contact) || "—",
+      },
+      { id: "email", header: "Email", sortValue: (contact) => contact.email ?? "", render: (c) => c.email || "—" },
+      { id: "phone", header: "Phone", render: (contact) => contact.phone || "—" },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roleById],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "role",
+        label: "Role",
+        getOptions: (contact: ContactRecord) => {
+          const label = contact.role_item_id ? roleById.get(contact.role_item_id)?.label : undefined;
+          return label && contact.role_item_id ? [{ value: contact.role_item_id, label }] : [];
+        },
+      },
+    ],
+    [roleById],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show contacts",
+      defaultValue: "all",
+      options: [
+        { value: "primary", label: "Primary", match: (contact: ContactRecord) => contact.is_primary },
+        { value: "others", label: "Others", match: (contact: ContactRecord) => !contact.is_primary },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
+
+  function rowActions(contact: ContactRecord): WebMenuItem[] {
+    if (!canWrite) return [];
+    return [
+      { key: "edit", label: "Edit contact", onSelect: () => setContactForm({ open: true, contact }) },
+      { key: "delete", label: "Delete contact", danger: true, onSelect: () => setDeleteTarget(contact) },
+    ];
+  }
+
   return (
-    <Stack gap="sm">
-      <SectionHeader
-        icon={Users}
+    <>
+      <WebDataTableCard
         title="Contacts"
-        actions={
-          canWrite && (
-            <Button variant="primary" size="sm" onClick={openAddContact}>
+        meta={String(contacts.length)}
+        rows={contacts}
+        getRowKey={(contact) => contact.id}
+        columns={columns}
+        searchText={(contact) => [contact.name, roleLabel(contact), contact.email, contact.phone].filter(Boolean).join(" ")}
+        noun="contacts"
+        dropdowns={dropdowns}
+        segment={segment}
+        urlPrefix="contacts"
+        defaultSort={{ columnId: "name", direction: "asc" }}
+        onRowClick={canWrite ? (contact) => setContactForm({ open: true, contact }) : undefined}
+        rowActions={canWrite ? rowActions : undefined}
+        rowLabel={(contact) => contact.name}
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={openAddContact}>
               + Contact
-            </Button>
-          )
+            </WebButton>
+          ) : undefined
+        }
+        emptyAction={
+          canWrite ? (
+            <button type="button" className="web-rail-link" onClick={openAddContact}>
+              Add contact
+            </button>
+          ) : undefined
         }
       />
-
-      {contacts.length === 0 ? (
-        <EmptyState
-          icon={<Users />}
-          heading="No contacts yet"
-          text="Add this client's first point of contact."
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={openAddContact}>
-                Add contact
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Table>
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Contact</Table.HeaderCell>
-              <Table.HeaderCell>Role</Table.HeaderCell>
-              <Table.HeaderCell>Email</Table.HeaderCell>
-              <Table.HeaderCell>Phone</Table.HeaderCell>
-              {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {contacts.map((contact) => {
-              const role = contact.role_item_id ? roleById.get(contact.role_item_id) : undefined;
-              return (
-                <Table.Row
-                  key={contact.id}
-                  onClick={canWrite ? () => setContactForm({ open: true, contact }) : undefined}
-                >
-                  <Table.Cell>
-                    <Inline gap="sm">
-                      <Avatar name={contact.name} size="sm" />
-                      <Inline gap="xs">
-                        {contact.is_primary && <Badge variant="accent">Primary</Badge>}
-                        <Text>{contact.name}</Text>
-                      </Inline>
-                    </Inline>
-                  </Table.Cell>
-                  <Table.Cell>
-                    {role ? <Badge color={role.color}>{role.label}</Badge> : <Text tone="muted">—</Text>}
-                  </Table.Cell>
-                  <Table.Cell>{contact.email || <Text tone="muted">—</Text>}</Table.Cell>
-                  <Table.Cell>{contact.phone || <Text tone="muted">—</Text>}</Table.Cell>
-                  {canWrite && (
-                    <Table.Cell align="center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setContactForm({ open: true, contact });
-                        }}
-                      >
-                        Edit
-                      </Button>{" "}
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setDeleteTarget(contact);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </Table.Cell>
-                  )}
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table>
-      )}
 
       {canWrite && (
         <>
@@ -156,6 +154,6 @@ export function ContactsPanel({ clientId, contacts, contactRoles, canWrite }: Co
           />
         </>
       )}
-    </Stack>
+    </>
   );
 }

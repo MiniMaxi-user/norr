@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Badge, Button, EmptyState, Inline, SectionHeader, Stack, Table, Text } from "@yourorg/ui";
-import { Boxes, MapPin } from "@yourorg/ui/icons";
+import { useMemo, useState } from "react";
+import { WebButton } from "@yourorg/ui/web";
+import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { SiteRecord } from "../actions";
 import type { ContactRecord } from "../contacts-actions";
@@ -17,51 +17,39 @@ export interface SitesPanelProps {
   /** This client's own contacts, and this org's `contact_role` picklist —
    * issue #52's per-purpose (visit/invoice/delivery) contact-person picker,
    * threaded straight through to `SiteFormDialog` (single dialog instance
-   * shared by both the "Add site" button and every row's "Edit"). Same
-   * "fetch once in `client-detail.tsx`, pass down" convention `contacts`/
-   * `contactRoles` already follow into `ContactsPanel`. */
+   * shared by the "+ Site" button, the row click and the row menu). */
   contacts: ContactRecord[];
   contactRoles: ReferenceListItemRecord[];
   /** Asset count per `site.id`, computed once by the parent from the same
-   * `listAssets({ clientId })` fetch the Assets tab uses — keeps "3 assets"
-   * here and the Assets tab's own grouping in sync without a second fetch. */
+   * `listAssets({ clientId })` fetch the Assets tab uses. */
   assetCountBySiteId: Map<string, number>;
   assetsEnabled: boolean;
-  /** Switches the parent's active tab to "assets" and scrolls/expands that
-   * site's group there — the concrete "interwoven, not siloed" link between
-   * the two tabs. Omitted (no "View assets" affordance) when the Assets
-   * module isn't visible to this actor/org at all. */
+  /** Switches the parent's active tab to "assets" filtered to that site (the
+   * "interwoven, not siloed" cross-tab link). Omitted when the Assets module
+   * isn't visible to this actor/org. */
   onViewAssets?: (siteId: string) => void;
 }
 
-const PURPOSE_BADGES: {
+const PURPOSES: {
   key: keyof Pick<SiteRecord, "is_visit_address" | "is_invoice_address" | "is_delivery_address">;
+  value: string;
   label: string;
 }[] = [
-  { key: "is_visit_address", label: "Visit" },
-  { key: "is_invoice_address", label: "Invoice" },
-  { key: "is_delivery_address", label: "Delivery" },
+  { key: "is_visit_address", value: "visit", label: "Visit" },
+  { key: "is_invoice_address", value: "invoice", label: "Invoice" },
+  { key: "is_delivery_address", value: "delivery", label: "Delivery" },
 ];
 
+function purposesOf(site: SiteRecord) {
+  return PURPOSES.filter((purpose) => site[purpose.key]);
+}
+
 /**
- * Site/address management for a client (issue #41 redo, "Sites as client
- * addresses") — same create/edit/delete flow as before. Full-width `Table`
- * (previously laid out as the approved "Option C" `.sites-grid": table + a
- * narrow "Locations" map side-card — that side-by-side grid is gone as of
- * the client-detail rail redesign: the map now lives in `client-detail.tsx`'s
- * sticky rail, outside the tabs entirely, so it stays visible on every tab
- * instead of only this one; see that file's `mapPins`/`primaryPin`/
- * `otherPins` derivation, moved here almost verbatim). Client/address-
- * specific, not part of the generic `DetailHero` pattern `client-detail.tsx`
- * otherwise builds on — see docs/ARCHITECTURE.md's "Relational detail
- * pages" section.
- *
- * Also still surfaces, unchanged from the prior iteration:
- *  - each site's purpose flags as small badges ("Visit"/"Invoice"/
- *    "Delivery") and a distinct "Primary" badge on whichever site is
- *    `is_primary`;
- *  - an "Assets" column so a site's equipment count is visible without
- *    leaving this tab (docs/ARCHITECTURE.md "interwoven, not siloed").
+ * Sites tab (issue #41 redo; design-system table pattern, issue #222): ONE
+ * card with a FilterBar and a sortable table. "+ Site" lives in the FilterBar;
+ * edit (row click / ··· menu) and delete (··· menu) reuse the same dialogs as
+ * before. The map moved to the page rail long ago, so the tab is just this
+ * table. The "Assets" count links to the Assets tab filtered to that site.
  */
 export function SitesPanel({
   clientId,
@@ -73,123 +61,129 @@ export function SitesPanel({
   contacts,
   contactRoles,
 }: SitesPanelProps) {
-  const [siteForm, setSiteForm] = useState<{ open: boolean; site: SiteRecord | null }>({
-    open: false,
-    site: null,
-  });
+  const [siteForm, setSiteForm] = useState<{ open: boolean; site: SiteRecord | null }>({ open: false, site: null });
   const [deleteSiteTarget, setDeleteSiteTarget] = useState<SiteRecord | null>(null);
 
   function openAddSite() {
     setSiteForm({ open: true, site: null });
   }
 
+  const columns = useMemo<WebColumn<SiteRecord>[]>(
+    () => [
+      {
+        id: "address",
+        header: "Address",
+        primary: true,
+        sortValue: (site) => formatSiteAddressShort(site) ?? "",
+        render: (site) => (
+          <>
+            {formatSiteAddressShort(site) ?? "—"}
+            {site.is_primary ? <span className="web-muted-cell"> · Primary</span> : null}
+          </>
+        ),
+      },
+      { id: "city", header: "City", sortValue: (site) => site.city ?? "", render: (site) => site.city || "—" },
+      {
+        id: "purpose",
+        header: "Purpose",
+        render: (site) =>
+          purposesOf(site)
+            .map((purpose) => purpose.label)
+            .join(" · ") || "—",
+      },
+      {
+        id: "assets",
+        header: "Assets",
+        align: "end",
+        sortValue: (site) => assetCountBySiteId.get(site.id) ?? 0,
+        render: (site) => {
+          const count = assetCountBySiteId.get(site.id) ?? 0;
+          return assetsEnabled && count > 0 && onViewAssets ? (
+            <button type="button" className="web-cell-link" onClick={() => onViewAssets(site.id)}>
+              {count}
+            </button>
+          ) : (
+            count
+          );
+        },
+      },
+    ],
+    [assetCountBySiteId, assetsEnabled, onViewAssets],
+  );
+
+  const dropdowns = useMemo(
+    () => [
+      {
+        id: "city",
+        label: "City",
+        getOptions: (site: SiteRecord) => (site.city ? [{ value: site.city, label: site.city }] : []),
+      },
+      {
+        id: "purpose",
+        label: "Purpose",
+        getOptions: (site: SiteRecord) => purposesOf(site).map(({ value, label }) => ({ value, label })),
+      },
+    ],
+    [],
+  );
+
+  const segment = useMemo(
+    () => ({
+      label: "Show sites",
+      defaultValue: "all",
+      options: [
+        { value: "primary", label: "Primary", match: (site: SiteRecord) => site.is_primary },
+        { value: "other", label: "Other", match: (site: SiteRecord) => !site.is_primary },
+        { value: "all", label: "All" },
+      ] as const,
+    }),
+    [],
+  );
+
+  function rowActions(site: SiteRecord): WebMenuItem[] {
+    if (!canWrite) return [];
+    return [
+      { key: "edit", label: "Edit site", onSelect: () => setSiteForm({ open: true, site }) },
+      { key: "delete", label: "Delete site", danger: true, onSelect: () => setDeleteSiteTarget(site) },
+    ];
+  }
+
   return (
-    <Stack gap="md">
-      <SectionHeader
-        icon={MapPin}
+    <>
+      <WebDataTableCard
         title="Sites"
-        actions={
-          canWrite && (
-            <Button variant="primary" size="sm" onClick={openAddSite}>
+        meta={String(sites.length)}
+        rows={sites}
+        getRowKey={(site) => site.id}
+        columns={columns}
+        searchText={(site) =>
+          [site.address_line1, site.address_line2, site.postal_code, site.city, site.country, site.phone]
+            .filter(Boolean)
+            .join(" ")
+        }
+        noun="sites"
+        dropdowns={dropdowns}
+        segment={segment}
+        urlPrefix="sites"
+        defaultSort={{ columnId: "address", direction: "asc" }}
+        onRowClick={canWrite ? (site) => setSiteForm({ open: true, site }) : undefined}
+        rowActions={canWrite ? rowActions : undefined}
+        rowLabel={(site) => formatSiteAddressShort(site) ?? "site"}
+        add={
+          canWrite ? (
+            <WebButton size="filter" onClick={openAddSite}>
               + Site
-            </Button>
-          )
+            </WebButton>
+          ) : undefined
+        }
+        emptyAction={
+          canWrite ? (
+            <button type="button" className="web-rail-link" onClick={openAddSite}>
+              Add site
+            </button>
+          ) : undefined
         }
       />
-
-      {sites.length === 0 ? (
-        <EmptyState
-          icon={<Boxes />}
-          heading="No sites yet"
-          text="Add this client's first site to begin tracking equipment there."
-          action={
-            canWrite ? (
-              <Button variant="primary" onClick={openAddSite}>
-                Add site
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Table>
-          <Table.Head>
-            <Table.Row>
-              <Table.HeaderCell>Site</Table.HeaderCell>
-              <Table.HeaderCell>Address</Table.HeaderCell>
-              <Table.HeaderCell>City</Table.HeaderCell>
-              <Table.HeaderCell>Purpose</Table.HeaderCell>
-              <Table.HeaderCell align="center">Assets</Table.HeaderCell>
-              {canWrite && <Table.HeaderCell align="center">Actions</Table.HeaderCell>}
-            </Table.Row>
-          </Table.Head>
-          <Table.Body>
-            {sites.map((site) => {
-              const count = assetCountBySiteId.get(site.id) ?? 0;
-              return (
-                <Table.Row key={site.id} onClick={canWrite ? () => setSiteForm({ open: true, site }) : undefined}>
-                  <Table.Cell>
-                    <Inline gap="xs" align="center">
-                      {site.is_primary && <Badge variant="accent">Primary</Badge>}
-                      <Text>{formatSiteAddressShort(site) ?? "—"}</Text>
-                    </Inline>
-                  </Table.Cell>
-                  <Table.Cell>{site.address_line1 || <Text tone="muted">—</Text>}</Table.Cell>
-                  <Table.Cell>{site.city || <Text tone="muted">—</Text>}</Table.Cell>
-                  <Table.Cell>
-                    <Inline gap="xs">
-                      {PURPOSE_BADGES.filter((purpose) => site[purpose.key]).map((purpose) => (
-                        <Badge key={purpose.key} variant="muted">
-                          {purpose.label}
-                        </Badge>
-                      ))}
-                    </Inline>
-                  </Table.Cell>
-                  <Table.Cell align="center">
-                    {assetsEnabled && count > 0 ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onViewAssets?.(site.id);
-                        }}
-                      >
-                        {count} asset{count === 1 ? "" : "s"}
-                      </Button>
-                    ) : (
-                      <Badge variant="muted">{count}</Badge>
-                    )}
-                  </Table.Cell>
-                  {canWrite && (
-                    <Table.Cell align="center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSiteForm({ open: true, site });
-                        }}
-                      >
-                        Edit
-                      </Button>{" "}
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setDeleteSiteTarget(site);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </Table.Cell>
-                  )}
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table>
-      )}
 
       {canWrite && (
         <>
@@ -212,6 +206,6 @@ export function SitesPanel({
           />
         </>
       )}
-    </Stack>
+    </>
   );
 }

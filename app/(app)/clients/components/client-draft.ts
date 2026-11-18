@@ -2,12 +2,10 @@ import type { ClientRecord } from "../actions";
 import type { ClientStatus } from "../kanban";
 
 /**
- * The client's own editable fields, as one flat draft object — the single
- * source of truth `ClientDetailsTab` (edit) and `ClientCreateScreen` (create)
- * both own, mirroring `app/(app)/assets/components/asset-draft.ts`'s exact
- * shape/role for the unified Asset screen. Every section (Business details/
- * Pipeline/Rate/Notes) reads from this and writes back through its owner's
- * own `commitPatch`-style callback.
+ * The client's own editable fields, as one flat draft object — the record
+ * `useEditMode` (issue #222) edits on the Client page, both in edit mode
+ * (`[id]/client-detail.tsx`) and new mode (`new/client-new-screen.tsx`).
+ * Mirrors `app/(app)/assets/components/asset-draft.ts`'s role for Assets.
  *
  * Every field here is kept as a plain string/boolean (never `null`) — same
  * "raw `<input>`-shaped values, converted only at the save boundary"
@@ -20,7 +18,10 @@ import type { ClientStatus } from "../kanban";
  * live in the same flat draft here since the Rate section needs a draft slice
  * too, same as every other section.
  */
-export interface ClientDraft {
+// A `type` alias (not an `interface`) on purpose: `useEditMode` (issue #222)
+// needs it assignable to `Record<string, string | boolean>`, which interfaces
+// are not (no implicit index signature).
+export type ClientDraft = {
   name: string;
   kvkNumber: string;
   vatNumber: string;
@@ -35,7 +36,7 @@ export interface ClientDraft {
   workArticleId: string;
   travelSalePrice: string;
   workSalePrice: string;
-}
+};
 
 export function draftFromClient(client: ClientRecord): ClientDraft {
   return {
