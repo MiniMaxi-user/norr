@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@yourorg/ui";
-import { SidebarSection, WebDetailLayout, WebPage, type WebBadgeVariant, type WebBreadcrumbItem } from "@yourorg/ui/web";
+import {
+  SidebarSection,
+  WebButton,
+  WebDetailLayout,
+  WebPage,
+  type WebBadgeVariant,
+  type WebBreadcrumbItem,
+} from "@yourorg/ui/web";
 import {
   EditDiscardDialog,
   PageHeader,
@@ -29,6 +36,7 @@ import type { SolutionSubtypeRecord } from "../solution-subtype-actions";
 import { flattenSolutionSubtypes } from "../solution-subtype-tree";
 import type { ActivitySubtypeRecord } from "../subtypes-actions";
 import { flattenActivitySubtypes } from "../subtype-tree";
+import { createWorkOrderFromActivity } from "../create-work-order-actions";
 import { ACTIVITY_DETAIL_VIEW_KEY } from "./constants";
 import { draftFromActivity, emptyDraft, type ActivityDraft } from "./activity-draft";
 import { buildActivitySchema, createActivityFromDraft, saveActivityEdits } from "./activity-form-schema";
@@ -104,9 +112,10 @@ function activityTitle(description: string, typeLabel: string | undefined, isCre
  *  - `PageHeader`: short id (mono) in the breadcrumb, the first line of the
  *    description as title, badges (status → type → activity subtype), ONE Edit
  *    button (Overview only, omitted without update permission), the ··· menu
- *    (Delete) and tabs with counts, the action holder as owner line. No navy
- *    primary and no LivePanel: an activity has no deadline, SLA or timer, and
- *    status is a plain editable field;
+ *    (Delete), the navy primary "Create work order" (with planning create
+ *    permission; creates via `createWorkOrderFromActivity` and opens it) and
+ *    tabs with counts, the action holder as owner line. No LivePanel: an
+ *    activity has no deadline, SLA or timer;
  *  - centre: Overview (ONE two-column Details card + Description / Solution)
  *    or a related list: Notes (feed), Work orders (card + FilterBar + table);
  *  - rail: Reported · Object · TIMELINE.
@@ -146,6 +155,7 @@ export function ActivityScreen({
   const [tab, setTab] = useState<ActivityDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
+  const [creatingWorkOrder, startCreatingWorkOrder] = useTransition();
 
   const flatActivitySubtypes = useMemo(() => flattenActivitySubtypes(activitySubtypes), [activitySubtypes]);
   const flatSolutionSubtypes = useMemo(() => flattenSolutionSubtypes(solutionSubtypes), [solutionSubtypes]);
@@ -280,6 +290,28 @@ export function ActivityScreen({
     overflow.push({ key: "delete", label: "Delete activity", danger: true, onSelect: () => setDeleteOpen(true) });
   }
 
+  // Navy primary (read mode only): dispatch a work order from this activity
+  // through the existing `createWorkOrderFromActivity`, then open it — same
+  // spot as "New activity" on the Asset page.
+  function createWorkOrder() {
+    if (!activity) return;
+    startCreatingWorkOrder(async () => {
+      const result = await createWorkOrderFromActivity(activity.id);
+      if (!result.data) {
+        toast({ tone: "danger", title: "Could not create a work order", description: result.error ?? "Something went wrong." });
+        return;
+      }
+      toast({ tone: "success", title: "Work order created", description: result.data.workOrder.work_order_number });
+      router.push(`/work-orders/${result.data.workOrder.id}`);
+    });
+  }
+  const primary =
+    !isCreate && activity && canCreateWorkOrder ? (
+      <WebButton variant="primary" onClick={createWorkOrder} disabled={creatingWorkOrder}>
+        {creatingWorkOrder ? "Creating…" : "Create work order"}
+      </WebButton>
+    ) : undefined;
+
   const header = (
     <PageHeader
       breadcrumb={breadcrumbItems}
@@ -290,6 +322,7 @@ export function ActivityScreen({
         canEdit: !isCreate && !readOnly && tab === "overview",
         onEdit: edit.startEdit,
         overflow,
+        primary,
         onSave: () => void edit.save(),
         onCancel: edit.requestCancel,
         saving: edit.saving,
