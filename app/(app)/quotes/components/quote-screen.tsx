@@ -29,7 +29,8 @@ import type { InvoiceSummary } from "../invoice-actions";
 import { QUOTE_DETAIL_VIEW_KEY } from "./constants";
 import { draftFromQuote, emptyDraft, type QuoteDraft } from "./quote-draft";
 import { buildQuoteSchema, createQuoteFromDraft, saveQuoteEdits } from "./quote-form-schema";
-import { canGenerateNow, getLivePanel } from "./quote-live-panel";
+import { getLivePanel } from "./quote-live-panel";
+import { QuoteDocumentsPanel } from "./quote-documents-panel";
 import { QuoteOverviewCards } from "./quote-overview-cards";
 import { QuoteRail } from "./quote-rail";
 import { buildQuoteTimeline } from "./quote-timeline";
@@ -39,7 +40,7 @@ import { quoteTotals } from "./quote-totals";
 import { useQuoteInvoice } from "./use-quote-invoice";
 import { DeleteQuoteDialog } from "./delete-quote-dialog";
 
-export type QuoteDetailTab = "overview" | "lineItems";
+export type QuoteDetailTab = "overview" | "lineItems" | "documents";
 
 export interface QuoteScreenProps {
   mode: "create" | "edit";
@@ -193,8 +194,11 @@ export function QuoteScreen({
     () => [
       { id: "overview", label: "Overview" },
       ...(isCreate ? [] : [{ id: "lineItems", label: "Line items", count: lineItems.length }]),
+      // Generated documents (invoice) and their actions — shown once there is
+      // an invoice or the viewer may make one.
+      ...(!isCreate && (invoice || canInvoice) ? [{ id: "documents", label: "Documents", count: invoice ? 1 : 0 }] : []),
     ],
-    [isCreate, lineItems.length],
+    [isCreate, lineItems.length, invoice, canInvoice],
   );
 
   useEffect(() => {
@@ -245,23 +249,10 @@ export function QuoteScreen({
     if (quote.is_auto_draft) badges.push({ label: "Auto-draft" });
   }
 
+  // Invoice actions (generate / open PDF / send) live on the Documents tab;
+  // the ··· menu keeps only Delete.
   const overflow: WebMenuItem[] = [];
-  if (invoice) {
-    overflow.push({ key: "pdf", label: "Open invoice PDF", onSelect: invoiceFlow.openPdf });
-    if (canInvoice && invoice.emailedAt) {
-      overflow.push({ key: "resend", label: "Resend invoice…", onSelect: invoiceFlow.requestResend });
-    }
-  } else if (
-    quote &&
-    canInvoice &&
-    lineItems.length > 0 &&
-    !canGenerateNow({ quote, invoice, lineCount: lineItems.length, canInvoice })
-  ) {
-    // Not offered by the LivePanel (e.g. an auto-draft): still reachable here.
-    overflow.push({ key: "generate", label: "Generate invoice…", onSelect: invoiceFlow.requestGenerate });
-  }
   if (canDelete && quote) {
-    if (overflow.length > 0) overflow.push({ type: "separator", key: "sep" });
     overflow.push({ key: "delete", label: "Delete quote", danger: true, onSelect: () => setDeleteOpen(true) });
   }
 
@@ -367,6 +358,15 @@ export function QuoteScreen({
             canCreate={canCreate}
             canUpdate={canUpdate}
             canDelete={canDelete}
+          />
+        )}
+
+        {tab === "documents" && quote && (
+          <QuoteDocumentsPanel
+            invoice={invoice}
+            canInvoice={canInvoice}
+            canGenerate={canInvoice && lineItems.length > 0}
+            flow={invoiceFlow}
           />
         )}
       </WebDetailLayout>

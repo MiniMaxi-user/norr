@@ -28,7 +28,7 @@ interface QuoteDetailPageProps {
  * `ALL_CLIENT_ASSETS_LIMIT` in `app/(app)/contracts/[id]/page.tsx`. */
 const ALL_CLIENT_ASSETS_LIMIT = 500;
 
-const TAB_IDS: QuoteDetailTab[] = ["overview", "lineItems"];
+const TAB_IDS: QuoteDetailTab[] = ["overview", "lineItems", "documents"];
 
 /**
  * Quote detail page — renders the shared `QuoteScreen` (web design system,
