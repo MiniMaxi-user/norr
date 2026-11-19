@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
 
 /**
@@ -130,6 +130,19 @@ export function PwaSyncLine({ children }: { children?: ReactNode }) {
  * (plus its error line). */
 export function PwaActionBar({ children }: { children?: ReactNode }) {
   return <div className="pwa-actionbar">{children}</div>;
+}
+
+/** Floating primary action (issue #223, "+ Work order" on Today): a navy pill
+ * pinned to the bottom-right of the scroll area, above the nav bar. Render it
+ * as the LAST child of `PwaScreen` (it is `position: sticky`). */
+export function PwaFab({ className, type = "button", children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <div className="pwa-fab-slot">
+      <button type={type} className={cx("pwa-fab", className)} {...rest}>
+        {children}
+      </button>
+    </div>
+  );
 }
 
 export interface PwaKeyValueRow {

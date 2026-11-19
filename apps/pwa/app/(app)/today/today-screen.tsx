@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
 import {
   PwaBody,
+  PwaFab,
   PwaHeaderRow,
   PwaNote,
   PwaPageHeader,
@@ -14,7 +15,6 @@ import {
   PwaStack,
   PwaSyncLine,
   WebBadge,
-  WebButton,
   WebStatusBadge,
   WebTypeBadge,
   type WebStatusTone,
@@ -449,18 +449,6 @@ export function TodayScreen({
               {breakdownCount} {breakdownCount === 1 ? "breakdown" : "breakdowns"}
             </WebBadge>
           )}
-          {/* Creating a work order needs a connection (issue #223) — disabled
-              offline, the explanation is the callout in the body. */}
-          <WebButton
-            variant="save"
-            size="touch"
-            iconOnly
-            aria-label="New work order"
-            disabled={!online}
-            onClick={() => router.push("/work-orders/new")}
-          >
-            <Plus aria-hidden />
-          </WebButton>
         </PwaHeaderRow>
       </PwaPageHeader>
 
@@ -527,6 +515,12 @@ export function TodayScreen({
           </PwaStack>
         </PullToRefresh>
       </PwaBody>
+      {/* Creating a work order needs a connection (issue #223) — disabled
+          offline, the explanation is the callout in the body. */}
+      <PwaFab disabled={!online} onClick={() => router.push("/work-orders/new")}>
+        <Plus aria-hidden />
+        Work order
+      </PwaFab>
     </PwaScreen>
   );
 }

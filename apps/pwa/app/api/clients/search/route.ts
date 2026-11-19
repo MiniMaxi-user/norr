@@ -29,7 +29,9 @@ export async function GET(request: Request) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("clients")
-    .select("id, name, city")
+    // `clients` has no address columns — the city comes from its sites
+    // (primary site first, else any).
+    .select("id, name, sites(city, is_primary)")
     .ilike("name", `%${escaped}%`)
     .order("name", { ascending: true })
     .limit(20);
@@ -39,9 +41,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Failed to search clients." }, { status: 500, headers: NO_STORE });
   }
 
-  const rows = (data ?? []) as { id: string; name: string; city: string | null }[];
+  const rows = (data ?? []) as unknown as {
+    id: string;
+    name: string;
+    sites: { city: string | null; is_primary: boolean }[] | null;
+  }[];
+  const cityOf = (sites: { city: string | null; is_primary: boolean }[] | null): string | null => {
+    const list = sites ?? [];
+    return (list.find((s) => s.is_primary && s.city) ?? list.find((s) => s.city))?.city ?? null;
+  };
   return NextResponse.json(
-    { items: rows.map((r) => ({ id: r.id, name: r.name, city: r.city })) },
+    { items: rows.map((r) => ({ id: r.id, name: r.name, city: cityOf(r.sites) })) },
     { headers: NO_STORE },
   );
 }

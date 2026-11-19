@@ -43,6 +43,7 @@ export {
   PwaBody,
   PwaCardPad,
   PwaCardText,
+  PwaFab,
   PwaHeaderMeta,
   PwaHeaderRow,
   PwaHeaderTime,

@@ -315,6 +315,62 @@ html.pwa-html :where(a, button, input, select, textarea, [tabindex]):focus-visib
 /* Fixed action bar above the bottom bar: the one primary action of a screen.
    Sticks to the bottom of the scroll area (a sibling of the content, never
    over it). */
+/* Floating primary action (PwaFab): sticky slot at the end of `.pwa-screen`,
+   so it rides the bottom of the scroll area and the content can scroll
+   clear of it. Navy (the primary colour on light surfaces), 52px tall. */
+.pwa-fab-slot {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Room under the last card so it can scroll clear of the FAB. */
+.pwa-screen:has(> .pwa-fab-slot) > .pwa-body {
+  padding-bottom: 76px;
+}
+.pwa-fab {
+  pointer-events: auto;
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 52px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-navy);
+  color: var(--text-on-dark);
+  font: 600 15px/1 var(--font-sans);
+  box-shadow: var(--shadow-popover);
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 120ms ease, opacity 120ms ease;
+}
+.pwa-fab svg {
+  width: 22px;
+  height: 22px;
+}
+.pwa-fab:hover {
+  background: var(--brand-navy-hover);
+}
+.pwa-fab:active {
+  transform: scale(0.96);
+}
+.pwa-fab:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus), var(--shadow-popover);
+}
+.pwa-fab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .pwa-actionbar {
   position: sticky;
   bottom: 0;
