@@ -66,10 +66,9 @@ export interface PlanningScreenProps {
 /**
  * Client shell for the Planning scheduler board (issue #164, restyled to DS 07
  * in issue #222) — owns date/view/group URL-param state, the working hours,
- * the Type filter and the shared drag/selection state, and wires both the
- * drag-and-drop handlers AND the non-drag click-to-select-then-click-slot
- * fallback to the SAME `scheduleWorkOrder`/`unscheduleWorkOrder` Server
- * Actions (`app/(app)/work-orders/planning-actions.ts`).
+ * the Type filter and the shared drag state, and wires drag-and-drop
+ * (drag-only scheduling, product decision 2026-11-19) to the
+ * `scheduleWorkOrder`/`unscheduleWorkOrder` Server Actions (`app/(app)/work-orders/planning-actions.ts`).
  *
  * `backlogState`/`scheduledState` are optimistic local mirrors of the
  * server-fetched `initialBacklog`/`initialScheduled` props — same pattern
@@ -112,7 +111,6 @@ export function PlanningScreen({
   useEffect(() => setScheduledState(initialScheduled), [initialScheduled]);
 
   const [draggingWorkOrder, setDraggingWorkOrder] = useState<WorkOrderRecord | null>(null);
-  const [selectedBacklogWorkOrder, setSelectedBacklogWorkOrder] = useState<WorkOrderRecord | null>(null);
   const [card, setCard] = useState<{ workOrderId: string; anchor: HTMLElement } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -219,11 +217,7 @@ export function PlanningScreen({
     });
   }
 
-  /* ---- Selection + detail card --------------------------------------- */
-
-  function handleSelectBacklog(workOrder: WorkOrderRecord) {
-    setSelectedBacklogWorkOrder((prev) => (prev?.id === workOrder.id ? null : workOrder));
-  }
+  /* ---- Detail card --------------------------------------- */
 
   function handleOpenCard(workOrder: WorkOrderRecord, anchor: HTMLElement) {
     setCard((prev) => (prev?.workOrderId === workOrder.id ? null : { workOrderId: workOrder.id, anchor }));
@@ -250,7 +244,6 @@ export function PlanningScreen({
     setError(null);
     setCard(null);
     setDraggingWorkOrder(null);
-    setSelectedBacklogWorkOrder(null);
     setBacklogState((prev) => prev.filter((wo) => wo.id !== workOrder.id));
     setScheduledState((prev) => [...prev.filter((wo) => wo.id !== workOrder.id), optimistic]);
 
@@ -383,9 +376,7 @@ export function PlanningScreen({
           siteRegionById={siteRegionById}
           clientNameById={clientNameById}
           query={query}
-          selectedId={selectedBacklogWorkOrder?.id ?? null}
           openId={card?.workOrderId ?? null}
-          onSelect={handleSelectBacklog}
           onOpen={handleOpenCard}
           onDragStart={setDraggingWorkOrder}
           onDragEnd={() => setDraggingWorkOrder(null)}
@@ -406,7 +397,6 @@ export function PlanningScreen({
           clientNameById={clientNameById}
           query={query}
           draggingWorkOrder={draggingWorkOrder}
-          selectedBacklogWorkOrder={selectedBacklogWorkOrder}
           openId={card?.workOrderId ?? null}
           onScheduleRequest={performSchedule}
           onOpen={handleOpenCard}

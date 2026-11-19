@@ -42,7 +42,6 @@ export interface PlanningGridProps {
   /** The header search — hits are highlighted. */
   query: string;
   draggingWorkOrder: WorkOrderRecord | null;
-  selectedBacklogWorkOrder: WorkOrderRecord | null;
   /** The work order whose floating detail card is open (ring on its block). */
   openId: string | null;
   onScheduleRequest: (workOrder: WorkOrderRecord, engineerId: string, scheduledAt: Date) => void;
@@ -111,7 +110,6 @@ export function PlanningGrid({
   clientNameById,
   query,
   draggingWorkOrder,
-  selectedBacklogWorkOrder,
   openId,
   onScheduleRequest,
   onOpen,
@@ -161,7 +159,6 @@ export function PlanningGrid({
                 clientNameById={clientNameById}
                 query={query}
                 draggingWorkOrder={draggingWorkOrder}
-                selectedBacklogWorkOrder={selectedBacklogWorkOrder}
                 openId={openId}
                 hoverKey={hoverKey}
                 onHoverChange={setHoverKey}
@@ -283,10 +280,10 @@ function PlanBlock({
       aria-label={label}
       aria-haspopup="dialog"
       aria-expanded={open}
-      draggable={view === "day"}
+      draggable={view === "day" && !locked}
       onClick={(event) => onOpen(workOrder, event.currentTarget, false)}
       onKeyDown={handleKeyDown}
-      onDragStart={view === "day" ? handleDragStart : undefined}
+      onDragStart={view === "day" && !locked ? handleDragStart : undefined}
       onDragEnd={view === "day" ? onDragEnd : undefined}
     >
       {view === "day" ? (
@@ -335,7 +332,6 @@ interface DayGridProps {
   clientNameById: Record<string, string>;
   query: string;
   draggingWorkOrder: WorkOrderRecord | null;
-  selectedBacklogWorkOrder: WorkOrderRecord | null;
   openId: string | null;
   hoverKey: HoverKey | null;
   onHoverChange: (key: HoverKey | null) => void;
@@ -362,7 +358,6 @@ function DayGrid({
   clientNameById,
   query,
   draggingWorkOrder,
-  selectedBacklogWorkOrder,
   openId,
   hoverKey,
   onHoverChange,
@@ -408,17 +403,17 @@ function DayGrid({
           .filter((entry): entry is { wo: WorkOrderRecord; start: number } => entry.start !== null)
           .sort((a, b) => a.start - b.start);
 
-        const pendingItem = draggingWorkOrder ?? selectedBacklogWorkOrder;
-        const pendingSpan = pendingItem?.duration_minutes != null ? spanForDuration(pendingItem.duration_minutes) : 1;
+        const pendingSpan = draggingWorkOrder?.duration_minutes != null ? spanForDuration(draggingWorkOrder.duration_minutes) : 1;
 
         function conflictFor(slot: number, workOrder: WorkOrderRecord): SlotConflict | "duration" {
           if (workOrder.duration_minutes == null) return "duration";
           return slotConflict(slot, workOrder.duration_minutes, date, hours, engineer.userId, scheduled, workOrder.id);
         }
 
-        function disabledFor(slot: number): boolean {
-          if (!selectedBacklogWorkOrder) return false;
-          return conflictFor(slot, selectedBacklogWorkOrder) !== "none";
+        /** While dragging: a start slot where the dragged item fits (shown light green). */
+        function availableFor(slot: number): boolean {
+          if (!draggingWorkOrder) return false;
+          return conflictFor(slot, draggingWorkOrder) === "none";
         }
 
         function handleDrop(event: DragEvent<HTMLDivElement>, slot: number) {
@@ -445,19 +440,13 @@ function DayGrid({
               data-dragging={draggingWorkOrder ? "true" : undefined}
             >
               {Array.from({ length: slots }, (_, slot) => {
-                const disabled = disabledFor(slot);
-                const clickable = Boolean(selectedBacklogWorkOrder) && !disabled;
-                const time = formatTimeLabel(dateForSlot(date, slot, hours).toISOString());
                 return (
                   <div
                     key={slot}
                     className="web-plan-cell"
                     data-hour={slot % SLOTS_PER_HOUR === 0 ? "true" : undefined}
                     data-first={slot === 0 ? "true" : undefined}
-                    data-disabled={selectedBacklogWorkOrder && disabled ? "true" : undefined}
-                    role={clickable ? "button" : undefined}
-                    tabIndex={clickable ? 0 : undefined}
-                    aria-label={clickable ? `Schedule at ${time} for ${engineer.name}` : undefined}
+                    data-available={availableFor(slot) ? "true" : undefined}
                     onDragOver={(event) => {
                       if (draggingWorkOrder) event.preventDefault();
                     }}
@@ -465,21 +454,6 @@ function DayGrid({
                       if (draggingWorkOrder) onHoverChange({ engineerId: engineer.userId, slot });
                     }}
                     onDrop={(event) => handleDrop(event, slot)}
-                    onClick={
-                      clickable
-                        ? () => onScheduleRequest(selectedBacklogWorkOrder!, engineer.userId, dateForSlot(date, slot, hours))
-                        : undefined
-                    }
-                    onKeyDown={
-                      clickable
-                        ? (event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onScheduleRequest(selectedBacklogWorkOrder!, engineer.userId, dateForSlot(date, slot, hours));
-                            }
-                          }
-                        : undefined
-                    }
                   />
                 );
               })}

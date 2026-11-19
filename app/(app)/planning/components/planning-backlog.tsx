@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type DragEvent, type KeyboardEvent } from "react";
+import { useState, type DragEvent } from "react";
 import Link from "next/link";
 import { WebStatusBadge } from "@yourorg/ui/web";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
@@ -18,10 +18,8 @@ export interface PlanningBacklogProps {
   clientNameById: Record<string, string>;
   /** The header search — hits are highlighted, nothing is filtered by it. */
   query: string;
-  selectedId: string | null;
   /** The work order whose floating detail card is open. */
   openId: string | null;
-  onSelect: (workOrder: WorkOrderRecord) => void;
   /** Opens the floating detail card for a backlog item (its "Details" action). */
   onOpen: (workOrder: WorkOrderRecord, anchor: HTMLElement, viaKeyboard: boolean) => void;
   onDragStart: (workOrder: WorkOrderRecord) => void;
@@ -44,9 +42,8 @@ function isBreakdown(workOrder: WorkOrderRecord): boolean {
  * breakdown badge, its own search field, items grouped by region (overline +
  * total duration), draggable. The list scrolls on its own
  * (`.web-plan-backlog-scroll`); the head, search and the one-line hint stay
- * put. An item is also click-to-select (visible `aria-pressed` state) — the
- * non-drag accessible fallback: select it here, then click a valid grid cell
- * to schedule it via the same `scheduleWorkOrder` action a drop would call.
+ * put. Scheduling is drag-only (product decision 2026-11-19): while an item is
+ * dragged, the grid shows the free start slots in light green.
  * Dropping a scheduled block here unschedules it.
  */
 export function PlanningBacklog({
@@ -55,9 +52,7 @@ export function PlanningBacklog({
   siteRegionById,
   clientNameById,
   query,
-  selectedId,
   openId,
-  onSelect,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -142,9 +137,7 @@ export function PlanningBacklog({
                     workOrder={workOrder}
                     clientName={clientNameById[workOrder.client_id] ?? "Unknown client"}
                     query={highlightQuery}
-                    selected={selectedId === workOrder.id}
                     open={openId === workOrder.id}
-                    onSelect={() => onSelect(workOrder)}
                     onOpen={(anchor, viaKeyboard) => onOpen(workOrder, anchor, viaKeyboard)}
                     onDragStart={() => onDragStart(workOrder)}
                     onDragEnd={onDragEnd}
@@ -157,7 +150,7 @@ export function PlanningBacklog({
       </div>
 
       <p className="web-plan-backlog-hint">
-        Drag an item onto an engineer, or select it and click a slot. Drag a block back here to unschedule it.
+        Drag an item onto a green slot to schedule it. Drag a block back here to unschedule it.
       </p>
     </section>
   );
@@ -167,9 +160,7 @@ function BacklogItem({
   workOrder,
   clientName,
   query,
-  selected,
   open,
-  onSelect,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -177,9 +168,7 @@ function BacklogItem({
   workOrder: WorkOrderRecord;
   clientName: string;
   query: string;
-  selected: boolean;
   open: boolean;
-  onSelect: () => void;
   onOpen: (anchor: HTMLElement, viaKeyboard: boolean) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -200,29 +189,15 @@ function BacklogItem({
     onDragStart();
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.target !== event.currentTarget) return;
-    if (schedulable && (event.key === "Enter" || event.key === " ")) {
-      event.preventDefault();
-      onSelect();
-    }
-  }
-
   return (
     <article
       className="web-plan-item"
       style={typeColorStyle(workOrder.work_order_type?.color)}
       data-plan-anchor={workOrder.id}
-      data-selected={selected ? "true" : undefined}
       data-open={open ? "true" : undefined}
       draggable={schedulable}
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
-      onClick={schedulable ? onSelect : undefined}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={schedulable ? 0 : -1}
-      aria-pressed={selected}
       aria-disabled={!schedulable || undefined}
     >
       <div className="web-plan-item-line">

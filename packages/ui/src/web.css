@@ -2839,7 +2839,6 @@ a.web-tree-id:hover {
   cursor: not-allowed;
   opacity: 0.8;
 }
-.web-plan-item[data-selected="true"],
 .web-plan-item[data-open="true"] {
   border-color: var(--brand-navy);
   box-shadow: 0 0 0 2px var(--brand-navy);
@@ -3069,15 +3068,9 @@ a.web-plan-who-name:hover {
 .web-plan-cell[data-first="true"] {
   border-left: 0;
 }
-.web-plan-cell[role="button"] {
-  cursor: pointer;
-}
-.web-plan-cell[role="button"]:hover {
-  background: var(--warning-bg);
-}
-.web-plan-cell[data-disabled="true"] {
-  background: var(--surface-sunken);
-  cursor: not-allowed;
+/* While dragging: start slots where the item fits are light green. */
+.web-plan-cell[data-available="true"] {
+  background: var(--success-bg);
 }
 .web-plan-now-line {
   position: absolute;
