@@ -35,10 +35,10 @@ const SIGNATURE_AUTOSAVE_MS = 500;
  * for the full sequence.
  *
  * Issue #225/#230: finishing requires a Solution, a drawn signature, every
- * required item of the standard checklist ticked ("Checklist: n of m
- * required") and, for every counter of the asset's model, a volume reading on
- * this work order (server or queued locally, "Volumes: n of m"); a missing
- * item jumps to the Checklist tab. A checklist at the top shows what's done/missing (a
+ * required item of the standard checklist ticked and, for every counter of
+ * the asset's model, a volume reading on this work order (server or queued
+ * locally) — shown together as one "Checklists x/xx" row that jumps to the
+ * Checklist tab. A checklist at the top shows what's done/missing (a
  * missing item jumps to the right tab) and the Finish button stays disabled
  * until all of it is met. If the counters were never loaded (offline, no
  * cache) volumes count as unknown and block finishing.
@@ -141,18 +141,19 @@ export function SignOffSection({
             <div className="pwa-pick-list">
               <ChecklistRow label="Solution" done={solutionDone} onOpen={() => onJumpToSection("work")} />
               <ChecklistRow label="Signature" done={hasSignature} />
-              {checklistRequired && (
+              {/* One "Checklists" row: required checks + volume fields together
+                  (x/xx once the counts are known). */}
+              {(checklistRequired || volumesRequired) && (
                 <ChecklistRow
-                  label={`Checklist: ${checklistProgress.done} of ${checklistProgress.total} required`}
-                  done={checklistProgress.complete}
+                  label={
+                    volumeProgress.known
+                      ? `Checklists ${(checklistRequired ? checklistProgress.done : 0) + volumeProgress.done}/${
+                          (checklistRequired ? checklistProgress.total : 0) + volumeProgress.total
+                        }`
+                      : "Checklists"
+                  }
+                  done={checklistProgress.complete && volumesDone}
                   onOpen={() => onJumpToSection("checklist")}
-                />
-              )}
-              {volumesRequired && (
-                <ChecklistRow
-                  label={volumeProgress.known ? `Volumes: ${volumeProgress.done} of ${volumeProgress.total}` : "Volumes"}
-                  done={volumesDone}
-                  onOpen={volumeProgress.known ? () => onJumpToSection("checklist") : undefined}
                 />
               )}
             </div>
