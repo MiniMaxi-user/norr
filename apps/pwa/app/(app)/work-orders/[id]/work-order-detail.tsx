@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
 import {
   PwaBody,
-  PwaHeaderMeta,
   PwaHeaderRow,
   PwaHeaderTime,
   PwaPageHeader,
@@ -380,9 +379,7 @@ export function WorkOrderDetailScreen({
             </WebTypeBadge>
           )}
           <span className="pwa-header-link">{workOrder.client?.name ?? "Unknown client"}</span>
-        </PwaHeaderRow>
-        {workOrder.externalReference && <PwaHeaderMeta>{workOrder.externalReference}</PwaHeaderMeta>}
-      </PwaPageHeader>
+        </PwaHeaderRow>      </PwaPageHeader>
 
       <PwaBody>
         {detailOffline && (
