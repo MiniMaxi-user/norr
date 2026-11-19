@@ -96,6 +96,7 @@ import Dexie, { type Table } from "dexie";
 import type { CatalogArticle, TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import type { MyStockItem } from "@/lib/inventory/types";
 import type { WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
+import { DAY_NAV_RANGE, dateStringForOffset } from "@/lib/today-range";
 
 export interface CachedWorkItemReference {
   label: string;
@@ -294,6 +295,17 @@ export interface CachedMyStockItem extends MyStockItem {
   userId: string;
 }
 
+/** Issue #229 — one day's list for the Today screen's day navigation (view
+ * only; keyed by userId + local `YYYY-MM-DD`). Days outside today-3...today+3
+ * are pruned on every save. */
+export interface CachedDayWorkItems {
+  userId: string;
+  date: string;
+  items: CachedWorkItem[];
+  /** The API response's own `syncedAt`. */
+  syncedAt: string;
+}
+
 const LAST_SYNCED_AT_KEY = "lastSyncedAt";
 /** Last-successful-sync timestamp for the `myStock` table (issue #182) —
  * a separate `meta` key from `LAST_SYNCED_AT_KEY` above since this is a
@@ -322,6 +334,7 @@ class WorkItemsDatabase extends Dexie {
   myStock!: Table<CachedMyStockItem, string>;
   localVolumeReadings!: Table<LocalVolumeReading, string>;
   workOrderVolumes!: Table<CachedWorkOrderVolumes, string>;
+  dayWorkItems!: Table<CachedDayWorkItems, [string, string]>;
 
   constructor() {
     super("norr-pwa");
@@ -464,6 +477,22 @@ class WorkItemsDatabase extends Dexie {
       localVolumeReadings: "id, workOrderId, userId",
       workOrderVolumes: "workOrderId, userId",
     });
+    // v10 — issue #229: per-day list cache for the Today screen's day navigation.
+    this.version(10).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId, userId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+      catalog: "id, userId",
+      myStock: "id, userId, articleId",
+      localVolumeReadings: "id, workOrderId, userId",
+      workOrderVolumes: "workOrderId, userId",
+      dayWorkItems: "[userId+date], userId",
+    });
   }
 }
 
@@ -521,6 +550,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       db.myStock,
       db.localVolumeReadings,
       db.workOrderVolumes,
+      db.dayWorkItems,
     ],
     async () => {
       await db.workitems.clear();
@@ -535,6 +565,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.myStock.clear();
       await db.localVolumeReadings.clear();
       await db.workOrderVolumes.clear();
+      await db.dayWorkItems.clear();
       await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
       await db.meta.delete(TIME_ROUNDING_SETTINGS_KEY);
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
@@ -586,6 +617,34 @@ export async function getLastSyncedAt(currentUserId: string): Promise<string | n
   await ensureCacheBelongsTo(currentUserId);
   const row = await db.meta.get(LAST_SYNCED_AT_KEY);
   return row?.value ?? null;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Issue #229 — per-day list cache (Today day navigation, view only).
+ * ------------------------------------------------------------------------ */
+
+/** Caches one day's list and prunes every day outside today-3...today+3. */
+export async function saveDayWorkItems(
+  date: string,
+  items: CachedWorkItem[],
+  syncedAt: string,
+  currentUserId: string,
+): Promise<void> {
+  await ensureCacheBelongsTo(currentUserId);
+  const allowed = new Set<string>();
+  for (let offset = -DAY_NAV_RANGE; offset <= DAY_NAV_RANGE; offset += 1) allowed.add(dateStringForOffset(offset));
+  await db.transaction("rw", db.dayWorkItems, async () => {
+    const stale = await db.dayWorkItems.where({ userId: currentUserId }).filter((row) => !allowed.has(row.date)).toArray();
+    if (stale.length > 0) await db.dayWorkItems.bulkDelete(stale.map((row) => [row.userId, row.date] as [string, string]));
+    if (allowed.has(date)) await db.dayWorkItems.put({ userId: currentUserId, date, items, syncedAt });
+  });
+}
+
+/** The cached list for `date`, or `null` if that day was never synced here. */
+export async function getCachedDayWorkItems(date: string, currentUserId: string): Promise<CachedDayWorkItems | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.dayWorkItems.get([currentUserId, date]);
+  return row ?? null;
 }
 
 /* ------------------------------------------------------------------------ *

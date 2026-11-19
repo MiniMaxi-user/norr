@@ -213,6 +213,57 @@ html.pwa-html :where(a, button, input, select, textarea, [tabindex]):focus-visib
 .pwa-header a:active {
   color: var(--text-on-dark);
 }
+/* Day switcher (PwaDayNav) on the dark header: 40px touch targets. */
+.pwa-daynav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pwa-daynav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--header-badge-neutral);
+  color: var(--text-on-dark);
+  cursor: pointer;
+}
+.pwa-daynav-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.pwa-daynav-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.pwa-daynav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pwa-daynav-btn:focus-visible,
+.pwa-daynav-today:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.pwa-daynav-label {
+  min-width: 96px;
+  text-align: center;
+  font: 400 13px/18px var(--font-mono);
+  color: var(--text-on-dark);
+}
+.pwa-daynav-today {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+  font: 600 14px/1 var(--font-sans);
+  cursor: pointer;
+}
 /* Badges on the dark header: same rules as web (`.web-page-header .web-badge`):
    what matters is filled and bright, neutral facts sit on a dark pill. */
 .pwa-header .web-badge {

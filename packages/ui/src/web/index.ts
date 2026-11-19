@@ -43,6 +43,7 @@ export {
   PwaBody,
   PwaCardPad,
   PwaCardText,
+  PwaDayNav,
   PwaFab,
   PwaHeaderMeta,
   PwaHeaderRow,
@@ -57,7 +58,7 @@ export {
   PwaStack,
   PwaSyncLine,
 } from "./pwa";
-export type { PwaKeyValueRow, PwaPageHeaderProps } from "./pwa";
+export type { PwaDayNavProps, PwaKeyValueRow, PwaPageHeaderProps } from "./pwa";
 export {
   SidebarNotice,
   SidebarProgress,

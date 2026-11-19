@@ -39,3 +39,52 @@ export function todayRangeIso(): { from: string; to: string } {
   end.setDate(end.getDate() + 1);
   return { from: toOffsetIsoString(start), to: toOffsetIsoString(end) };
 }
+
+/** How many days either side of today the Today screen can navigate (#229). */
+export const DAY_NAV_RANGE = 3;
+
+/** `YYYY-MM-DD` for the local calendar day of `date`. */
+export function toLocalDateString(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Parses a strict `YYYY-MM-DD` into a local-midnight Date, or `null` when the
+ * format is wrong or the date doesn't exist (e.g. 2026-02-31). */
+export function parseLocalDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+/** The local day `offset` days from today, as `YYYY-MM-DD`. */
+export function dateStringForOffset(offset: number, now: Date = new Date()): string {
+  return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset));
+}
+
+/** Whole days between today and `value` (negative = past), or `null` when
+ * `value` isn't a valid date. Calendar-day arithmetic, DST-safe. */
+export function dayOffsetFromToday(value: string, now: Date = new Date()): number | null {
+  const date = parseLocalDate(value);
+  if (!date) return null;
+  const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const dateUtc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((dateUtc - todayUtc) / 86_400_000);
+}
+
+/** True for a valid date within today-3 ... today+3. */
+export function isDateInNavRange(value: string, now: Date = new Date()): boolean {
+  const offset = dayOffsetFromToday(value, now);
+  return offset !== null && Math.abs(offset) <= DAY_NAV_RANGE;
+}
+
+/** Offset-aware ISO range `[from, to)` for the local calendar day `date`
+ * (`YYYY-MM-DD`); `null` for an invalid date. */
+export function dayRangeIso(date: string): { from: string; to: string } | null {
+  const start = parseLocalDate(date);
+  if (!start) return null;
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+  return { from: toOffsetIsoString(start), to: toOffsetIsoString(end) };
+}

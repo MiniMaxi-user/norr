@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
 import {
   PwaBody,
+  PwaDayNav,
   PwaFab,
   PwaHeaderRow,
   PwaNote,
@@ -22,17 +23,20 @@ import {
 import { AlertTriangle, Check, ChevronRight, ClipboardList, MapPin, Plus } from "@yourorg/ui/icons";
 import { useOnline } from "@/lib/use-online";
 import {
+  getCachedDayWorkItems,
   getCachedWorkItems,
   getLastSyncedAt,
   getPendingSyncWorkOrderIds,
   getSignedWorkOrderIds,
   saveCachedTimeRoundingSettings,
   saveCatalog,
+  saveDayWorkItems,
   saveWorkItems,
   saveWorkOrderDetail,
   saveWorkOrderVolumes,
   type CachedWorkItem,
 } from "@/lib/offline/db";
+import { DAY_NAV_RANGE, dateStringForOffset, dayOffsetFromToday, parseLocalDate } from "@/lib/today-range";
 import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
 import { retryPendingSignOffs } from "@/lib/offline/retry-finish";
 import {
@@ -193,6 +197,37 @@ function formatTodayDateLabel(date: Date): string {
   return `${weekday} ${dayMonth}`;
 }
 
+/** `"Wed 20 Nov"` — the day switcher's label (issue #229). */
+function formatDayNavLabel(date: Date): string {
+  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date);
+  const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(date);
+  return `${weekday} ${dayMonth}`;
+}
+
+/** Overline above another day's title: "Tomorrow", "2 days ago", ... */
+function relativeDayLabel(offset: number): string {
+  if (offset === 1) return "Tomorrow";
+  if (offset === -1) return "Yesterday";
+  return offset > 0 ? `In ${offset} days` : `${-offset} days ago`;
+}
+
+/** Issue #229: background-caches the six other days' lists (list only — the
+ * list endpoint never checks a work order out) so they open offline. */
+async function prefetchOtherDayLists(currentUserId: string): Promise<void> {
+  for (let offset = -DAY_NAV_RANGE; offset <= DAY_NAV_RANGE; offset += 1) {
+    if (offset === 0) continue;
+    const date = dateStringForOffset(offset);
+    try {
+      const response = await fetch(`/api/workitems/today?date=${date}`);
+      if (!response.ok) continue;
+      const data = (await response.json()) as TodayWorkItemsResponse;
+      await saveDayWorkItems(date, data.items, data.syncedAt, currentUserId);
+    } catch {
+      return; // offline / mid-sync disconnect — the next sync retries.
+    }
+  }
+}
+
 function locationLabel(site: CachedWorkItem["site"]): string | null {
   if (!site) return null;
   const parts = [site.addressLine1, site.city].filter((part): part is string => Boolean(part));
@@ -265,6 +300,24 @@ export function TodayScreen({
   const [syncFailed, setSyncFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Issue #229 — day navigation (today-3 ... today+3). `todayDate` is fixed
+  // at mount; `selectedDate === todayDate` keeps today's exact behaviour.
+  const [todayDate] = useState(() => dateStringForOffset(0));
+  const [selectedDate, setSelectedDate] = useState(todayDate);
+  const selectedDateRef = useRef(selectedDate);
+  const isToday = selectedDate === todayDate;
+  const dayOffset = dayOffsetFromToday(selectedDate) ?? 0;
+  const selectedDateObj = parseLocalDate(selectedDate) ?? new Date();
+
+  const goToDay = useCallback((offset: number) => {
+    const next = dateStringForOffset(offset);
+    selectedDateRef.current = next;
+    setItems([]);
+    setSyncFailed(false);
+    setLoading(true);
+    setSelectedDate(next);
+  }, []);
+
   // This device's own local state — a running clock (at most one, app-wide)
   // and every work order signed off locally — folded into the derived
   // Planned/In progress/Signed model below (`derive.ts`). Re-read every time
@@ -291,7 +344,35 @@ export function TodayScreen({
     setPendingSyncIds(pendingSync);
   }, [currentUserId]);
 
-  const sync = useCallback(async () => {
+  // Other days: read-only list, cached per day, never warms detail caches
+  // (opening `/api/work-orders/{id}` checks the order out).
+  const syncDay = useCallback(
+    async (date: string) => {
+      try {
+        const response = await fetch(`/api/workitems/today?date=${date}`);
+        if (!response.ok) {
+          throw new Error(`Unexpected response: ${response.status}`);
+        }
+        const data = (await response.json()) as TodayWorkItemsResponse;
+        await saveDayWorkItems(date, data.items, data.syncedAt, currentUserId);
+        if (selectedDateRef.current !== date) return;
+        setItems(data.items);
+        setLastSyncedAt(data.syncedAt);
+        setSyncFailed(false);
+      } catch {
+        const cached = await getCachedDayWorkItems(date, currentUserId);
+        if (selectedDateRef.current !== date) return;
+        setItems(cached?.items ?? []);
+        setLastSyncedAt(cached?.syncedAt ?? null);
+        setSyncFailed(true);
+      } finally {
+        if (selectedDateRef.current === date) setLoading(false);
+      }
+    },
+    [currentUserId],
+  );
+
+  const syncToday = useCallback(async () => {
     try {
       const response = await fetch("/api/workitems/today");
       if (!response.ok) {
@@ -315,6 +396,7 @@ export function TodayScreen({
       // for engineers who mostly navigate via soft `Link` clicks, which
       // never touch SHELL_CACHE on their own.
       void prefetchShell("/today");
+      void prefetchOtherDayLists(currentUserId);
     } catch {
       // Any failure — network error or non-2xx — falls back to whatever's
       // cached locally; never a bare error screen (issue #169's offline
@@ -331,6 +413,14 @@ export function TodayScreen({
     }
     await refreshLocalState();
   }, [currentUserId, refreshLocalState]);
+
+  const sync = useCallback(async () => {
+    if (selectedDate === todayDate) {
+      await syncToday();
+    } else {
+      await syncDay(selectedDate);
+    }
+  }, [selectedDate, todayDate, syncToday, syncDay]);
 
   // Retries any "Finish workitem" that failed to reach the server (bug
   // report, 2026-09-13) — once on mount, and again on every `online` event,
@@ -436,11 +526,25 @@ export function TodayScreen({
   }, [nowItemId, currentUserId]);
 
   const dateLabel = formatTodayDateLabel(new Date());
+  const headerOverline = isToday ? dateLabel : relativeDayLabel(dayOffset);
+  const headerTitle = isToday ? "Today" : formatTodayDateLabel(selectedDateObj);
+  const dayNav = (
+    <PwaDayNav
+      label={formatDayNavLabel(selectedDateObj)}
+      onPrev={() => goToDay(dayOffset - 1)}
+      onNext={() => goToDay(dayOffset + 1)}
+      prevDisabled={dayOffset <= -DAY_NAV_RANGE}
+      nextDisabled={dayOffset >= DAY_NAV_RANGE}
+      onToday={isToday ? undefined : () => goToDay(0)}
+    />
+  );
 
   if (loading) {
     return (
       <PwaScreen>
-        <PwaPageHeader overline={dateLabel} title="Today" />
+        <PwaPageHeader overline={headerOverline} title={headerTitle}>
+          {dayNav}
+        </PwaPageHeader>
         <PwaBody>
           <Skeleton height={44} />
           <Skeleton height={120} />
@@ -455,7 +559,8 @@ export function TodayScreen({
 
   return (
     <PwaScreen>
-      <PwaPageHeader overline={dateLabel} title="Today">
+      <PwaPageHeader overline={headerOverline} title={headerTitle}>
+        {dayNav}
         <PwaHeaderRow>
           <WebBadge size="touch">
             {todayItems.length} {todayItems.length === 1 ? "work order" : "work orders"}
@@ -476,11 +581,15 @@ export function TodayScreen({
             )}
             {!online && <Callout icon={AlertTriangle}>You need an internet connection to create a work order.</Callout>}
 
+            {!isToday && <PwaNote>View only — work orders open on their day.</PwaNote>}
+
             {syncFailed && (
               <Callout icon={AlertTriangle}>
                 {lastSyncedAt
                   ? `Couldn't refresh — last synced ${formatSyncedTime(lastSyncedAt)}.`
-                  : "No connection, and nothing synced yet on this device."}
+                  : isToday
+                    ? "No connection, and nothing synced yet on this device."
+                    : "Not synced yet — connect to load this day."}
               </Callout>
             )}
 
@@ -488,10 +597,22 @@ export function TodayScreen({
               !syncFailed && (
                 <EmptyState
                   icon={<ClipboardList />}
-                  heading="No work orders scheduled for today."
-                  text="As soon as work orders are planned for today, they'll show up here."
+                  heading={isToday ? "No work orders scheduled for today." : "No work orders scheduled for this day."}
+                  text={
+                    isToday
+                      ? "As soon as work orders are planned for today, they'll show up here."
+                      : "Work orders planned for this day will show up here."
+                  }
                 />
               )
+            ) : !isToday ? (
+              <PwaSection label="Scheduled">
+                <PwaStack gap="sm">
+                  {todayItems.map((item) => (
+                    <TodayWorkItemCard key={item.id} item={item} totalMs={signedTotals[item.id]} readOnly />
+                  ))}
+                </PwaStack>
+              </PwaSection>
             ) : (
               <>
                 {nowItem && (
@@ -567,6 +688,7 @@ function TodayWorkItemCard({
   runningSummary,
   pendingSync,
   emphasized,
+  readOnly,
 }: {
   item: TodayWorkItem;
   totalMs?: number;
@@ -576,6 +698,9 @@ function TodayWorkItemCard({
    * below (a pending-sync order still reads as "Signed"). */
   pendingSync?: boolean;
   emphasized?: boolean;
+  /** Issue #229: another day's card — no link, no chevron (opening a work
+   * order checks it out, so it only opens on its own day). */
+  readOnly?: boolean;
 }) {
   const location = locationLabel(item.site);
   const status = statusPresentation(item);
@@ -664,7 +789,7 @@ function TodayWorkItemCard({
           )}
         </div>
       </div>
-      {!signed && <ChevronRight aria-hidden className="pwa-work-card-chevron" />}
+      {!signed && !readOnly && <ChevronRight aria-hidden className="pwa-work-card-chevron" />}
     </>
   );
 
@@ -672,9 +797,9 @@ function TodayWorkItemCard({
   // as complete) but are no longer clickable — product feedback,
   // 2026-09-12: reopening a work order that's already been finished (and,
   // now, marked `completed` server-side) has nothing left to do.
-  if (signed) {
+  if (signed || readOnly) {
     return (
-      <div className="pwa-work-card" data-compact={emphasized ? undefined : "true"} aria-disabled="true">
+      <div className="pwa-work-card" data-compact={emphasized ? undefined : "true"} aria-disabled={signed ? "true" : undefined}>
         {card}
       </div>
     );

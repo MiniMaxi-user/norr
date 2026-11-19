@@ -3,7 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { todayRangeIso } from "@/lib/today-range";
+import { dayRangeIso, isDateInNavRange, todayRangeIso } from "@/lib/today-range";
 import type { TimeRoundingSettings } from "@/lib/work-orders/types";
 
 /**
@@ -105,7 +105,7 @@ function toTimeRoundingSettings(row: OrganizationTimeRoundingRow | null): TimeRo
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getCurrentEngineerSession();
   if (!session || session.role !== "engineer") {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
@@ -115,7 +115,21 @@ export async function GET() {
     return NextResponse.json({ error: "You do not have permission to view work orders." }, { status: 403 });
   }
 
-  const { from, to } = todayRangeIso();
+  // Issue #229: optional `?date=YYYY-MM-DD` (today-3 ... today+3). Read-only
+  // list query — never triggers a work order checkout.
+  const dateParam = new URL(request.url).searchParams.get("date");
+  let range = todayRangeIso();
+  if (dateParam !== null) {
+    const dayRange = isDateInNavRange(dateParam) ? dayRangeIso(dateParam) : null;
+    if (!dayRange) {
+      return NextResponse.json(
+        { error: "date must be YYYY-MM-DD, within 3 days of today." },
+        { status: 400 },
+      );
+    }
+    range = dayRange;
+  }
+  const { from, to } = range;
 
   const supabase = await createClient();
   const [workOrdersResult, timeRoundingResult] = await Promise.all([

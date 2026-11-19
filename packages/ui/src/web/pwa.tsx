@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../cx";
+import { ChevronLeft, ChevronRight } from "../icons";
 
 /**
  * Field-PWA layout primitives (issue #222, DS "08 PWA"). Hook-free and
@@ -44,6 +45,51 @@ export function PwaPageHeader({ top, overline, title, children }: PwaPageHeaderP
 /** A flex row of badges / links inside the page header. */
 export function PwaHeaderRow({ children }: { children?: ReactNode }) {
   return <div className="pwa-header-row">{children}</div>;
+}
+
+export interface PwaDayNavProps {
+  /** The selected day, e.g. "Wed 20 Nov". */
+  label: ReactNode;
+  onPrev: () => void;
+  onNext: () => void;
+  prevDisabled?: boolean;
+  nextDisabled?: boolean;
+  /** Renders the "Today" button when set (omit while already on today). */
+  onToday?: () => void;
+  prevLabel?: string;
+  nextLabel?: string;
+}
+
+/** Compact day switcher for the dark page header (Today): prev / label / next
+ * and an optional "Today" shortcut. */
+export function PwaDayNav({
+  label,
+  onPrev,
+  onNext,
+  prevDisabled,
+  nextDisabled,
+  onToday,
+  prevLabel = "Previous day",
+  nextLabel = "Next day",
+}: PwaDayNavProps) {
+  return (
+    <div className="pwa-daynav">
+      <button type="button" className="pwa-daynav-btn" aria-label={prevLabel} disabled={prevDisabled} onClick={onPrev}>
+        <ChevronLeft aria-hidden />
+      </button>
+      <span className="pwa-daynav-label" aria-live="polite">
+        {label}
+      </span>
+      <button type="button" className="pwa-daynav-btn" aria-label={nextLabel} disabled={nextDisabled} onClick={onNext}>
+        <ChevronRight aria-hidden />
+      </button>
+      {onToday ? (
+        <button type="button" className="pwa-daynav-today" onClick={onToday}>
+          Today
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /** Mono time slot next to the status badge ("14:00-16:00"). */
