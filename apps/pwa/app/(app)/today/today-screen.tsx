@@ -32,6 +32,7 @@ import {
   saveWorkOrderDetail,
   type CachedWorkItem,
 } from "@/lib/offline/db";
+import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
 import { retryPendingSignOffs } from "@/lib/offline/retry-finish";
 import {
   formatClockDigits,
@@ -329,6 +330,8 @@ export function TodayScreen({
     let cancelled = false;
     async function retryAndRefresh() {
       await retryPendingSignOffs(currentUserId);
+      // Issue #224: also flush any queued work order photos.
+      await retryPendingPhotoUploads(currentUserId);
       if (!cancelled) await refreshLocalState();
     }
     void retryAndRefresh();

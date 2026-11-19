@@ -17,6 +17,8 @@ export interface MediaTileProps extends Omit<HTMLAttributes<HTMLDivElement>, "ch
    * than this package hardcoding one, same "icon passed as a prop" convention
    * `CompanyLogo`/`IconButton`/`Badge` etc. already use. */
   fallback?: ReactNode;
+  /** Short text shown as a small corner badge over the tile (e.g. "Pending"). */
+  badge?: ReactNode;
   size?: MediaTileSize;
   className?: string;
 }
@@ -40,7 +42,7 @@ export interface MediaTileProps extends Omit<HTMLAttributes<HTMLDivElement>, "ch
  * acceptable, matching the read-only table row treatment this same module's
  * list view already has for a bad `image_url`.
  */
-export function MediaTile({ imageUrl, alt, fallback, size = "lg", className, ...rest }: MediaTileProps) {
+export function MediaTile({ imageUrl, alt, fallback, badge, size = "lg", className, ...rest }: MediaTileProps) {
   return (
     <div
       className={cx("ui-media-tile", size && `ui-media-tile-${size}`, className)}
@@ -48,6 +50,7 @@ export function MediaTile({ imageUrl, alt, fallback, size = "lg", className, ...
       {...rest}
     >
       {imageUrl ? <img className="ui-media-tile-img" src={imageUrl} alt={alt ?? ""} /> : fallback}
+      {badge ? <span className="ui-media-tile-badge">{badge}</span> : null}
     </div>
   );
 }

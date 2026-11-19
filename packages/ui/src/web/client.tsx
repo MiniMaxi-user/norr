@@ -803,3 +803,6 @@ export function TextCard({ title, fieldKey, text, emptyText = "No notes yet.", r
     </WebCard>
   );
 }
+
+export { WebPhotoGallery } from "./photo-gallery";
+export type { WebPhotoGalleryProps, WebPhotoItem } from "./photo-gallery";

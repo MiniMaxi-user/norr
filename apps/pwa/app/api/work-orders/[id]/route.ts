@@ -44,6 +44,7 @@ interface ResolvedReferenceRow {
 
 interface WorkOrderDetailRow {
   id: string;
+  organization_id: string;
   work_order_number: string;
   external_reference: string | null;
   description: string | null;
@@ -81,7 +82,7 @@ interface WorkOrderDetailRow {
 }
 
 const WORK_ORDER_DETAIL_SELECT = `
-  id, work_order_number, external_reference, description, solution, scheduled_at,
+  id, organization_id, work_order_number, external_reference, description, solution, scheduled_at,
   work_order_status:reference_list_items!work_orders_status_id_fkey(label,color),
   work_order_type:reference_list_items!work_orders_type_id_fkey(label,color),
   work_order_priority:reference_list_items!work_orders_priority_id_fkey(label,color),
@@ -302,6 +303,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     (timeRoundingResult.data ?? null) as OrganizationTimeRoundingRow | null,
   );
 
-  const response: WorkOrderDetailResponse = { workOrder, timeEntries, articles, timeRoundingSettings };
+  const response: WorkOrderDetailResponse = {
+    workOrder,
+    timeEntries,
+    articles,
+    timeRoundingSettings,
+    // Issue #224: the PWA needs the org id to build the photo storage path
+    // ({organization_id}/{work_order_id}/...) for browser-side uploads. Taken
+    // from the work order itself, not the session's (oldest) membership, so a
+    // multi-org engineer's photos land under the right org.
+    organizationId: row.organization_id,
+  };
   return NextResponse.json(response);
 }

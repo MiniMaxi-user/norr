@@ -39,6 +39,7 @@ import { HomeSection } from "./sections/home-section";
 import { WorkSection } from "./sections/work-section";
 import { HoursSection } from "./sections/hours-section";
 import { ArticlesSection } from "./sections/articles-section";
+import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
 import { PhotosSection } from "./sections/photos-section";
 import { SignOffSection } from "./sections/sign-off-section";
 
@@ -300,6 +301,9 @@ export function WorkOrderDetailScreen({
         getClockPeriodsForOrder(workOrderId, currentUserId),
         getLocalArticles(workOrderId, currentUserId),
       ]);
+      // Issue #224: best-effort photo upload alongside Finish — never
+      // awaited, so photos cannot block finishing; Today retries the rest.
+      void retryPendingPhotoUploads(currentUserId);
       const response = await fetch(`/api/work-orders/${workOrderId}/finish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -118,6 +118,10 @@ export interface WorkOrderDetailResponse {
    * — self-contained so a work order detail deep-link doesn't need a
    * separate round trip to compute net (billable) durations. */
   timeRoundingSettings: TimeRoundingSettings;
+  /** Issue #224: the caller's organization id — needed to build the
+   * `work-order-photos` storage path for direct browser uploads. Optional at
+   * runtime: detail caches written before this field existed lack it. */
+  organizationId?: string | null;
 }
 
 /** `/api/articles/catalog` response item — the "Add article" bottom sheet's

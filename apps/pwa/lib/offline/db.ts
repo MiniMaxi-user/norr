@@ -38,8 +38,11 @@
  *   `/api/work-orders/[id]`) — that read path stays real/Supabase-backed,
  *   this is only the not-yet-synced additions made from this device.
  * - `localPhotos` — photos taken from the Photos tab, stored as `Blob`s.
- *   Local-only — this story never posts photos anywhere, unlike periods/
- *   articles above.
+ *   Issue #224: this is now the UPLOAD QUEUE, not a local-only store. Each
+ *   row carries a `clientPhotoKey` (idempotency key); `photo-sync.ts`
+ *   uploads the blob to the private `work-order-photos` bucket, inserts the
+ *   `work_order_photos` row, and only then deletes the local row — a photo
+ *   is never dropped before the server has confirmed both.
  * - `workOrderDetails` — a read-through cache of `/api/work-orders/[id]`'s
  *   response, one row per work order this device has successfully
  *   fetched at least once. Product feedback, 2026-09-12: opening a work
@@ -212,8 +215,9 @@ export interface LocalArticle {
   quantity: number;
 }
 
-/** A photo taken from the Photos tab, not yet synced anywhere — local-only,
- * see this file's own top doc comment. */
+/** A photo taken from the Photos tab, waiting in the upload queue until
+ * `photo-sync.ts` has uploaded it and inserted its `work_order_photos` row
+ * (issue #224) — see this file's own top doc comment. */
 export interface LocalPhoto {
   id?: number;
   workOrderId: string;
@@ -221,6 +225,10 @@ export interface LocalPhoto {
   /** Epoch ms. */
   takenAt: number;
   blob: Blob;
+  /** Issue #224: uuid generated at capture. Idempotency key
+   * (`work_order_photos.client_photo_key`) and also reused as the photo's
+   * row id / storage file name, so retries always target the same object. */
+  clientPhotoKey: string;
 }
 
 /** A read-through cache of one `/api/work-orders/[id]` response (product
@@ -382,6 +390,31 @@ class WorkItemsDatabase extends Dexie {
       catalog: "id, userId",
       myStock: "id, userId, articleId",
     });
+    // v8 — issue #224: photo upload queue. `localPhotos` gains a `userId`
+    // index (the retry scans every work order's pending photos for one
+    // engineer) and every row a `clientPhotoKey` uuid; rows captured before
+    // this version are backfilled below so they upload like any other.
+    this.version(8)
+      .stores({
+        workitems: "id",
+        meta: "key",
+        clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+        signoffs: "workOrderId, userId",
+        localArticles: "++id, [workOrderId+articleId]",
+        localPhotos: "++id, workOrderId, userId",
+        workOrderDetails: "workOrderId, userId",
+        detailDrafts: "workOrderId, userId",
+        catalog: "id, userId",
+        myStock: "id, userId, articleId",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("localPhotos")
+          .toCollection()
+          .modify((row: { clientPhotoKey?: string }) => {
+            if (!row.clientPhotoKey) row.clientPhotoKey = crypto.randomUUID();
+          });
+      });
   }
 }
 
@@ -729,16 +762,31 @@ export async function updateLocalArticleQuantity(id: number, delta: number): Pro
   });
 }
 
-/** Photos taken for `workOrderId`, not yet synced anywhere. */
+/** Photos taken for `workOrderId` still waiting to be uploaded (issue #224). */
 export async function getLocalPhotos(workOrderId: string, currentUserId: string): Promise<LocalPhoto[]> {
   await ensureCacheBelongsTo(currentUserId);
   const rows = await db.localPhotos.where({ workOrderId }).toArray();
   return rows.filter((row) => row.userId === currentUserId).sort((a, b) => a.takenAt - b.takenAt);
 }
 
-/** Stores a newly-taken photo locally. */
-export async function addLocalPhoto(photo: Omit<LocalPhoto, "id">): Promise<void> {
-  await db.localPhotos.add(photo);
+/** Stores a newly-taken photo in the upload queue; the idempotency key is
+ * generated here so every caller gets one. */
+export async function addLocalPhoto(photo: Omit<LocalPhoto, "id" | "clientPhotoKey">): Promise<void> {
+  await db.localPhotos.add({ ...photo, clientPhotoKey: crypto.randomUUID() });
+}
+
+/** Every queued photo for `currentUserId`, across all work orders, oldest
+ * first — what `photo-sync.ts` works through. */
+export async function getAllLocalPhotos(currentUserId: string): Promise<LocalPhoto[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.localPhotos.where({ userId: currentUserId }).toArray();
+  return rows.sort((a, b) => a.takenAt - b.takenAt);
+}
+
+/** Removes a queued photo — only call once the server has confirmed both the
+ * storage object and the `work_order_photos` row. */
+export async function deleteLocalPhoto(id: number): Promise<void> {
+  await db.localPhotos.delete(id);
 }
 
 /* ------------------------------------------------------------------------ *

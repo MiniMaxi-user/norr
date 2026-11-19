@@ -20,12 +20,13 @@ import {
 } from "@/app/(app)/settings/organization-time-rounding-actions";
 import { listTimeEntries } from "../time-entries-actions";
 import { listWorkOrderArticles } from "../work-order-articles-actions";
+import { listWorkOrderPhotos } from "../photo-actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
 import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
 
-const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "checklist"];
+const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "checklist"];
 
 /** Fallback no-op rule when the org's rounding settings cannot be read. */
 const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
@@ -171,6 +172,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
     articlesForSelectResult,
     checklistResult,
     checklistTemplatesResult,
+    photosResult,
     lastUsedTab,
   ] = await withTiming("work-order-detail:fetch", () =>
     Promise.all([
@@ -199,6 +201,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       // Checklist tab (issue #14) — own module, only when entitled.
       canAccessChecklists ? getWorkOrderChecklist(workOrder.id) : Promise.resolve(null),
       canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
+      // Photos tab (issue #224) — signed URLs, rides on `planning` read/read_own.
+      listWorkOrderPhotos(workOrder.id),
       preferencesStore.getLastUsedView(session.userId, WORK_ORDER_DETAIL_VIEW_KEY),
     ]),
   );
@@ -337,6 +341,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
         canUpdateAny: canUpdateWorkOrderArticlesAny,
         canUpdateOwn: canUpdateWorkOrderArticlesOwn,
       }}
+      photos={photosResult.data?.photos ?? null}
       checklistData={
         canAccessChecklists
           ? {
