@@ -9,7 +9,6 @@ import { workOrderLabel } from "@/lib/format/work-order-label";
 import { memberDisplayName } from "@/lib/members/format";
 import type { AssetRecord } from "../actions";
 
-const MAX_ITEMS = 8;
 const MAX_PLANNED = 2;
 
 interface Event {
@@ -96,7 +95,7 @@ export function buildAssetTimeline(input: {
       actor: event.actor,
       status: "planned",
     })),
-    ...past.slice(0, MAX_ITEMS - upcoming.length).map<TimelineItem>((event, index) => ({
+    ...past.map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,
       at: formatDateTimeWeb(event.at),

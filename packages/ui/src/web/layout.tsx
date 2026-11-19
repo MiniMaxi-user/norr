@@ -132,29 +132,54 @@ export interface TimelineProps {
   allHref?: string;
   /** Empty state (one muted line). */
   emptyText?: string;
+  /** Items shown before the "Show N more" toggle (default 8). */
+  visibleCount?: number;
 }
 
-/** Newest first, 5–8 items. Always the LAST section of a rail. */
-export function Timeline({ items, allHref, emptyText = "No activity yet." }: TimelineProps) {
+function TimelineEntry({ item }: { item: TimelineItem }) {
+  const meta = [item.at ?? "—", item.actor].filter(Boolean).join(" · ");
+  return (
+    <li className="web-timeline-item" data-status={item.status ?? "default"}>
+      <span className="web-timeline-dot" aria-hidden="true" />
+      <div>
+        <div className="web-timeline-title">{item.title}</div>
+        <div className="web-timeline-meta">{meta}</div>
+      </div>
+    </li>
+  );
+}
+
+/** Newest first. The first `visibleCount` items show; the rest sit behind a
+ * native "Show N more" toggle (`<details>`, so this stays hook-free and
+ * server-safe). Always the LAST section of a rail. */
+export function Timeline({ items, allHref, emptyText = "No activity yet.", visibleCount = 8 }: TimelineProps) {
+  const visible = items.slice(0, visibleCount);
+  const hidden = items.slice(visibleCount);
   return (
     <SidebarSection title="Timeline" link={allHref ? { label: "All", href: allHref } : undefined}>
       {items.length === 0 ? (
         <p className="web-rail-empty">{emptyText}</p>
       ) : (
-        <ol className="web-timeline">
-          {items.map((item) => {
-            const meta = [item.at ?? "—", item.actor].filter(Boolean).join(" · ");
-            return (
-              <li key={item.id} className="web-timeline-item" data-status={item.status ?? "default"}>
-                <span className="web-timeline-dot" aria-hidden="true" />
-                <div>
-                  <div className="web-timeline-title">{item.title}</div>
-                  <div className="web-timeline-meta">{meta}</div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+        <>
+          <ol className="web-timeline">
+            {visible.map((item) => (
+              <TimelineEntry key={item.id} item={item} />
+            ))}
+          </ol>
+          {hidden.length > 0 ? (
+            <details className="web-timeline-more">
+              <summary>
+                <span className="web-timeline-more-show">Show {hidden.length} more</span>
+                <span className="web-timeline-more-hide">Show less</span>
+              </summary>
+              <ol className="web-timeline">
+                {hidden.map((item) => (
+                  <TimelineEntry key={item.id} item={item} />
+                ))}
+              </ol>
+            </details>
+          ) : null}
+        </>
       )}
     </SidebarSection>
   );

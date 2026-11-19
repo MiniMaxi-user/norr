@@ -7,7 +7,6 @@ import type { TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { WorkOrderChecklistItemRecord } from "../checklist-actions";
 
-const MAX_ITEMS = 8;
 const CLOSED = ["completed", "invoiced"];
 
 interface Event {
@@ -93,7 +92,7 @@ export function buildWorkOrderTimeline(input: {
 
   return [
     ...planned,
-    ...past.slice(0, MAX_ITEMS - planned.length).map<TimelineItem>((event, index) => ({
+    ...past.map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,
       at: formatDateTimeWeb(event.at),

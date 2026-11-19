@@ -4,7 +4,6 @@ import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-acti
 import { formatDateTimeWeb } from "@/lib/format/web";
 import type { ContractAssetRecord, ContractLineItemRecord, ContractRecord } from "../actions";
 
-const MAX_ITEMS = 8;
 
 interface Event {
   id: string;
@@ -70,7 +69,6 @@ export function buildContractTimeline(input: {
   return events
     .filter((event) => !Number.isNaN(new Date(event.at).getTime()))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, MAX_ITEMS)
     .map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,

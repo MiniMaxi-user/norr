@@ -1334,6 +1334,34 @@ html:has(.web-shell) body {
   font: 400 11.5px/15px var(--font-sans);
   color: var(--text-muted);
 }
+/* "Show N more" toggle under the timeline (native <details>). When open, the
+   hidden items appear below it and the label flips to "Show less". */
+.web-timeline-more > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 0 0 16px;
+  font: 500 12.5px/17px var(--font-sans);
+  color: var(--text-link);
+}
+.web-timeline-more > summary::-webkit-details-marker {
+  display: none;
+}
+.web-timeline-more > summary:hover {
+  color: var(--text-ink);
+  text-decoration: underline;
+}
+.web-timeline-more > summary:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus);
+}
+.web-timeline-more-hide,
+.web-timeline-more[open] .web-timeline-more-show {
+  display: none;
+}
+.web-timeline-more[open] .web-timeline-more-hide {
+  display: inline;
+}
 
 /* ---------------------------------------------------------------------- *
  * Card + key/value list

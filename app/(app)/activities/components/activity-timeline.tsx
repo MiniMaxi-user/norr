@@ -5,7 +5,6 @@ import { memberDisplayName } from "@/lib/members/format";
 import type { ActivityEventRecord, ActivityEventType } from "../history-actions";
 import type { ActivityNoteRecord } from "../notes-actions";
 
-const MAX_ITEMS = 10;
 
 const EVENT_TITLES: Record<ActivityEventType, string> = {
   created: "Activity created",
@@ -63,7 +62,6 @@ export function buildActivityTimeline(input: {
   return events
     .filter((event) => !Number.isNaN(new Date(event.at).getTime()))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, MAX_ITEMS)
     .map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,

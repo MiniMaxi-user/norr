@@ -11,7 +11,6 @@ import { memberDisplayName } from "@/lib/members/format";
 import type { ClientRecord } from "../actions";
 
 /** Most items the rail shows (design system: 5–8). */
-const MAX_ITEMS = 8;
 /** Planned items shown above the history. */
 const MAX_PLANNED = 2;
 
@@ -125,7 +124,7 @@ export function buildClientTimeline(input: {
       actor: event.actor,
       status: "planned",
     })),
-    ...past.slice(0, MAX_ITEMS - upcoming.length).map<TimelineItem>((event, index) => ({
+    ...past.map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,
       at: formatDateTimeWeb(event.at),

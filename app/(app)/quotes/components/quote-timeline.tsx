@@ -4,7 +4,6 @@ import { formatDateTimeWeb } from "@/lib/format/web";
 import type { QuoteLineItemRecord, QuoteRecord } from "../actions";
 import type { InvoiceSummary } from "../invoice-actions";
 
-const MAX_ITEMS = 8;
 
 interface Event {
   id: string;
@@ -65,7 +64,6 @@ export function buildQuoteTimeline(input: {
   return events
     .filter((event) => !Number.isNaN(new Date(event.at).getTime()))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, MAX_ITEMS)
     .map<TimelineItem>((event, index) => ({
       id: event.id,
       title: event.title,
