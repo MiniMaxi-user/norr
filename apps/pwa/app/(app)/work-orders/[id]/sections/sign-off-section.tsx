@@ -7,7 +7,6 @@ import {
   PwaCardPad,
   PwaKeyValue,
   PwaStack,
-  WebAmount,
   WebButton,
   WebCard,
   WebStatusBadge,
@@ -105,8 +104,6 @@ export function SignOffSection({
     }
   }
 
-  const totalMs = summary.travelMs + summary.workMs;
-
   return (
     <>
       <PwaStack>
@@ -114,9 +111,7 @@ export function SignOffSection({
           <PwaKeyValue
             rows={[
               { label: "Work", value: formatClockHoursMinutes(summary.workMs) },
-              { label: "Travel", value: formatClockHoursMinutes(summary.travelMs) },
-              { label: "Total", value: <WebAmount>{formatClockHoursMinutes(totalMs)}</WebAmount> },
-              { label: "Articles", value: articleCount },
+              { label: "Travel", value: formatClockHoursMinutes(summary.travelMs) },              { label: "Articles", value: articleCount },
               { label: "Engineer", value: engineerName },
             ]}
           />

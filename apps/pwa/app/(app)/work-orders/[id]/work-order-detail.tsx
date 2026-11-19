@@ -11,6 +11,7 @@ import {
   PwaPageHeader,
   PwaScreen,
   WebBadge,
+  WebTypeBadge,
 } from "@yourorg/ui/web";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import {
@@ -373,6 +374,11 @@ export function WorkOrderDetailScreen({
         title={workOrder.workOrderNumber}
       >
         <PwaHeaderRow>
+          {workOrder.type && (
+            <WebTypeBadge size="touch" color={workOrder.type.color}>
+              {workOrder.type.label}
+            </WebTypeBadge>
+          )}
           <span className="pwa-header-link">{workOrder.client?.name ?? "Unknown client"}</span>
         </PwaHeaderRow>
         {workOrder.externalReference && <PwaHeaderMeta>{workOrder.externalReference}</PwaHeaderMeta>}

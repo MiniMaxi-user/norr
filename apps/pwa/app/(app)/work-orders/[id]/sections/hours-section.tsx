@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PwaKeyValue, PwaNote, PwaOverline, PwaRow, PwaStack, WebAmount, WebCard, WebStatusBadge } from "@yourorg/ui/web";
+import { PwaKeyValue, PwaNote, PwaStack, WebCard, WebStatusBadge } from "@yourorg/ui/web";
 import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 import { deleteClockPeriod, updateClockPeriodTimes, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
@@ -134,7 +134,6 @@ export function HoursSection({
     },
     { travelMinutes: 0, workMinutes: 0 },
   );
-  const totalMinutes = totals.travelMinutes + totals.workMinutes;
 
   function handleEditTap(row: HourRow) {
     if (row.localId === undefined || row.endedAt === null) return;
@@ -155,11 +154,6 @@ export function HoursSection({
 
   return (
     <PwaStack>
-      <PwaRow justify="between">
-        <PwaOverline>Hours</PwaOverline>
-        <WebAmount>{formatClockHoursMinutes(totalMinutes * 60000)}</WebAmount>
-      </PwaRow>
-
       <WebCard size="touch" title="Logged time">
         {rows.length === 0 ? (
           <p className="pwa-list-empty">Nothing logged yet · 0h 00m</p>
@@ -195,9 +189,7 @@ export function HoursSection({
         <PwaKeyValue
           rows={[
             { label: "Travel", value: formatClockHoursMinutes(totals.travelMinutes * 60000) },
-            { label: "Work", value: formatClockHoursMinutes(totals.workMinutes * 60000) },
-            { label: "Total", value: <WebAmount>{formatClockHoursMinutes(totalMinutes * 60000)}</WebAmount> },
-          ]}
+            { label: "Work", value: formatClockHoursMinutes(totals.workMinutes * 60000) },          ]}
         />
       </WebCard>
 
