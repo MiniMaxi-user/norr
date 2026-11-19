@@ -6,7 +6,7 @@ import { PwaCardText, PwaNote, PwaStack, WebCard, WebStatusBadge } from "@youror
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatVolumeValue } from "@/lib/asset-volumes/errors";
 import { deleteLocalVolumeReading, replaceLocalVolumeReading, type LocalVolumeReading } from "@/lib/offline/db";
-import type { EffectiveChecklistItem } from "@/lib/checklists/use-work-order-checklist";
+import type { EffectiveChecklist } from "@/lib/checklists/use-work-order-checklist";
 import type { WorkOrderVolumeCounter, WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
 
 /** Pause after the last keystroke before a valid value is saved. */
@@ -43,7 +43,8 @@ function useOnlineStatus(): boolean {
 /**
  * The "Checklist" tab (`?section=checklist`, issue #230) — two lists:
  *
- * 1. The work order's standard tick-off checklist (if it has one): big touch
+ * 1. The work order's standard tick-off checklists (one card each, titled with
+ *    the checklist's name; a work order can have several): big touch
  *    checkboxes, a "Required" marker for required items. Toggling saves
  *    immediately when online; offline it is queued (Dexie
  *    `localChecklistToggles`), shown as "Pending" and sent with Finish.
@@ -58,7 +59,7 @@ function useOnlineStatus(): boolean {
 export function ChecklistSection({
   workOrderId,
   currentUserId,
-  items,
+  checklists,
   onToggle,
   volumes,
   localVolumeReadings,
@@ -67,23 +68,24 @@ export function ChecklistSection({
 }: {
   workOrderId: string;
   currentUserId: string;
-  items: EffectiveChecklistItem[];
+  checklists: EffectiveChecklist[];
   onToggle: (itemId: string, isChecked: boolean) => Promise<void>;
   volumes: WorkOrderVolumesResponse | null;
   localVolumeReadings: LocalVolumeReading[];
   onVolumesChanged: () => Promise<void>;
   onLocalVolumesChanged: () => Promise<void>;
 }) {
-  const hasItems = items.length > 0;
+  const visibleChecklists = checklists.filter((checklist) => checklist.items.length > 0);
+  const hasItems = visibleChecklists.length > 0;
   const hasCounters = Boolean(volumes && volumes.counters.length > 0);
 
   return (
     <PwaStack>
-      {hasItems && (
-        <WebCard size="touch" title="Checklist">
+      {visibleChecklists.map((checklist) => (
+        <WebCard key={checklist.id} size="touch" title={checklist.name}>
           <div className="pwa-card-pad">
             <div className="pwa-pick-list">
-              {items.map((item) => (
+              {checklist.items.map((item) => (
                 <div key={item.id}>
                   <label className="pwa-pick-row">
                     <Checkbox checked={item.isChecked} onChange={(event) => void onToggle(item.id, event.target.checked)} />
@@ -109,7 +111,7 @@ export function ChecklistSection({
             </div>
           </div>
         </WebCard>
-      )}
+      ))}
 
       {hasCounters && volumes && (
         <WebCard size="touch" title="Volumes" meta={volumes.asset?.name}>

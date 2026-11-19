@@ -122,10 +122,13 @@ export interface WorkOrderDetailResponse {
    * `work-order-photos` storage path for direct browser uploads. Optional at
    * runtime: detail caches written before this field existed lack it. */
   organizationId?: string | null;
-  /** Issue #230: the work order's standard (tick-off) checklist, `null` when
-   * it has none. Optional at runtime: detail caches written before this
-   * field existed lack it. */
-  checklist?: WorkOrderChecklist | null;
+  /** Issues #230/#231: the work order's standard (tick-off) checklists, one
+   * entry per checklist (a work order can have several). Optional at runtime:
+   * detail caches written before this field existed lack it. */
+  checklists?: WorkOrderChecklist[];
+  /** Legacy (pre-#231) single checklist, only present in old cached details;
+   * read through `normalizeChecklists`, never written by the API any more. */
+  checklist?: { id: string; items: WorkOrderChecklistItem[] } | null;
 }
 
 export interface WorkOrderChecklistItem {
@@ -138,7 +141,20 @@ export interface WorkOrderChecklistItem {
 
 export interface WorkOrderChecklist {
   id: string;
+  /** Template name, or "Checklist" for an ad-hoc checklist. */
+  name: string;
   items: WorkOrderChecklistItem[];
+}
+
+/** The checklists of a cached or live detail; maps the pre-#231 single
+ * `checklist` to a one-element list. */
+export function normalizeChecklists(
+  detail: Pick<WorkOrderDetailResponse, "checklists" | "checklist"> | null | undefined,
+): WorkOrderChecklist[] {
+  if (!detail) return [];
+  if (detail.checklists) return detail.checklists;
+  if (detail.checklist) return [{ id: detail.checklist.id, name: "Checklist", items: detail.checklist.items }];
+  return [];
 }
 
 /** `/api/articles/catalog` response item — the "Add article" bottom sheet's

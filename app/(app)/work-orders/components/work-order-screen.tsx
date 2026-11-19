@@ -41,7 +41,7 @@ import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { WorkOrderPhotoRecord } from "../photo-actions";
 import type { WorkOrderVolumeRow } from "../volume-actions";
-import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
+import type { WorkOrderChecklistGroup } from "../checklist-actions";
 import { createQuoteFromWorkOrder } from "../create-quote-actions";
 import { generateWorkReceipt } from "../work-receipt-actions";
 import { DeleteWorkOrderDialog } from "./delete-work-order-dialog";
@@ -86,8 +86,7 @@ export interface WorkOrderMaterialData {
 }
 
 export interface WorkOrderChecklistData {
-  checklist: WorkOrderChecklistRecord | null;
-  items: WorkOrderChecklistItemRecord[];
+  checklists: WorkOrderChecklistGroup[];
   templates: ChecklistTemplateRecord[];
   canAttach: boolean;
   canDetach: boolean;
@@ -343,7 +342,7 @@ export function WorkOrderScreen({
             members,
             timeEntries,
             articles: material?.workOrderArticles ?? null,
-            checklistItems: checklistData?.items ?? null,
+            checklistItems: checklistData ? checklistData.checklists.flatMap((group) => group.items) : null,
           })
         : [],
     [workOrder, members, timeEntries, material, checklistData],
@@ -365,7 +364,7 @@ export function WorkOrderScreen({
         siteId: workOrder.site_id,
         assetId: workOrder.asset_id,
         runningTimeEntries: (timeEntries ?? []).filter((entry) => !entry.ended_at).length,
-        openRequiredChecklistItems: (checklistData?.items ?? []).filter((item) => item.is_required && !item.is_checked).length,
+        openRequiredChecklistItems: (checklistData?.checklists ?? []).flatMap((group) => group.items).filter((item) => item.is_required && !item.is_checked).length,
         missingVolumes: (volumes?.rows ?? []).filter((row) => row.value === null).map((row) => row.label),
       })
     : [];
@@ -452,7 +451,7 @@ export function WorkOrderScreen({
             ...(photos ? [{ id: "photos", label: "Photos", count: photos.length }] : []),
             ...(receipts ? [{ id: "receipts", label: "Work receipts", count: receipts.receipts.length }] : []),
             ...(checklistData || volumes
-              ? [{ id: "checklist", label: "Checklist", count: (checklistData?.items.length ?? 0) + (volumes?.rows.length ?? 0) }]
+              ? [{ id: "checklist", label: "Checklist", count: (checklistData?.checklists.reduce((total, group) => total + group.items.length, 0) ?? 0) + (volumes?.rows.length ?? 0) }]
               : []),
           ]),
     ],
@@ -649,8 +648,7 @@ export function WorkOrderScreen({
             {checklistData && (
               <WorkOrderChecklistPanel
                 workOrderId={workOrder.id}
-                checklist={checklistData.checklist}
-                items={checklistData.items}
+                checklists={checklistData.checklists}
                 templates={checklistData.templates}
                 currentUserId={currentUserId}
                 canAttach={checklistData.canAttach}

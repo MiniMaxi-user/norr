@@ -6,24 +6,7 @@ import { toast } from "@yourorg/ui";
 import { WebConfirmDialog } from "@yourorg/ui/web-client";
 import { invoiceQuote, sendInvoiceEmailForQuote, type InvoiceSummary } from "../invoice-actions";
 import { formatDateTimeWeb } from "@/lib/format/web";
-
-const POPUP_WIDTH = 900;
-const POPUP_HEIGHT = 1000;
-
-/** Centers a popup on whichever screen the current browser window is on. */
-function computePopupFeatures(width: number, height: number): string {
-  const availWidth = window.screen.availWidth || width;
-  const availHeight = window.screen.availHeight || height;
-  const w = Math.min(width, availWidth);
-  const h = Math.min(height, availHeight);
-  const dualScreenLeft = window.screenLeft ?? window.screenX ?? 0;
-  const dualScreenTop = window.screenTop ?? window.screenY ?? 0;
-  const outerWidth = window.outerWidth || availWidth;
-  const outerHeight = window.outerHeight || availHeight;
-  const left = Math.max(0, Math.round(dualScreenLeft + (outerWidth - w) / 2));
-  const top = Math.max(0, Math.round(dualScreenTop + (outerHeight - h) / 2));
-  return `width=${w},height=${h},left=${left},top=${top}`;
-}
+import { openDocumentPopup } from "@/lib/popup";
 
 export interface QuoteInvoiceFlow {
   /** Asks for confirmation, then generates the invoice (sets the quote to Invoiced). */
@@ -118,14 +101,7 @@ export function useQuoteInvoice(quoteId: string, invoice: InvoiceSummary | null)
   }
 
   function openPdf() {
-    const popup = window.open(`/quotes/${quoteId}/invoice`, "_blank", computePopupFeatures(POPUP_WIDTH, POPUP_HEIGHT));
-    if (!popup) {
-      toast({
-        tone: "danger",
-        title: "Popup blocked",
-        description: "Allow popups for this site to view the invoice PDF, then try again.",
-      });
-    }
+    openDocumentPopup(`/quotes/${quoteId}/invoice`, "invoice PDF");
   }
 
   const dialogs = (

@@ -33,12 +33,11 @@ import {
  *                            parent work order); NO create, NO delete
  *   finance/administratie:  read, all rows
  *
- * There is exactly one `work_order_checklists` row per work order (DB
- * `unique (work_order_id)`) — `attachChecklistTemplate` creates it,
- * `detachChecklist` removes it entirely (delete + re-`attachChecklistTemplate`
- * is how you change which template a work order uses, per the migration's
- * design note 3: `work_order_id`/`checklist_template_id` are immutable after
- * creation).
+ * A work order can have SEVERAL `work_order_checklists` rows (the
+ * `unique (work_order_id)` was dropped, issue #231) — `attachChecklistTemplate`
+ * adds one (the same template at most once per work order), `detachChecklist`
+ * removes one checklist entirely (`work_order_id`/`checklist_template_id` are
+ * immutable after creation, per the migration's design note 3).
  */
 
 export interface WorkOrderChecklistRecord {
@@ -71,34 +70,36 @@ export interface WorkOrderChecklistItemRecord {
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
-/** Maps a DB error from a `work_order_checklists` write to a clean, user-safe
- * message. Adds the `23505` (unique_violation) case on top of the shared
- * `mapDbError` — the `unique (work_order_id)` constraint means attaching a
- * second checklist to a work order that already has one collides here, same
- * "local error mapping on top of the shared one" precedent
- * `contacts-actions.ts`'s `mapContactDbError` establishes for its own
- * `23505` case. */
-function mapChecklistDbError(error: { code?: string; message: string }): string {
-  if (error.code === "23505") {
-    return "This work order already has a checklist attached. Remove it first, or edit the existing one.";
-  }
-  return mapDbError(error);
+/** A checklist instance with its display name and items. */
+export interface WorkOrderChecklistGroup {
+  checklist: WorkOrderChecklistRecord;
+  /** Template name, or "Checklist" for an ad-hoc (or orphaned-template) checklist. */
+  name: string;
+  items: WorkOrderChecklistItemRecord[];
+}
+
+const ITEM_COLUMNS = "id, work_order_checklist_id, label, is_required, sort_order, is_checked, checked_at, notes";
+
+type ChecklistRow = WorkOrderChecklistRecord & { template: { name: string } | null };
+
+function toGroups(rows: ChecklistRow[], items: WorkOrderChecklistItemRecord[]): WorkOrderChecklistGroup[] {
+  return rows.map(({ template, ...checklist }) => ({
+    checklist,
+    name: template?.name?.trim() || "Checklist",
+    items: items.filter((item) => item.work_order_checklist_id === checklist.id),
+  }));
 }
 
 /**
- * Returns the work order's checklist instance and its items, or
- * `checklist: null` (with an empty `items` array) if none has been attached
- * yet — this is NOT an error condition, same "empty is a valid state" UX
- * `listReferenceItems` gives for a not-yet-seeded list. Gated on
+ * Returns ALL checklist instances of the work order (oldest first) with their
+ * items; an empty array when none is attached yet — NOT an error. Gated on
  * `canAny(actor, "checklists", ["read", "read_own"])`; for an engineer
- * (`read_own` only) this does NOT add an app-layer `assigned_to` filter — RLS
- * (`work_order_checklists_select_scoped` / `..._items_select_scoped`) already
- * scopes the result to their own assigned work order's checklist, same lesson
- * `listTimeEntries` documents in `./time-entries-actions.ts`.
+ * (`read_own` only) RLS already scopes the result to their own assigned work
+ * order, same lesson `listTimeEntries` documents in `./time-entries-actions.ts`.
  */
 export async function getWorkOrderChecklist(
   workOrderId: string,
-): Promise<ActionResult<{ checklist: WorkOrderChecklistRecord | null; items: WorkOrderChecklistItemRecord[] }>> {
+): Promise<ActionResult<{ checklists: WorkOrderChecklistGroup[] }>> {
   const idResult = uuidSchema.safeParse(workOrderId);
   if (!idResult.success) return fail("Invalid work order id.");
 
@@ -110,25 +111,21 @@ export async function getWorkOrderChecklist(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: checklist, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("work_order_checklists")
-    .select("*")
+    .select("*, template:checklist_templates(name)")
     .eq("work_order_id", idResult.data)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (error) return fail(mapDbError(error));
-  if (!checklist) return ok({ checklist: null, items: [] });
+  const checklists = (rows ?? []) as unknown as ChecklistRow[];
+  if (checklists.length === 0) return ok({ checklists: [] });
 
-  // Explicit column projection (issue #149) — `WorkOrderChecklistSection`
-  // (the only consumer) reads `id`/`label`/`is_required`/`sort_order`/
-  // `is_checked`/`checked_at`/`notes`; `work_order_checklist_id`/
-  // `template_item_id`/`organization_id`/`assigned_to`/`checked_by`/
-  // `created_by`/`created_at`/`updated_at` are never read back from this
-  // list.
   const { data: items, error: itemsError } = await supabase
     .from("work_order_checklist_items")
-    .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
-    .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
+    .select(ITEM_COLUMNS)
+    .in("work_order_checklist_id", checklists.map((row) => row.id))
     // Template order first; ties (items sharing a sort_order) are broken by
     // creation order and then id, so the list never reshuffles after an
     // item is ticked (an UPDATE can change Postgres' physical row order).
@@ -138,20 +135,16 @@ export async function getWorkOrderChecklist(
 
   if (itemsError) return fail(mapDbError(itemsError));
 
-  return ok({
-    checklist: checklist as WorkOrderChecklistRecord,
-    items: (items ?? []) as WorkOrderChecklistItemRecord[],
-  });
+  return ok({ checklists: toGroups(checklists, (items ?? []) as WorkOrderChecklistItemRecord[]) });
 }
 
 /**
- * Creates the `work_order_checklists` row for `workOrderId` — `templateId:
- * null` (or omitted) builds an ad-hoc, empty checklist; a real template id
- * fires the DB's `work_order_checklists_instantiate_items` trigger, which
- * snapshots that template's current items into `work_order_checklist_items`
- * in the same round trip (see the migration's design note 1) — this action
- * does not need to (and must not try to) copy items itself. Gated on
- * `can(actor, "checklists", "create")` (owner/planner only).
+ * Adds a checklist instance to `workOrderId` — `templateId: null` (or omitted)
+ * builds an ad-hoc, empty checklist; a real template id fires the DB's
+ * `work_order_checklists_instantiate_items` trigger, which snapshots that
+ * template's current items in the same round trip (this action must not copy
+ * items itself). The same template can be attached only once per work order.
+ * Gated on `can(actor, "checklists", "create")` (owner/planner only).
  */
 export async function attachChecklistTemplate(
   workOrderId: string,
@@ -175,24 +168,32 @@ export async function attachChecklistTemplate(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  if (templateIdResult.data) {
+    const { data: existing, error: existingError } = await supabase
+      .from("work_order_checklists")
+      .select("id")
+      .eq("work_order_id", idResult.data)
+      .eq("checklist_template_id", templateIdResult.data)
+      .limit(1);
+    if (existingError) return fail(mapDbError(existingError));
+    if ((existing ?? []).length > 0) {
+      return fail("This template is already attached to this work order. Choose another template or start blank.");
+    }
+  }
+
   const { data: checklist, error } = await supabase
     .from("work_order_checklists")
     .insert({ work_order_id: idResult.data, checklist_template_id: templateIdResult.data })
     .select("*")
     .single();
 
-  if (error) return fail(mapChecklistDbError(error));
+  if (error) return fail(mapDbError(error));
 
-  // Same explicit column projection as `getWorkOrderChecklist` above (issue
-  // #149) — this is the freshly-instantiated items list returned right after
-  // attaching a template, read by the same `WorkOrderChecklistSection`.
   const { data: items, error: itemsError } = await supabase
     .from("work_order_checklist_items")
-    .select("id, label, is_required, sort_order, is_checked, checked_at, notes")
+    .select(ITEM_COLUMNS)
     .eq("work_order_checklist_id", (checklist as WorkOrderChecklistRecord).id)
-    // Template order first; ties (items sharing a sort_order) are broken by
-    // creation order and then id, so the list never reshuffles after an
-    // item is ticked (an UPDATE can change Postgres' physical row order).
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
@@ -373,7 +374,7 @@ export async function deleteChecklistItem(id: string): Promise<ActionResult<{ de
 }
 
 /**
- * Deletes the ENTIRE checklist instance (its items cascade via `on delete
+ * Deletes ONE checklist instance of a work order (its items cascade via `on delete
  * cascade` on `work_order_checklist_items.work_order_checklist_id`). This is
  * the "change which template this work order uses" path per the migration's
  * design note 3: `work_order_id`/`checklist_template_id` are immutable after

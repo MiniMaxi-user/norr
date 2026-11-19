@@ -62,6 +62,9 @@ end;
 $$;
 
 select pg_temp.act_as('e1111111-1111-1111-1111-111111111111');
+-- Fixtures are written as the table owner (not as 'authenticated'): the bootstrap
+-- policy rejects a multi-row memberships insert and column grants limit clients.
+reset role;
 
 insert into public.organizations (id, name, created_by)
 values ('e2000000-0000-0000-0000-00000000000a', 'Org A', 'e1111111-1111-1111-1111-111111111111');
@@ -83,6 +86,9 @@ insert into public.work_orders (id, client_id, external_reference, assigned_to) 
   ('e4000000-0000-0000-0000-00000000000c', 'e3000000-0000-0000-0000-00000000000a', 'WO A3 (delete fixtures)', 'e1333333-3333-3333-3333-333333333333');
 
 select pg_temp.act_as('e1777777-7777-7777-7777-777777777777');
+-- Fixtures are written as the table owner (not as 'authenticated'): the bootstrap
+-- policy rejects a multi-row memberships insert and column grants limit clients.
+reset role;
 
 insert into public.organizations (id, name, created_by)
 values ('e2000000-0000-0000-0000-00000000000b', 'Org B', 'e1777777-7777-7777-7777-777777777777');
@@ -94,7 +100,7 @@ insert into public.clients (id, organization_id, name)
 values ('e3000000-0000-0000-0000-00000000000c', 'e2000000-0000-0000-0000-00000000000b', 'Client B');
 
 insert into public.work_orders (id, client_id, external_reference)
-values ('e4000000-0000-0000-0000-00000000000c', 'e3000000-0000-0000-0000-00000000000c', 'WO B');
+values ('e4000000-0000-0000-0000-00000000000d', 'e3000000-0000-0000-0000-00000000000c', 'WO B');
 
 -- ---------------------------------------------------------------------------
 -- 1. checklist_templates / checklist_template_items: owner-only write,
@@ -279,19 +285,19 @@ select is(
   'editing checklist_template_items.label after instance-creation does NOT retroactively rewrite the already-copied work_order_checklist_items row (copy-by-value snapshot, not a live join)'
 ); -- 23
 
--- --- unique-one-checklist-per-work-order constraint ---
-select throws_ok(
-  $$ insert into public.work_order_checklists (work_order_id, checklist_template_id)
-     values ('e4000000-0000-0000-0000-00000000000a', 'e5000000-0000-0000-0000-00000000000a') $$,
-  '23505',
-  null,
-  'a second work_order_checklists row for the same work_order_id is rejected (unique constraint)'
+-- --- several checklists per work order (issue #231: unique (work_order_id) dropped) ---
+select lives_ok(
+  $$ insert into public.work_order_checklists (id, work_order_id, checklist_template_id)
+     values ('e7000000-0000-0000-0000-00000000000d', 'e4000000-0000-0000-0000-00000000000a', null) $$,
+  'a second work_order_checklists row for the same work_order_id is allowed (a work order can have several checklists)'
 ); -- 24
+-- Remove the extra checklist again so the counts asserted further down stay unchanged.
+delete from public.work_order_checklists where id = 'e7000000-0000-0000-0000-00000000000d';
 
 -- --- cross-org rejection ---
 select throws_ok(
   $$ insert into public.work_order_checklists (work_order_id, checklist_template_id)
-     values ('e4000000-0000-0000-0000-00000000000c', 'e5000000-0000-0000-0000-00000000000a') $$,
+     values ('e4000000-0000-0000-0000-00000000000d', 'e5000000-0000-0000-0000-00000000000a') $$,
   '42501',
   null,
   'owner_a cannot insert a work_order_checklists row for org_b''s WO B (organization_id derives to org_b, and owner_a has no membership/role there — current_member_role is null, failing the INSERT WITH CHECK)'
@@ -417,12 +423,15 @@ select is(
   'engineer_a''s UPDATE on engineer_a2''s item (different assigned_to) is silently excluded by RLS; notes unchanged'
 ); -- 43
 
-delete from public.work_order_checklist_items where id = 'e8000000-0000-0000-0000-00000000000a';
+-- Targets engineer_a's OWN (visible) items: counting a row engineer_a cannot
+-- even SELECT (engineer_a2's ad-hoc item) would read 0 whether or not the
+-- DELETE was excluded, so it proved nothing.
+delete from public.work_order_checklist_items where work_order_checklist_id = 'e7000000-0000-0000-0000-00000000000a';
 
 select is(
-  (select count(*)::int from public.work_order_checklist_items where id = 'e8000000-0000-0000-0000-00000000000a'),
-  1,
-  'engineer_a''s DELETE attempt is silently excluded by RLS (engineer has no delete action); row still exists'
+  (select count(*)::int from public.work_order_checklist_items where work_order_checklist_id = 'e7000000-0000-0000-0000-00000000000a'),
+  2,
+  'engineer_a''s DELETE attempt on their own checklist''s items is silently excluded by RLS (engineer has no delete action); both rows still exist'
 ); -- 44
 
 delete from public.work_order_checklists where id = 'e7000000-0000-0000-0000-00000000000a';

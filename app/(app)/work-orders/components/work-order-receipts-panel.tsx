@@ -6,6 +6,7 @@ import { Dialog, toast, useEscapeToClose } from "@yourorg/ui";
 import { WebBadge, WebButton, WebCard, WebDataTableEmpty, WebField, WebInput } from "@yourorg/ui/web";
 import { WebDataTableCard, type WebColumn } from "@yourorg/ui/web-client";
 import { formatDateTimeWeb } from "@/lib/format/web";
+import { openDocumentPopup } from "@/lib/popup";
 import {
   getWorkReceiptRecipientOptions,
   sendWorkReceipt,
@@ -68,9 +69,9 @@ export function WorkOrderReceiptsPanel({ data, workOrderId }: WorkOrderReceiptsP
         render: (row) => (
           <>
             {row.pdfUrl ? (
-              <a href={row.pdfUrl} target="_blank" rel="noopener noreferrer" tabIndex={-1}>
-                <WebButton size="sm">Open</WebButton>
-              </a>
+              <WebButton size="sm" onClick={() => openDocumentPopup(row.pdfUrl!, "work receipt PDF")}>
+                Open
+              </WebButton>
             ) : null}
             {data.canSend ? (
               <WebButton size="sm" onClick={() => setSending(row)}>

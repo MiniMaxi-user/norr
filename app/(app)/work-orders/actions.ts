@@ -684,22 +684,18 @@ export async function approveWorkOrderReview(
       .select("id", { count: "exact", head: true })
       .eq("work_order_id", target.id)
       .is("ended_at", null),
-    supabase.from("work_order_checklists").select("id").eq("work_order_id", target.id).maybeSingle<{ id: string }>(),
+    // Required items still open across ALL of the work order's checklists.
+    supabase
+      .from("work_order_checklist_items")
+      .select("id, checklist:work_order_checklists!inner(work_order_id)", { count: "exact", head: true })
+      .eq("checklist.work_order_id", target.id)
+      .eq("is_checked", false)
+      .eq("is_required", true),
   ]);
   if (runningResult.error) return fail(mapDbError(runningResult.error));
   if (checklistResult.error) return fail(mapDbError(checklistResult.error));
 
-  let openChecklistItems = 0;
-  if (checklistResult.data) {
-    const openResult = await supabase
-      .from("work_order_checklist_items")
-      .select("id", { count: "exact", head: true })
-      .eq("work_order_checklist_id", checklistResult.data.id)
-      .eq("is_checked", false)
-      .eq("is_required", true);
-    if (openResult.error) return fail(mapDbError(openResult.error));
-    openChecklistItems = openResult.count ?? 0;
-  }
+  const openChecklistItems = checklistResult.count ?? 0;
 
   const volumesResult = await missingVolumeCounters(supabase, target.id, target.asset_id);
   if (volumesResult.error) return fail("Failed to check the volumes.");

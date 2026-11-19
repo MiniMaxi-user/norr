@@ -209,13 +209,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           .eq("id", session.organization.id)
           .maybeSingle<OrganizationTimeRoundingRow>()
       : Promise.resolve({ data: null, error: null }),
-    // Issue #230: the work order's standard checklist (one per work order) +
-    // its items, under the caller's RLS (engineer: own assigned work orders).
+    // Issues #230/#231: the work order's standard checklists (several per work
+    // order) + their items, under the caller's RLS (engineer: own assigned work
+    // orders). Oldest first.
     supabase
       .from("work_order_checklists")
-      .select("id, items:work_order_checklist_items(id, label, is_required, is_checked, sort_order)")
+      .select(
+        "id, template:checklist_templates(name), items:work_order_checklist_items(id, label, is_required, is_checked, sort_order)",
+      )
       .eq("work_order_id", id)
-      .maybeSingle(),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   ]);
 
   if (workOrderResult.error) {
@@ -315,28 +319,28 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     console.error("GET /api/work-orders/[id]: failed to load checklist", checklistResult.error);
     return NextResponse.json({ error: "Failed to load the checklist." }, { status: 500 });
   }
-  const checklistRow = checklistResult.data as unknown as {
+  const checklistRows = (checklistResult.data ?? []) as unknown as {
     id: string;
+    template: { name: string } | null;
     items: { id: string; label: string; is_required: boolean; is_checked: boolean; sort_order: number }[] | null;
-  } | null;
-  const checklist: WorkOrderChecklist | null = checklistRow
-    ? {
-        id: checklistRow.id,
-        items: (checklistRow.items ?? [])
-          .map((item) => ({
-            id: item.id,
-            label: item.label,
-            isRequired: item.is_required,
-            isChecked: item.is_checked,
-            sortOrder: item.sort_order,
-          }))
-          .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
-      }
-    : null;
+  }[];
+  const checklists: WorkOrderChecklist[] = checklistRows.map((checklistRow) => ({
+    id: checklistRow.id,
+    name: checklistRow.template?.name?.trim() || "Checklist",
+    items: (checklistRow.items ?? [])
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        isRequired: item.is_required,
+        isChecked: item.is_checked,
+        sortOrder: item.sort_order,
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
+  }));
 
   const response: WorkOrderDetailResponse = {
     workOrder,
-    checklist,
+    checklists,
     timeEntries,
     articles,
     timeRoundingSettings,

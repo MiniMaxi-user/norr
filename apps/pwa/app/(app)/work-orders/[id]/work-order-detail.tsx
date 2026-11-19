@@ -133,10 +133,10 @@ export function WorkOrderDetailScreen({
   // Issue #230: the standard tick-off checklist (from the detail, live or
   // cached) with offline toggles overlaid.
   const {
-    items: checklistItems,
+    groups: checklistGroups,
     progress: checklistProgress,
     toggle: toggleChecklistItem,
-  } = useWorkOrderChecklist(workOrderId, currentUserId, detail?.checklist);
+  } = useWorkOrderChecklist(workOrderId, currentUserId, detail);
   // Lifted out of `SignOffSection` (product feedback, 2026-09-13 — "Solution"
   // now lives on the Work tab, under Description) so it survives switching
   // between sections instead of being local state a Sign-tab-only component
@@ -486,7 +486,7 @@ export function WorkOrderDetailScreen({
           <ChecklistSection
             workOrderId={workOrderId}
             currentUserId={currentUserId}
-            items={checklistItems}
+            checklists={checklistGroups}
             onToggle={toggleChecklistItem}
             volumes={volumes}
             localVolumeReadings={localVolumeReadings}

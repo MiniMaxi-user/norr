@@ -374,8 +374,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       checklistData={
         canAccessChecklists
           ? {
-              checklist: checklistResult?.data?.checklist ?? null,
-              items: checklistResult?.data?.items ?? [],
+              checklists: checklistResult?.data?.checklists ?? [],
               templates: checklistTemplatesResult?.data?.templates ?? [],
               canAttach: canAttachChecklist,
               canDetach: canDetachChecklist,

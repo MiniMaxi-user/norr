@@ -7,7 +7,7 @@ import {
   getLocalChecklistToggles,
   putLocalChecklistToggle,
 } from "@/lib/offline/db";
-import type { WorkOrderChecklist } from "@/lib/work-orders/types";
+import { normalizeChecklists, type WorkOrderChecklist, type WorkOrderDetailResponse } from "@/lib/work-orders/types";
 
 /** One checklist item as shown: the server's state overlaid with a toggle
  * that is still queued locally (offline). */
@@ -20,6 +20,13 @@ export interface EffectiveChecklistItem {
   pending: boolean;
   /** Last save attempt failed with a server error (not a connectivity one). */
   error: string | null;
+}
+
+/** One checklist of the work order with its effective items. */
+export interface EffectiveChecklist {
+  id: string;
+  name: string;
+  items: EffectiveChecklistItem[];
 }
 
 export interface ChecklistProgress {
@@ -43,8 +50,16 @@ export interface ChecklistProgress {
 export function useWorkOrderChecklist(
   workOrderId: string,
   currentUserId: string,
-  checklist: WorkOrderChecklist | null | undefined,
+  detail: Pick<WorkOrderDetailResponse, "checklists" | "checklist"> | null | undefined,
 ) {
+  // Memoised on the detail's own fields so a legacy one-element mapping keeps a
+  // stable identity between renders.
+  const checklistsField = detail?.checklists;
+  const legacyField = detail?.checklist;
+  const checklists = useMemo<WorkOrderChecklist[]>(
+    () => normalizeChecklists({ checklists: checklistsField, checklist: legacyField }),
+    [checklistsField, legacyField],
+  );
   const [serverChecked, setServerChecked] = useState<Record<string, boolean>>({});
   const [queued, setQueued] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -52,9 +67,9 @@ export function useWorkOrderChecklist(
   // Re-seed from the (re)loaded detail.
   useEffect(() => {
     const next: Record<string, boolean> = {};
-    for (const item of checklist?.items ?? []) next[item.id] = item.isChecked;
+    for (const checklist of checklists) for (const item of checklist.items) next[item.id] = item.isChecked;
     setServerChecked(next);
-  }, [checklist]);
+  }, [checklists]);
 
   const refreshQueued = useCallback(async () => {
     const rows = await getLocalChecklistToggles(workOrderId, currentUserId);
@@ -73,21 +88,27 @@ export function useWorkOrderChecklist(
     return () => window.removeEventListener("online", onOnline);
   }, [currentUserId, refreshQueued]);
 
-  const items = useMemo<EffectiveChecklistItem[]>(
+  const groups = useMemo<EffectiveChecklist[]>(
     () =>
-      (checklist?.items ?? []).map((item) => {
-        const isQueued = item.id in queued;
-        return {
-          id: item.id,
-          label: item.label,
-          isRequired: item.isRequired,
-          isChecked: isQueued ? Boolean(queued[item.id]) : (serverChecked[item.id] ?? item.isChecked),
-          pending: isQueued,
-          error: errors[item.id] ?? null,
-        };
-      }),
-    [checklist, queued, serverChecked, errors],
+      checklists.map((checklist) => ({
+        id: checklist.id,
+        name: checklist.name,
+        items: checklist.items.map((item) => {
+          const isQueued = item.id in queued;
+          return {
+            id: item.id,
+            label: item.label,
+            isRequired: item.isRequired,
+            isChecked: isQueued ? Boolean(queued[item.id]) : (serverChecked[item.id] ?? item.isChecked),
+            pending: isQueued,
+            error: errors[item.id] ?? null,
+          };
+        }),
+      })),
+    [checklists, queued, serverChecked, errors],
   );
+  // All items across all checklists (progress counts required items of every one).
+  const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
   const progress = useMemo<ChecklistProgress>(() => {
     const required = items.filter((item) => item.isRequired);
@@ -142,5 +163,5 @@ export function useWorkOrderChecklist(
     [workOrderId, currentUserId, refreshQueued],
   );
 
-  return { items, progress, toggle, refreshQueued };
+  return { groups, items, progress, toggle, refreshQueued };
 }
