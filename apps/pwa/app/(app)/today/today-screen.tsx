@@ -8,14 +8,12 @@ import {
   PwaBody,
   PwaDayNav,
   PwaFab,
-  PwaHeaderRow,
   PwaNote,
   PwaPageHeader,
   PwaScreen,
   PwaSection,
   PwaStack,
   PwaSyncLine,
-  WebBadge,
   WebStatusBadge,
   WebTypeBadge,
   type WebStatusTone,
@@ -247,14 +245,6 @@ function statusPresentation(item: TodayWorkItem): { label: string; tone: WebStat
   if (item.flowStatus === "in_progress") return { label: "In progress", tone: "info" };
   if (item.isUrgent) return { label: "Urgent", tone: "danger" };
   return { label: "Planned", tone: "neutral" };
-}
-
-/** A breakdown ("storing") work order — the red "N breakdown" badge in the
- * header. Matched on the activity type's label (the Today API carries the
- * type's label + colour, not its raw value), same two spellings the web
- * Planning backlog recognises. */
-function isBreakdown(item: Pick<CachedWorkItem, "type">): boolean {
-  return /^(breakdown|storing)$/i.test(item.type?.label?.trim() ?? "");
 }
 
 /**
@@ -555,22 +545,10 @@ export function TodayScreen({
     );
   }
 
-  const breakdownCount = todayItems.filter(isBreakdown).length;
-
   return (
     <PwaScreen>
       <PwaPageHeader overline={headerOverline} title={headerTitle}>
         {dayNav}
-        <PwaHeaderRow>
-          <WebBadge size="touch">
-            {todayItems.length} {todayItems.length === 1 ? "work order" : "work orders"}
-          </WebBadge>
-          {breakdownCount > 0 && (
-            <WebBadge size="touch" variant="danger">
-              {breakdownCount} {breakdownCount === 1 ? "breakdown" : "breakdowns"}
-            </WebBadge>
-          )}
-        </PwaHeaderRow>
       </PwaPageHeader>
 
       <PwaBody>
