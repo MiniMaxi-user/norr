@@ -376,9 +376,12 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
           ? {
               checklists: checklistResult?.data?.checklists ?? [],
               templates: checklistTemplatesResult?.data?.templates ?? [],
-              canAttach: canAttachChecklist,
-              canDetach: canDetachChecklist,
-              canUpdateAny: canUpdateChecklistAny,
+              // Checkout lock: while the engineer is out in the field the office
+              // can't add/remove checklists or items, nor tick on their behalf
+              // (the engineer's own update path stays open, like hours).
+              canAttach: canAttachChecklist && !isCheckedOutInField,
+              canDetach: canDetachChecklist && !isCheckedOutInField,
+              canUpdateAny: canUpdateChecklistAny && !isCheckedOutInField,
               canUpdateOwn: canUpdateChecklistOwn,
             }
           : null

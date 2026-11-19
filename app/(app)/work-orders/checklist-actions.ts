@@ -11,6 +11,7 @@ import {
   checklistItemNotesSchema,
   toggleChecklistItemSchema,
 } from "./checklist-schema";
+import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 
 /**
  * Server Actions for a Work Order's checklist INSTANCE (issue #14, second
@@ -69,6 +70,44 @@ export interface WorkOrderChecklistItemRecord {
 }
 
 const uuidSchema = z.string().uuid("Invalid id.");
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+const CHECKED_OUT_MESSAGE = "This work order is checked out to the engineer; its checklists can't be changed right now.";
+
+/**
+ * Checkout lock (issue #203, same bounded window as hours/material:
+ * checkout → in_progress). Resolves the parent work order's status from a
+ * work order, checklist or item id and reports whether it is out in the field.
+ * Unknown/hidden rows return false — RLS and the write itself still decide.
+ */
+async function isCheckedOutInFieldFor(
+  supabase: SupabaseServerClient,
+  ref: { workOrderId: string } | { checklistId: string } | { itemId: string },
+): Promise<boolean> {
+  let statusId: string | null = null;
+  if ("workOrderId" in ref) {
+    const { data } = await supabase.from("work_orders").select("status_id").eq("id", ref.workOrderId).maybeSingle();
+    statusId = (data as { status_id: string } | null)?.status_id ?? null;
+  } else if ("checklistId" in ref) {
+    const { data } = await supabase
+      .from("work_order_checklists")
+      .select("work_order:work_orders(status_id)")
+      .eq("id", ref.checklistId)
+      .maybeSingle();
+    statusId = (data as unknown as { work_order: { status_id: string } | null } | null)?.work_order?.status_id ?? null;
+  } else {
+    const { data } = await supabase
+      .from("work_order_checklist_items")
+      .select("checklist:work_order_checklists(work_order:work_orders(status_id))")
+      .eq("id", ref.itemId)
+      .maybeSingle();
+    statusId =
+      (data as unknown as { checklist: { work_order: { status_id: string } | null } | null } | null)?.checklist?.work_order
+        ?.status_id ?? null;
+  }
+  return isWorkOrderCheckedOutInField(statusId);
+}
 
 /** A checklist instance with its display name and items. */
 export interface WorkOrderChecklistGroup {
@@ -168,6 +207,7 @@ export async function attachChecklistTemplate(
   }
 
   const supabase = await createSupabaseServerClient();
+  if (await isCheckedOutInFieldFor(supabase, { workOrderId: idResult.data })) return fail(CHECKED_OUT_MESSAGE);
 
   if (templateIdResult.data) {
     const { data: existing, error: existingError } = await supabase
@@ -233,6 +273,14 @@ export async function toggleChecklistItem(
   }
 
   const supabase = await createSupabaseServerClient();
+  // Office (full `update`) is locked out while the engineer is in the field;
+  // the engineer's own `update_own` path is exempt (they tick it off there).
+  if (
+    can(ctx.context.actor, "checklists", "update") &&
+    (await isCheckedOutInFieldFor(supabase, { itemId: idResult.data }))
+  ) {
+    return fail(CHECKED_OUT_MESSAGE);
+  }
   const { data, error } = await supabase
     .from("work_order_checklist_items")
     .update({ is_checked: checkedResult.data })
@@ -267,6 +315,12 @@ export async function updateChecklistItemNotes(
   }
 
   const supabase = await createSupabaseServerClient();
+  if (
+    can(ctx.context.actor, "checklists", "update") &&
+    (await isCheckedOutInFieldFor(supabase, { itemId: idResult.data }))
+  ) {
+    return fail(CHECKED_OUT_MESSAGE);
+  }
   const { data, error } = await supabase
     .from("work_order_checklist_items")
     .update({ notes: notesResult.data })
@@ -309,6 +363,7 @@ export async function addAdhocChecklistItem(
   }
 
   const supabase = await createSupabaseServerClient();
+  if (await isCheckedOutInFieldFor(supabase, { checklistId: idResult.data })) return fail(CHECKED_OUT_MESSAGE);
 
   // Issue #106 — an ad-hoc item with no explicit `sortOrder` used to fall
   // back to the `sort_order` column's own DB default (0), tying it with (or
@@ -361,6 +416,7 @@ export async function deleteChecklistItem(id: string): Promise<ActionResult<{ de
   }
 
   const supabase = await createSupabaseServerClient();
+  if (await isCheckedOutInFieldFor(supabase, { itemId: idResult.data })) return fail(CHECKED_OUT_MESSAGE);
   const { data, error } = await supabase
     .from("work_order_checklist_items")
     .delete()
@@ -393,6 +449,7 @@ export async function detachChecklist(workOrderChecklistId: string): Promise<Act
   }
 
   const supabase = await createSupabaseServerClient();
+  if (await isCheckedOutInFieldFor(supabase, { checklistId: idResult.data })) return fail(CHECKED_OUT_MESSAGE);
   const { data, error } = await supabase
     .from("work_order_checklists")
     .delete()
