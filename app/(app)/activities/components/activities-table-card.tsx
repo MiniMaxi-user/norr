@@ -28,7 +28,7 @@ function descriptionSnippet(value: string): string {
  * `WebDataTableCard` in server mode. `listActivities` (driven by the `q`,
  * `typeId`, `statusId`, `clientId`, `actionHolderId`, `seg`, `sort`, `dir` and
  * `page` URL params) returns the filtered page; this component only renders
- * it. The description opens the real `/activities/[id]` page (which also
+ * it. The number opens the real `/activities/[id]` page (which also
  * owns editing); Delete asks for confirmation.
  */
 export function ActivitiesTableCard({
@@ -58,10 +58,10 @@ export function ActivitiesTableCard({
 
   const columns = useMemo<WebColumn<ActivityRecord>[]>(
     () => [
+      { id: "number", header: "Number", primary: true, mono: true, sortable: true, render: (a) => a.activity_number },
       {
         id: "description",
         header: "Description",
-        primary: true,
         sortable: true,
         render: (a) => descriptionSnippet(a.description),
       },
@@ -103,7 +103,7 @@ export function ActivitiesTableCard({
         server={{ total, unfilteredTotal, page, pageSize: ACTIVITIES_PAGE_SIZE }}
         defaultSort={{ columnId: "reported", direction: "desc" }}
         rowHref={(a) => `/activities/${a.id}`}
-        rowLabel={(a) => descriptionSnippet(a.description)}
+        rowLabel={(a) => a.activity_number}
         rowActions={(a) => [
           { key: "open", label: "Open", href: `/activities/${a.id}` },
           ...(canDelete

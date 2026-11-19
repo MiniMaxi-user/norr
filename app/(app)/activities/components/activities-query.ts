@@ -20,6 +20,7 @@ export interface ActivitiesSearchParams {
 
 /** Column id (URL `?sort=`) -> `listActivities` sort column. */
 const SORT_BY_COLUMN: Record<string, NonNullable<ListActivitiesOptions["sort"]>> = {
+  number: "activity_number",
   description: "description",
   reported: "reported_at",
 };

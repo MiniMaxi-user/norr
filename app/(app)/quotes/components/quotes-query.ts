@@ -45,6 +45,7 @@ export const QUOTE_TYPE_OPTIONS = [
 
 /** Column id (URL `?sort=`) -> `listQuotes` sort column. */
 const SORT_BY_COLUMN: Record<string, NonNullable<ListQuotesOptions["sort"]>> = {
+  number: "quote_number",
   name: "name",
   valid: "valid_until",
   created: "created_at",

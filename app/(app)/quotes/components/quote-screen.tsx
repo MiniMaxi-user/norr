@@ -80,7 +80,7 @@ export interface QuoteScreenProps {
  * `/quotes/[id]` (`mode: "edit"`) on the web design system (issue #222),
  * built exactly like the Contract page:
  *
- *  - `PageHeader`: breadcrumb (`Quotes / name`), title (the quote's name),
+ *  - `PageHeader`: breadcrumb (`Quotes / number`, mono), title (the quote's name),
  *    badges (status → expired → contract → auto-draft), ONE Edit button
  *    (Overview only, omitted without update permission), the ··· menu (invoice
  *    PDF, resend, Delete) and tabs with counts. No navy primary: the one
@@ -269,7 +269,7 @@ export function QuoteScreen({
     ? lockedClientId && client
       ? [{ label: "Clients", href: "/clients" }, { label: client.name, href: `/clients/${client.id}` }, { label: "New quote" }]
       : [{ label: "Quotes", href: "/quotes" }, { label: "New quote" }]
-    : [{ label: "Quotes", href: "/quotes" }, { label: title }];
+    : [{ label: "Quotes", href: "/quotes" }, { label: quote?.quote_number ?? title, mono: true }];
 
   const header = (
     <PageHeader

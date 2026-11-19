@@ -109,7 +109,7 @@ function activityTitle(description: string, typeLabel: string | undefined, isCre
  * `/activities/[id]` (`mode: "edit"`) on the web design system (issue #222),
  * built like the Work order and Article pages:
  *
- *  - `PageHeader`: short id (mono) in the breadcrumb, the first line of the
+ *  - `PageHeader`: activity number (mono) in the breadcrumb, the first line of the
  *    description as title, badges (status → type → activity subtype), ONE Edit
  *    button (Overview only, omitted without update permission), the ··· menu
  *    (Delete), the navy primary "Create work order" (with planning create

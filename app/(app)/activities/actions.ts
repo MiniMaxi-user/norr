@@ -85,6 +85,8 @@ export interface ShallowUserRecord {
 export interface ActivityRecord {
   id: string;
   organization_id: string;
+  /** System-assigned, read-only number (e.g. ACT100, issue #228). */
+  activity_number: string;
   client_id: string;
   asset_id: string | null;
   type_id: string;
@@ -265,7 +267,7 @@ export interface ListActivitiesOptions {
    * `completed`. Omit for all. */
   completion?: "open" | "completed";
   /** Sort column (default `reported_at`, newest first). */
-  sort?: "reported_at" | "description";
+  sort?: "reported_at" | "description" | "activity_number";
   direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
@@ -328,6 +330,7 @@ export async function listActivities(
     const clientIds = (clientMatches ?? []).map((row) => row.id as string);
     query = query.or(
       [
+        `activity_number.ilike.%${term}%`,
         `description.ilike.%${term}%`,
         `contact_name.ilike.%${term}%`,
         ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
@@ -355,10 +358,18 @@ export async function listActivities(
     }
   }
 
-  const sortColumn = options.sort === "description" ? "description" : "reported_at";
-  const ascending = options.direction ? options.direction === "asc" : sortColumn !== "reported_at";
-  query = query.order(sortColumn, { ascending });
-  if (sortColumn !== "reported_at") query = query.order("reported_at", { ascending: false });
+  if (options.sort === "activity_number") {
+    // Numbers are text (ACT99 > ACT100 as text) but minted strictly in
+    // creation order per org (next_number can only be raised), so creation
+    // order is numeric number order (issue #228).
+    const ascending = options.direction ? options.direction === "asc" : true;
+    query = query.order("created_at", { ascending }).order("id", { ascending });
+  } else {
+    const sortColumn = options.sort === "description" ? options.sort : "reported_at";
+    const ascending = options.direction ? options.direction === "asc" : sortColumn !== "reported_at";
+    query = query.order(sortColumn, { ascending });
+    if (sortColumn !== "reported_at") query = query.order("reported_at", { ascending: false });
+  }
 
   const filtered = Boolean(
     term ||

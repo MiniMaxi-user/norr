@@ -133,7 +133,7 @@ export default async function ActivityDetailPage({ params, searchParams }: Activ
         { label: "Activities", href: "/activities" },
         // Activities have no number: a short id fragment stands in (same
         // placeholder the linked work-order rows used before).
-        { label: `ACT-${activity.id.slice(0, 8).toUpperCase()}`, mono: true },
+        { label: activity.activity_number, mono: true },
       ]}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
       activity={activity}

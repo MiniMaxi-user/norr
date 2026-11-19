@@ -33,7 +33,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const params = await searchParams;
 
   return (
-    <Suspense fallback={<WebListSkeleton module="Activities" title="Activities" columns={6} />}>
+    <Suspense fallback={<WebListSkeleton module="Activities" title="Activities" columns={7} />}>
       <ActivitiesList
         params={params}
         canCreate={canAny(actor, "activities", ["create", "create_own"])}

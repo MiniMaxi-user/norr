@@ -54,10 +54,10 @@ export function QuotesTable({
 
   const columns = useMemo<WebColumn<QuoteRecord>[]>(
     () => [
+      { id: "number", header: "Number", primary: true, mono: true, sortable: true, render: (quote) => quote.quote_number },
       {
         id: "name",
         header: "Name",
-        primary: true,
         sortable: true,
         render: (quote) => (
           <>
@@ -114,7 +114,7 @@ export function QuotesTable({
         server={{ total, unfilteredTotal, page, pageSize: QUOTES_PAGE_SIZE }}
         defaultSort={{ columnId: "created", direction: "desc" }}
         rowHref={(quote) => `/quotes/${quote.id}`}
-        rowLabel={(quote) => quote.name}
+        rowLabel={(quote) => quote.quote_number}
         rowActions={(quote) => [
           { key: "open", label: "Open", href: `/quotes/${quote.id}` },
           ...(canDelete

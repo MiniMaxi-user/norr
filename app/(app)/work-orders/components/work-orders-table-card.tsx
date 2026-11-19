@@ -123,7 +123,7 @@ export function WorkOrdersTableCard({
         dropdowns={dropdowns}
         segment={WORK_ORDERS_STAGE_SEGMENT}
         server={{ total, unfilteredTotal, page, pageSize: WORK_ORDERS_PAGE_SIZE }}
-        defaultSort={{ columnId: "scheduled", direction: "asc" }}
+        defaultSort={{ columnId: "number", direction: "desc" }}
         rowHref={(wo) => `/work-orders/${wo.id}`}
         rowLabel={(wo) => wo.work_order_number}
         rowActions={(wo) => [

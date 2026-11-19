@@ -90,6 +90,8 @@ export type QuoteType = "default" | "contract";
 export interface QuoteRecord {
   id: string;
   organization_id: string;
+  /** System-assigned, read-only number (e.g. Q100, issue #228). */
+  quote_number: string;
   client_id: string;
   site_id: string | null;
   name: string;
@@ -373,14 +375,14 @@ export interface ListQuotesOptions {
    * "everything but draft/sent"). Combinable with `status`. */
   excludeStatus?: string[];
   /** Sort column; unknown values fall back to newest-created first. */
-  sort?: "name" | "valid_until" | "created_at";
+  sort?: "quote_number" | "name" | "valid_until" | "created_at";
   direction?: "asc" | "desc";
   /** Also return `unfilteredCount` (every quote in the `isAutoDraft` scope,
    * ignoring all other filters) for the "3 of 12" count. */
   includeUnfilteredCount?: boolean;
 }
 
-const QUOTE_SORT_COLUMNS = new Set(["name", "valid_until", "created_at"]);
+const QUOTE_SORT_COLUMNS = new Set(["quote_number", "name", "valid_until", "created_at"]);
 
 /** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
 function sanitizeSearchTerm(raw: string): string {
@@ -473,6 +475,7 @@ export async function listQuotes(
     const itemIds = ids(itemMatches.data);
     query = query.or(
       [
+        `quote_number.ilike.%${term}%`,
         `name.ilike.%${term}%`,
         ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
         ...(itemIds.length > 0 ? [`status_id.in.(${itemIds.join(",")})`] : []),
@@ -480,7 +483,12 @@ export async function listQuotes(
     );
   }
 
-  if (options.sort && QUOTE_SORT_COLUMNS.has(options.sort)) {
+  if (options.sort === "quote_number") {
+    // Numbers are text (Q99 > Q100 as text) but minted strictly in creation
+    // order per org, so creation order is numeric number order (issue #228).
+    const ascending = options.direction !== "desc";
+    query = query.order("created_at", { ascending }).order("id", { ascending });
+  } else if (options.sort && QUOTE_SORT_COLUMNS.has(options.sort)) {
     query = query.order(options.sort, { ascending: options.direction !== "desc", nullsFirst: false });
     if (options.sort !== "created_at") query = query.order("created_at", { ascending: false });
   } else {

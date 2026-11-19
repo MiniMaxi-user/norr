@@ -43,7 +43,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
     canAccessModule(actor, "contracts");
 
   return (
-    <Suspense fallback={<WebListSkeleton module="Quotes" title="Quotes" columns={7} />}>
+    <Suspense fallback={<WebListSkeleton module="Quotes" title="Quotes" columns={8} />}>
       <QuotesScreen
         params={params}
         canGenerateContractQuotes={canGenerateContractQuotes}

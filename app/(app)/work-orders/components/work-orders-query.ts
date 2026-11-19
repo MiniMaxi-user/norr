@@ -78,8 +78,9 @@ export function parseWorkOrdersQuery(
       assignedTo: params.assignee || undefined,
       statusIds: stage === "done" ? completedStatusIds : undefined,
       excludeStatusIds: stage === "open" ? completedStatusIds : undefined,
-      sort: params.sort ? SORT_BY_COLUMN[params.sort] : undefined,
-      direction: params.dir === "desc" ? "desc" : "asc",
+      // Default (issue #228): work order number, descending (newest first).
+      sort: params.sort ? SORT_BY_COLUMN[params.sort] : "work_order_number",
+      direction: params.sort ? (params.dir === "desc" ? "desc" : "asc") : "desc",
     },
   };
 }

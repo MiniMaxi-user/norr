@@ -24,7 +24,8 @@ const isOpen = (quote: QuoteRecord) => OPEN_QUOTE_STATUS_VALUES.includes(quote.q
 export function QuotesPanel({ quotes }: QuotesPanelProps) {
   const columns = useMemo<WebColumn<QuoteRecord>[]>(
     () => [
-      { id: "name", header: "Name", primary: true, sortValue: (quote) => quote.name, render: (quote) => quote.name },
+      { id: "number", header: "Number", primary: true, mono: true, sortValue: (quote) => quote.quote_number, render: (quote) => quote.quote_number },
+      { id: "name", header: "Name", sortValue: (quote) => quote.name, render: (quote) => quote.name },
       {
         id: "status",
         header: "Status",
@@ -85,7 +86,7 @@ export function QuotesPanel({ quotes }: QuotesPanelProps) {
       rows={quotes}
       getRowKey={(quote) => quote.id}
       columns={columns}
-      searchText={(quote) => `${quote.name} ${quote.quote_status?.label ?? ""}`}
+      searchText={(quote) => `${quote.quote_number} ${quote.name} ${quote.quote_status?.label ?? ""}`}
       noun="quotes"
       dropdowns={dropdowns}
       segment={segment}

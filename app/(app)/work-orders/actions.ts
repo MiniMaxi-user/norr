@@ -402,10 +402,12 @@ export async function listWorkOrders(
     );
   }
 
+  // Work order numbers are text ("WO99" < "WO100" fails as text), but they
+  // are minted strictly in creation order per org (next_number can only be
+  // raised), so creation order IS numeric number order (issue #228).
   if (options.sort === "work_order_number") {
-    query = query
-      .order("work_order_number", { ascending: options.direction !== "desc" })
-      .order("created_at", { ascending: false });
+    const ascending = options.direction !== "desc";
+    query = query.order("created_at", { ascending }).order("id", { ascending });
   } else if (options.sort === "scheduled_at") {
     query = query
       .order("scheduled_at", { ascending: options.direction !== "desc", nullsFirst: false })

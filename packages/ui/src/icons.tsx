@@ -424,3 +424,13 @@ export const Info = createIcon("Info", (
     <line x1={12} y1={7.5} x2={12} y2={7.5} />
   </>
 ));
+
+// Used for the Settings "Numbering" group (issue #228): number prefix/sequence settings.
+export const Hash = createIcon("Hash", (
+  <>
+    <line x1={4.5} y1={9} x2={19.5} y2={9} />
+    <line x1={4.5} y1={15} x2={19.5} y2={15} />
+    <line x1={10} y1={3.5} x2={8} y2={20.5} />
+    <line x1={16} y1={3.5} x2={14} y2={20.5} />
+  </>
+));

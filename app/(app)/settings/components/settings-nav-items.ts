@@ -1,4 +1,4 @@
-import { Bell, Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
+import { Bell, Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Hash, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
 import { REFERENCE_LIST_SECTIONS } from "../reference-lists/sections";
 
 /**
@@ -67,8 +67,6 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         label: findTitle("work_order_priority"),
         href: "/settings/reference-lists/work_order_priority",
       },
-      // Issue #218 - per-tenant work order number prefix + next number.
-      { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering", ownHeader: true },
       // Issue #226 - per-tenant work receipt (werkbon) email: sender, CC, subject, body.
       { key: "work_receipt_email", label: "Work receipt e-mail", href: "/settings/work-receipt-email", ownHeader: true },
     ],
@@ -99,8 +97,6 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // under Contracts (its actual usage domain) rather than Articles, even
       // though it's a *dependent* list on article_unit under the hood.
       { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume" },
-      // Issue #216 - per-tenant contract number prefix + next number.
-      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering", ownHeader: true },
     ],
   },
   {
@@ -125,6 +121,17 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       },
       { key: "vat_rate", label: findTitle("vat_rate"), href: "/settings/reference-lists/vat_rate" },
       { key: "article_groups", label: "Article Groups", href: "/settings/article-groups" },
+    ],
+  },
+  {
+    // Issues #216/#218/#228 - per-tenant number prefix + next number for each numbered record type, kept together.
+    label: "Numbering",
+    icon: Hash,
+    items: [
+      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering", ownHeader: true },
+      { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering", ownHeader: true },
+      { key: "activity_numbering", label: "Activity numbering", href: "/settings/activity-numbering", ownHeader: true },
+      { key: "quote_numbering", label: "Quote numbering", href: "/settings/quote-numbering", ownHeader: true },
     ],
   },
   {
