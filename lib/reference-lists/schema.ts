@@ -133,6 +133,7 @@ export const referenceItemCreateSchema = z.object({
   isActive: z.boolean().optional(),
   defaultDurationMinutes: referenceItemDefaultDurationMinutesSchema,
   intervalMonths: referenceItemIntervalMonthsSchema,
+  planningDefault: z.boolean().optional(),
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;

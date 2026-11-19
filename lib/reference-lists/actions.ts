@@ -96,6 +96,9 @@ export interface ReferenceListItemRecord {
    * `billing_terms`: monthly=1, quarterly=3, annually=12). `null` means
    * non-recurring. */
   interval_months: number | null;
+  /** Generic per-item flag (issue #222): checked by default in the Planning
+   * filter for its list. Only surfaced in the UI for `activity_type`. */
+  planning_default: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -322,7 +325,7 @@ export async function listReferenceItems(
         const { data, error } = await supabase
           .from("reference_list_items")
           .select(
-            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes, interval_months",
+            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes, interval_months, planning_default",
           )
           .eq("reference_list_id", listResult.id)
           .order("sort_order", { ascending: true });
@@ -438,6 +441,7 @@ export async function createReferenceItem(
     default_duration_minutes: parsed.data.defaultDurationMinutes ?? null,
     interval_months: parsed.data.intervalMonths ?? null,
   };
+  if (parsed.data.planningDefault !== undefined) row.planning_default = parsed.data.planningDefault;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
 
@@ -485,6 +489,7 @@ export async function updateReferenceItem(
   if (parsed.data.defaultDurationMinutes !== undefined) {
     row.default_duration_minutes = parsed.data.defaultDurationMinutes ?? null;
   }
+  if (parsed.data.planningDefault !== undefined) row.planning_default = parsed.data.planningDefault;
   if (parsed.data.intervalMonths !== undefined) {
     row.interval_months = parsed.data.intervalMonths ?? null;
   }

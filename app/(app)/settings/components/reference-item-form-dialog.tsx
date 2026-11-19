@@ -44,6 +44,8 @@ export interface ReferenceItemFormDialogProps {
   showDefaultDuration?: boolean;
   /** Shows the "Invoice interval (months)" field (issue #209) — `billing_terms` only. */
   showInvoiceInterval?: boolean;
+  /** Shows the "Default in planning" checkbox (issue #222) — `activity_type` only. */
+  showPlanningDefault?: boolean;
 }
 
 /**
@@ -98,6 +100,7 @@ export function ReferenceItemFormDialog({
   parentItems,
   showDefaultDuration = false,
   showInvoiceInterval = false,
+  showPlanningDefault = false,
 }: ReferenceItemFormDialogProps) {
   const isEdit = Boolean(item);
   const isDependent = Boolean(parentListKey);
@@ -111,6 +114,7 @@ export function ReferenceItemFormDialog({
   const [defaultDurationMinutes, setDefaultDurationMinutes] = useState(
     item?.default_duration_minutes != null ? String(item.default_duration_minutes) : "",
   );
+  const [planningDefault, setPlanningDefault] = useState(item?.planning_default ?? false);
   const [intervalMonths, setIntervalMonths] = useState(
     item?.interval_months != null ? String(item.interval_months) : "",
   );
@@ -126,6 +130,7 @@ export function ReferenceItemFormDialog({
       defaultDurationMinutes: showDefaultDuration ? defaultDurationMinutes || undefined : undefined,
       // "" (not undefined) so an edit clears a previously-set interval.
       intervalMonths: showInvoiceInterval ? intervalMonths : undefined,
+      planningDefault: showPlanningDefault ? planningDefault : undefined,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -284,6 +289,18 @@ export function ReferenceItemFormDialog({
             placeholder="e.g. 3"
           />
         </DialogField>
+      )}
+
+      {showPlanningDefault && (
+        <label className="web-field-checkbox" htmlFor="ref-item-planning-default">
+          <input
+            id="ref-item-planning-default"
+            type="checkbox"
+            checked={planningDefault}
+            onChange={(event) => setPlanningDefault(event.target.checked)}
+          />
+          Default in planning
+        </label>
       )}
 
       <label className="web-field-checkbox" htmlFor="ref-item-is-active">

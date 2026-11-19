@@ -1,96 +1,99 @@
 "use client";
 
-import type { DragEvent } from "react";
-import { Badge, Button, Card, IconButton, Inline, Stack, Text, resolveColor } from "@yourorg/ui";
-import { ClipboardList, Info, type Icon } from "@yourorg/ui/icons";
+import { useState, type DragEvent, type KeyboardEvent } from "react";
+import Link from "next/link";
+import { WebStatusBadge } from "@yourorg/ui/web";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
-import { resolveActivityTypeIcon } from "@/app/(app)/activities/icon-map";
 import { groupBacklogByRegion } from "../grouping";
 import { formatDurationHours } from "../date-utils";
-import { workOrderLabel } from "@/lib/format/work-order-label";
+import { typeColorStyle } from "../type-colors";
+import { highlight } from "./highlight";
+import { workOrderTitle } from "../work-order-title";
 
 export interface PlanningBacklogProps {
   workOrders: WorkOrderRecord[];
   regions: ReferenceListItemRecord[];
-  activityTypes: ReferenceListItemRecord[];
   siteRegionById: Record<string, string | null>;
   clientNameById: Record<string, string>;
+  /** The header search — hits are highlighted, nothing is filtered by it. */
+  query: string;
   selectedId: string | null;
+  /** The work order whose floating detail card is open. */
+  openId: string | null;
   onSelect: (workOrder: WorkOrderRecord) => void;
-  /** Opens the read-only `WorkOrderQuickView` popup — wired to each card's
-   * own info button (not the card's main click target, which stays the
-   * click-to-select scheduling fallback described above). */
-  onQuickView: (workOrder: WorkOrderRecord) => void;
+  /** Opens the floating detail card for a backlog item (its "Details" action). */
+  onOpen: (workOrder: WorkOrderRecord, anchor: HTMLElement, viaKeyboard: boolean) => void;
   onDragStart: (workOrder: WorkOrderRecord) => void;
   onDragEnd: () => void;
-  /** Multi-select: which `activity_type` `value`s are currently checked. An
-   * EMPTY set means "Alle" (no filter) — see `planning-screen.tsx`'s own
-   * comment on `typeFilter`'s state shape for why there's no separate "all"
-   * sentinel. */
-  typeFilter: Set<string>;
-  onToggleType: (value: string) => void;
-  onClearTypeFilter: () => void;
-  /** Whether a currently-scheduled block (dragged from the grid) is being
-   * dragged right now — enables this panel as a drop target and drives its
-   * `onDropToBacklog` accent. `null` while nothing/a backlog card itself is
-   * being dragged (dropping an already-unscheduled card back onto its own
-   * panel is a no-op, so the panel isn't a live drop target then). */
+  /** A currently-scheduled block (dragged from the grid) is being dragged
+   * right now — enables this card as a drop target (unschedule). */
   draggingScheduledWorkOrder: WorkOrderRecord | null;
   onDropToBacklog: () => void;
 }
 
+/** A breakdown-type backlog item gets the red "n breakdown" badge in the
+ * card head (DS 07 section 2). */
+function isBreakdown(workOrder: WorkOrderRecord): boolean {
+  const value = workOrder.work_order_type?.value;
+  return value === "storing" || value === "breakdown";
+}
+
 /**
- * "Backlog" panel (issue #164) — count badge, a MULTI-SELECT
- * type filter (`FilterPill` below) sourced from the org's own `activity_type`
- * reference items (not hardcoded to Breakdown/Maintenance/Inspection — a tenant
- * can configure more; those three are just the default-checked selection,
- * see `planning-screen.tsx`'s `DEFAULT_TYPE_FILTER`), grouped by region with
- * an hour total per group, draggable cards with a
- * colored left border matching the item's type color, and (if the linked
- * asset has a catalog model set) its model name — see `WorkOrderRecord.asset`'s
- * own comment. A card is also click-to-select
- * (visible `aria-pressed` state) — the non-drag accessible fallback
- * described in the module's build plan: select a card here, then click a
- * valid grid cell in `planning-grid.tsx` to schedule it via the same
- * `scheduleWorkOrder` action a drop would call.
- *
- * Header (title/count), the type filter, and the footer hint stay fixed;
- * only the grouped card list (`.ui-planning-backlog-scroll`) scrolls, and
- * independently of `PlanningGrid`'s own scroll — both panels are given a
- * fixed height by `.ui-planning-layout` (itself filling the remaining space
- * below the full-bleed topbar, see `.ui-planning-page`/`.ui-planning-topbar`
- * in `packages/ui/src/styles.css`), same "pinned header/footer, `flex: 1` +
- * `min-height: 0` + `overflow-y: auto` body" technique `.ui-dialog-body`
- * already establishes (see that rule's own doc comment for why the
- * `min-height: 0` is the actual fix).
+ * "Backlog" card (DS 07 section 2) — head with count/total hours and a red
+ * breakdown badge, its own search field, items grouped by region (overline +
+ * total duration), draggable. The list scrolls on its own
+ * (`.web-plan-backlog-scroll`); the head, search and the one-line hint stay
+ * put. An item is also click-to-select (visible `aria-pressed` state) — the
+ * non-drag accessible fallback: select it here, then click a valid grid cell
+ * to schedule it via the same `scheduleWorkOrder` action a drop would call.
+ * Dropping a scheduled block here unschedules it.
  */
 export function PlanningBacklog({
   workOrders,
   regions,
-  activityTypes,
   siteRegionById,
   clientNameById,
+  query,
   selectedId,
+  openId,
   onSelect,
-  onQuickView,
+  onOpen,
   onDragStart,
   onDragEnd,
-  typeFilter,
-  onToggleType,
-  onClearTypeFilter,
   draggingScheduledWorkOrder,
   onDropToBacklog,
 }: PlanningBacklogProps) {
-  const filtered =
-    typeFilter.size === 0 ? workOrders : workOrders.filter((wo) => wo.work_order_type && typeFilter.has(wo.work_order_type.value));
-  const groups = groupBacklogByRegion(filtered, regions, siteRegionById);
+  const [localQuery, setLocalQuery] = useState("");
+  const needle = localQuery.trim().toLowerCase();
+  const visible = needle
+    ? workOrders.filter((wo) => {
+        const haystack = [
+          wo.work_order_number,
+          wo.external_reference,
+          wo.description,
+          clientNameById[wo.client_id],
+          wo.asset?.name,
+          wo.asset?.asset_model?.name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(needle);
+      })
+    : workOrders;
+  const groups = groupBacklogByRegion(visible, regions, siteRegionById);
+  const highlightQuery = localQuery || query;
 
+  const totalMinutes = visible.reduce((sum, wo) => sum + (wo.duration_minutes ?? 0), 0);
+  const breakdownCount = visible.filter(isBreakdown).length;
   const acceptingDrop = draggingScheduledWorkOrder != null;
 
   return (
-    <Card
-      className={acceptingDrop ? "ui-planning-backlog ui-planning-backlog-drop-target" : "ui-planning-backlog"}
+    <section
+      className="web-card web-plan-backlog"
+      aria-label="Backlog"
+      data-drop={acceptingDrop ? "true" : undefined}
       onDragOver={(event) => {
         if (acceptingDrop) event.preventDefault();
       }}
@@ -100,116 +103,92 @@ export function PlanningBacklog({
         onDropToBacklog();
       }}
     >
-      <Stack gap="md" className="ui-planning-backlog-stack">
-        <Inline justify="between" align="center">
-          <Text className="ui-planning-backlog-title">Backlog</Text>
-          <Badge variant="muted">{workOrders.length}</Badge>
-        </Inline>
+      <header className="web-card-head">
+        <h2 className="web-card-title">Backlog</h2>
+        <span className="web-card-meta">
+          {visible.length} · {formatDurationHours(totalMinutes)}
+        </span>
+        {breakdownCount > 0 ? (
+          <span className="web-card-action">
+            <WebStatusBadge tone="danger">{breakdownCount} breakdown</WebStatusBadge>
+          </span>
+        ) : null}
+      </header>
 
-        <Inline gap="xs" wrap role="group" aria-label="Filter by type">
-          <FilterPill active={typeFilter.size === 0} title="All" icon={ClipboardList} onClick={onClearTypeFilter} />
-          {activityTypes.map((type) => (
-            <FilterPill
-              key={type.value}
-              active={typeFilter.has(type.value)}
-              title={type.label}
-              icon={resolveActivityTypeIcon(type.icon)}
-              onClick={() => onToggleType(type.value)}
-            />
-          ))}
-        </Inline>
+      <div className="web-plan-backlog-search">
+        <input
+          type="search"
+          value={localQuery}
+          onChange={(event) => setLocalQuery(event.target.value)}
+          placeholder={"Search backlog…"}
+          aria-label="Search backlog"
+        />
+      </div>
 
-        <div className="ui-planning-backlog-scroll">
-          {groups.length === 0 ? (
-            <Text tone="muted">No outstanding items.</Text>
-          ) : (
-            <Stack gap="md">
-              {groups.map((group) => (
-                <Stack gap="sm" key={group.key}>
-                  <Inline justify="between" align="center">
-                    <Text className="ui-planning-backlog-group-label">{group.label.toUpperCase()}</Text>
-                    <Text tone="muted" className="ui-planning-backlog-group-total">
-                      {formatDurationHours(group.totalMinutes)}
-                    </Text>
-                  </Inline>
-                  <Stack gap="sm">
-                    {group.workOrders.map((workOrder) => (
-                      <BacklogCard
-                        key={workOrder.id}
-                        workOrder={workOrder}
-                        clientName={clientNameById[workOrder.client_id] ?? "Unknown client"}
-                        selected={selectedId === workOrder.id}
-                        onSelect={() => onSelect(workOrder)}
-                        onQuickView={() => onQuickView(workOrder)}
-                        onDragStart={() => onDragStart(workOrder)}
-                        onDragEnd={onDragEnd}
-                      />
-                    ))}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-          )}
-        </div>
+      <div className="web-plan-backlog-scroll">
+        {groups.length === 0 ? (
+          <p className="web-plan-empty">No outstanding items.</p>
+        ) : (
+          groups.map((group) => (
+            <div className="web-plan-group" key={group.key}>
+              <div className="web-plan-group-head">
+                <h3 className="web-overline">{group.label}</h3>
+                <span className="web-plan-group-total">{formatDurationHours(group.totalMinutes)}</span>
+              </div>
+              <div className="web-plan-group-items">
+                {group.workOrders.map((workOrder) => (
+                  <BacklogItem
+                    key={workOrder.id}
+                    workOrder={workOrder}
+                    clientName={clientNameById[workOrder.client_id] ?? "Unknown client"}
+                    query={highlightQuery}
+                    selected={selectedId === workOrder.id}
+                    open={openId === workOrder.id}
+                    onSelect={() => onSelect(workOrder)}
+                    onOpen={(anchor, viaKeyboard) => onOpen(workOrder, anchor, viaKeyboard)}
+                    onDragStart={() => onDragStart(workOrder)}
+                    onDragEnd={onDragEnd}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
-        <Text tone="muted" className="ui-planning-backlog-hint">
-          Drag an item onto an engineer, or select it and click a slot. Drag a scheduled block back here to
-          unschedule it.
-        </Text>
-      </Stack>
-    </Card>
+      <p className="web-plan-backlog-hint">
+        Drag an item onto an engineer, or select it and click a slot. Drag a block back here to unschedule it.
+      </p>
+    </section>
   );
 }
 
-/** One multi-select type-filter toggle — icon-only (the icon is
- * `aria-hidden`, purely decorative once the button's accessible name comes
- * from the `.ui-visually-hidden` copy of `title` below) with a native
- * `title` tooltip for sighted mouse users; the icon itself plus the
- * pressed/unpressed `Button` variant is enough to read each pill, so no
- * extra color accent. Not `ViewSwitcher`: this is a multi-select toggle
- * group (any number of pills can be active at once, including "Alle" as
- * its own independent "clear filter" action), not ViewSwitcher's
- * single-selection model — see `planning-screen.tsx`'s
- * `typeFilter`/`toggleTypeFilter`/`clearTypeFilter` for the state shape. */
-function FilterPill({
-  active,
-  title,
-  icon: IconComponent,
-  onClick,
-}: {
-  active: boolean;
-  title: string;
-  icon: Icon;
-  onClick: () => void;
-}) {
-  return (
-    <Button type="button" variant={active ? "primary" : "outline"} size="sm" aria-pressed={active} title={title} onClick={onClick}>
-      <IconComponent aria-hidden width={16} height={16} />
-      <span className="ui-visually-hidden">{title}</span>
-    </Button>
-  );
-}
-
-function BacklogCard({
+function BacklogItem({
   workOrder,
   clientName,
+  query,
   selected,
+  open,
   onSelect,
-  onQuickView,
+  onOpen,
   onDragStart,
   onDragEnd,
 }: {
   workOrder: WorkOrderRecord;
   clientName: string;
+  query: string;
   selected: boolean;
+  open: boolean;
   onSelect: () => void;
-  onQuickView: () => void;
+  onOpen: (anchor: HTMLElement, viaKeyboard: boolean) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const schedulable = workOrder.duration_minutes != null;
-  const hex = resolveColor(workOrder.work_order_type?.color);
-  const assetModel = workOrder.asset?.asset_model?.name ?? null;
+  const assetLabel = workOrder.asset
+    ? workOrder.asset.name + (workOrder.asset.asset_model?.name ? ` · ${workOrder.asset.asset_model.name}` : "")
+    : null;
+  const title = workOrderTitle(workOrder);
 
   function handleDragStart(event: DragEvent<HTMLElement>) {
     if (!schedulable) {
@@ -221,58 +200,74 @@ function BacklogCard({
     onDragStart();
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
+    if (schedulable && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      onSelect();
+    }
+  }
+
   return (
     <article
-      className="ui-planning-backlog-card"
-      style={{ borderLeftColor: hex ?? "var(--ui-border-strong)" }}
+      className="web-plan-item"
+      style={typeColorStyle(workOrder.work_order_type?.color)}
+      data-plan-anchor={workOrder.id}
+      data-selected={selected ? "true" : undefined}
+      data-open={open ? "true" : undefined}
       draggable={schedulable}
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
       onClick={schedulable ? onSelect : undefined}
+      onKeyDown={handleKeyDown}
       role="button"
       tabIndex={schedulable ? 0 : -1}
       aria-pressed={selected}
       aria-disabled={!schedulable || undefined}
-      onKeyDown={(event) => {
-        if (schedulable && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-      data-selected={selected || undefined}
     >
-      <Inline justify="between" align="start" gap="sm">
-        <Text className="ui-planning-backlog-card-title">{workOrderLabel(workOrder)}</Text>
-        <Inline gap="xs" align="center">
-          {workOrder.work_order_type && <Badge color={workOrder.work_order_type.color}>{workOrder.work_order_type.label}</Badge>}
-          <IconButton
-            className="ui-planning-backlog-card-info"
-            variant="ghost"
-            aria-label="Details"
-            title="Details"
-            onClick={(event) => {
-              event.stopPropagation();
-              onQuickView();
-            }}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            <Info aria-hidden width={14} height={14} />
-          </IconButton>
-        </Inline>
-      </Inline>
-      <Text tone="muted" className="ui-planning-backlog-card-meta">
-        {clientName}
-        {assetModel ? ` · ${assetModel}` : ""}
-      </Text>
-      <Inline justify="end">
+      <div className="web-plan-item-line">
+        <Link
+          href={`/work-orders/${workOrder.id}`}
+          className="web-plan-id"
+          draggable={false}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {highlight(workOrder.work_order_number, query)}
+        </Link>
+        {workOrder.work_order_type ? (
+          <span className="web-plan-typebadge">{workOrder.work_order_type.label}</span>
+        ) : null}
+        <span className="web-plan-spacer" />
         {schedulable ? (
-          <Badge variant="muted">{formatDurationHours(workOrder.duration_minutes!)}</Badge>
-        ) : (
-          <Text tone="danger" className="ui-planning-backlog-card-meta">
-            No duration set
-          </Text>
-        )}
-      </Inline>
+          <WebStatusBadge tone="neutral" size="table" className="web-plan-mono">
+            {formatDurationHours(workOrder.duration_minutes!)}
+          </WebStatusBadge>
+        ) : null}
+      </div>
+      <div className="web-plan-item-title" title={title}>
+        {highlight(title, query)}
+      </div>
+      <div className="web-plan-item-line">
+        <span className="web-plan-item-meta">
+          {highlight(clientName, query)}
+          {assetLabel ? ` · ${assetLabel}` : ""}
+        </span>
+        <span className="web-plan-spacer" />
+        <button
+          type="button"
+          className="web-plan-link"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(event.currentTarget.closest<HTMLElement>("[data-plan-anchor]") ?? event.currentTarget, false);
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          Details
+        </button>
+      </div>
+      {!schedulable ? <div className="web-plan-item-warn">No duration set</div> : null}
     </article>
   );
 }

@@ -37,6 +37,8 @@ export { WebQuickFilters } from "./quick-filters";
 export type { WebQuickFilter } from "./quick-filters";
 export type { WebListFilterBarProps } from "./list-filter-bar";
 export type { LivePanelAction, LivePanelData, LivePanelVariant } from "./live-panel";
+export { WebFloatingCard, WebMultiSelectFilter } from "./planning";
+export type { WebFloatingCardProps, WebMultiSelectFilterProps, WebMultiSelectOption } from "./planning";
 export { StructureTree } from "./structure-tree";
 export type { StructureTreeNode, StructureTreeProps } from "./structure-tree";
 export type { WebMenuItem, WebMenuProps } from "./menu";

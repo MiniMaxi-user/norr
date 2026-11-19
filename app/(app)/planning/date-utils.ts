@@ -18,11 +18,10 @@
  * regardless of CET/CEST) — flagged here rather than silently assumed.
  */
 
-export const DAY_START_HOUR = 8;
-export const DAY_END_HOUR = 18;
+/** The server only accepts `:00`/`:30` start times (planning-actions.ts), so
+ * the grid snaps to half hours even though the DS asks for 15 minutes. */
 export const SLOT_MINUTES = 30;
 export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES;
-export const TOTAL_SLOTS = (DAY_END_HOUR - DAY_START_HOUR) * SLOTS_PER_HOUR;
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -32,9 +31,47 @@ export function formatHourLabel(hour: number): string {
   return `${pad(hour)}:00`;
 }
 
-export const HOUR_LABELS: string[] = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) =>
-  formatHourLabel(DAY_START_HOUR + i),
-);
+/** The visible working-hours window of the Day view (whole hours, local). */
+export interface WorkingHours {
+  start: number;
+  end: number;
+}
+
+export const DEFAULT_WORKING_HOURS: WorkingHours = { start: 8, end: 18 };
+
+/** Presets of the header's "Working hours" dropdown (DS 07 section 1). */
+export const WORKING_HOURS_PRESETS: readonly WorkingHours[] = [
+  { start: 7, end: 17 },
+  { start: 8, end: 18 },
+  { start: 6, end: 20 },
+];
+
+/** URL / preference token for a window: `"08-18"`. */
+export function workingHoursKey(hours: WorkingHours): string {
+  return `${pad(hours.start)}-${pad(hours.end)}`;
+}
+
+export function parseWorkingHours(raw: string | null | undefined): WorkingHours | undefined {
+  const match = raw ? /^(\d{2})-(\d{2})$/.exec(raw) : null;
+  if (!match) return undefined;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!(start >= 0 && end <= 24 && start < end)) return undefined;
+  return { start, end };
+}
+
+/** `08:00–18:00` */
+export function formatWorkingHours(hours: WorkingHours): string {
+  return `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`;
+}
+
+export function totalSlots(hours: WorkingHours): number {
+  return (hours.end - hours.start) * SLOTS_PER_HOUR;
+}
+
+export function hourLabels(hours: WorkingHours): string[] {
+  return Array.from({ length: hours.end - hours.start }, (_, i) => formatHourLabel(hours.start + i));
+}
 
 /**
  * Builds an offset-aware ISO 8601 string (never a UTC `Z`) for a local
@@ -118,25 +155,33 @@ export function weekRangeIso(date: Date): { from: string; to: string } {
 // "en-GB" (not "nl-NL") — matches `invoice-pdf.tsx`/`invoice-actions.ts`'s own
 // English-copy switch (issue #196): these format weekday/month names, so
 // leaving them Dutch would leave Dutch text bleeding into the otherwise
-// all-English Planning topbar/timeline.
+// all-English Planning header/timeline.
 const DAY_HEADING_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
 const WEEK_DAY_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
-const SHORT_WEEKDAY_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric" });
+const WEEK_END_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const WEEKDAY_ABBR_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "short" });
+const DETAIL_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
 export function formatDayHeading(date: Date): string {
   const label = DAY_HEADING_FORMAT.format(date);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/** `16 Nov – 22 Nov 2026` */
 export function formatWeekHeading(date: Date): string {
   const monday = startOfWeek(date);
   const sunday = addDays(monday, 6);
-  return `${WEEK_DAY_FORMAT.format(monday)} – ${WEEK_DAY_FORMAT.format(sunday)}`;
+  return `${WEEK_DAY_FORMAT.format(monday)} – ${WEEK_END_FORMAT.format(sunday)}`;
 }
 
-export function formatShortWeekday(date: Date): string {
-  const label = SHORT_WEEKDAY_FORMAT.format(date);
-  return label.charAt(0).toUpperCase() + label.slice(1);
+/** `MON 16` overline label of a week column. */
+export function formatWeekdayOverline(date: Date): string {
+  return `${WEEKDAY_ABBR_FORMAT.format(date).toUpperCase()} ${date.getDate()}`;
+}
+
+export function isWeekend(date: Date): boolean {
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
 
 export function isSameLocalDay(iso: string, date: Date): boolean {
@@ -144,24 +189,32 @@ export function isSameLocalDay(iso: string, date: Date): boolean {
   return d.getFullYear() === date.getFullYear() && d.getMonth() === date.getMonth() && d.getDate() === date.getDate();
 }
 
-/** Half-hour slot index (0-based from `DAY_START_HOUR`) for `iso`'s local
+/** Half-hour slot index (0-based from `hours.start`) for `iso`'s local
  * wall-clock time on `date`'s calendar day — `null` when `iso` falls on a
  * different day, outside the visible window, or off the half-hour grid. */
-export function slotIndexFor(iso: string, date: Date): number | null {
+export function slotIndexFor(iso: string, date: Date, hours: WorkingHours): number | null {
   if (!isSameLocalDay(iso, date)) return null;
   const d = new Date(iso);
-  const minutesFromStart = (d.getHours() - DAY_START_HOUR) * 60 + d.getMinutes();
+  const minutesFromStart = (d.getHours() - hours.start) * 60 + d.getMinutes();
   if (minutesFromStart < 0) return null;
   const slot = minutesFromStart / SLOT_MINUTES;
-  if (!Number.isInteger(slot) || slot >= TOTAL_SLOTS) return null;
+  if (!Number.isInteger(slot) || slot >= totalSlots(hours)) return null;
   return slot;
+}
+
+/** Minutes from `hours.start` on `date`'s calendar day for `iso` (may be
+ * negative or past the window end), or `null` on a different day. */
+export function minutesFromWindowStart(iso: string, date: Date, hours: WorkingHours): number | null {
+  if (!isSameLocalDay(iso, date)) return null;
+  const d = new Date(iso);
+  return (d.getHours() - hours.start) * 60 + d.getMinutes();
 }
 
 /** The local `Date` for a given half-hour slot index on `date`'s calendar
  * day — the inverse of `slotIndexFor`. */
-export function dateForSlot(date: Date, slotIndex: number): Date {
+export function dateForSlot(date: Date, slotIndex: number, hours: WorkingHours): Date {
   const start = localMidnight(date);
-  start.setMinutes(DAY_START_HOUR * 60 + slotIndex * SLOT_MINUTES);
+  start.setMinutes(hours.start * 60 + slotIndex * SLOT_MINUTES);
   return start;
 }
 
@@ -170,9 +223,24 @@ export function formatTimeLabel(iso: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** `"3 u"` / `"1.5 u"` — matches the design mockup's duration badge format. */
+/** `09:30` + minutes -> `11:30` (wall clock). */
+export function formatEndTime(iso: string, durationMinutes: number): string {
+  return formatTimeLabel(new Date(new Date(iso).getTime() + durationMinutes * 60_000).toISOString());
+}
+
+/** `"3 h"` / `"1.5 h"` — duration badge format. */
 export function formatDurationHours(minutes: number): string {
   const hours = minutes / 60;
   const rounded = Math.round(hours * 10) / 10;
-  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} u`;
+  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} h`;
+}
+
+/** `Thu 12:00` — the schedule toast. */
+export function formatWeekdayTime(iso: string): string {
+  return `${WEEKDAY_ABBR_FORMAT.format(new Date(iso))} ${formatTimeLabel(iso)}`;
+}
+
+/** `Thu 19 Nov` — the detail card. */
+export function formatDetailDate(iso: string): string {
+  return DETAIL_DATE_FORMAT.format(new Date(iso));
 }

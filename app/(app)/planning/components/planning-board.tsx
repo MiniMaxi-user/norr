@@ -1,9 +1,9 @@
-import { Card, Text } from "@yourorg/ui";
+import { WebPage } from "@yourorg/ui/web";
 import { listWorkOrders } from "../../work-orders/actions";
 import { listTeamMembers } from "@/lib/team/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listClients, listSitesForClientIds } from "@/app/(app)/clients/actions";
-import { dayRangeIso, weekRangeIso } from "../date-utils";
+import { dayRangeIso, weekRangeIso, type WorkingHours } from "../date-utils";
 import { toPlanningEngineer } from "../grouping";
 import { PlanningScreen } from "./planning-screen";
 import type { PlanningGroup, PlanningView } from "../types";
@@ -14,6 +14,11 @@ export interface PlanningBoardProps {
   date: Date;
   view: PlanningView;
   group: PlanningGroup;
+  hours: WorkingHours;
+  /** `activity_type` values from the URL / remembered preference; `undefined`
+   * = the tenant's own defaults (`planning_default`). */
+  initialTypes: string[] | undefined;
+  canOpenTypeSettings: boolean;
 }
 
 /**
@@ -27,7 +32,7 @@ export interface PlanningBoardProps {
  * the visible day/week) and does its own region/type grouping client-side
  * over the already-fetched rows (see `../grouping.ts`).
  */
-export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
+export async function PlanningBoard({ date, view, group, hours, initialTypes, canOpenTypeSettings }: PlanningBoardProps) {
   const range = view === "week" ? weekRangeIso(date) : dayRangeIso(date);
 
   const [teamResult, regionResult, activityTypeResult, backlogResult, scheduledResult, clientsResult] =
@@ -42,16 +47,16 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
 
   if (!teamResult.data || !regionResult.data || !activityTypeResult.data || !backlogResult.data || !scheduledResult.data) {
     return (
-      <Card>
-        <Text tone="danger">
+      <WebPage>
+        <p className="web-plan-error" role="alert">
           {teamResult.error ??
             regionResult.error ??
             activityTypeResult.error ??
             backlogResult.error ??
             scheduledResult.error ??
             "Could not load the planning board."}
-        </Text>
-      </Card>
+        </p>
+      </WebPage>
     );
   }
 
@@ -68,10 +73,9 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
   const distinctClientIds = Array.from(new Set([...backlog, ...scheduled].map((wo) => wo.client_id)));
   const sitesResult = await listSitesForClientIds(distinctClientIds);
   const siteRegionById: Record<string, string | null> = {};
-  // Address fields for the `WorkOrderQuickView` popup (product feedback,
-  // 2026-09-17) — `listSitesForClientIds` already projects `address_line1`/
-  // `city` for the Assets map view's pin labels, so this just re-keys the
-  // same rows by `id` rather than fetching them again.
+  // Address fields for the floating detail card — `listSitesForClientIds`
+  // already projects `address_line1`/`city` for the Assets map view's pin
+  // labels, so this just re-keys the same rows by `id`.
   const siteById: Record<string, { address_line1: string | null; city: string | null }> = {};
   for (const site of sitesResult.data?.sites ?? []) {
     siteRegionById[site.id] = site.region_id;
@@ -85,6 +89,9 @@ export async function PlanningBoard({ date, view, group }: PlanningBoardProps) {
       date={date}
       view={view}
       group={group}
+      initialHours={hours}
+      initialTypes={initialTypes}
+      canOpenTypeSettings={canOpenTypeSettings}
       regions={regionResult.data.items}
       activityTypes={activityTypeResult.data.items}
       engineers={engineers}

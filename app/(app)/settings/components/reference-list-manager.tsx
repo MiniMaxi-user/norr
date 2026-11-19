@@ -43,6 +43,9 @@ export interface ReferenceListManagerProps {
   showDefaultDuration?: boolean;
   /** Opts this list into the "Invoice interval" column/field (issue #209) — `billing_terms` only. */
   showInvoiceInterval?: boolean;
+  /** Opts this list into the "Default in planning" column/field (issue #222) —
+   * `activity_type` only (the Planning page pre-selects these types). */
+  showPlanningDefault?: boolean;
 }
 
 /**
@@ -66,6 +69,7 @@ export function ReferenceListManager({
   parentItems,
   showDefaultDuration = false,
   showInvoiceInterval = false,
+  showPlanningDefault = listKey === "activity_type",
 }: ReferenceListManagerProps) {
   const router = useRouter();
   const sorted = useMemo(() => [...items].sort((a, b) => a.sort_order - b.sort_order), [items]);
@@ -167,6 +171,14 @@ export function ReferenceListManager({
         render: (row) => (row.interval_months != null ? `Every ${row.interval_months} mo` : "—"),
       });
     }
+    if (showPlanningDefault) {
+      result.push({
+        id: "planning-default",
+        header: "Default in planning",
+        sortValue: (row) => (row.planning_default ? 0 : 1),
+        render: (row) => (row.planning_default ? "Yes" : "—"),
+      });
+    }
     result.push({
       id: "color",
       header: "Color",
@@ -188,7 +200,7 @@ export function ReferenceListManager({
       ),
     });
     return result;
-  }, [canWrite, sorted, isDependent, parentListTitle, parentById, showDefaultDuration, showInvoiceInterval]);
+  }, [canWrite, sorted, isDependent, parentListTitle, parentById, showDefaultDuration, showInvoiceInterval, showPlanningDefault]);
 
   const dropdowns = useMemo(() => {
     const result: {
@@ -295,6 +307,7 @@ export function ReferenceListManager({
               parentItems={parentItems}
               showDefaultDuration={showDefaultDuration}
               showInvoiceInterval={showInvoiceInterval}
+              showPlanningDefault={showPlanningDefault}
             />
           ) : null}
           <DeleteReferenceItemDialog

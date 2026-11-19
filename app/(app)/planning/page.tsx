@@ -1,13 +1,12 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Stack } from "@yourorg/ui";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { preferencesStore } from "@/lib/preferences/cookie-store";
 import { PlanningBoard } from "./components/planning-board";
 import { PlanningBoardSkeleton } from "./components/planning-board-skeleton";
-import { parseDateParam, formatDateParam } from "./date-utils";
+import { parseDateParam, formatDateParam, parseWorkingHours, DEFAULT_WORKING_HOURS } from "./date-utils";
 import type { PlanningGroup, PlanningView } from "./types";
 
 export const metadata = { title: "Planning" };
@@ -17,6 +16,8 @@ interface PlanningPageProps {
     date?: string;
     view?: string;
     group?: string;
+    hours?: string;
+    types?: string;
   }>;
 }
 
@@ -28,6 +29,15 @@ function parseGroup(raw: string | undefined): PlanningGroup | undefined {
   return raw === "region" || raw === "engineer" ? raw : undefined;
 }
 
+/** `?types=a,b` -> `["a","b"]`; `none` -> `[]` (nothing selected); absent ->
+ * `undefined` (use the tenant's own defaults). */
+function parseTypes(raw: string | null | undefined): string[] | undefined {
+  if (raw == null) return undefined;
+  if (raw === "none") return [];
+  const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
+  return values.length > 0 ? values : undefined;
+}
+
 /**
  * Planning module entry point (issue #164) — the drag-and-drop dispatcher
  * board. Server Component: resolves session/entitlement/RBAC once here (and
@@ -35,7 +45,7 @@ function parseGroup(raw: string | undefined): PlanningGroup | undefined {
  * `components/shell/nav-items.ts`'s own "must not render, not just be
  * disabled" gate for this same route — see that file's `requiredPermission`
  * comment), then hands everything data-dependent to `PlanningBoard` behind a
- * `Suspense` boundary so the page shell (topbar chrome) paints immediately.
+ * `Suspense` boundary so the page shell (dark header) paints immediately.
  *
  * `/planning` is owner/planner ONLY (per the confirmed access decision) —
  * gated on the FULL `update` action, not `update_own` (which an engineer
@@ -43,6 +53,9 @@ function parseGroup(raw: string | undefined): PlanningGroup | undefined {
  * work, via the separate Work Orders list/detail screens). This mirrors
  * `app/(app)/work-orders/page.tsx`'s `hasFeature()` + RBAC two-step exactly,
  * just with a narrower permission check.
+ *
+ * View, grouping, working hours and the type filter come from the URL first
+ * and fall back to the user's last-used value (issue #222, DS 07).
  */
 export default async function PlanningPage({ searchParams }: PlanningPageProps) {
   const session = await getCurrentSession();
@@ -62,12 +75,25 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
     parseGroup(params.group) ??
     parseGroup((await preferencesStore.getLastUsedView(session.userId, "planning-group")) ?? undefined) ??
     "region";
+  const hours =
+    parseWorkingHours(params.hours) ??
+    parseWorkingHours(await preferencesStore.getLastUsedView(session.userId, "planning-hours")) ??
+    DEFAULT_WORKING_HOURS;
+  const types =
+    parseTypes(params.types) ?? parseTypes(await preferencesStore.getLastUsedView(session.userId, "planning-types"));
+
+  const canOpenTypeSettings = can(actor, "settings", "read");
 
   return (
-    <Stack gap="lg" className="ui-planning-page">
-      <Suspense key={`${formatDateParam(date)}:${view}:${group}`} fallback={<PlanningBoardSkeleton view={view} />}>
-        <PlanningBoard date={date} view={view} group={group} />
-      </Suspense>
-    </Stack>
+    <Suspense key={`${formatDateParam(date)}:${view}:${group}`} fallback={<PlanningBoardSkeleton view={view} />}>
+      <PlanningBoard
+        date={date}
+        view={view}
+        group={group}
+        hours={hours}
+        initialTypes={types}
+        canOpenTypeSettings={canOpenTypeSettings}
+      />
+    </Suspense>
   );
 }
