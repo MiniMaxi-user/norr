@@ -237,7 +237,7 @@ export async function renderInvoicePdfForQuote(
     .from("quotes")
     .select(
       "id, client_id, site_id, name, notes, work_order_id, quote_type," +
-        " contract:contracts(contract_number, external_reference)," +
+        " contract:contracts!quotes_contract_id_fkey(contract_number, external_reference)," +
         " client:clients!quotes_client_id_fkey(id,name,vat_number)," +
         " work_order:work_orders!quotes_work_order_id_fkey(id,work_order_number,external_reference)",
     )
