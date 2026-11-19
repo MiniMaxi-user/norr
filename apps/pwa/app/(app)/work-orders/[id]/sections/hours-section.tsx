@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PwaKeyValue, PwaNote, PwaOverline, PwaRow, PwaStack, WebCard, WebStatusBadge } from "@yourorg/ui/web";
+import { PwaKeyValue, PwaNote, PwaOverline, PwaRow, PwaStack, WebAmount, WebCard, WebStatusBadge } from "@yourorg/ui/web";
 import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 import { deleteClockPeriod, updateClockPeriodTimes, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
@@ -157,7 +157,7 @@ export function HoursSection({
     <PwaStack>
       <PwaRow justify="between">
         <PwaOverline>Hours</PwaOverline>
-        <span className="pwa-total">{formatClockHoursMinutes(totalMinutes * 60000)}</span>
+        <WebAmount>{formatClockHoursMinutes(totalMinutes * 60000)}</WebAmount>
       </PwaRow>
 
       <WebCard size="touch" title="Logged time">
@@ -174,7 +174,7 @@ export function HoursSection({
                   onDelete={row.localId !== undefined ? () => void handleDeleteTap(row) : undefined}
                 >
                   <div className="pwa-list-row">
-                    <WebStatusBadge tone="neutral" size="touch">
+                    <WebStatusBadge tone={row.endedAt === null ? "warning" : row.kind === "travel" ? "info" : "neutral"} size="touch">
                       {row.kind === "travel" ? "Travel" : "Work"}
                     </WebStatusBadge>
                     <span className="pwa-list-main">
@@ -196,6 +196,7 @@ export function HoursSection({
           rows={[
             { label: "Travel", value: formatClockHoursMinutes(totals.travelMinutes * 60000) },
             { label: "Work", value: formatClockHoursMinutes(totals.workMinutes * 60000) },
+            { label: "Total", value: <WebAmount>{formatClockHoursMinutes(totalMinutes * 60000)}</WebAmount> },
           ]}
         />
       </WebCard>

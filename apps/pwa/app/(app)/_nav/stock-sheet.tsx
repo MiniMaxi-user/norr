@@ -202,7 +202,7 @@ function StockRow({ item }: { item: MyStockItem }) {
         <div className="pwa-list-sub">{item.articleNumber}</div>
         <div className="pwa-pick-meta">
           <span>
-            Current: <strong>{formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</strong>
+            Current: <strong>{formatQuantity(Math.max(0, item.quantity))}{item.unit ? ` ${item.unit}` : ""}</strong>
           </span>
           <span>Min: {item.minThreshold === null ? "—" : formatQuantity(item.minThreshold)}</span>
         </div>

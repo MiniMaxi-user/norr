@@ -11,7 +11,6 @@ import {
   PwaPageHeader,
   PwaScreen,
   WebBadge,
-  WebTypeBadge,
 } from "@yourorg/ui/web";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import {
@@ -357,9 +356,6 @@ export function WorkOrderDetailScreen({
   }
 
   const { workOrder } = detail;
-  const addressParts = [workOrder.site?.addressLine1, workOrder.site?.city].filter(
-    (part): part is string => Boolean(part),
-  );
 
   return (
     <PwaScreen>
@@ -377,15 +373,9 @@ export function WorkOrderDetailScreen({
         title={workOrder.workOrderNumber}
       >
         <PwaHeaderRow>
-          {workOrder.type && (
-            <WebTypeBadge size="touch" color={workOrder.type.color}>
-              {workOrder.type.label}
-            </WebTypeBadge>
-          )}
           <span className="pwa-header-link">{workOrder.client?.name ?? "Unknown client"}</span>
         </PwaHeaderRow>
         {workOrder.externalReference && <PwaHeaderMeta>{workOrder.externalReference}</PwaHeaderMeta>}
-        {addressParts.length > 0 && <PwaHeaderMeta>{addressParts.join(", ")}</PwaHeaderMeta>}
       </PwaPageHeader>
 
       <PwaBody>

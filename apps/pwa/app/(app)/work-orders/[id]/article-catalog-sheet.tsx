@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Callout, Dialog, EmptyState, IconButton, Input, Skeleton } from "@yourorg/ui";
-import { PwaStack, WebBadge } from "@yourorg/ui/web";
+import { PwaStack, WebBadge, WebStatusBadge } from "@yourorg/ui/web";
 import { AlertTriangle, Boxes, X } from "@yourorg/ui/icons";
-import { addLocalArticle, getCachedCatalog, type LocalArticle } from "@/lib/offline/db";
+import { addLocalArticle, getCachedCatalog, getCachedMyStock, type LocalArticle } from "@/lib/offline/db";
+import type { MyStockItem } from "@/lib/inventory/types";
 import type { CatalogArticle } from "@/lib/work-orders/types";
 
 /** Unfiltered rows shown before the engineer types a search query — this
@@ -14,6 +15,10 @@ import type { CatalogArticle } from "@/lib/work-orders/types";
  * the full list, same reasoning `StockSheet` documents for its own search
  * box (`_nav/stock-sheet.tsx`). */
 const DEFAULT_RESULT_LIMIT = 10;
+
+function formatQuantity(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
+}
 
 /**
  * "Add article" bottom sheet (issue #170, IMPLEMENTATION.md §4) — the
@@ -50,6 +55,29 @@ export function ArticleCatalogSheet({
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState("");
+  // The engineer's own current stock per article (informational only —
+  // never blocks adding an article). Keyed by `articleId`.
+  const [stockByArticle, setStockByArticle] = useState<Map<string, MyStockItem>>(new Map());
+
+  // Cached my-stock first (already decremented locally as articles are
+  // added, see `decrementLocalMyStockQuantity`); a live read only when this
+  // device has never synced it. Re-read after every add so the number follows.
+  const loadStock = useCallback(async () => {
+    let items = await getCachedMyStock(currentUserId);
+    if (items.length === 0) {
+      try {
+        const response = await fetch("/api/inventory/my-stock");
+        if (response.ok) items = ((await response.json()) as { stock: MyStockItem[] }).stock;
+      } catch {
+        // Offline and never synced: no stock numbers, nothing else changes.
+      }
+    }
+    setStockByArticle(new Map(items.map((item) => [item.articleId, item])));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (open) void loadStock();
+  }, [open, loadStock]);
 
   // Reset the search box every time the sheet reopens — a stale query from
   // the previous open never carries over.
@@ -94,6 +122,7 @@ export function ArticleCatalogSheet({
       description: article.description,
     });
     await onAdded();
+    await loadStock();
   }
 
   // No query: a short, scannable slice (`DEFAULT_RESULT_LIMIT`) rather than
@@ -149,17 +178,28 @@ export function ArticleCatalogSheet({
             <div className="pwa-pick-list">
               {filtered.map((article) => {
                 const added = localArticles.find((row) => row.articleId === article.id);
+                const stock = stockByArticle.get(article.id);
+                // Never negative: a stock of 0 stays 0.
+                const stockQuantity = stock ? Math.max(0, stock.quantity) : null;
                 return (
                   <button key={article.id} type="button" onClick={() => void handleAdd(article)} className="pwa-pick-row">
                     <span className="pwa-list-main">
                       <span className="pwa-list-title">{article.description}</span>
-                      <span className="pwa-list-sub">{article.articleNumber}</span>
+                      <span className="pwa-list-ref">{article.articleNumber}</span>
                     </span>
-                    {added && (
-                      <WebBadge variant="mono" size="touch">
-                        ×{added.quantity}
-                      </WebBadge>
-                    )}
+                    <span className="pwa-pick-end">
+                      {stockQuantity !== null && (
+                        <WebStatusBadge tone={stockQuantity === 0 ? "danger" : "neutral"} size="touch">
+                          Stock {formatQuantity(stockQuantity)}
+                          {stock?.unit ? ` ${stock.unit}` : ""}
+                        </WebStatusBadge>
+                      )}
+                      {added && (
+                        <WebBadge variant="mono" size="touch">
+                          ×{added.quantity}
+                        </WebBadge>
+                      )}
+                    </span>
                   </button>
                 );
               })}

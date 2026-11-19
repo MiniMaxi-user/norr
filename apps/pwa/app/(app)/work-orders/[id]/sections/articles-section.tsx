@@ -55,7 +55,7 @@ export function ArticlesSection({
       {isEmpty ? (
         <EmptyState icon={<Boxes />} heading="No articles added yet." />
       ) : (
-        <WebCard size="touch" title="Articles">
+        <WebCard size="touch" title="Articles" meta={String(serverArticles.length + localArticles.length)}>
           <div className="pwa-list">
             {serverArticles.map((article) => (
               <SwipeableRow key={article.id}>
@@ -166,7 +166,7 @@ function ArticleRow({
       )}
       <span className="pwa-list-main">
         <span className="pwa-list-title">{description}</span>
-        <span className="pwa-list-sub">{articleNumber}</span>
+        <span className="pwa-list-ref">{articleNumber}</span>
       </span>
     </div>
   );

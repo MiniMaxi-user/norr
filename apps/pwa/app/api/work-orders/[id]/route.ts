@@ -65,6 +65,7 @@ interface WorkOrderDetailRow {
     id: string;
     name: string;
     serial_number: string | null;
+    external_reference: string | null;
     installed_at: string | null;
     asset_brand: { label: string } | null;
     asset_model: { name: string } | null;
@@ -87,7 +88,7 @@ const WORK_ORDER_DETAIL_SELECT = `
   client:clients(id,name),
   site:sites(id,address_line1,address_line2,postal_code,city,phone),
   asset:assets!work_orders_asset_id_fkey(
-    id, name, serial_number, installed_at,
+    id, name, serial_number, external_reference, installed_at,
     asset_brand:reference_list_items!assets_brand_item_id_fkey(label),
     asset_model:asset_models!assets_model_id_fkey(name)
   ),
@@ -261,6 +262,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           id: row.asset.id,
           name: row.asset.name,
           serialNumber: row.asset.serial_number,
+          externalReference: row.asset.external_reference,
           installedAt: row.asset.installed_at,
           brand: row.asset.asset_brand?.label ?? null,
           model: row.asset.asset_model?.name ?? null,

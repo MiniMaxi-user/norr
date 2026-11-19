@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Logo } from "@yourorg/ui";
 import { ProfileSheet } from "./profile-sheet";
 import { ProfilePhoto } from "./profile-photo";
 
 /**
- * The field PWA's app bar (DS 08 section 2): 56px, `header-bg` navy, "Norr"
- * in serif 24px white on the left, the 36px profile avatar on the right
+ * The field PWA's app bar (DS 08 section 2): 56px, `header-bg` navy, the Norr logo
+ * (white wordmark, gold detail) on the left, the 36px profile avatar on the right
  * (opens the profile sheet) — nothing else. Product feedback, 2026-09-13:
  * visible on every screen, not just Today. Mounted once in
  * `app/(app)/layout.tsx`, a normal flex child of `.pwa-shell`
@@ -37,7 +38,9 @@ export function Topbar({
   return (
     <>
       <div className="pwa-appbar">
-        <p className="pwa-appbar-title">Norr</p>
+        <p className="pwa-appbar-title">
+          <Logo />
+        </p>
         <button
           type="button"
           aria-label="Open profile"

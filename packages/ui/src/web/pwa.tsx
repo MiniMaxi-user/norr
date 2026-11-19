@@ -137,6 +137,8 @@ export interface PwaKeyValueRow {
   value: ReactNode;
   /** IDs and numbers in the mono face. */
   mono?: boolean;
+  /** Reference/ID that points at a record: link colour (`text-link`). */
+  link?: boolean;
 }
 
 /** Key/value card body: 48px rows, muted label left, value right. Put it
@@ -147,7 +149,7 @@ export function PwaKeyValue({ rows }: { rows: PwaKeyValueRow[] }) {
       {rows.map((row, index) => (
         <div className="pwa-kv-row" key={index}>
           <dt className="pwa-kv-label">{row.label}</dt>
-          <dd className="pwa-kv-value" data-mono={row.mono ? "true" : undefined}>
+          <dd className="pwa-kv-value" data-mono={row.mono ? "true" : undefined} data-link={row.link ? "true" : undefined}>
             {row.value}
           </dd>
         </div>

@@ -1,21 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Callout, ConfirmDeleteDialog, Disclosure, Input, Label, Textarea } from "@yourorg/ui";
-import { PwaNote, PwaStack, WebButton, WebCard } from "@yourorg/ui/web";
+import { Callout, ConfirmDeleteDialog, Input, Label } from "@yourorg/ui";
+import { PwaNote, WebAmount, WebButton, WebCard } from "@yourorg/ui/web";
 import { AlertTriangle, Trash2 } from "@yourorg/ui/icons";
 import { formatVolumeValue } from "@/lib/asset-volumes/errors";
 import type { WorkOrderVolumeCounter, WorkOrderVolumeReading, WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-/** Current local time as a `datetime-local` input value. */
-function nowLocalInputValue(): string {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
 }
 
 function useOnlineStatus(): boolean {
@@ -62,7 +55,7 @@ export function VolumesBlock({ workOrderId }: { workOrderId: string }) {
   const disabled = !online || !data.canCreate;
 
   return (
-    <WebCard size="touch" title={`Volumes${data.asset ? ` · ${data.asset.name}` : ""}`}>
+    <WebCard size="touch" title="Volumes" meta={data.asset?.name}>
       {!online && (
         <div className="pwa-card-pad">
           <Callout icon={AlertTriangle}>Readings require a connection.</Callout>
@@ -89,8 +82,6 @@ function CounterRow({
   onChanged: () => Promise<void>;
 }) {
   const [value, setValue] = useState("");
-  const [readAt, setReadAt] = useState("");
-  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<WorkOrderVolumeReading | null>(null);
@@ -105,9 +96,9 @@ function CounterRow({
     }
     setSaving(true);
     try {
+      // The reading time is always "now": the route defaults `readAt` to the
+      // current date-time, so neither `readAt` nor `notes` is ever sent.
       const body: Record<string, unknown> = { volumeItemId: counter.volumeItemId, value: value.trim().replace(",", ".") };
-      if (readAt) body.readAt = new Date(readAt).toISOString();
-      if (notes.trim()) body.notes = notes.trim();
       const response = await fetch(`/api/work-orders/${workOrderId}/volumes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,8 +110,6 @@ function CounterRow({
         return;
       }
       setValue("");
-      setReadAt("");
-      setNotes("");
       await onChanged();
     } catch {
       setError("Couldn't save this reading. Check your connection and try again.");
@@ -152,7 +141,18 @@ function CounterRow({
           {counter.unitLabel ? <span> ({counter.unitLabel})</span> : null}
         </h3>
         <PwaNote>
-          {counter.latest ? `Latest: ${formatVolumeValue(counter.latest.value)}${unit} · ${formatDate(counter.latest.readAt)}` : "No readings yet."}
+          {counter.latest ? (
+            <>
+              Latest:{" "}
+              <WebAmount>
+                {formatVolumeValue(counter.latest.value)}
+                {unit}
+              </WebAmount>{" "}
+              · {formatDate(counter.latest.readAt)}
+            </>
+          ) : (
+            "No readings yet."
+          )}
         </PwaNote>
       </div>
 
@@ -168,36 +168,6 @@ function CounterRow({
           onChange={(event) => setValue(event.target.value)}
         />
       </div>
-
-      <Disclosure>
-        <Disclosure.Summary>Date and notes</Disclosure.Summary>
-        <Disclosure.Content>
-          <PwaStack gap="sm">
-            <div className="pwa-field">
-              <Label htmlFor={`${idBase}-date`}>Read at (default: now)</Label>
-              <Input
-                id={`${idBase}-date`}
-                type="datetime-local"
-                value={readAt}
-                max={nowLocalInputValue()}
-                disabled={disabled}
-                onChange={(event) => setReadAt(event.target.value)}
-              />
-            </div>
-            <div className="pwa-field">
-              <Label htmlFor={`${idBase}-notes`}>Notes</Label>
-              <Textarea
-                id={`${idBase}-notes`}
-                rows={2}
-                maxLength={500}
-                value={notes}
-                disabled={disabled}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </div>
-          </PwaStack>
-        </Disclosure.Content>
-      </Disclosure>
 
       {error && (
         <PwaNote role="alert" tone="danger">
@@ -221,7 +191,6 @@ function CounterRow({
                 </span>
                 <span className="pwa-note">
                   {formatDate(reading.readAt)}
-                  {reading.notes ? ` · ${reading.notes}` : ""}
                 </span>
               </span>
               <button

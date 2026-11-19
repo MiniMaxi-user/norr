@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPin, Phone } from "@yourorg/ui/icons";
-import { PwaActions, PwaCardText, PwaKeyValue, PwaStack, WebButton, WebCard, type PwaKeyValueRow } from "@yourorg/ui/web";
+import { PwaActions, PwaCardText, PwaKeyValue, PwaStack, WebButton, WebCard, WebStatusBadge, type PwaKeyValueRow } from "@yourorg/ui/web";
 import type { WorkOrderDetail } from "@/lib/work-orders/types";
 
 /** `"2019"` from an ISO install date — the Asset row's "bouwjaar"
@@ -32,7 +32,10 @@ export function HomeSection({ workOrder }: { workOrder: WorkOrderDetail }) {
 
   const assetRows: PwaKeyValueRow[] = asset
     ? [
-        { label: "Name", value: asset.name },
+        { label: "Asset ID", value: asset.name, mono: true, link: true },
+        ...(asset.externalReference
+          ? [{ label: "External reference", value: asset.externalReference, mono: true }]
+          : []),
         ...(asset.serialNumber ? [{ label: "Serial", value: asset.serialNumber, mono: true }] : []),
         ...(asset.brand || asset.model
           ? [{ label: "Brand / model", value: [asset.brand, asset.model].filter(Boolean).join(" ") }]
@@ -43,8 +46,15 @@ export function HomeSection({ workOrder }: { workOrder: WorkOrderDetail }) {
 
   const contractRows: PwaKeyValueRow[] = contract
     ? [
-        { label: "Number", value: contract.contractNumber, mono: true },
-        { label: "Type", value: contract.type ?? "Contract" },
+        { label: "Number", value: contract.contractNumber, mono: true, link: true },
+        {
+          label: "Type",
+          value: (
+            <WebStatusBadge tone="info" size="touch">
+              {contract.type ?? "Contract"}
+            </WebStatusBadge>
+          ),
+        },
         { label: "From", value: new Date(contract.startDate).toLocaleDateString("en-GB") },
         ...(contract.endDate ? [{ label: "To", value: new Date(contract.endDate).toLocaleDateString("en-GB") }] : []),
       ]

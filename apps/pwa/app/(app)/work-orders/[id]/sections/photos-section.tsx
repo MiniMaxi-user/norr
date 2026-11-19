@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MediaTile } from "@yourorg/ui";
-import { PwaNote, PwaStack } from "@yourorg/ui/web";
+import { PwaCardPad, PwaStack, WebCard } from "@yourorg/ui/web";
 import { Camera } from "@yourorg/ui/icons";
 import { addLocalPhoto, type LocalPhoto } from "@/lib/offline/db";
 
@@ -67,21 +67,25 @@ export function PhotosSection({
         Take photo
       </button>
 
-      {photos.length === 0 ? (
-        <PwaNote>No photos attached yet.</PwaNote>
-      ) : (
-        <div className="pwa-photo-grid">
-          {photos.map((photo) => (
-            <MediaTile
-              key={photo.id}
-              imageUrl={photo.id !== undefined ? objectUrls[photo.id] : undefined}
-              alt="Work order photo"
-              size="md"
-              fallback={<Camera aria-hidden />}
-            />
-          ))}
-        </div>
-      )}
+      <WebCard size="touch" title="Photos" meta={String(photos.length)}>
+        {photos.length === 0 ? (
+          <p className="pwa-list-empty">No photos attached yet.</p>
+        ) : (
+          <PwaCardPad>
+            <div className="pwa-photo-grid">
+              {photos.map((photo) => (
+                <MediaTile
+                  key={photo.id}
+                  imageUrl={photo.id !== undefined ? objectUrls[photo.id] : undefined}
+                  alt="Work order photo"
+                  size="md"
+                  fallback={<Camera aria-hidden />}
+                />
+              ))}
+            </div>
+          </PwaCardPad>
+        )}
+      </WebCard>
     </PwaStack>
   );
 }

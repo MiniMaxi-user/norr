@@ -34,8 +34,6 @@ export function WorkSection({
         <PwaCardText empty={!description}>{description || "No description added."}</PwaCardText>
       </WebCard>
 
-      <VolumesBlock workOrderId={workOrderId} />
-
       <WebCard size="touch" title="Solution">
         <PwaCardPad>
           <Textarea
@@ -47,6 +45,8 @@ export function WorkSection({
           />
         </PwaCardPad>
       </WebCard>
+
+      <VolumesBlock workOrderId={workOrderId} />
     </PwaStack>
   );
 }

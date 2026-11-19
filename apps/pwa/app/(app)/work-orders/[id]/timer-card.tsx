@@ -1,7 +1,7 @@
 "use client";
 
-import { WebCard, WebStatusBadge } from "@yourorg/ui/web";
-import { Pause, Play, type Icon } from "@yourorg/ui/icons";
+import { WebButton, WebCard, WebStatusBadge } from "@yourorg/ui/web";
+import { Pause, Play } from "@yourorg/ui/icons";
 import { formatClockDigits, formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 
 /**
@@ -14,10 +14,10 @@ import { formatClockDigits, formatClockHoursMinutes, type ClockSummary } from "@
  * handed and calls back on a tap, same "dumb view, smart state" split as
  * every other section here.
  *
- * Presentation (issue #222, DS 08): a regular touch card — tinted header with
- * a running status badge on the right, the elapsed digits in mono, the
- * Travel/Work totals, and one round Play/Pause toggle per kind (idle = white
- * with a navy ring, running = green). Gold is not used on this light surface.
+ * Presentation (issue #222, DS 08): idle is a calm touch card with the day
+ * total and two secondary Start buttons. Running reads as "live" — warning-
+ * tinted head with a pulsing dot and a "Live" badge, the running time larger
+ * in mono, and the running kind's button turns into a distinct red Stop.
  */
 export function TimerCard({
   summary,
@@ -35,76 +35,53 @@ export function TimerCard({
   return (
     <WebCard
       size="touch"
-      title={running ? "Timer running" : "Timer paused · total today"}
+      data-running={running ? "true" : undefined}
+      title={
+        running ? (
+          <span className="pwa-live-title">
+            <span aria-hidden className="pwa-live-dot" />
+            {summary.runningKind === "travel" ? "Travel running" : "Work running"}
+          </span>
+        ) : (
+          "Timer paused · total today"
+        )
+      }
       action={
         running ? (
-          <WebStatusBadge tone="success" size="touch">
-            {summary.runningKind === "travel" ? "Travel running" : "Work running"}
+          <WebStatusBadge tone="warning" size="touch">
+            Live
           </WebStatusBadge>
         ) : undefined
       }
     >
       <div className="pwa-timer">
         <div className="pwa-timer-main">
-          <span className="pwa-timer-digits">{formatClockDigits(digitsMs)}</span>
+          <span className="pwa-timer-digits" data-running={running ? "true" : undefined} aria-live="off">
+            {formatClockDigits(digitsMs)}
+          </span>
           <span className="pwa-timer-totals">
             <span>Travel {formatClockHoursMinutes(summary.travelMs)}</span>
             <span>Work {formatClockHoursMinutes(summary.workMs)}</span>
           </span>
         </div>
 
-        <div className="pwa-timer-toggles">
-          <TimerToggle
-            icon={summary.runningKind === "travel" ? Pause : Play}
-            active={summary.runningKind === "travel"}
-            label="Travel"
-            ariaLabel={summary.runningKind === "travel" ? "Stop travel" : "Start travel"}
-            onClick={onToggleTravel}
-          />
-          <TimerToggle
-            icon={summary.runningKind === "work" ? Pause : Play}
-            active={summary.runningKind === "work"}
-            label="Work"
-            ariaLabel={summary.runningKind === "work" ? "Stop work" : "Start work"}
-            onClick={onToggleWork}
-          />
+        <div className="pwa-timer-actions">
+          <TimerButton kind="travel" running={summary.runningKind === "travel"} onClick={onToggleTravel} />
+          <TimerButton kind="work" running={summary.runningKind === "work"} onClick={onToggleWork} />
         </div>
       </div>
     </WebCard>
   );
 }
 
-/** One round Play/Pause toggle + its label (see `TimerCard`'s own doc
- * comment). A plain `<button>`: this round icon-plus-label-underneath shape
- * is PWA-specific chrome, styled via the shared `.pwa-timer-toggle*`
- * classes in the design system's `pwa.css` (CLAUDE.md rule 4). */
-function TimerToggle({
-  icon: IconComponent,
-  active,
-  label,
-  ariaLabel,
-  onClick,
-}: {
-  icon: Icon;
-  active: boolean;
-  label: string;
-  ariaLabel: string;
-  onClick: () => void;
-}) {
+/** One Start/Stop button: idle = secondary with a Play icon, running = the
+ * distinct red Stop. */
+function TimerButton({ kind, running, onClick }: { kind: "travel" | "work"; running: boolean; onClick: () => void }) {
+  const label = `${running ? "Stop" : "Start"} ${kind}`;
   return (
-    <span className="pwa-timer-toggle-group">
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        onClick={onClick}
-        className="pwa-timer-toggle"
-        data-active={active ? "true" : undefined}
-      >
-        <IconComponent aria-hidden width={22} height={22} fill="currentColor" stroke="none" />
-      </button>
-      <span className="pwa-timer-toggle-label" data-active={active ? "true" : undefined}>
-        {label}
-      </span>
-    </span>
+    <WebButton size="touch" block variant={running ? "danger" : "secondary"} onClick={onClick} aria-label={label}>
+      {running ? <Pause aria-hidden fill="currentColor" stroke="none" /> : <Play aria-hidden fill="currentColor" stroke="none" />}
+      {label}
+    </WebButton>
   );
 }

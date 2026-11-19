@@ -48,6 +48,8 @@ export interface WorkOrderDetailAsset {
   id: string;
   name: string;
   serialNumber: string | null;
+  /** Optional: absent in details cached before this field existed. */
+  externalReference?: string | null;
   /** ISO date/datetime, or `null` when not recorded. */
   installedAt: string | null;
   brand: string | null;

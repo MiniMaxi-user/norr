@@ -7,6 +7,7 @@ import {
   PwaCardPad,
   PwaKeyValue,
   PwaStack,
+  WebAmount,
   WebButton,
   WebCard,
   WebStatusBadge,
@@ -112,7 +113,9 @@ export function SignOffSection({
         <WebCard size="touch" title="Summary">
           <PwaKeyValue
             rows={[
-              { label: "Hours", value: formatClockHoursMinutes(totalMs) },
+              { label: "Work", value: formatClockHoursMinutes(summary.workMs) },
+              { label: "Travel", value: formatClockHoursMinutes(summary.travelMs) },
+              { label: "Total", value: <WebAmount>{formatClockHoursMinutes(totalMs)}</WebAmount> },
               { label: "Articles", value: articleCount },
               { label: "Engineer", value: engineerName },
             ]}
@@ -131,7 +134,9 @@ export function SignOffSection({
             </div>
             <div className="pwa-signature-footer">
               <span className="pwa-row">
-                <span className="pwa-note">{hasSignature ? "Signature added" : "No signature yet"}</span>
+                <WebStatusBadge tone={hasSignature ? "success" : "neutral"} size="touch">
+                  {hasSignature ? "Signature added" : "No signature yet"}
+                </WebStatusBadge>
                 {existingSignOff?.pendingSync && (
                   <WebStatusBadge tone="warning" size="touch">
                     Sync pending
