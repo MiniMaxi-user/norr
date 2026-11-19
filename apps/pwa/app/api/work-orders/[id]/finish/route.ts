@@ -330,12 +330,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.error("POST /api/work-orders/[id]/finish: failed to upload signature", signatureUploadError);
     return NextResponse.json({ error: "Failed to save the signature." }, { status: 500 });
   }
-  const { error: signatureRowError } = await supabase
+  // Select-then-write, NOT `.upsert()`: PostgREST's merge upsert generates
+  // `ON CONFLICT DO UPDATE SET work_order_id = ...`, and `work_order_id` has
+  // no UPDATE grant (only storage_path/signed_at) — every finish failed with
+  // 42501 → 500 ("check your connection"). Same pattern as the e-mail settings.
+  const signedAtIso = new Date(signedAtMs).toISOString();
+  const { data: existingSignature, error: existingSignatureError } = await supabase
     .from("work_order_signatures")
-    .upsert(
-      { work_order_id: id, storage_path: signaturePath, signed_at: new Date(signedAtMs).toISOString() },
-      { onConflict: "work_order_id" },
-    );
+    .select("id")
+    .eq("work_order_id", id)
+    .maybeSingle();
+  const { error: signatureRowError } = existingSignatureError
+    ? { error: existingSignatureError }
+    : existingSignature
+      ? await supabase
+          .from("work_order_signatures")
+          .update({ storage_path: signaturePath, signed_at: signedAtIso })
+          .eq("work_order_id", id)
+      : await supabase
+          .from("work_order_signatures")
+          .insert({ work_order_id: id, storage_path: signaturePath, signed_at: signedAtIso });
   if (signatureRowError) {
     console.error("POST /api/work-orders/[id]/finish: failed to save signature row", signatureRowError);
     return NextResponse.json({ error: "Failed to save the signature." }, { status: 500 });
