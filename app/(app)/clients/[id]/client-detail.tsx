@@ -322,7 +322,13 @@ export function ClientDetail({
       ...(assetsEnabled ? [{ id: "assets", label: "Assets", count: assets.length }] : []),
       ...(volumeTotals ? [{ id: "volumes", label: "Volumes" }] : []),
       { id: "contacts", label: "Contacts", count: contacts.length },
-      ...(workOrdersEnabled ? [{ id: "workOrders", label: "Work orders", count: workOrders.length }] : []),
+      ...(workOrdersEnabled
+        ? [
+            openWorkOrders.length > 0
+              ? { id: "workOrders", label: "Work orders", count: openWorkOrders.length, attention: "open" }
+              : { id: "workOrders", label: "Work orders", count: workOrders.length },
+          ]
+        : []),
       ...(contractsEnabled ? [{ id: "contracts", label: "Contracts", count: contracts.length }] : []),
       ...(quotesEnabled ? [{ id: "quotes", label: "Quotes", count: quotes.length }] : []),
       ...(activitiesEnabled ? [{ id: "activities", label: "Activities", count: activities.length }] : []),
@@ -341,6 +347,7 @@ export function ClientDetail({
       contacts.length,
       workOrdersEnabled,
       workOrders.length,
+      openWorkOrders.length,
       contractsEnabled,
       contracts.length,
       quotesEnabled,

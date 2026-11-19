@@ -1,6 +1,6 @@
 "use client";
 
-import { SidebarRows, SidebarSection } from "@yourorg/ui/web";
+import { SidebarRows, SidebarSection, WebAmount, WebStatusPill } from "@yourorg/ui/web";
 import { LivePanel, type LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateTimeWeb, formatMoneyWeb } from "@/lib/format/web";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
@@ -48,22 +48,38 @@ export function ClientRail({
           {
             label: "Active contracts",
             value:
-              activeContracts.count > 0 && activeContracts.value > 0
-                ? `${activeContracts.count} · ${formatMoneyWeb(activeContracts.value, { whole: true })}`
-                : String(activeContracts.count),
+              activeContracts.count > 0 ? (
+                <>
+                  <WebStatusPill tone="success">{activeContracts.count} active</WebStatusPill>
+                  {activeContracts.value > 0 ? ` · ${formatMoneyWeb(activeContracts.value, { whole: true })}` : null}
+                </>
+              ) : (
+                "0"
+              ),
           },
         ]
       : []),
     ...(openWorkOrders
       ? [
-          { label: "Open work orders", value: String(openWorkOrders.count) },
+          {
+            label: "Open work orders",
+            value:
+              openWorkOrders.count > 0 ? (
+                <WebStatusPill tone="warning">{openWorkOrders.count} open</WebStatusPill>
+              ) : (
+                "0"
+              ),
+          },
           {
             label: "Next appointment",
             value: openWorkOrders.nextAppointment ? formatDateTimeWeb(openWorkOrders.nextAppointment) : "—",
           },
         ]
       : []),
-    { label: "Potential", value: potentialValue !== null ? formatMoneyWeb(potentialValue, { whole: true }) : "—" },
+    {
+      label: "Potential",
+      value: potentialValue !== null ? <WebAmount>{formatMoneyWeb(potentialValue, { whole: true })}</WebAmount> : "—",
+    },
   ];
 
   return (

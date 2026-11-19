@@ -16,6 +16,8 @@ export {
   WebInput,
   WebFigures,
   WebLinkButton,
+  WebStatusPill,
+  WebAmount,
 } from "./primitives";
 export type {
   WebBadgeProps,

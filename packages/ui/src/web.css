@@ -72,6 +72,21 @@
   --timeline-dot-muted: #c7cec7;
   --border-on-dark: rgba(223, 228, 224, 0.22);
 
+  /* Dark header: topbar, page header and tab band are navy (DS variant 8e). */
+  --header-bg: var(--brand-navy);
+  --header-tabband: #182a33;
+  --header-divider: #324650;
+  --on-dark-text: #dfe4e0;
+  --on-dark-link: #e3cd97;
+  --on-dark-border: #758488;
+  --on-dark-danger: #f3b4a8;
+  --on-dark-separator: rgba(255, 255, 255, 0.4);
+  --on-dark-hover: rgba(255, 255, 255, 0.1);
+  --on-dark-avatar: rgba(255, 255, 255, 0.15);
+  --tab-count-bg: #34444b;
+  --card-header-bg: #f8faf6;
+  --card-header-border: #e7ebe5;
+
   --font-serif: Georgia, "Times New Roman", serif;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -227,8 +242,10 @@ html:has(.web-shell) body {
   gap: var(--space-page-x);
   height: var(--topbar-height);
   padding: 0 var(--space-page-x);
-  background: var(--brand-navy);
+  background: var(--header-bg);
   color: var(--text-on-dark);
+  /* Runs seamlessly into the dark page header, separated by a 1px line. */
+  border-bottom: 1px solid var(--header-divider);
 }
 .web-topbar-brand {
   display: inline-flex;
@@ -574,12 +591,17 @@ html:has(.web-shell) body {
   margin: calc(-1 * var(--ui-page-inset-y)) calc(-1 * var(--ui-page-inset-x));
 }
 
+/* Dark (navy) header of every page, right under the topbar; with tabs it ends
+   in the darker tab band, without tabs (lists, settings) in 18px padding. */
 .web-page-header {
   position: relative;
   flex: none;
-  padding: 16px var(--space-page-x) 0;
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--border-default);
+  padding: 16px var(--space-page-x) 18px;
+  background: var(--header-bg);
+  color: var(--text-on-dark);
+}
+.web-page-header:has(> .web-tabs) {
+  padding-bottom: 0;
 }
 .web-page-header[data-mode="edit"],
 .web-page-header[data-mode="new"] {
@@ -597,7 +619,10 @@ html:has(.web-shell) body {
   padding: 0;
   list-style: none;
   font: 400 12.5px/17px var(--font-sans);
-  color: var(--text-muted);
+  color: var(--on-dark-text);
+}
+.web-breadcrumb [aria-current="page"] {
+  color: var(--text-on-dark);
 }
 .web-breadcrumb li {
   display: inline-flex;
@@ -620,14 +645,14 @@ html:has(.web-shell) body {
 }
 .web-breadcrumb li + li::before {
   content: "/";
-  color: var(--text-separator);
+  color: var(--on-dark-separator);
 }
 .web-breadcrumb a {
-  color: var(--text-muted);
+  color: var(--on-dark-link);
   text-decoration: none;
 }
 .web-breadcrumb a:hover {
-  color: var(--text-ink);
+  color: var(--text-on-dark);
   text-decoration: underline;
 }
 .web-breadcrumb [data-mono="true"] {
@@ -635,7 +660,7 @@ html:has(.web-shell) body {
   font-size: 12px;
 }
 .web-breadcrumb [data-edit-crumb="true"] {
-  color: var(--warning-text);
+  color: var(--on-dark-link);
   font-weight: 600;
 }
 .web-page-header-row {
@@ -664,9 +689,10 @@ html:has(.web-shell) body {
   flex-shrink: 0;
   width: 52px;
   height: 52px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--surface-card);
   border-radius: var(--radius-logo);
   background: var(--surface-card);
+  color: var(--text-ink);
 }
 .web-page-header-logo img {
   width: 100%;
@@ -714,7 +740,7 @@ html:has(.web-shell) body {
   margin: 0;
   font: 400 28px/34px var(--font-serif);
   letter-spacing: -0.01em;
-  color: var(--text-ink);
+  color: var(--text-on-dark);
   /* One line, always: a long name is cut with an ellipsis (full text in the
      `title` attribute) so the header is the same height in every state. */
   white-space: nowrap;
@@ -747,7 +773,7 @@ html:has(.web-shell) body {
   overflow: hidden;
   white-space: nowrap;
   font: 400 12.5px/17px var(--font-sans);
-  color: var(--text-secondary);
+  color: var(--text-on-dark-muted);
 }
 .web-edit-status > * {
   flex-shrink: 0;
@@ -761,7 +787,7 @@ html:has(.web-shell) body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--danger-text);
+  color: var(--on-dark-danger);
   font-weight: 600;
 }
 .web-edit-status-problem > .web-error-mark {
@@ -770,11 +796,11 @@ html:has(.web-shell) body {
   margin-right: 6px;
 }
 .web-edit-status-problem a {
-  color: var(--danger-text);
+  color: var(--on-dark-link);
   text-decoration: underline;
 }
 .web-edit-status-divider {
-  color: var(--text-separator);
+  color: var(--on-dark-separator);
 }
 .web-page-header-actions {
   display: flex;
@@ -796,7 +822,7 @@ html:has(.web-shell) body {
   max-width: 100%;
   white-space: nowrap;
   font: 400 12.5px/17px var(--font-sans);
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
 }
 .web-page-header-owner-text {
   min-width: 0;
@@ -810,8 +836,8 @@ html:has(.web-shell) body {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  color: var(--text-ink);
+  background: var(--on-dark-avatar);
+  color: var(--text-on-dark);
   font: 600 10.5px/1 var(--font-sans);
 }
 .web-error-mark {
@@ -827,11 +853,17 @@ html:has(.web-shell) body {
   flex-shrink: 0;
 }
 
+/* Tab band: a darker navy strip across the full width under the header. The
+   active tab is a light "folder tab" in exactly the work-area colour, so it
+   runs seamlessly into the page below. The 10px left padding + 14px tab
+   padding line the first label up with the header text (24px). */
 .web-tabs {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-tabs);
-  margin-top: 14px;
+  gap: 4px;
+  margin: 18px calc(-1 * var(--space-page-x)) 0;
+  padding: 8px var(--space-page-x) 0 10px;
+  background: var(--header-tabband);
   /* Tab counters are tabular so the tabs never shift when a count changes.
      Many tabs on a narrow window scroll sideways instead of widening the
      page. */
@@ -842,41 +874,104 @@ html:has(.web-shell) body {
 .web-tab {
   flex-shrink: 0;
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 8px 0 10px;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px 10px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 7px 7px 0 0;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
   font: 400 13.5px/18px var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
 }
 .web-tab:hover {
-  color: var(--text-ink);
+  color: var(--text-on-dark);
 }
 .web-tab[aria-selected="true"] {
-  color: var(--text-ink);
+  background: var(--surface-page);
+  color: var(--brand-navy);
   font-weight: 600;
-  border-bottom-color: var(--brand-gold);
 }
+/* Count pill: neutral number, or gold with a word ("3 open") when the tab
+   needs attention (at most one per band, enforced by PageHeader). */
 .web-tab-count {
-  font: 400 11px/14px var(--font-mono);
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--tab-count-bg);
+  color: var(--on-dark-text);
+  font: 400 10.5px/1 var(--font-mono);
+}
+.web-tab-count[data-attention="true"] {
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+  font-weight: 600;
 }
 .web-tab[aria-disabled="true"] {
   cursor: not-allowed;
 }
-.web-tab[aria-disabled="true"]:not([aria-selected="true"]),
-.web-tab[aria-disabled="true"]:not([aria-selected="true"]) .web-tab-count {
-  color: var(--text-disabled);
+.web-tab[aria-disabled="true"]:not([aria-selected="true"]) {
+  opacity: 0.45;
 }
 .web-tabs-note {
+  align-self: center;
   margin-left: auto;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   font: 400 12px/16px var(--font-sans);
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
+  white-space: nowrap;
+}
+
+/* Controls on the dark header. Secondary buttons (Edit, ···, Cancel, Export)
+   are transparent with a light border; the one primary action is gold, since
+   a navy button disappears on navy. Save keeps its gold 700 style. */
+.web-page-header .web-btn:not([data-variant="primary"], [data-variant="save"], [data-variant="danger"]) {
+  background: transparent;
+  border-color: var(--on-dark-border);
+  color: var(--text-on-dark);
+}
+.web-page-header .web-btn:not([data-variant="primary"], [data-variant="save"], [data-variant="danger"]):hover {
+  background: var(--on-dark-hover);
+}
+.web-page-header .web-btn[data-variant="primary"] {
+  background: var(--brand-gold);
+  border-color: var(--brand-gold-border);
+  color: var(--brand-navy);
+}
+.web-page-header .web-btn[data-variant="primary"]:hover {
+  background: var(--brand-gold-hover);
+  border-color: var(--brand-gold-border);
+}
+.web-page-header .web-segmented {
+  background: var(--on-dark-hover);
+}
+.web-page-header .web-segmented-option {
+  color: var(--text-on-dark-muted);
+}
+.web-page-header .web-segmented-option[aria-checked="true"] {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--text-ink);
+}
+
+/* Badges on the dark header: status keeps its light coloured variant;
+   attention (warning, Edit mode, New) is filled gold; neutral facts are
+   transparent with a light border. */
+.web-page-header .web-badge[data-variant="neutral"],
+.web-page-header .web-badge[data-variant="mono"] {
+  background: transparent;
+  border-color: var(--on-dark-border);
+  color: var(--on-dark-text);
+}
+.web-page-header .web-badge[data-variant="warning"],
+.web-page-header .web-badge[data-variant="attention"] {
+  background: var(--brand-gold);
+  border-color: var(--brand-gold);
+  color: var(--brand-navy);
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1014,6 +1109,35 @@ html:has(.web-shell) body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* Status pill: a meaningful count as a rail value ("1 active", "3 open"). */
+.web-status-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  font: 600 11.5px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.web-status-pill[data-tone="success"] {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+.web-status-pill[data-tone="warning"] {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.web-status-pill[data-tone="danger"] {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+/* Key amount (potential, contract value, total): serif 15px, max 1-2 per
+   card or rail section; ordinary amounts stay sans. */
+.web-amount {
+  font: 400 15px/20px var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
 .web-rail-notice {
   margin-top: 10px;
   padding: 8px 10px;
@@ -1089,12 +1213,17 @@ html:has(.web-shell) body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-none);
 }
+/* Light tint in every card head. The head rounds its own top corners instead
+   of `overflow: hidden` on the card, which would break the sticky FilterBar
+   and column headers inside. */
 .web-card-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: 10px var(--space-card-x);
-  border-bottom: 1px solid var(--border-soft);
+  background: var(--card-header-bg);
+  border-bottom: 1px solid var(--card-header-border);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
 }
 .web-card-title {
   margin: 0;
@@ -2133,7 +2262,7 @@ a.web-tree-id:hover {
  * scroll area below it holding a single card.
  * ---------------------------------------------------------------------- */
 .web-page-header[data-kind="list"] {
-  padding-bottom: 14px;
+  padding-bottom: 18px;
 }
 .web-page-header[data-kind="list"] .web-page-header-left {
   gap: 10px;

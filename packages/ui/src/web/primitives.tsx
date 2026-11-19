@@ -13,7 +13,9 @@ import { cx } from "../cx";
  * Badge
  * ---------------------------------------------------------------------- */
 
-export type WebBadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "mono";
+/** On the dark page header, `warning` and `attention` both render filled gold
+ * (something that needs attention: "3 open work orders", "No contract"). */
+export type WebBadgeVariant = "success" | "warning" | "attention" | "danger" | "info" | "neutral" | "mono";
 
 export interface WebBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: WebBadgeVariant;
@@ -24,6 +26,32 @@ export interface WebBadgeProps extends HTMLAttributes<HTMLSpanElement> {
 export function WebBadge({ variant = "neutral", className, children, ...rest }: WebBadgeProps) {
   return (
     <span className={cx("web-badge", className)} data-variant={variant} {...rest}>
+      {children}
+    </span>
+  );
+}
+
+/** Rounded status pill for a meaningful count as a value in a rail row
+ * (`1 active` green, `3 open` gold, `2 overdue` red). Rail only — in cards
+ * and tables status stays coloured text. */
+export function WebStatusPill({
+  tone,
+  className,
+  children,
+  ...rest
+}: HTMLAttributes<HTMLSpanElement> & { tone: "success" | "warning" | "danger" }) {
+  return (
+    <span className={cx("web-status-pill", className)} data-tone={tone} {...rest}>
+      {children}
+    </span>
+  );
+}
+
+/** Key amount (potential, contract value, total) in serif 15px. At most 1–2
+ * per card; ordinary amounts stay sans. */
+export function WebAmount({ className, children, ...rest }: HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span className={cx("web-amount", className)} {...rest}>
       {children}
     </span>
   );

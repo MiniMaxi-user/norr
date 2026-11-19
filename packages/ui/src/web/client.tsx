@@ -168,8 +168,13 @@ export interface PageHeaderBadge {
 export interface PageHeaderTab {
   id: string;
   label: string;
-  /** Mono number, no brackets. Omit when there is nothing to count. */
+  /** Mono number in a pill, no brackets. Omit (or 0) when there is nothing
+   * to count — no pill is shown for 0. */
   count?: number | null;
+  /** The count needs attention (open, overdue, to review): the pill turns
+   * gold and shows this word after the number ("3 open"). Only the first
+   * such tab in the band is highlighted. */
+  attention?: string | null;
 }
 
 export interface PageHeaderActions {
@@ -298,8 +303,9 @@ function EditStatusRegion({ mode, status }: { mode: "edit" | "new"; status?: Edi
   );
 }
 
-/** White header of every detail page: breadcrumb, title, badges (or, while
- * editing, the edit-status line), actions, owner line and tabs. */
+/** Dark (navy) header of every detail page: breadcrumb, title, badges (or,
+ * while editing, the edit-status line), actions, owner line, and the darker
+ * tab band whose active tab is a light folder tab. */
 export function PageHeader({
   breadcrumb,
   title,
@@ -316,6 +322,8 @@ export function PageHeader({
 }: PageHeaderProps) {
   const editing = mode !== "read";
   const visibleBadges = (badges ?? []).slice(0, MAX_BADGES);
+  // At most one gold count pill per tab band.
+  const firstAttentionTab = (tabs ?? []).findIndex((tab) => Boolean(tab.attention && tab.count));
 
   // Return focus to the Edit button when leaving edit mode.
   const wasEditing = useRef(false);
@@ -436,7 +444,7 @@ export function PageHeader({
 
       {tabs && tabs.length > 0 ? (
         <div className="web-tabs" role="tablist" aria-label={tabsLabel} onKeyDown={onTabsKeyDown}>
-          {tabs.map((tab) => {
+          {tabs.map((tab, tabIndex) => {
             const selected = tab.id === activeTab;
             const locked = editing && !selected;
             const ids = webTabIds(tab.id);
@@ -458,8 +466,14 @@ export function PageHeader({
                 }}
               >
                 {tab.label}
-                {tab.count !== undefined && tab.count !== null ? (
-                  <span className="web-tab-count">{tab.count}</span>
+                {tab.count ? (
+                  tab.attention && tabIndex === firstAttentionTab ? (
+                    <span className="web-tab-count" data-attention="true">
+                      {tab.count} {tab.attention}
+                    </span>
+                  ) : (
+                    <span className="web-tab-count">{tab.count}</span>
+                  )
                 ) : null}
               </button>
             );

@@ -225,7 +225,7 @@ export interface WebListPageProps {
   /** Secondary actions, left of the primary one: `[Export]`, a
    * `WebViewSwitcher`. Only add what really exists. */
   actions?: ReactNode;
-  /** The ONE navy primary button: `<WebLinkButton variant="primary"
+  /** The ONE primary button (gold on the dark header): `<WebLinkButton variant="primary"
    * href="/clients/new">New client</WebLinkButton>`. Omit when the user may
    * not create. */
   primary?: ReactNode;

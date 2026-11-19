@@ -330,14 +330,20 @@ export function AssetScreen({
       ...(isCreate
         ? []
         : [
-            ...(workOrders ? [{ id: "workOrders", label: "Work orders", count: workOrders.length }] : []),
+            ...(workOrders
+              ? [
+                  openWorkOrders.length > 0
+                    ? { id: "workOrders", label: "Work orders", count: openWorkOrders.length, attention: "open" }
+                    : { id: "workOrders", label: "Work orders", count: workOrders.length },
+                ]
+              : []),
             ...(activities ? [{ id: "activities", label: "Activities", count: activities.length }] : []),
             ...(contractCoverage ? [{ id: "contracts", label: "Contracts", count: contractCoverage.length }] : []),
             ...(showStructureTab ? [{ id: "structure", label: "Structure", count: structureCount }] : []),
             ...(volumes ? [{ id: "volumes", label: "Volumes" }] : []),
           ]),
     ],
-    [isCreate, workOrders, activities, contractCoverage, showStructureTab, structureCount, volumes],
+    [isCreate, workOrders, openWorkOrders, activities, contractCoverage, showStructureTab, structureCount, volumes],
   );
 
   useEffect(() => {
