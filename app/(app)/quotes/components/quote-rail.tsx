@@ -2,7 +2,7 @@
 
 import { SidebarNotice, SidebarRows, SidebarSection } from "@yourorg/ui/web";
 import { LivePanel, type LivePanelData } from "@yourorg/ui/web-client";
-import { formatDateTimeWeb, formatMoneyWeb } from "@/lib/format/web";
+import { formatDateTimeWeb, formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { InvoiceSummary } from "../invoice-actions";
 import { pluralDays } from "./quote-status";
 import type { QuoteTotals } from "./quote-totals";
@@ -22,8 +22,9 @@ export interface QuoteRailProps {
 /**
  * Right rail of the Quote page (design system, issue #222): [LivePanel] ·
  * Validity (time left on an open quote) · Totals (lines, subtotal, VAT, total
- * incl. VAT — the table itself carries no totals row) · Invoice (number, when
- * generated, e-mail outcome — only once invoiced) — only facts the Overview
+ * incl. VAT — the table itself carries no totals row) · Invoice (number,
+ * invoice and due date, invoiced total and e-mail outcome from the invoice
+ * snapshot, issue #232 — only once invoiced) — only facts the Overview
  * "Details" card does not already show — above the always-last TIMELINE
  * (added by `WebDetailLayout`). Read-only.
  */
@@ -86,7 +87,12 @@ export function QuoteRail({ livePanel, validityDaysLeft, lineCount, totals, invo
           <SidebarRows
             rows={[
               { label: "Number", value: invoice.invoiceNumber },
-              { label: "Generated", value: formatDateTimeWeb(invoice.generatedAt) },
+              { label: "Invoice date", value: formatDateWeb(invoice.invoiceDate) },
+              {
+                label: "Due date",
+                value: `${formatDateWeb(invoice.dueDate)} (${invoice.paymentTermDays === 0 ? "immediately" : pluralDays(invoice.paymentTermDays)})`,
+              },
+              { label: "Invoiced total", value: <strong>{formatMoneyWeb(invoice.total)}</strong> },
               { label: "Email", value: emailOutcome },
             ]}
           />

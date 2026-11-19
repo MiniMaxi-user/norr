@@ -63,6 +63,16 @@ export function buildClientSchema(options: {
       label: "IBAN",
       validate: (value) => tooLong("IBAN", value, IBAN_MAX, "check for spaces or typos"),
     },
+    paymentTermDays: {
+      label: "Payment term",
+      validate: (value) => {
+        const text = value.trim();
+        if (!text) return null;
+        if (!/^[0-9]+$/.test(text)) return "Enter the payment term as a whole number of days, for example 14";
+        if (Number(text) > 365) return "The payment term can be at most 365 days";
+        return null;
+      },
+    },
     notes: {
       label: "Notes",
       validate: (value) => tooLong("Notes", value, NOTES_MAX, "move detail into an activity or document"),
@@ -125,6 +135,7 @@ const CLIENT_FIELD_KEYS = [
   "kvkNumber",
   "vatNumber",
   "iban",
+  "paymentTermDays",
   "notes",
   "status",
   "accountManagerId",

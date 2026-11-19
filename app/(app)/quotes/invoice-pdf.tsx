@@ -106,6 +106,8 @@ export interface InvoicePdfProps {
    * doesn't hard-require this, only `ownClient` presence itself, so a tenant
    * that hasn't filled in an IBAN yet can still generate an invoice. */
   iban: string | null;
+  /** Payment term in days from the invoice snapshot (issue #232); 0 = pay immediately. */
+  paymentTermDays: number;
 }
 
 const styles = StyleSheet.create({
@@ -456,7 +458,9 @@ export function InvoiceDocument(props: InvoicePdfProps) {
           <View style={styles.footerNoteBlock}>
             <Text style={styles.footerNoteLabel}>PAYMENT</Text>
             <Text style={styles.footerNoteText}>
-              Please pay the total amount within 30 days
+              {props.paymentTermDays > 0
+                ? `Please pay the total amount within ${props.paymentTermDays} days`
+                : "Please pay the total amount immediately"}
               {props.iban ? ` to IBAN ${props.iban}` : ""} to the order of {sender.name}, quoting invoice
               number {props.invoiceNumber}
               {props.workOrderReference ? ` and work order ${props.workOrderReference}` : ""}.

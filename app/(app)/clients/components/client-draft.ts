@@ -26,6 +26,7 @@ export type ClientDraft = {
   kvkNumber: string;
   vatNumber: string;
   iban: string;
+  paymentTermDays: string;
   notes: string;
   status: ClientStatus;
   accountManagerId: string;
@@ -44,6 +45,7 @@ export function draftFromClient(client: ClientRecord): ClientDraft {
     kvkNumber: client.kvk_number ?? "",
     vatNumber: client.vat_number ?? "",
     iban: client.iban ?? "",
+    paymentTermDays: client.payment_term_days != null ? String(client.payment_term_days) : "",
     notes: client.notes ?? "",
     status: (client.status as ClientStatus) ?? "lead",
     accountManagerId: client.account_manager_id ?? "",
@@ -66,6 +68,7 @@ export function emptyDraft(todayIso: string): ClientDraft {
     kvkNumber: "",
     vatNumber: "",
     iban: "",
+    paymentTermDays: "",
     notes: "",
     status: "lead",
     accountManagerId: "",
@@ -100,6 +103,7 @@ export function draftToClientInput(patch: Partial<ClientDraft>): Record<string, 
   if (patch.kvkNumber !== undefined) input.kvkNumber = patch.kvkNumber;
   if (patch.vatNumber !== undefined) input.vatNumber = patch.vatNumber;
   if (patch.iban !== undefined) input.iban = patch.iban;
+  if (patch.paymentTermDays !== undefined) input.paymentTermDays = patch.paymentTermDays;
   if (patch.notes !== undefined) input.notes = patch.notes;
   if (patch.status !== undefined) input.status = patch.status;
   if (patch.accountManagerId !== undefined) input.accountManagerId = patch.accountManagerId;

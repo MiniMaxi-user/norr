@@ -54,7 +54,7 @@ import { WorkOrderChecklistPanel } from "./work-order-checklist-panel";
 import { WorkOrderPhotosPanel } from "./work-order-photos-panel";
 import { WorkOrderVolumesChecklist } from "./work-order-volumes-checklist";
 import { WorkOrderReceiptsPanel, type WorkOrderReceiptsData } from "./work-order-receipts-panel";
-import { WorkOrderRail } from "./work-order-rail";
+import { WorkOrderRail, type WorkOrderInvoiceInfo } from "./work-order-rail";
 import { buildWorkOrderTimeline } from "./work-order-timeline";
 import { getLivePanel } from "./work-order-live-panel";
 import { approvalBlockers } from "../approval-readiness";
@@ -131,6 +131,8 @@ export interface WorkOrderScreenProps {
   canCreateQuote?: boolean;
   /** The quote made from this work order after approval, if any. */
   createdQuote?: { id: string; name: string | null } | null;
+  /** The invoiced quote, once the work order is Invoiced (issue #233). */
+  invoice?: WorkOrderInvoiceInfo | null;
   canApproveReview?: boolean;
   hours?: WorkOrderHoursData | null;
   material?: WorkOrderMaterialData | null;
@@ -215,6 +217,7 @@ export function WorkOrderScreen({
   currentUserId,
   canCreateQuote,
   createdQuote = null,
+  invoice = null,
   canApproveReview,
   hours = null,
   material = null,
@@ -343,9 +346,10 @@ export function WorkOrderScreen({
             timeEntries,
             articles: material?.workOrderArticles ?? null,
             checklistItems: checklistData ? checklistData.checklists.flatMap((group) => group.items) : null,
+            invoice,
           })
         : [],
-    [workOrder, members, timeEntries, material, checklistData],
+    [workOrder, members, timeEntries, material, checklistData, invoice],
   );
 
   const refresh = () => router.refresh();
@@ -567,7 +571,7 @@ export function WorkOrderScreen({
       Hours, material and the checklist open on the work order&apos;s own page once it is created.
     </p>
   ) : (
-    <WorkOrderRail livePanel={livePanel} assetRecord={asset?.id === saved.assetId ? asset : null} />
+    <WorkOrderRail livePanel={livePanel} assetRecord={asset?.id === saved.assetId ? asset : null} invoice={invoice} />
   );
 
   const ids = webTabIds(tab);

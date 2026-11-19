@@ -123,6 +123,9 @@ export function QuoteScreen({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
   const invoiceFlow = useQuoteInvoice(quote?.id ?? "", invoice);
+  // An invoiced quote's lines are frozen in the database (issue #232); the
+  // status covers viewers who cannot read the invoice itself (e.g. planner).
+  const linesLocked = Boolean(invoice) || quote?.quote_status?.value === "invoiced";
 
   // ---- Edit mode ------------------------------------------------------------
   const record = useMemo<QuoteDraft>(
@@ -355,9 +358,9 @@ export function QuoteScreen({
             clientAssets={clientAssets}
             articles={articles}
             members={members}
-            canCreate={canCreate}
-            canUpdate={canUpdate}
-            canDelete={canDelete}
+            canCreate={canCreate && !linesLocked}
+            canUpdate={canUpdate && !linesLocked}
+            canDelete={canDelete && !linesLocked}
           />
         )}
 

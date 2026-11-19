@@ -91,6 +91,9 @@ export interface ClientRecord {
   /** Nullable date. The app defaults this to today only on create; see
    * `clientSince` in `./schema.ts`. */
   client_since: string | null;
+  /** Payment term in days for invoices to this client (issue #232). `null` =
+   * the organization default (Settings → Invoicing). */
+  payment_term_days: number | null;
   /** Read-only — maintained entirely by the DB's `set_client_won_at`
    * trigger, never written by `createClient`/`updateClient`. Timestamp of
    * when this client most recently became `status = 'won'`; drives the
@@ -191,6 +194,7 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
     account_manager_id: input.accountManagerId ?? null,
     potential_value: input.potentialValue ?? null,
     client_since: input.clientSince ?? null,
+    payment_term_days: input.paymentTermDays ?? null,
     // `won_at` is never written here — trigger-only, excluded from this
     // table's INSERT column grants entirely (see
     // `20260827100000_clients_kanban_status.sql`).
@@ -236,6 +240,11 @@ function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>, r
     row.client_since = input.clientSince;
   } else if (rawInput.clientSince === "") {
     row.client_since = null;
+  }
+  if (input.paymentTermDays !== undefined) {
+    row.payment_term_days = input.paymentTermDays;
+  } else if (rawInput.paymentTermDays === "") {
+    row.payment_term_days = null;
   }
   // `won_at` is never written here — see `toClientInsertRow`'s comment above.
   return row;

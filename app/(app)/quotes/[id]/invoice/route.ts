@@ -3,13 +3,14 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { can } from "@/lib/rbac/permissions";
-import { renderInvoicePdfForQuote } from "../../invoice-render";
+import { getInvoicePdfForQuote } from "../../invoice-render";
 
 /**
- * GET /quotes/[id]/invoice — renders the quote's invoice PDF on demand
- * (issue #211) and returns it inline. Auth: normal session; `invoicing`
- * feature + `read` permission; all data is read through the RLS-enforced
- * server client. Nothing is stored.
+ * GET /quotes/[id]/invoice — returns the quote's invoice PDF inline: the
+ * stored file (issue #227), or — for an invoice that predates stored PDFs —
+ * rendered once from the invoice snapshot, stored, then returned. Auth: normal
+ * session; `invoicing` feature + `read` permission; all data and storage
+ * access goes through the RLS-enforced server client.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,17 +28,17 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   }
 
   const supabase = await createSupabaseServerClient();
-  const { rendered, error, code } = await renderInvoicePdfForQuote(supabase, id);
-  if (!rendered) {
-    const status = code === "not_invoiced" || code === "not_found" ? 404 : 500;
+  const { result, error, code } = await getInvoicePdfForQuote(supabase, id);
+  if (!result) {
+    const status = code === "not_invoiced" ? 404 : 500;
     return NextResponse.json({ error }, { status });
   }
 
-  return new NextResponse(new Uint8Array(rendered.pdf), {
+  return new NextResponse(new Uint8Array(result.pdf), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${rendered.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf"`,
+      "Content-Disposition": `inline; filename="${result.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf"`,
       "Cache-Control": "private, no-store",
     },
   });

@@ -672,6 +672,16 @@ export async function listQuoteLineItems(
   return ok({ lineItems, total: computeTotal(lineItems) });
 }
 
+/** The DB freezes the lines of an invoiced quote (issue #232,
+ * `guard_invoiced_quote_line_items`); show that reason instead of
+ * `mapDbError`'s generic 23514 text. */
+function lineItemDbError(error: { code?: string; message: string }): string {
+  if (error.code === "23514" && error.message.includes("has been invoiced")) {
+    return "This quote has been invoiced; its line items can no longer be changed.";
+  }
+  return mapDbError(error);
+}
+
 /**
  * Creates a line item on `quoteId`. Owner/planner only, matching the DB's
  * `quote_line_items_insert_owner_or_planner` policy exactly. `assetId` (when
@@ -706,7 +716,7 @@ export async function createQuoteLineItem(
     .select(QUOTE_LINE_ITEM_SELECT)
     .single();
 
-  if (error) return fail(mapDbError(error));
+  if (error) return fail(lineItemDbError(error));
   return ok({ lineItem: data as unknown as QuoteLineItemRecord });
 }
 
@@ -749,7 +759,7 @@ export async function updateQuoteLineItem(
     .select(QUOTE_LINE_ITEM_SELECT)
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  if (error) return fail(lineItemDbError(error));
   if (!data) return fail("Quote line item not found, or you do not have permission to update it.");
   return ok({ lineItem: data as unknown as QuoteLineItemRecord });
 }
@@ -776,7 +786,7 @@ export async function deleteQuoteLineItem(id: string): Promise<ActionResult<{ de
     .select("id")
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  if (error) return fail(lineItemDbError(error));
   if (!data) return fail("Quote line item not found, or you do not have permission to delete it.");
   return ok({ deletedId: data.id as string });
 }

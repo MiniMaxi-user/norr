@@ -30,9 +30,11 @@ export function buildWorkOrderTimeline(input: {
   timeEntries: TimeEntryRecord[] | null;
   articles: WorkOrderArticleRecord[] | null;
   checklistItems: WorkOrderChecklistItemRecord[] | null;
+  /** Issue #233: the invoice of this work order's quote, when the viewer may read it. */
+  invoice?: { invoiceNumber: string | null; invoicedAt: string | null } | null;
   now?: number;
 }): TimelineItem[] {
-  const { workOrder, members, timeEntries, articles, checklistItems } = input;
+  const { workOrder, members, timeEntries, articles, checklistItems, invoice } = input;
   const now = input.now ?? Date.now();
   const nameOf = (id: string | null | undefined) => {
     const member = id ? members.find((item) => item.id === id) : undefined;
@@ -65,6 +67,9 @@ export function buildWorkOrderTimeline(input: {
       title: `Material added · ${row.article?.description ?? "article"}`,
       actor: nameOf(row.created_by),
     });
+  }
+  if (invoice?.invoicedAt) {
+    events.push({ id: "invoiced", at: invoice.invoicedAt, title: `Invoiced · ${invoice.invoiceNumber ?? "invoice"}` });
   }
   for (const item of checklistItems ?? []) {
     if (item.is_checked && item.checked_at) {

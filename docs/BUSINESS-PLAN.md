@@ -12,7 +12,7 @@ Premium, multi-tenant Field Service Management platform voor technische dienstve
 Twee niveaus. Ik interpreteer je omschrijving als volgt — **check dit voordat er gebouwd wordt**, want het bepaalt het datamodel:
 
 **Platform-niveau**
-- **Admin** (jij/je team): beheert tenants ("klanten" van de SaaS zelf), platformbrede dashboarding/reporting, facturatie richting tenants (Stripe).
+- **Admin** (jij/je team): beheert tenants ("klanten" van de SaaS zelf), platformbrede dashboarding/reporting, facturatie richting tenants (voorlopig handmatig, later Stripe — zie §5).
 
 **Tenant-niveau** (elk bedrijf dat het platform gebruikt = 1 tenant = jouw "Client")
 - **Owner/Client** — volledige toegang tot alle modules binnen de tenant
@@ -57,7 +57,8 @@ Vergeleken met premium FSM-platforms (ServiceTitan, Jobber, Housecall Pro, Sales
 ## 5. Verdienmodel
 - Basis platformfee per tenant (per actieve gebruiker of flat fee)
 - Modules als betaalde add-on via Stripe: bv. Core (Clients + Assets + Planning) inbegrepen, Contracts / Reporting / Dashboarding-pro als add-on
-- Feature flags per tenant regelen dit — Admin kan modules aan/uit zetten, gesynchroniseerd met het Stripe-abonnement van die tenant
+- Feature flags per tenant regelen dit — Admin kan modules aan/uit zetten
+- **Stripe wacht (besluit 2026-11-19):** zolang het aantal tenants klein is, factureert de platform admin/owner tenants handmatig en zet modules handmatig aan/uit. Stripe-koppeling (abonnement + automatische sync van modules) volgt pas als de schaal dat rechtvaardigt (stories #250/#251, label `onhold`).
 
 ## 6. Premium ervaring — niet-onderhandelbaar
 - Snappy: optimistic UI, server components waar mogelijk, geen volle page-reloads
@@ -73,7 +74,7 @@ Vergeleken met premium FSM-platforms (ServiceTitan, Jobber, Housecall Pro, Sales
 Zie `ROADMAP.md` — 5 fases, van fundament (auth/rollen/shell) tot premium polish. Bewust gekozen om het fundament eerst goed te zetten: elke module hangt af van tenancy + RBAC + de app-shell.
 
 ## 8. Techniek (kort)
-Next.js op Vercel, Supabase (Postgres + Auth + Storage + Row Level Security), Stripe, apart design-system package. Details in `ARCHITECTURE.md`.
+Next.js op Vercel, Supabase (Postgres + Auth + Storage + Row Level Security), Stripe (later, zie §5), apart design-system package. Details in `ARCHITECTURE.md`.
 
 ## 9. Risico's & aandachtspunten
 - **Data-isolatie tussen tenants** — Row Level Security is verplicht op elke tabel, geen enkele query zonder org-scope.

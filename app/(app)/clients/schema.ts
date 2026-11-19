@@ -69,6 +69,18 @@ const optionalPotentialValueSchema = z.preprocess(
     .optional(),
 );
 
+/** Optional payment term in days (issue #232), matching
+ * `clients.payment_term_days`'s CHECK (0–365). Empty = the organization default. */
+const optionalPaymentTermSchema = z.preprocess(
+  emptyToUndefined,
+  z.coerce
+    .number({ invalid_type_error: "Payment term must be a whole number of days." })
+    .int("Payment term must be a whole number of days.")
+    .min(0, "Payment term cannot be negative.")
+    .max(365, "Payment term can be at most 365 days.")
+    .optional(),
+);
+
 /** The kanban's 4 fixed columns (issue #58) — mirrors `clients.status`'s
  * CHECK constraint exactly (see migration
  * `20260827100000_clients_kanban_status.sql`). Optional: the DB's own
@@ -104,6 +116,8 @@ export const clientCreateSchema = z.object({
    * `clients.client_since` itself has no DB default) — the schema just
    * accepts whatever the form submits. */
   clientSince: optionalIsoDateSchema,
+  /** Invoices to this client (issue #232); empty = organization default. */
+  paymentTermDays: optionalPaymentTermSchema,
 });
 
 export type ClientCreateInput = z.infer<typeof clientCreateSchema>;

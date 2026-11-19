@@ -27,6 +27,7 @@ import { getWorkOrderChecklist } from "../checklist-actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
 import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
+import type { WorkOrderInvoiceInfo } from "../components/work-order-rail";
 
 const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "receipts", "checklist"];
 
@@ -286,10 +287,16 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
   // and only while no real (non-auto-draft) quote exists for it yet. The
   // query runs under the caller's RLS, only for someone who may create one.
   // Once the quote exists, the LivePanel links to it instead (same status).
+  //
+  // Once Invoiced (issue #233: set by the DB when the quote is invoiced) the
+  // same lookup feeds the rail's Invoice section and the timeline instead;
+  // the invoice number is only read by those who may read invoices.
   let quoteReady = false;
   let createdQuote: { id: string; name: string | null } | null = null;
+  let invoice: WorkOrderInvoiceInfo | null = null;
   const canReadQuotes = quotesEnabled && canAccessModule(actor, "quotes");
-  if (canReadQuotes && workOrder.work_order_status?.value === "completed") {
+  const statusValue = workOrder.work_order_status?.value;
+  if (canReadQuotes && (statusValue === "completed" || statusValue === "invoiced")) {
     const supabase = await createSupabaseServerClient();
     const { data: existingQuote } = await supabase
       .from("quotes")
@@ -299,8 +306,26 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string; name: string | null }>();
-    if (existingQuote) createdQuote = { id: existingQuote.id, name: existingQuote.name };
-    quoteReady = canCreateQuote && !existingQuote;
+    if (statusValue === "completed") {
+      if (existingQuote) createdQuote = { id: existingQuote.id, name: existingQuote.name };
+      quoteReady = canCreateQuote && !existingQuote;
+    } else if (existingQuote) {
+      invoice = { quoteId: existingQuote.id, quoteName: existingQuote.name, invoiceNumber: null, invoicedAt: null };
+      const canReadInvoices =
+        (await hasFeature(session.organization, "invoicing")) &&
+        canAccessModule(actor, "invoicing") &&
+        can(actor, "invoicing", "read");
+      if (canReadInvoices) {
+        const { data: invoiceRow } = await supabase
+          .from("invoices")
+          .select("invoice_number, generated_at")
+          .eq("quote_id", existingQuote.id)
+          .maybeSingle<{ invoice_number: string; generated_at: string }>();
+        if (invoiceRow) {
+          invoice = { ...invoice, invoiceNumber: invoiceRow.invoice_number, invoicedAt: invoiceRow.generated_at };
+        }
+      }
+    }
   }
 
   const timeEntries = timeEntriesResult.data?.timeEntries ?? [];
@@ -338,6 +363,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       currentUserId={session.userId}
       canCreateQuote={quoteReady}
       createdQuote={createdQuote}
+      invoice={invoice}
       canApproveReview={canApproveReview}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
       hours={{

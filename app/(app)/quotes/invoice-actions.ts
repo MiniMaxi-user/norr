@@ -6,8 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
 import { sendEmail } from "@/lib/email/resend";
-import { getOrganizationCompanySettings } from "../settings/company-actions";
-import { formatInvoiceTotal, renderInvoicePdfForQuote } from "./invoice-render";
+import { formatInvoiceTotal, getInvoicePdfForQuote } from "./invoice-render";
 import {
   DEFAULT_INVOICE_EMAIL_BODY,
   DEFAULT_INVOICE_EMAIL_SUBJECT,
@@ -15,26 +14,27 @@ import {
 } from "./invoice-email-schema";
 
 /**
- * Server Actions for invoicing a quote (issues #119, #211).
+ * Server Actions for invoicing a quote (issues #119, #211, #227, #232, #233).
  *
  * Flow of `invoiceQuote` ("Generate invoice"):
  *  1. `invoicing` feature + `can(actor, "invoicing", "create")` (owner /
  *     administratie), Zod-validated id.
- *  2. Refuse if the quote already has an invoice (invoices are permanent: no
- *     regenerate, no delete).
- *  3. Mint the sequential number (`next_invoice_number` RPC), INSERT the
- *     `invoices` row (`pdf_path` stays null). The DB trigger
- *     `invoices_advance_contract_period` then advances the contract's
- *     invoiced period / next invoice date for contract quotes.
- *  4. The DB trigger on invoices sets the quote status to 'invoiced'.
- *  5. Best effort, after the commit: render the PDF on demand and e-mail it to
- *     the client's invoice contact (see `sendInvoiceEmail`). Invoicing
- *     succeeds even when the e-mail is skipped or fails.
+ *  2. The DB function `create_invoice` does the rest in ONE transaction: role
+ *     and quote checks (not already invoiced, not an auto-draft, not
+ *     rejected/expired, has lines, own company configured), the sequential
+ *     number, the `invoices` row and the snapshot (`invoice_lines`, totals,
+ *     VAT breakdown, payment term + due date, addresses). The existing AFTER
+ *     INSERT triggers set the quote to Invoiced, advance the contract period
+ *     and move a Completed source work order to Invoiced. There is no direct
+ *     INSERT grant on `invoices` any more.
+ *  3. The PDF is rendered from that snapshot and stored (`invoices.pdf_path`),
+ *     so every later open and e-mail uses exactly this document.
+ *  4. Best effort: e-mail the stored PDF to the client's invoice contact (see
+ *     `sendInvoiceEmail`). Invoicing succeeds even when storing or e-mailing
+ *     fails; opening the PDF later stores it then.
  *
- * PDFs are never stored: they are rendered on demand by the route handler
- * `GET /quotes/[id]/invoice` and by the e-mail step, both via
- * `./invoice-render.ts`. Every query runs under the caller's own session (RLS
- * is the real backstop); no service-role client.
+ * Every query runs under the caller's own session (RLS is the real backstop);
+ * no service-role client.
  */
 
 const uuidSchema = z.string().uuid("Invalid id.");
@@ -57,6 +57,15 @@ export interface InvoiceQuoteResult {
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** `create_invoice` raises its own user-facing messages (not invoiced twice,
+ * no lines, company details missing, …) with these codes; show those as-is
+ * instead of `mapDbError`'s generic text. */
+function invoiceDbError(error: { code?: string; message: string }): string {
+  if (error.code && ["P0002", "23505", "23514"].includes(error.code)) return error.message;
+  if (error.code === "42501") return "Only an owner or administratie member can generate invoices.";
+  return mapDbError(error);
 }
 
 function formatMailbox(name: string | null, email: string): string {
@@ -151,17 +160,23 @@ async function sendInvoiceEmail(
       return { status: "failed", to, error };
     }
 
-    const { rendered, error: renderError } = await renderInvoicePdfForQuote(supabase, quoteId);
+    const { result: rendered, error: renderError } = await getInvoicePdfForQuote(supabase, quoteId);
     if (!rendered) {
       const error = renderError ?? "Could not render the invoice PDF.";
       await record({ email_error: error });
       return { status: "failed", to, error };
     }
 
+    const { data: quoteRow } = await supabase
+      .from("quotes")
+      .select("name")
+      .eq("id", quoteId)
+      .maybeSingle<{ name: string }>();
+
     const values = {
       invoice_number: rendered.invoiceNumber,
       client_name: rendered.clientName,
-      quote_name: rendered.quoteName,
+      quote_name: quoteRow?.name ?? rendered.reference,
       total: formatInvoiceTotal(rendered.total),
       due_date: rendered.dueDateLabel,
       organization_name: organizationName,
@@ -217,37 +232,22 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
   if (quoteError) return fail(mapDbError(quoteError));
   if (!quote) return fail("Quote not found, or you do not have permission to view it.");
 
-  const { data: existing, error: existingError } = await supabase
+  const { data: invoiceId, error: createError } = await supabase.rpc("create_invoice", { p_quote_id: quote.id });
+  if (createError) return fail(invoiceDbError(createError));
+  if (!invoiceId) return fail("Could not create the invoice.");
+
+  const { data: invoice, error: invoiceError } = await supabase
     .from("invoices")
-    .select("id")
-    .eq("quote_id", quote.id)
-    .maybeSingle<{ id: string }>();
-  if (existingError) return fail(mapDbError(existingError));
-  if (existing) return fail("This quote has already been invoiced.");
+    .select("id, invoice_number")
+    .eq("id", invoiceId as string)
+    .single<{ id: string; invoice_number: string }>();
+  if (invoiceError) return fail(mapDbError(invoiceError));
+  const invoiceNumber = invoice.invoice_number;
 
-  // Fail early (before burning an invoice number) when the PDF could never be
-  // rendered because the tenant's own company details are missing.
-  const companySettings = await getOrganizationCompanySettings();
-  if (!companySettings.data) return fail(companySettings.error ?? "Could not load organization settings.");
-  if (!companySettings.data.ownClient) {
-    return fail("Configure your own company details in Settings → Company before generating an invoice.");
-  }
-
-  const { data: invoiceNumber, error: numberError } = await supabase.rpc("next_invoice_number", {
-    p_organization_id: organizationId,
-  });
-  if (numberError) return fail(mapDbError(numberError));
-  if (!invoiceNumber) return fail("Could not generate an invoice number.");
-
-  const { data: invoice, error: insertError } = await supabase
-    .from("invoices")
-    .insert({ quote_id: quote.id, invoice_number: invoiceNumber })
-    .select("id")
-    .single<{ id: string }>();
-  if (insertError) {
-    if (insertError.code === "23505") return fail("This quote has already been invoiced.");
-    return fail(mapDbError(insertError));
-  }
+  // Store the PDF now (rendered from the snapshot), so the very first open
+  // and e-mail already use the stored document. Best effort: when it fails,
+  // the first open stores it instead.
+  await getInvoicePdfForQuote(supabase, quote.id);
 
   // The DB trigger on invoices sets the quote status to 'invoiced'; re-read to report it.
   const { data: statusRow } = await supabase
@@ -320,14 +320,24 @@ export interface InvoiceSummary {
   id: string;
   invoiceNumber: string;
   generatedAt: string;
+  /** Snapshot fields (issue #232): fixed at invoicing time. */
+  invoiceDate: string;
+  dueDate: string;
+  paymentTermDays: number;
+  subtotal: number;
+  vatTotal: number;
+  total: number;
+  /** Whether the PDF has been stored (issue #227); false only for an invoice
+   * that predates stored PDFs and has not been opened since. */
+  pdfStored: boolean;
   emailedTo: string | null;
   emailedAt: string | null;
   emailError: string | null;
 }
 
 /** Whether `quoteId` already has an invoice (drives "Generate invoice" vs.
- * "Open PDF" on the Quote detail page). The PDF itself is served by
- * `GET /quotes/[id]/invoice`. */
+ * "Open PDF" on the Quote detail page), with its snapshot amounts and due
+ * date. The PDF itself is served by `GET /quotes/[id]/invoice`. */
 export async function getInvoiceForQuote(
   quoteId: string,
 ): Promise<ActionResult<{ invoice: InvoiceSummary | null }>> {
@@ -344,12 +354,22 @@ export async function getInvoiceForQuote(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("invoices")
-    .select("id, invoice_number, generated_at, emailed_to, emailed_at, email_error")
+    .select(
+      "id, invoice_number, generated_at, invoice_date, due_date, payment_term_days, subtotal, vat_total, total, pdf_path," +
+        " emailed_to, emailed_at, email_error",
+    )
     .eq("quote_id", idResult.data)
     .maybeSingle<{
       id: string;
       invoice_number: string;
       generated_at: string;
+      invoice_date: string;
+      due_date: string;
+      payment_term_days: number;
+      subtotal: number | string;
+      vat_total: number | string;
+      total: number | string;
+      pdf_path: string | null;
       emailed_to: string | null;
       emailed_at: string | null;
       email_error: string | null;
@@ -363,6 +383,13 @@ export async function getInvoiceForQuote(
       id: data.id,
       invoiceNumber: data.invoice_number,
       generatedAt: data.generated_at,
+      invoiceDate: data.invoice_date,
+      dueDate: data.due_date,
+      paymentTermDays: data.payment_term_days,
+      subtotal: Number(data.subtotal),
+      vatTotal: Number(data.vat_total),
+      total: Number(data.total),
+      pdfStored: Boolean(data.pdf_path),
       emailedTo: data.emailed_to,
       emailedAt: data.emailed_at,
       emailError: data.email_error,

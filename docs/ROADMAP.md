@@ -29,7 +29,8 @@ Phasing decided pragmatically: get multi-tenant auth, RBAC, and the premium app 
 - **Invoicing** — elevated from a Finance/Administratie task to a real module: generate from completed Work Orders/contracts, payment status, export
 - Reporting (PDF generation per work order / asset / client; first-time-fix rate, technician utilization, contract profitability)
 - Dashboarding (real widgets once Work Orders exist to power them, per-role, configurable)
-- Stripe billing integration, `organization_features` sync
+- Module entitlements per tenant (`organization_features`, managed by the Platform Admin — feature #242)
+- **Stripe billing integration — ON HOLD (product-owner decision 2026-11-19).** Too early: the Platform Admin/owner invoices tenants manually for now. Stories #250 (Stripe) and #251 (seats) stay in Backlog with label `onhold` until the number of tenants justifies it. Module on/off is managed manually via the tenant's Modules tab in the meantime.
 
 ## Phase 4 — Customer & field experience
 - **Customer Portal** — the tenant's own customers: view Work Order status/history, approve quotes, pay invoices

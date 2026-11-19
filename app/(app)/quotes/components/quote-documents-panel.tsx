@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { WebBadge, WebButton } from "@yourorg/ui/web";
 import { WebDataTableCard, type WebColumn } from "@yourorg/ui/web-client";
-import { formatDateTimeWeb } from "@/lib/format/web";
+import { formatDateTimeWeb, formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { InvoiceSummary } from "../invoice-actions";
 import type { QuoteInvoiceFlow } from "./use-quote-invoice";
 
@@ -28,7 +28,9 @@ export function QuoteDocumentsPanel({ invoice, canGenerate, canInvoice, flow }: 
   const columns = useMemo<WebColumn<InvoiceSummary>[]>(
     () => [
       { id: "number", header: "Invoice", primary: true, mono: true, render: (row) => row.invoiceNumber },
-      { id: "generated", header: "Generated", sortValue: (row) => row.generatedAt, render: (row) => formatDateTimeWeb(row.generatedAt) },
+      { id: "date", header: "Invoice date", sortValue: (row) => row.invoiceDate, render: (row) => formatDateWeb(row.invoiceDate) },
+      { id: "due", header: "Due date", sortValue: (row) => row.dueDate, render: (row) => formatDateWeb(row.dueDate) },
+      { id: "total", header: "Total incl. VAT", align: "end", sortValue: (row) => row.total, render: (row) => formatMoneyWeb(row.total) },
       {
         id: "sent",
         header: "Sent",
