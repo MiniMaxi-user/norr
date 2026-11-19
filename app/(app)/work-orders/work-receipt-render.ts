@@ -59,7 +59,6 @@ const WORK_ORDER_COLUMNS =
   " work_order_type:reference_list_items!work_orders_type_id_fkey(value,label)";
 
 interface SiteRow {
-  name: string;
   address_line1: string | null;
   address_line2: string | null;
   postal_code: string | null;
@@ -204,7 +203,9 @@ export async function renderWorkReceiptPdf(
       wo.site_id
         ? supabase
             .from("sites")
-            .select("name, address_line1, address_line2, postal_code, city, country, visit_contact_id")
+            // No `name`: sites are identified by their address only
+            // (20260825120000_sites_drop_name.sql).
+            .select("address_line1, address_line2, postal_code, city, country, visit_contact_id")
             .eq("id", wo.site_id)
             .maybeSingle<SiteRow>()
         : Promise.resolve({ data: null, error: null }),
@@ -402,7 +403,7 @@ export async function renderWorkReceiptPdf(
       },
       client: { name: client.name },
       site: {
-        name: site?.name ?? null,
+        name: null,
         address: site
           ? {
               line1: site.address_line1,

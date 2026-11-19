@@ -29,6 +29,11 @@ export interface WorkOrderLivePanelRecord {
   /** Set once the quote exists: the panel then links to it. */
   createdQuote: { id: string; name: string | null } | null;
   onCreateQuote: () => void;
+  /** Approved, no work receipt generated yet, and the viewer may generate one
+   * (issue #226). */
+  canGenerateReceipt: boolean;
+  generatingReceipt: boolean;
+  onGenerateReceipt: () => void;
   onStop: (entry: TimeEntryRecord) => void;
   onApprove: () => void;
 }
@@ -38,7 +43,9 @@ export interface WorkOrderLivePanelRecord {
  * happening NOW and the viewer can act on it from here (LivePanel rules):
  *
  *  1. the viewer must act: the work order waits in `to_review` and the viewer
- *     may approve it ("ACTION NEEDED FROM YOU", Approve);
+ *     may approve it ("ACTION NEEDED FROM YOU", Approve); or it is approved
+ *     and has no work receipt yet ("ACTION NEEDED FROM YOU", Generate work
+ *     receipt — issue #226);
  *  2. a time registration is running (own timers first, then anyone's the
  *     viewer may stop): live clock since the start, action Stop.
  *
@@ -77,6 +84,21 @@ export function getLivePanel(record: WorkOrderLivePanelRecord, viewer: LivePanel
             actions: record.fixAction ? [record.fixAction] : [],
           },
     );
+  }
+
+  if (record.canGenerateReceipt) {
+    panels.push({
+      variant: "attention",
+      title: "ACTION NEEDED FROM YOU",
+      value: "Work receipt",
+      context: "Review approved — generate the work receipt so it can be sent to the client",
+      actions: [
+        {
+          label: record.generatingReceipt ? "Generating…" : "Generate work receipt",
+          onClick: record.generatingReceipt ? undefined : record.onGenerateReceipt,
+        },
+      ],
+    });
   }
 
   if (record.canCreateQuote) {

@@ -396,6 +396,12 @@ export function WorkOrderScreen({
               createdQuote,
               creatingQuote: quotePending,
               onCreateQuote: handleCreateQuote,
+              // A failed attempt (logged row without PDF) doesn't count.
+              canGenerateReceipt: Boolean(
+                receipts?.isApproved && receipts.canGenerate && !receipts.receipts.some((receipt) => receipt.pdfUrl),
+              ),
+              generatingReceipt: receiptPending,
+              onGenerateReceipt: handleGenerateReceipt,
               onStop: (entry) => {
                 void clockOut(entry.id).then((result) => {
                   if (!result.data) {
@@ -421,7 +427,7 @@ export function WorkOrderScreen({
           )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workOrder, timeEntries, members, canApproveReview, canCreateQuote, createdQuote, quotePending, currentUserId, hours?.canUpdateAny, hours?.canUpdateOwn, blockers.join("|"), tab],
+    [workOrder, timeEntries, members, canApproveReview, canCreateQuote, createdQuote, quotePending, receipts, receiptPending, currentUserId, hours?.canUpdateAny, hours?.canUpdateOwn, blockers.join("|"), tab],
   );
 
   // ---- Tabs -----------------------------------------------------------------
@@ -517,20 +523,15 @@ export function WorkOrderScreen({
     });
   }
 
-  // Approving the review and creating the quote are LivePanel actions (they
-  // only exist at one status each). The one navy primary is the work receipt:
-  // offered once the work order is approved (completed/invoiced) and the actor
-  // may generate it. The first generation runs straight away; later ones
-  // create a new version after a confirmation.
+  // Approving the review, creating the quote and generating the FIRST work
+  // receipt are LivePanel actions ("ACTION NEEDED FROM YOU"). Once a receipt
+  // exists, the navy primary offers a new version (after a confirmation).
   const latestReceipt = receipts?.receipts[0] ?? null;
+  const hasGeneratedReceipt = Boolean(receipts?.receipts.some((receipt) => receipt.pdfUrl));
   const primary =
-    !isCreate && receipts?.isApproved && receipts.canGenerate ? (
-      <WebButton
-        variant="primary"
-        loading={receiptPending}
-        onClick={() => (latestReceipt ? setReceiptConfirmOpen(true) : handleGenerateReceipt())}
-      >
-        {latestReceipt ? "Generate new version" : "Generate work receipt"}
+    !isCreate && receipts?.isApproved && receipts.canGenerate && hasGeneratedReceipt ? (
+      <WebButton variant="primary" loading={receiptPending} onClick={() => setReceiptConfirmOpen(true)}>
+        Generate new version
       </WebButton>
     ) : undefined;
 
