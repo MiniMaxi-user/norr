@@ -121,6 +121,8 @@ For exactly which tables/migrations exercise this pattern, and the full column-b
 | Work order numbering (Settings) | Read/Update | — | — | — | Read/Update | — |
 | Platform | — | — | — | — | — | Read |
 
+Note (#223): Planning's engineer "Create own" covers time entries (#15) and, PWA only, field-created Work Orders (types Storing/Onderhoud/Inspectie, auto-created Activity, optionally self-assigned) via the `create_field_work_order` RPC. Web Work Order creation stays owner/planner (`can(..., "create")`); direct INSERT RLS on `work_orders` is unchanged.
+
 Encode this as a single config object (`lib/rbac/permissions.ts`), not scattered `if (role === ...)` checks. Enforce it both server-side and in RLS.
 
 **Implemented** (issue #4): `lib/rbac/permissions.ts` encodes the table above verbatim as `TENANT_PERMISSIONS` (+ a `PLATFORM_ADMIN_PERMISSIONS` column), exposing `can(actor, module, action)`, `canAny(...)`, `allowedActions(...)`, and `canAccessModule(...)`. `actor: { role: TenantRole | null; isPlatformAdmin?: boolean }` keeps Platform Admin as an orthogonal flag, never a `TenantRole` member, per the rule above. `_own`-suffixed actions (`create_own`/`read_own`/`update_own`/`delete_own`) mark matrix cells like "Read (assigned)"/"Read/Update/Create own" — callers must still apply the actual resource-ownership filter themselves; `can()` only tells you the verb is allowed at all.

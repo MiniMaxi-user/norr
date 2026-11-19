@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
 import {
   PwaBody,
@@ -13,11 +14,13 @@ import {
   PwaStack,
   PwaSyncLine,
   WebBadge,
+  WebButton,
   WebStatusBadge,
   WebTypeBadge,
   type WebStatusTone,
 } from "@yourorg/ui/web";
-import { AlertTriangle, ChevronRight, ClipboardList, MapPin } from "@yourorg/ui/icons";
+import { AlertTriangle, Check, ChevronRight, ClipboardList, MapPin, Plus } from "@yourorg/ui/icons";
+import { useOnline } from "@/lib/use-online";
 import {
   getCachedWorkItems,
   getLastSyncedAt,
@@ -227,7 +230,22 @@ function isBreakdown(item: Pick<CachedWorkItem, "type">): boolean {
  * `currentUserId` scopes the offline cache (`lib/offline/db.ts`) to the
  * signed-in engineer — see that file's `ensureCacheBelongsTo` doc comment.
  */
-export function TodayScreen({ currentUserId }: { currentUserId: string }) {
+export function TodayScreen({
+  currentUserId,
+  createdNumber,
+}: {
+  currentUserId: string;
+  /** Number of a work order just created and sent to planning (issue #223,
+   * `?created=` on the URL) — shown once as a confirmation. */
+  createdNumber?: string | null;
+}) {
+  const router = useRouter();
+  const online = useOnline();
+  const [createdNotice] = useState(createdNumber ?? null);
+  useEffect(() => {
+    if (createdNumber) router.replace("/today");
+  }, [createdNumber, router]);
+
   const [items, setItems] = useState<CachedWorkItem[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
@@ -431,12 +449,29 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
               {breakdownCount} {breakdownCount === 1 ? "breakdown" : "breakdowns"}
             </WebBadge>
           )}
+          {/* Creating a work order needs a connection (issue #223) — disabled
+              offline, the explanation is the callout in the body. */}
+          <WebButton
+            variant="save"
+            size="touch"
+            iconOnly
+            aria-label="New work order"
+            disabled={!online}
+            onClick={() => router.push("/work-orders/new")}
+          >
+            <Plus aria-hidden />
+          </WebButton>
         </PwaHeaderRow>
       </PwaPageHeader>
 
       <PwaBody>
         <PullToRefresh onRefresh={sync}>
           <PwaStack>
+            {createdNotice && (
+              <Callout icon={Check}>Work order {createdNotice} created and sent to planning.</Callout>
+            )}
+            {!online && <Callout icon={AlertTriangle}>You need an internet connection to create a work order.</Callout>}
+
             {syncFailed && (
               <Callout icon={AlertTriangle}>
                 {lastSyncedAt

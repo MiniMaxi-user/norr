@@ -20,7 +20,14 @@ import { TodayScreen } from "./today-screen";
  * they used to feed now lives in the layout-level `Topbar`, which reads
  * the same session itself.
  */
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ created?: string }>;
+}) {
+  // `?created=WO-123` — set by the new-work-order screen (issue #223) when the
+  // order was sent to planning instead of assigned to the engineer.
+  const { created } = await searchParams;
   const session = await getCurrentEngineerSession();
   // The layout above already redirects to /login when there's no valid
   // engineer session — this is only reachable with one. If it's ever null
@@ -29,5 +36,5 @@ export default async function TodayPage() {
   // unscoped (leak-prone) cache read.
   if (!session) return null;
 
-  return <TodayScreen currentUserId={session.userId} />;
+  return <TodayScreen currentUserId={session.userId} createdNumber={created ?? null} />;
 }

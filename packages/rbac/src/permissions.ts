@@ -179,8 +179,13 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     // engineer can log/clock in their OWN time (time_entries, a sub-resource
     // of Work Orders under this same module — see
     // supabase/migrations/20260823180000_time_entries_core.sql), but this
-    // does NOT grant plain `create` — an engineer still cannot create Work
-    // Orders themselves, that stays owner/planner only.
+    // does NOT grant plain `create` — the web app's Work Order creation UI/
+    // actions stay owner/planner only (they key on `can(..., "create")`).
+    // Issue #223: `create_own` ALSO means "Work Orders the engineer creates
+    // for themselves in the field" (PWA only, types Storing/Onderhoud/
+    // Inspectie, always with an auto-created Activity). That create goes
+    // exclusively through the SECURITY DEFINER RPC `create_field_work_order`;
+    // direct INSERT RLS on work_orders stays owner/planner only.
     engineer: ["read_own", "update_own", "create_own"],
     finance: READ_ONLY,
     administratie: READ_ONLY,

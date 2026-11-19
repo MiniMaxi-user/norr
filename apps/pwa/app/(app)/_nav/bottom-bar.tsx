@@ -46,7 +46,8 @@ export function BottomBar() {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
 
-  const workOrderMatch = /^\/work-orders\/([^/]+)/.exec(pathname);
+  // `/work-orders/new` (issue #223) is the create screen, not an open work order.
+  const workOrderMatch = /^\/work-orders\/(?!new(?:\/|$))([^/]+)/.exec(pathname);
   const workOrderId = workOrderMatch?.[1] ?? null;
   const activeSection = searchParams.get("section") ?? "home";
   const isToday = pathname === "/today";
