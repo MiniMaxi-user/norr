@@ -25,19 +25,24 @@ end;
 $$;
 
 -- Org A fixtures
-select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
+-- Fixtures are written as the table owner (no RLS/column grants in the way);
+-- created_by still needs auth.uid() for the org-creation triggers.
+select set_config('request.jwt.claims', json_build_object('sub', 'f2111111-1111-1111-1111-111111111111')::text, true);
 insert into public.organizations (id, name, created_by)
 values ('f1000000-0000-0000-0000-00000000000a', 'Org A', 'f2111111-1111-1111-1111-111111111111');
+-- Owner first (bootstrap branch), then the rest: within one multi-row INSERT
+-- the WITH CHECK's is_org_owner() can't see the owner row yet.
 insert into public.memberships (user_id, organization_id, role) values
-  ('f2111111-1111-1111-1111-111111111111', 'f1000000-0000-0000-0000-00000000000a', 'owner'),
+  ('f2111111-1111-1111-1111-111111111111', 'f1000000-0000-0000-0000-00000000000a', 'owner');
+insert into public.memberships (user_id, organization_id, role) values
   ('f2222222-2222-2222-2222-222222222222', 'f1000000-0000-0000-0000-00000000000a', 'planner'),
   ('f2333333-3333-3333-3333-333333333333', 'f1000000-0000-0000-0000-00000000000a', 'engineer'),
   ('f2555555-5555-5555-5555-555555555555', 'f1000000-0000-0000-0000-00000000000a', 'finance');
 insert into public.clients (id, organization_id, name) values
   ('f3000000-0000-0000-0000-00000000000a', 'f1000000-0000-0000-0000-00000000000a', 'Client A');
-insert into public.sites (id, client_id) values
-  ('f4000000-0000-0000-0000-00000000000a', 'f3000000-0000-0000-0000-00000000000a'),
-  ('f4000000-0000-0000-0000-00000000000b', 'f3000000-0000-0000-0000-00000000000a');
+insert into public.sites (id, client_id, is_visit_address) values
+  ('f4000000-0000-0000-0000-00000000000a', 'f3000000-0000-0000-0000-00000000000a', true),
+  ('f4000000-0000-0000-0000-00000000000b', 'f3000000-0000-0000-0000-00000000000a', true);
 insert into public.assets (id, site_id, name, type_id, serial_number)
 select 'f5000000-0000-0000-0000-00000000000a', 'f4000000-0000-0000-0000-00000000000a', 'Asset A', rli.id, 'SN-A'
 from public.reference_list_items rli
@@ -45,7 +50,7 @@ join public.reference_lists rl on rl.id = rli.reference_list_id
 where rl.organization_id = 'f1000000-0000-0000-0000-00000000000a' and rl.list_key = 'asset_type' and rli.value = 'hvac';
 
 -- Org B fixtures
-select pg_temp.act_as('f2777777-7777-7777-7777-777777777777');
+select set_config('request.jwt.claims', json_build_object('sub', 'f2777777-7777-7777-7777-777777777777')::text, true);
 insert into public.organizations (id, name, created_by)
 values ('f1000000-0000-0000-0000-00000000000b', 'Org B', 'f2777777-7777-7777-7777-777777777777');
 insert into public.memberships (user_id, organization_id, role)
