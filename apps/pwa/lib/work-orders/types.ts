@@ -122,6 +122,23 @@ export interface WorkOrderDetailResponse {
    * `work-order-photos` storage path for direct browser uploads. Optional at
    * runtime: detail caches written before this field existed lack it. */
   organizationId?: string | null;
+  /** Issue #230: the work order's standard (tick-off) checklist, `null` when
+   * it has none. Optional at runtime: detail caches written before this
+   * field existed lack it. */
+  checklist?: WorkOrderChecklist | null;
+}
+
+export interface WorkOrderChecklistItem {
+  id: string;
+  label: string;
+  isRequired: boolean;
+  isChecked: boolean;
+  sortOrder: number;
+}
+
+export interface WorkOrderChecklist {
+  id: string;
+  items: WorkOrderChecklistItem[];
 }
 
 /** `/api/articles/catalog` response item — the "Add article" bottom sheet's

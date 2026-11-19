@@ -36,6 +36,7 @@ import {
 } from "@/lib/offline/db";
 import { DAY_NAV_RANGE, dateStringForOffset, dayOffsetFromToday, parseLocalDate } from "@/lib/today-range";
 import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
+import { syncPendingChecklistToggles } from "@/lib/offline/checklist-sync";
 import { retryPendingSignOffs } from "@/lib/offline/retry-finish";
 import {
   formatClockDigits,
@@ -76,7 +77,7 @@ const PREFETCH_BATCH_SIZE = 4;
  * the bare no-`?section=` URL Today's own work-order links use (defaults to
  * "home" client-side, but is a DIFFERENT cache key from `?section=home`
  * now that `shellCacheKey` keys by the full request again). */
-const WORK_ORDER_SHELL_SECTIONS = ["home", "work", "hours", "articles", "photos", "sign"];
+const WORK_ORDER_SHELL_SECTIONS = ["home", "work", "hours", "articles", "photos", "checklist", "sign"];
 
 /** Posts `{ type: "PREFETCH_SHELL", url }` to the active service worker so
  * it can warm `SHELL_CACHE` for `url` via its own same-origin `fetch()` (see
@@ -425,6 +426,8 @@ export function TodayScreen({
       await retryPendingSignOffs(currentUserId);
       // Issue #224: also flush any queued work order photos.
       await retryPendingPhotoUploads(currentUserId);
+      // Issue #230: and any checklist toggles made offline.
+      await syncPendingChecklistToggles(currentUserId);
       if (!cancelled) await refreshLocalState();
     }
     void retryAndRefresh();

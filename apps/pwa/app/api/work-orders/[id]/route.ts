@@ -5,6 +5,7 @@ import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type {
   WorkOrderArticleEntry,
+  WorkOrderChecklist,
   WorkOrderDetail,
   WorkOrderDetailResponse,
   WorkOrderTimeEntry,
@@ -189,7 +190,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     console.error("GET /api/work-orders/[id]: checkout_work_order_if_scheduled RPC failed", checkoutError);
   }
 
-  const [workOrderResult, timeEntriesResult, articlesResult, timeRoundingResult] = await Promise.all([
+  const [workOrderResult, timeEntriesResult, articlesResult, timeRoundingResult, checklistResult] = await Promise.all([
     supabase.from("work_orders").select(WORK_ORDER_DETAIL_SELECT).eq("id", id).maybeSingle(),
     supabase
       .from("time_entries")
@@ -208,6 +209,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           .eq("id", session.organization.id)
           .maybeSingle<OrganizationTimeRoundingRow>()
       : Promise.resolve({ data: null, error: null }),
+    // Issue #230: the work order's standard checklist (one per work order) +
+    // its items, under the caller's RLS (engineer: own assigned work orders).
+    supabase
+      .from("work_order_checklists")
+      .select("id, items:work_order_checklist_items(id, label, is_required, is_checked, sort_order)")
+      .eq("work_order_id", id)
+      .maybeSingle(),
   ]);
 
   if (workOrderResult.error) {
@@ -303,8 +311,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     (timeRoundingResult.data ?? null) as OrganizationTimeRoundingRow | null,
   );
 
+  if (checklistResult.error) {
+    console.error("GET /api/work-orders/[id]: failed to load checklist", checklistResult.error);
+    return NextResponse.json({ error: "Failed to load the checklist." }, { status: 500 });
+  }
+  const checklistRow = checklistResult.data as unknown as {
+    id: string;
+    items: { id: string; label: string; is_required: boolean; is_checked: boolean; sort_order: number }[] | null;
+  } | null;
+  const checklist: WorkOrderChecklist | null = checklistRow
+    ? {
+        id: checklistRow.id,
+        items: (checklistRow.items ?? [])
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            isRequired: item.is_required,
+            isChecked: item.is_checked,
+            sortOrder: item.sort_order,
+          }))
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
+      }
+    : null;
+
   const response: WorkOrderDetailResponse = {
     workOrder,
+    checklist,
     timeEntries,
     articles,
     timeRoundingSettings,

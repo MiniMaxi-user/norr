@@ -159,7 +159,7 @@ export function PwaNote({
   tone,
   children,
   ...rest
-}: HTMLAttributes<HTMLParagraphElement> & { align?: "center"; tone?: "danger" }) {
+}: HTMLAttributes<HTMLParagraphElement> & { align?: "center"; tone?: "danger" | "success" }) {
   return (
     <p className="pwa-note" data-align={align} data-tone={tone} {...rest}>
       {children}

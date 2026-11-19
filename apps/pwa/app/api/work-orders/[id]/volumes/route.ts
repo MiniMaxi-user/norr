@@ -25,7 +25,8 @@ import type {
  * reading, AV002/AV003). Offline, the PWA queues readings locally (Dexie
  * `localVolumeReadings`) and sends them with `POST /api/work-orders/[id]/
  * finish`, which inserts them flagged `needs_review` (issue #225). Same session -> permission -> RLS-scoped query pattern
- * as the sibling routes; RLS (`asset_volume_readings_*`) is the real boundary.
+ * as the sibling routes. Issue #230: values are whole numbers and a new one
+ * replaces the engineer's earlier reading of that counter on this work order; RLS (`asset_volume_readings_*`) is the real boundary.
  *
  * Note: the PWA has no `hasFeature()` helper; the `assets` entitlement is
  * enforced by the web app's pages, and RLS here only checks org membership +
@@ -225,8 +226,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!Number.isFinite(value)) return NextResponse.json({ error: "Value must be a number." }, { status: 400 });
   if (value < 0) return NextResponse.json({ error: "Value cannot be negative." }, { status: 400 });
   if (value > MAX_VALUE) return NextResponse.json({ error: "Value is too large." }, { status: 400 });
-  if (Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-6) {
-    return NextResponse.json({ error: "Value has at most 3 decimals." }, { status: 400 });
+  // Issue #230: the PWA counters are whole numbers (the fixed "Volumes"
+  // checklist); decimals are rejected on this route.
+  if (!Number.isInteger(value)) {
+    return NextResponse.json({ error: "Value must be a whole number." }, { status: 400 });
   }
 
   let readAt = new Date().toISOString();
@@ -258,23 +261,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!wo) return NextResponse.json({ error: "Work order not found." }, { status: 404 });
   if (!wo.asset) return NextResponse.json({ error: "This work order has no asset." }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from("asset_volume_readings")
-    .insert({
-      asset_id: wo.asset.id,
-      volume_item_id: volumeItemId,
-      value,
-      read_at: readAt,
-      notes,
-      work_order_id: wo.id,
-    })
-    .select("id, volume_item_id, value, read_at, notes, work_order_id, created_at")
-    .single();
+  // Issue #230: one reading per counter per work order from this flow. The RPC
+  // replaces the engineer's earlier reading of the counter on THIS work order
+  // atomically (delete + insert in one transaction, advisory-locked, RLS and the
+  // monotonic trigger apply as the caller); on any error the old reading stays.
+  const { data, error } = await supabase.rpc("replace_work_order_volume_reading", {
+    p_work_order_id: wo.id,
+    p_volume_item_id: volumeItemId,
+    p_value: value,
+    p_read_at: readAt,
+    p_notes: notes,
+  });
 
-  if (error) {
-    const friendly = mapVolumeReadingError(error, value);
-    if (friendly) return NextResponse.json({ error: friendly.message }, { status: friendly.status });
-    console.error("POST /api/work-orders/[id]/volumes: insert failed", error);
+  if (error || !data) {
+    if (error) {
+      const friendly = mapVolumeReadingError(error, value);
+      if (friendly) return NextResponse.json({ error: friendly.message }, { status: friendly.status });
+    }
+    console.error("POST /api/work-orders/[id]/volumes: replace failed", error);
     return NextResponse.json({ error: "Failed to save reading." }, { status: 500 });
   }
 

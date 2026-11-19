@@ -40,7 +40,7 @@ import { clockOut, type TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { WorkOrderPhotoRecord } from "../photo-actions";
-import type { WorkOrderVolumeReadingRecord } from "../volume-actions";
+import type { WorkOrderVolumeRow } from "../volume-actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 import { createQuoteFromWorkOrder } from "../create-quote-actions";
 import { generateWorkReceipt } from "../work-receipt-actions";
@@ -52,7 +52,7 @@ import { WorkOrderHoursPanel } from "./work-order-hours-panel";
 import { WorkOrderMaterialsPanel } from "./work-order-materials-panel";
 import { WorkOrderChecklistPanel } from "./work-order-checklist-panel";
 import { WorkOrderPhotosPanel } from "./work-order-photos-panel";
-import { WorkOrderVolumesPanel } from "./work-order-volumes-panel";
+import { WorkOrderVolumesChecklist } from "./work-order-volumes-checklist";
 import { WorkOrderReceiptsPanel, type WorkOrderReceiptsData } from "./work-order-receipts-panel";
 import { WorkOrderRail } from "./work-order-rail";
 import { buildWorkOrderTimeline } from "./work-order-timeline";
@@ -61,7 +61,7 @@ import { approvalBlockers } from "../approval-readiness";
 import { useClientScopedLists } from "./use-client-scoped-lists";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "./constants";
 
-export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "volumes" | "receipts" | "checklist";
+export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "receipts" | "checklist";
 
 export interface WorkOrderHoursData {
   timeEntries: TimeEntryRecord[];
@@ -140,7 +140,7 @@ export interface WorkOrderScreenProps {
   /** Field photos (issue #224); `null` = viewer may not read them: no tab. */
   photos?: WorkOrderPhotoRecord[] | null;
   /** Meter readings on this work order (issues #221/#225); `null` = no tab. */
-  volumes?: WorkOrderVolumeReadingRecord[] | null;
+  volumes?: { rows: WorkOrderVolumeRow[]; canEdit: boolean } | null;
   /** Work receipts (issue #226); `null` = viewer may not read them: no tab. */
   receipts?: WorkOrderReceiptsData | null;
   /** Client signature from the field sign-off (issue #226). */
@@ -365,18 +365,19 @@ export function WorkOrderScreen({
         siteId: workOrder.site_id,
         assetId: workOrder.asset_id,
         runningTimeEntries: (timeEntries ?? []).filter((entry) => !entry.ended_at).length,
-        openChecklistItems: (checklistData?.items ?? []).filter((item) => !item.is_checked).length,
+        openRequiredChecklistItems: (checklistData?.items ?? []).filter((item) => item.is_required && !item.is_checked).length,
+        missingVolumes: (volumes?.rows ?? []).filter((row) => row.value === null).map((row) => row.label),
       })
     : [];
   const fieldsMissing = blockers.some((blocker) => /^(Add|Choose|Link) /.test(blocker));
   const runningMissing = blockers.some((blocker) => blocker.startsWith("Stop "));
-  const checklistMissing = blockers.some((blocker) => blocker.startsWith("Tick "));
+  const checklistMissing = blockers.some((blocker) => blocker.startsWith("Tick ") || blocker.startsWith("Enter volumes"));
   const fixAction =
     fieldsMissing && !readOnly
       ? { label: "Edit", onClick: () => (tab === "overview" ? edit.startEdit() : (selectTab("overview"), edit.startEdit())) }
       : runningMissing && hours
         ? { label: "Open hours", onClick: () => selectTab("hours") }
-        : checklistMissing && checklistData
+        : checklistMissing && (checklistData || volumes)
           ? { label: "Open checklist", onClick: () => selectTab("checklist") }
           : null;
 
@@ -449,9 +450,10 @@ export function WorkOrderScreen({
             ...(hours ? [{ id: "hours", label: "Hours", count: hours.timeEntries.length }] : []),
             ...(material ? [{ id: "materials", label: "Material", count: material.workOrderArticles.length }] : []),
             ...(photos ? [{ id: "photos", label: "Photos", count: photos.length }] : []),
-            ...(volumes ? [{ id: "volumes", label: "Volumes", count: volumes.length }] : []),
             ...(receipts ? [{ id: "receipts", label: "Work receipts", count: receipts.receipts.length }] : []),
-            ...(checklistData ? [{ id: "checklist", label: "Checklist", count: checklistData.items.length }] : []),
+            ...(checklistData || volumes
+              ? [{ id: "checklist", label: "Checklist", count: (checklistData?.items.length ?? 0) + (volumes?.rows.length ?? 0) }]
+              : []),
           ]),
     ],
     [isCreate, hours, material, photos, volumes, receipts, checklistData],
@@ -472,7 +474,7 @@ export function WorkOrderScreen({
       badges.push({ label: "Overdue", variant: "danger" });
     }
     if (locked) badges.push({ label: "Checked out · read-only", variant: "warning" });
-    if (volumes?.some((reading) => reading.needsReview)) {
+    if (volumes?.rows.some((row) => row.needsReview)) {
       badges.push({ label: "Volume needs review", variant: "warning" });
     }
     if (priority) badges.push({ label: priority.label });
@@ -639,22 +641,26 @@ export function WorkOrderScreen({
         )}
 
         {tab === "photos" && photos && workOrder && <WorkOrderPhotosPanel photos={photos} />}
-        {tab === "volumes" && volumes && workOrder && <WorkOrderVolumesPanel readings={volumes} />}
 
         {tab === "receipts" && receipts && workOrder && <WorkOrderReceiptsPanel data={receipts} workOrderId={workOrder.id} />}
 
-        {tab === "checklist" && checklistData && workOrder && (
-          <WorkOrderChecklistPanel
-            workOrderId={workOrder.id}
-            checklist={checklistData.checklist}
-            items={checklistData.items}
-            templates={checklistData.templates}
-            currentUserId={currentUserId}
-            canAttach={checklistData.canAttach}
-            canDetach={checklistData.canDetach}
-            canUpdateAny={checklistData.canUpdateAny}
-            canUpdateOwn={checklistData.canUpdateOwn}
-          />
+        {tab === "checklist" && workOrder && (
+          <div className="web-tab-stack">
+            {checklistData && (
+              <WorkOrderChecklistPanel
+                workOrderId={workOrder.id}
+                checklist={checklistData.checklist}
+                items={checklistData.items}
+                templates={checklistData.templates}
+                currentUserId={currentUserId}
+                canAttach={checklistData.canAttach}
+                canDetach={checklistData.canDetach}
+                canUpdateAny={checklistData.canUpdateAny}
+                canUpdateOwn={checklistData.canUpdateOwn}
+              />
+            )}
+            {volumes && <WorkOrderVolumesChecklist workOrderId={workOrder.id} rows={volumes.rows} canEdit={volumes.canEdit} />}
+          </div>
         )}
       </WebDetailLayout>
 

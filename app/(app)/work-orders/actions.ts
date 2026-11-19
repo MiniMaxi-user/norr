@@ -8,6 +8,7 @@ import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
 import { approvalBlockers } from "./approval-readiness";
 import { isWorkOrderCheckedOutInField } from "./checkout-lock";
+import { missingVolumeCounters } from "./volume-readiness";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 
 /**
@@ -694,10 +695,14 @@ export async function approveWorkOrderReview(
       .from("work_order_checklist_items")
       .select("id", { count: "exact", head: true })
       .eq("work_order_checklist_id", checklistResult.data.id)
-      .eq("is_checked", false);
+      .eq("is_checked", false)
+      .eq("is_required", true);
     if (openResult.error) return fail(mapDbError(openResult.error));
     openChecklistItems = openResult.count ?? 0;
   }
+
+  const volumesResult = await missingVolumeCounters(supabase, target.id, target.asset_id);
+  if (volumesResult.error) return fail("Failed to check the volumes.");
 
   const blockers = approvalBlockers({
     description: target.description,
@@ -707,7 +712,8 @@ export async function approveWorkOrderReview(
     siteId: target.site_id,
     assetId: target.asset_id,
     runningTimeEntries: runningResult.count ?? 0,
-    openChecklistItems,
+    openRequiredChecklistItems: openChecklistItems,
+    missingVolumes: volumesResult.labels,
   });
   if (blockers.length > 0) {
     return fail(`This work order can't be approved yet: ${blockers.join("; ")}.`);

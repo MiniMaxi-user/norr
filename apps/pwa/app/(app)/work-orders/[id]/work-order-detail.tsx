@@ -23,6 +23,7 @@ import {
   getLocalPhotos,
   getLocalSignOff,
   getLocalVolumeReadings,
+  getLocalChecklistToggles,
   deleteLocalSignOff,
   markSignOffSynced,
   saveCachedTimeRoundingSettings,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/offline/db";
 import { useWorkOrderVolumes } from "@/lib/asset-volumes/use-work-order-volumes";
 import { computeVolumeProgress } from "@/lib/asset-volumes/progress";
+import { useWorkOrderChecklist } from "@/lib/checklists/use-work-order-checklist";
 import { computeClockSummary, finishWorkOrderClock, toggleClock, type ClockKind } from "@/lib/time/clocks";
 import type { TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { TimerCard } from "./timer-card";
@@ -46,12 +48,13 @@ import { ArticlesSection } from "./sections/articles-section";
 import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
 import { PhotosSection } from "./sections/photos-section";
 import { SignOffSection } from "./sections/sign-off-section";
+import { ChecklistSection } from "./sections/checklist-section";
 
-export type WorkOrderSection = "home" | "work" | "hours" | "articles" | "photos" | "sign";
+export type WorkOrderSection = "home" | "work" | "hours" | "articles" | "photos" | "checklist" | "sign";
 
 function isSection(value: string | null): value is WorkOrderSection {
   return (
-    value === "home" || value === "work" || value === "hours" || value === "articles" || value === "photos" || value === "sign"
+    value === "home" || value === "work" || value === "hours" || value === "articles" || value === "photos" || value === "checklist" || value === "sign"
   );
 }
 
@@ -115,8 +118,8 @@ export function WorkOrderDetailScreen({
   const [localArticles, setLocalArticles] = useState<LocalArticle[]>([]);
   const [localPhotos, setLocalPhotos] = useState<LocalPhoto[]>([]);
   const [signOff, setSignOff] = useState<LocalSignOff | null>(null);
-  // Issue #225: counters (live or cached) + offline-queued readings, shared by
-  // the Work tab's Volumes block and the Sign tab's checklist.
+  // Issue #225/#230: counters (live or cached) + offline-queued readings,
+  // shared by the Checklist tab's Volumes list and the Sign tab's checklist.
   const {
     data: volumes,
     localReadings: localVolumeReadings,
@@ -127,6 +130,13 @@ export function WorkOrderDetailScreen({
     () => computeVolumeProgress(volumes, localVolumeReadings, workOrderId),
     [volumes, localVolumeReadings, workOrderId],
   );
+  // Issue #230: the standard tick-off checklist (from the detail, live or
+  // cached) with offline toggles overlaid.
+  const {
+    items: checklistItems,
+    progress: checklistProgress,
+    toggle: toggleChecklistItem,
+  } = useWorkOrderChecklist(workOrderId, currentUserId, detail?.checklist);
   // Lifted out of `SignOffSection` (product feedback, 2026-09-13 — "Solution"
   // now lives on the Work tab, under Description) so it survives switching
   // between sections instead of being local state a Sign-tab-only component
@@ -299,8 +309,9 @@ export function WorkOrderDetailScreen({
     async (signatureDataUrl: string | null) => {
       const timestamp = Date.now();
       const trimmedSolution = solution.trim() ? solution.trim() : null;
-      // Issue #225: the Sign tab gates the button on these, re-checked here so
-      // nothing partial is ever written.
+      // Issue #225/#230: the Sign tab gates the button on these (plus the
+      // checklist and volumes), re-checked here so nothing partial is ever
+      // written. The server validates the checklist/volumes again.
       if (!trimmedSolution) throw new Error("A solution is required.");
       if (!signatureDataUrl) throw new Error("A signature is required.");
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
@@ -317,10 +328,11 @@ export function WorkOrderDetailScreen({
       // Re-read after finishWorkOrderClock above so the just-closed
       // running period is included (`endedAt` is no longer null) — the
       // server route only accepts closed periods.
-      const [finalPeriods, finalArticles, finalVolumeReadings] = await Promise.all([
+      const [finalPeriods, finalArticles, finalVolumeReadings, finalChecklistToggles] = await Promise.all([
         getClockPeriodsForOrder(workOrderId, currentUserId),
         getLocalArticles(workOrderId, currentUserId),
         getLocalVolumeReadings(workOrderId, currentUserId),
+        getLocalChecklistToggles(workOrderId, currentUserId),
       ]);
       // Issue #224: best-effort photo upload alongside Finish — never
       // awaited, so photos cannot block finishing; Today retries the rest.
@@ -342,6 +354,10 @@ export function WorkOrderDetailScreen({
             value: reading.value,
             readAt: reading.readAt,
             notes: reading.notes,
+          })),
+          checklistToggles: finalChecklistToggles.map((toggle) => ({
+            itemId: toggle.itemId,
+            isChecked: toggle.isChecked,
           })),
         }),
       });
@@ -430,17 +446,7 @@ export function WorkOrderDetailScreen({
 
         {section === "home" && <HomeSection workOrder={workOrder} />}
         {section === "work" && (
-          <WorkSection
-            workOrderId={workOrderId}
-            currentUserId={currentUserId}
-            workOrder={workOrder}
-            solution={solution}
-            onSolutionChange={setSolution}
-            volumes={volumes}
-            localVolumeReadings={localVolumeReadings}
-            onVolumesChanged={reloadVolumes}
-            onLocalVolumesChanged={refreshLocalVolumes}
-          />
+          <WorkSection workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />
         )}
         {section === "hours" && (
           <>
@@ -476,6 +482,18 @@ export function WorkOrderDetailScreen({
             onPhotosChange={refreshPhotos}
           />
         )}
+        {section === "checklist" && (
+          <ChecklistSection
+            workOrderId={workOrderId}
+            currentUserId={currentUserId}
+            items={checklistItems}
+            onToggle={toggleChecklistItem}
+            volumes={volumes}
+            localVolumeReadings={localVolumeReadings}
+            onVolumesChanged={reloadVolumes}
+            onLocalVolumesChanged={refreshLocalVolumes}
+          />
+        )}
         {section === "sign" && (
           <SignOffSection
             summary={summary}
@@ -487,6 +505,7 @@ export function WorkOrderDetailScreen({
             onFinish={handleFinish}
             solutionDone={solution.trim().length > 0}
             volumeProgress={volumeProgress}
+            checklistProgress={checklistProgress}
             onJumpToSection={(target) => router.push(`/work-orders/${workOrderId}?section=${target}`)}
           />
         )}

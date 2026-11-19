@@ -354,6 +354,9 @@ html.pwa-html :where(a, button, input, select, textarea, [tabindex]):focus-visib
 .pwa-note[data-tone="danger"] {
   color: var(--danger-text);
 }
+.pwa-note[data-tone="success"] {
+  color: var(--success-text);
+}
 /* Sync line: one centred muted line under the content. */
 .pwa-sync {
   margin: 0;
@@ -1293,6 +1296,23 @@ button.pwa-sheet-row:active {
 }
 button.pwa-pick-row {
   cursor: pointer;
+}
+/* Tick-off checklist row: the whole row is the touch target. */
+label.pwa-pick-row {
+  cursor: pointer;
+  justify-content: flex-start;
+}
+label.pwa-pick-row .ui-checkbox {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+label.pwa-pick-row .pwa-pick-label {
+  flex: 1;
+  min-width: 0;
+}
+label.pwa-pick-row:has(.ui-checkbox:disabled) {
+  cursor: default;
 }
 button.pwa-pick-row:active {
   background: var(--surface-subtle);

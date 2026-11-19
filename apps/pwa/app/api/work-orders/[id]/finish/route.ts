@@ -52,6 +52,15 @@ import type { FinishVolumeReadingInput } from "@/lib/asset-volumes/types";
  * `work_order_signatures` (idempotent upserts, user session / RLS), right
  * before the status update.
  *
+ * Issue #230 — checklists: the body's `checklistToggles` (items ticked/
+ * unticked offline) are applied to THIS work order's standard checklist
+ * (items of other checklists are ignored), then every `is_required` item
+ * must be checked (400 "Complete the required checklist items: A, B.").
+ * Queued volume readings replace the engineer's earlier reading of the same
+ * counter on this work order (one per counter per work order). All of this
+ * is idempotent and runs before the non-idempotent time_entries/articles
+ * inserts below.
+ *
  * Same session -> `canAny()` -> RLS-scoped-query pattern as every other
  * route in this app. `time_entries_insert_scoped`/`work_order_articles_
  * insert_scoped`/`work_orders_update_scoped` (see
@@ -97,6 +106,8 @@ interface FinishRequestBody {
   solution?: string;
   /** Readings queued offline (issue #225). */
   volumeReadings?: FinishVolumeReadingInput[];
+  /** Checklist items toggled offline (issue #230). */
+  checklistToggles?: { itemId: string; isChecked: boolean }[];
   /** `canvas.toDataURL()` PNG of the signature (issue #226). Required. */
   signatureDataUrl?: string;
   /** Epoch ms of the sign-off on the device (optional; defaults to now). */
@@ -140,7 +151,7 @@ function isFinishVolumeReadingInput(value: unknown): value is FinishVolumeReadin
     Number.isFinite(r.value) &&
     r.value >= 0 &&
     r.value <= MAX_VOLUME_VALUE &&
-    Math.abs(r.value * 1000 - Math.round(r.value * 1000)) <= 1e-6 &&
+    Number.isInteger(r.value) &&
     typeof r.readAt === "string" &&
     ISO_WITH_OFFSET_RE.test(r.readAt) &&
     !Number.isNaN(Date.parse(r.readAt)) &&
@@ -194,6 +205,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // a misleading "reading required" error, or lose the engineer's value).
   if (volumeReadings.length !== rawVolumeReadings.length) {
     return NextResponse.json({ error: "One or more volume readings are invalid." }, { status: 400 });
+  }
+
+  const rawToggles: unknown[] = Array.isArray(body.checklistToggles) ? body.checklistToggles : [];
+  const toggleByItem = new Map<string, boolean>();
+  for (const raw of rawToggles) {
+    const t = raw as { itemId?: unknown; isChecked?: unknown } | null;
+    if (!t || typeof t.itemId !== "string" || !UUID_RE.test(t.itemId) || typeof t.isChecked !== "boolean") {
+      return NextResponse.json({ error: "One or more checklist toggles are invalid." }, { status: 400 });
+    }
+    toggleByItem.set(t.itemId, t.isChecked); // last one wins
   }
 
   // Issue #225: a Solution is required — checked before anything is written.
@@ -256,24 +277,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // work order. Runs before periods/articles/status so a 400 here leaves
   // nothing half-written (the readings inserted above are idempotent on id).
   if (workOrder.asset_id) {
-    for (const reading of volumeReadings) {
-      const { error: readingError } = await supabase.from("asset_volume_readings").upsert(
-        {
-          id: reading.id,
-          asset_id: workOrder.asset_id,
-          volume_item_id: reading.volumeItemId,
-          value: reading.value,
-          read_at: reading.readAt,
-          notes: reading.notes?.trim() ? reading.notes.trim() : null,
-          work_order_id: id,
-          needs_review: true,
-        },
-        { onConflict: "id", ignoreDuplicates: true },
-      );
+    // Issue #230: one reading per counter per work order — if several are queued
+    // for the same counter, only the last one is kept.
+    const lastPerCounter = new Map<string, FinishVolumeReadingInput>();
+    for (const reading of volumeReadings) lastPerCounter.set(reading.volumeItemId, reading);
+    for (const reading of lastPerCounter.values()) {
+      // Atomic replace (delete + insert in one transaction under RLS, so the
+      // engineer only replaces their own reading). needs_review = true stores a
+      // non-monotonic value flagged instead of rejecting it. p_reading_id makes
+      // a retried finish idempotent (the existing reading is returned as-is).
+      const { error: readingError } = await supabase.rpc("replace_work_order_volume_reading", {
+        p_work_order_id: id,
+        p_volume_item_id: reading.volumeItemId,
+        p_value: reading.value,
+        p_read_at: reading.readAt,
+        p_reading_id: reading.id,
+        p_needs_review: true,
+        p_notes: reading.notes?.trim() ? reading.notes.trim() : null,
+      });
       if (readingError) {
         const friendly = mapVolumeReadingError(readingError, reading.value);
         if (friendly) return NextResponse.json({ error: friendly.message }, { status: 400 });
-        console.error("POST /api/work-orders/[id]/finish: failed to insert volume reading", readingError);
+        console.error("POST /api/work-orders/[id]/finish: failed to save volume reading", readingError);
         return NextResponse.json({ error: "Failed to save volume readings." }, { status: 500 });
       }
     }
@@ -314,6 +339,50 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           { status: 400 },
         );
       }
+    }
+  }
+
+  // Issue #230: checklist. Apply the offline toggles to this work order's
+  // checklist, then require every is_required item to be checked. Idempotent
+  // (sets absolute values), so it sits before the non-idempotent inserts.
+  {
+    const { data: checklistItems, error: checklistError } = await supabase
+      .from("work_order_checklist_items")
+      .select("id, label, is_required, is_checked, sort_order, checklist:work_order_checklists!inner(work_order_id)")
+      .eq("checklist.work_order_id", id);
+    if (checklistError) {
+      console.error("POST /api/work-orders/[id]/finish: failed to load checklist", checklistError);
+      return NextResponse.json({ error: "Failed to check the checklist." }, { status: 500 });
+    }
+    const items = (checklistItems ?? []) as unknown as {
+      id: string;
+      label: string;
+      is_required: boolean;
+      is_checked: boolean;
+      sort_order: number;
+    }[];
+    for (const item of items) {
+      const wanted = toggleByItem.get(item.id);
+      if (wanted === undefined || wanted === item.is_checked) continue;
+      const { error: toggleError } = await supabase
+        .from("work_order_checklist_items")
+        .update({ is_checked: wanted })
+        .eq("id", item.id);
+      if (toggleError) {
+        console.error("POST /api/work-orders/[id]/finish: failed to apply checklist toggle", toggleError);
+        return NextResponse.json({ error: "Failed to save the checklist." }, { status: 500 });
+      }
+      item.is_checked = wanted;
+    }
+    const openRequired = items
+      .filter((item) => item.is_required && !item.is_checked)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((item) => item.label);
+    if (openRequired.length > 0) {
+      return NextResponse.json(
+        { error: `Complete the required checklist items: ${openRequired.join(", ")}.` },
+        { status: 400 },
+      );
     }
   }
 

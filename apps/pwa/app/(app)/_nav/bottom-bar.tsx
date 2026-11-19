@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Boxes, Camera, CalendarDays, ClipboardList, Clock, Home, Signature, type Icon } from "@yourorg/ui/icons";
+import { Boxes, Camera, CalendarDays, Check, ClipboardList, Clock, Home, Signature, type Icon } from "@yourorg/ui/icons";
 
 /**
  * The field PWA's whole primary nav (issue #170, IMPLEMENTATION.md §3;
@@ -39,6 +39,7 @@ const WORK_ORDER_SECTIONS: { value: string; label: string; icon: Icon }[] = [
   { value: "hours", label: "Hours", icon: Clock },
   { value: "articles", label: "Articles", icon: Boxes },
   { value: "photos", label: "Photos", icon: Camera },
+  { value: "checklist", label: "Checklist", icon: Check },
   { value: "sign", label: "Sign", icon: Signature },
 ];
 

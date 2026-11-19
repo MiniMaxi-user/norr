@@ -11,7 +11,9 @@
  * re-doing anything.
  *
  * Issue #225: queued offline volume readings (`localVolumeReadings`) are sent
- * in the same POST (`volumeReadings`) and cleared with the rest.
+ * in the same POST (`volumeReadings`) and cleared with the rest. Issue #230:
+ * so are the offline checklist toggles (`localChecklistToggles` ->
+ * `checklistToggles`).
  *
  * Called from `today-screen.tsx` on mount and on the browser's `online`
  * event — not from the work-order-detail screen itself, since a
@@ -24,6 +26,7 @@ import {
   deleteLocalSignOff,
   getClockPeriodsForOrder,
   getLocalArticles,
+  getLocalChecklistToggles,
   getLocalVolumeReadings,
   getPendingSignOffs,
   markSignOffSynced,
@@ -40,10 +43,11 @@ export async function retryPendingSignOffs(currentUserId: string): Promise<void>
   const pending = await getPendingSignOffs(currentUserId);
   for (const signOff of pending) {
     try {
-      const [periods, articles, volumeReadings] = await Promise.all([
+      const [periods, articles, volumeReadings, checklistToggles] = await Promise.all([
         getClockPeriodsForOrder(signOff.workOrderId, currentUserId),
         getLocalArticles(signOff.workOrderId, currentUserId),
         getLocalVolumeReadings(signOff.workOrderId, currentUserId),
+        getLocalChecklistToggles(signOff.workOrderId, currentUserId),
       ]);
       const response = await fetch(`/api/work-orders/${signOff.workOrderId}/finish`, {
         method: "POST",
@@ -63,6 +67,7 @@ export async function retryPendingSignOffs(currentUserId: string): Promise<void>
             readAt: reading.readAt,
             notes: reading.notes,
           })),
+          checklistToggles: checklistToggles.map((toggle) => ({ itemId: toggle.itemId, isChecked: toggle.isChecked })),
         }),
       });
       if (!response.ok) {

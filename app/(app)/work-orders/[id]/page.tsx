@@ -21,14 +21,14 @@ import {
 import { listTimeEntries } from "../time-entries-actions";
 import { listWorkOrderArticles } from "../work-order-articles-actions";
 import { listWorkOrderPhotos } from "../photo-actions";
-import { listWorkOrderVolumes } from "../volume-actions";
+import { getWorkOrderVolumeChecklist } from "../volume-actions";
 import { listWorkReceipts, getWorkOrderSignature } from "../work-receipt-actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
 import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
 
-const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "volumes", "receipts", "checklist"];
+const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "receipts", "checklist"];
 
 /** Fallback no-op rule when the org's rounding settings cannot be read. */
 const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
@@ -215,7 +215,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       // Photos tab (issue #224) — signed URLs, rides on `planning` read/read_own.
       listWorkOrderPhotos(workOrder.id),
       // Volumes tab (issues #221/#225): own `assets` entitlement + `asset_volumes` read.
-      canReadVolumes ? listWorkOrderVolumes(workOrder.id) : Promise.resolve(null),
+      canReadVolumes ? getWorkOrderVolumeChecklist(workOrder.id) : Promise.resolve(null),
       // Work receipts tab + signature card (issue #226) — the actions enforce their own read gate.
       listWorkReceipts(workOrder.id),
       getWorkOrderSignature(workOrder.id),
@@ -310,9 +310,11 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
 
   // `?tab=` (explicit deep link) beats the last-used-view cookie; either
   // falls back to Overview when that tab does not exist for this actor.
-  const available = (tab: string | null | undefined): WorkOrderDetailTab | null => {
+  const available = (rawTab: string | null | undefined): WorkOrderDetailTab | null => {
+    // The separate Volumes tab is gone (issue #230): old deep links / cookies land on the checklist.
+    const tab = rawTab === "volumes" ? "checklist" : rawTab;
     if (!tab || !TAB_IDS.includes(tab as WorkOrderDetailTab)) return null;
-    return tab === "checklist" && !canAccessChecklists ? null : (tab as WorkOrderDetailTab);
+    return tab === "checklist" && !canAccessChecklists && !volumesResult?.data ? null : (tab as WorkOrderDetailTab);
   };
 
   return (
@@ -361,8 +363,12 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       signature={signatureResult.data?.signature ?? null}
       photos={photosResult.data?.photos ?? null}
       volumes={
-        volumesResult?.data && (volumesResult.data.readings.length > 0 || volumesResult.data.hasConfiguredCounters)
-          ? volumesResult.data.readings
+        volumesResult?.data
+          ? {
+              rows: volumesResult.data.rows,
+              // Same gate as the server action: owner/planner (create + delete), not while checked out.
+              canEdit: can(actor, "asset_volumes", "create") && can(actor, "asset_volumes", "delete") && !isCheckedOutInField,
+            }
           : null
       }
       checklistData={

@@ -15,6 +15,7 @@ import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
 import type { VolumeProgress } from "@/lib/asset-volumes/progress";
+import type { ChecklistProgress } from "@/lib/checklists/use-work-order-checklist";
 import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
 
 /** How often the drawn-so-far signature is pushed up to `work-order-
@@ -33,9 +34,11 @@ const SIGNATURE_AUTOSAVE_MS = 500;
  * before returning to Today — see `work-order-detail.tsx`'s `handleFinish`
  * for the full sequence.
  *
- * Issue #225: finishing requires a Solution, a drawn signature and, for every
- * counter of the asset's model, a volume reading on this work order (server
- * or queued locally). A checklist at the top shows what's done/missing (a
+ * Issue #225/#230: finishing requires a Solution, a drawn signature, every
+ * required item of the standard checklist ticked ("Checklist: n of m
+ * required") and, for every counter of the asset's model, a volume reading on
+ * this work order (server or queued locally, "Volumes: n of m"); a missing
+ * item jumps to the Checklist tab. A checklist at the top shows what's done/missing (a
  * missing item jumps to the right tab) and the Finish button stays disabled
  * until all of it is met. If the counters were never loaded (offline, no
  * cache) volumes count as unknown and block finishing.
@@ -77,6 +80,7 @@ export function SignOffSection({
   onFinish,
   solutionDone,
   volumeProgress,
+  checklistProgress,
   onJumpToSection,
 }: {
   summary: ClockSummary;
@@ -88,7 +92,8 @@ export function SignOffSection({
   onFinish: (signatureDataUrl: string | null) => void | Promise<void>;
   solutionDone: boolean;
   volumeProgress: VolumeProgress;
-  onJumpToSection: (section: "work") => void;
+  checklistProgress: ChecklistProgress;
+  onJumpToSection: (section: "work" | "checklist") => void;
 }) {
   const padRef = useRef<SignaturePadHandle>(null);
   const [hasSignature, setHasSignature] = useState(Boolean(signatureDraft || existingSignOff?.signatureDataUrl));
@@ -107,7 +112,13 @@ export function SignOffSection({
 
   const volumesRequired = !volumeProgress.known || volumeProgress.total > 0;
   const volumesDone = volumeProgress.known && volumeProgress.complete;
-  const canFinish = solutionDone && hasSignature && (volumeProgress.known ? volumeProgress.complete : false);
+  // Issue #230: only is_required items of the standard checklist count.
+  const checklistRequired = checklistProgress.present && checklistProgress.total > 0;
+  const canFinish =
+    solutionDone &&
+    hasSignature &&
+    checklistProgress.complete &&
+    (volumeProgress.known ? volumeProgress.complete : false);
 
   async function handlePrimaryAction() {
     setSubmitting(true);
@@ -130,11 +141,18 @@ export function SignOffSection({
             <div className="pwa-pick-list">
               <ChecklistRow label="Solution" done={solutionDone} onOpen={() => onJumpToSection("work")} />
               <ChecklistRow label="Signature" done={hasSignature} />
+              {checklistRequired && (
+                <ChecklistRow
+                  label={`Checklist: ${checklistProgress.done} of ${checklistProgress.total} required`}
+                  done={checklistProgress.complete}
+                  onOpen={() => onJumpToSection("checklist")}
+                />
+              )}
               {volumesRequired && (
                 <ChecklistRow
                   label={volumeProgress.known ? `Volumes: ${volumeProgress.done} of ${volumeProgress.total}` : "Volumes"}
                   done={volumesDone}
-                  onOpen={volumeProgress.known ? () => onJumpToSection("work") : undefined}
+                  onOpen={volumeProgress.known ? () => onJumpToSection("checklist") : undefined}
                 />
               )}
             </div>

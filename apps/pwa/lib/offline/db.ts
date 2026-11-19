@@ -85,6 +85,9 @@
  *   until the work order's finish POST succeeds (they travel inside that POST,
  *   see `/api/work-orders/[id]/finish`). `id` is a client uuid, reused as the
  *   server row id (idempotency key).
+ * - `localChecklistToggles` (issue #230, version 11) — checklist items ticked/
+ *   unticked offline, keyed by item id, sent with Finish (`checklistToggles`)
+ *   and retried like the rest (`retry-finish.ts`).
  * - `workOrderVolumes` — read-through cache of `/api/work-orders/[id]/volumes`
  *   (counters + latest values), so the Volumes block renders offline and the
  *   Sign tab knows which counters are required.
@@ -266,6 +269,18 @@ export interface LocalVolumeReading {
   notes: string | null;
 }
 
+/** A checklist tick/untick made offline, waiting to be sent with Finish
+ * (issue #230). Keyed by the checklist item id: toggling the same item again
+ * simply overwrites the row (last write wins). */
+export interface LocalChecklistToggle {
+  itemId: string;
+  workOrderId: string;
+  userId: string;
+  isChecked: boolean;
+  /** Epoch ms of the toggle. */
+  at: number;
+}
+
 /** Read-through cache of one `/api/work-orders/[id]/volumes` response. */
 export interface CachedWorkOrderVolumes {
   workOrderId: string;
@@ -333,6 +348,7 @@ class WorkItemsDatabase extends Dexie {
   catalog!: Table<CachedCatalogArticle, string>;
   myStock!: Table<CachedMyStockItem, string>;
   localVolumeReadings!: Table<LocalVolumeReading, string>;
+  localChecklistToggles!: Table<LocalChecklistToggle, string>;
   workOrderVolumes!: Table<CachedWorkOrderVolumes, string>;
   dayWorkItems!: Table<CachedDayWorkItems, [string, string]>;
 
@@ -493,6 +509,23 @@ class WorkItemsDatabase extends Dexie {
       workOrderVolumes: "workOrderId, userId",
       dayWorkItems: "[userId+date], userId",
     });
+    // v11 — issue #230: offline checklist toggles queue (keyed by item id).
+    this.version(11).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId, userId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+      catalog: "id, userId",
+      myStock: "id, userId, articleId",
+      localVolumeReadings: "id, workOrderId, userId",
+      workOrderVolumes: "workOrderId, userId",
+      dayWorkItems: "[userId+date], userId",
+      localChecklistToggles: "itemId, workOrderId, userId",
+    });
   }
 }
 
@@ -551,6 +584,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       db.localVolumeReadings,
       db.workOrderVolumes,
       db.dayWorkItems,
+      db.localChecklistToggles,
     ],
     async () => {
       await db.workitems.clear();
@@ -564,6 +598,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.catalog.clear();
       await db.myStock.clear();
       await db.localVolumeReadings.clear();
+      await db.localChecklistToggles.clear();
       await db.workOrderVolumes.clear();
       await db.dayWorkItems.clear();
       await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
@@ -975,6 +1010,58 @@ export async function addLocalVolumeReading(reading: LocalVolumeReading): Promis
   await db.localVolumeReadings.put(reading);
 }
 
+/** Replaces the queued reading(s) of this counter on this work order with
+ * `reading` (issue #230: one queued reading per counter per work order). */
+export async function replaceLocalVolumeReading(reading: LocalVolumeReading): Promise<void> {
+  await db.transaction("rw", db.localVolumeReadings, async () => {
+    const existing = await db.localVolumeReadings.where({ workOrderId: reading.workOrderId }).toArray();
+    const staleIds = existing
+      .filter((row) => row.userId === reading.userId && row.volumeItemId === reading.volumeItemId)
+      .map((row) => row.id);
+    if (staleIds.length > 0) await db.localVolumeReadings.bulkDelete(staleIds);
+    await db.localVolumeReadings.put(reading);
+  });
+}
+
+/* ------------------------------------------------------------------------ *
+ * Issue #230 — checklist toggles queued while offline.
+ * ------------------------------------------------------------------------ */
+
+/** Queued (offline) checklist toggles for `workOrderId`. */
+export async function getLocalChecklistToggles(
+  workOrderId: string,
+  currentUserId: string,
+): Promise<LocalChecklistToggle[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.localChecklistToggles.where({ workOrderId }).toArray();
+  return rows.filter((row) => row.userId === currentUserId);
+}
+
+/** Every queued checklist toggle of this engineer, across work orders. */
+export async function getAllLocalChecklistToggles(currentUserId: string): Promise<LocalChecklistToggle[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.localChecklistToggles.toArray();
+  return rows.filter((row) => row.userId === currentUserId);
+}
+
+/** Queues (or overwrites) the toggle of one checklist item. */
+export async function putLocalChecklistToggle(toggle: LocalChecklistToggle): Promise<void> {
+  await db.localChecklistToggles.put(toggle);
+}
+
+/** Drops the queued toggle of one item (after a successful online save). */
+export async function deleteLocalChecklistToggle(itemId: string): Promise<void> {
+  await db.localChecklistToggles.delete(itemId);
+}
+
+/** Drops the queued toggle of one item only if it is still the one with timestamp `at` (a newer toggle made meanwhile is kept). */
+export async function deleteLocalChecklistToggleIfUnchanged(itemId: string, at: number): Promise<void> {
+  await db.transaction("rw", db.localChecklistToggles, async () => {
+    const current = await db.localChecklistToggles.get(itemId);
+    if (current && current.at === at) await db.localChecklistToggles.delete(itemId);
+  });
+}
+
 /** Removes a still-queued reading. */
 export async function deleteLocalVolumeReading(id: string): Promise<void> {
   await db.localVolumeReadings.delete(id);
@@ -1134,7 +1221,8 @@ export async function decrementLocalMyStockQuantity(
  * decision (and this call) lives at the call site instead.
  *
  * Also clears the queued offline volume readings (`localVolumeReadings`,
- * issue #225) — they were sent inside the same finish POST.
+ * issue #225) and checklist toggles (`localChecklistToggles`, issue #230) —
+ * they were sent inside the same finish POST.
  *
  * Also clears `detailDrafts` for `workOrderId` (bug report, 2026-09-13) —
  * once Finish succeeds the draft's job is done, and the order isn't
@@ -1142,7 +1230,14 @@ export async function decrementLocalMyStockQuantity(
  * comment), so leaving it behind would just be dead rows.
  */
 export async function clearSyncedWorkOrderData(workOrderId: string, currentUserId: string): Promise<void> {
-  await db.transaction("rw", db.clockPeriods, db.localArticles, db.detailDrafts, db.localVolumeReadings, async () => {
+  await db.transaction(
+    "rw",
+    [db.clockPeriods, db.localArticles, db.detailDrafts, db.localVolumeReadings, db.localChecklistToggles],
+    async () => {
+    const toggles = await db.localChecklistToggles.where({ workOrderId }).toArray();
+    const toggleIds = toggles.filter((row) => row.userId === currentUserId).map((row) => row.itemId);
+    if (toggleIds.length > 0) await db.localChecklistToggles.bulkDelete(toggleIds);
+
     const volumeReadings = await db.localVolumeReadings.where({ workOrderId }).toArray();
     const volumeIds = volumeReadings.filter((row) => row.userId === currentUserId).map((row) => row.id);
     if (volumeIds.length > 0) await db.localVolumeReadings.bulkDelete(volumeIds);
@@ -1161,5 +1256,6 @@ export async function clearSyncedWorkOrderData(workOrderId: string, currentUserI
 
     const draft = await db.detailDrafts.get(workOrderId);
     if (draft && draft.userId === currentUserId) await db.detailDrafts.delete(workOrderId);
-  });
+    },
+  );
 }

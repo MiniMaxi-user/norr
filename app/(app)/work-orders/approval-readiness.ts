@@ -4,7 +4,9 @@
  *  - description, solution and type are filled in;
  *  - client, site and asset are linked;
  *  - no time registration is still running;
- *  - every checklist item is ticked (when a checklist is attached).
+ *  - every REQUIRED checklist item is ticked (optional items never block);
+ *  - every counter of the asset model has a volume value on this work order
+ *    (the fixed Volumes checklist, issue #230).
  *
  * Pure and shared: `approveWorkOrderReview` (`./actions.ts`) enforces it
  * server-side, and the web LivePanel uses the same function to list what is
@@ -19,8 +21,10 @@ export interface ApprovalReadinessInput {
   assetId: string | null;
   /** Time entries without an end time. */
   runningTimeEntries: number;
-  /** Checklist items not yet ticked (0 when no checklist is attached). */
-  openChecklistItems: number;
+  /** REQUIRED checklist items not yet ticked (0 when no checklist is attached). */
+  openRequiredChecklistItems: number;
+  /** Labels of counters without a reading on this work order. */
+  missingVolumes: string[];
 }
 
 export function approvalBlockers(input: ApprovalReadinessInput): string[] {
@@ -38,12 +42,13 @@ export function approvalBlockers(input: ApprovalReadinessInput): string[] {
         : `Stop the ${input.runningTimeEntries} running time registrations`,
     );
   }
-  if (input.openChecklistItems > 0) {
+  if (input.openRequiredChecklistItems > 0) {
     blockers.push(
-      input.openChecklistItems === 1
-        ? "Tick the last open checklist item"
-        : `Tick the ${input.openChecklistItems} open checklist items`,
+      `Tick ${input.openRequiredChecklistItems} required checklist ${input.openRequiredChecklistItems === 1 ? "item" : "items"}`,
     );
+  }
+  if (input.missingVolumes.length > 0) {
+    blockers.push(`Enter volumes: ${input.missingVolumes.join(", ")}`);
   }
   return blockers;
 }
