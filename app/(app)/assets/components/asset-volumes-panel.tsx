@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmDeleteDialog, Dialog, Heading, Input, Label, Select, Stack, Text, Textarea, Button } from "@yourorg/ui";
-import { WebCard } from "@yourorg/ui/web";
+import { WebBadge, WebCard } from "@yourorg/ui/web";
 import { WebButton } from "@yourorg/ui/web";
 import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import {
@@ -145,7 +145,17 @@ function CounterCard({
         header: "Value",
         align: "end",
         sortValue: (row) => row.value,
-        render: (row) => `${formatNumberWeb(row.value)}${unit}`,
+        render: (row) => (
+          <>
+            {`${formatNumberWeb(row.value)}${unit}`}
+            {row.needsReview && (
+              <>
+                {" "}
+                <WebBadge variant="warning">Needs review</WebBadge>
+              </>
+            )}
+          </>
+        ),
       },
       {
         id: "delta",

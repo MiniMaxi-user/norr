@@ -80,12 +80,22 @@
  *   "Signed" (the job IS done from the engineer's POV), this is an
  *   additive "hasn't reached the server yet" signal on top.
  *
+ * Issue #225 — volumes offline:
+ * - `localVolumeReadings` — meter readings entered while offline, queued
+ *   until the work order's finish POST succeeds (they travel inside that POST,
+ *   see `/api/work-orders/[id]/finish`). `id` is a client uuid, reused as the
+ *   server row id (idempotency key).
+ * - `workOrderVolumes` — read-through cache of `/api/work-orders/[id]/volumes`
+ *   (counters + latest values), so the Volumes block renders offline and the
+ *   Sign tab knows which counters are required.
+ *
  * All issue #170 tables are scoped to the current engineer exactly like
  * `workitems`/`meta` already are — see `ensureCacheBelongsTo`.
  */
 import Dexie, { type Table } from "dexie";
 import type { CatalogArticle, TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import type { MyStockItem } from "@/lib/inventory/types";
+import type { WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
 
 export interface CachedWorkItemReference {
   label: string;
@@ -242,6 +252,28 @@ export interface CachedWorkOrderDetail {
   cachedAt: number;
 }
 
+/** A meter reading entered offline, waiting to be sent with Finish (issue #225). */
+export interface LocalVolumeReading {
+  /** Client uuid — also the server-side `asset_volume_readings.id`. */
+  id: string;
+  workOrderId: string;
+  userId: string;
+  volumeItemId: string;
+  value: number;
+  /** ISO timestamp (with offset) of when the engineer entered the reading. */
+  readAt: string;
+  notes: string | null;
+}
+
+/** Read-through cache of one `/api/work-orders/[id]/volumes` response. */
+export interface CachedWorkOrderVolumes {
+  workOrderId: string;
+  userId: string;
+  data: WorkOrderVolumesResponse;
+  /** Epoch ms. */
+  cachedAt: number;
+}
+
 /** A read-through cache of one `/api/articles/catalog` row (bug report,
  * 2026-09-13) — see this file's own top doc comment. `userId` (not present
  * on the API's own `CatalogArticle` shape) is added purely for
@@ -288,6 +320,8 @@ class WorkItemsDatabase extends Dexie {
   detailDrafts!: Table<LocalDetailDraft, string>;
   catalog!: Table<CachedCatalogArticle, string>;
   myStock!: Table<CachedMyStockItem, string>;
+  localVolumeReadings!: Table<LocalVolumeReading, string>;
+  workOrderVolumes!: Table<CachedWorkOrderVolumes, string>;
 
   constructor() {
     super("norr-pwa");
@@ -415,6 +449,21 @@ class WorkItemsDatabase extends Dexie {
             if (!row.clientPhotoKey) row.clientPhotoKey = crypto.randomUUID();
           });
       });
+    // v9 — issue #225: offline volume readings queue + volumes read-through cache.
+    this.version(9).stores({
+      workitems: "id",
+      meta: "key",
+      clockPeriods: "++id, workOrderId, userId, [workOrderId+kind]",
+      signoffs: "workOrderId, userId",
+      localArticles: "++id, [workOrderId+articleId]",
+      localPhotos: "++id, workOrderId, userId",
+      workOrderDetails: "workOrderId, userId",
+      detailDrafts: "workOrderId, userId",
+      catalog: "id, userId",
+      myStock: "id, userId, articleId",
+      localVolumeReadings: "id, workOrderId, userId",
+      workOrderVolumes: "workOrderId, userId",
+    });
   }
 }
 
@@ -470,6 +519,8 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       db.detailDrafts,
       db.catalog,
       db.myStock,
+      db.localVolumeReadings,
+      db.workOrderVolumes,
     ],
     async () => {
       await db.workitems.clear();
@@ -482,6 +533,8 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.detailDrafts.clear();
       await db.catalog.clear();
       await db.myStock.clear();
+      await db.localVolumeReadings.clear();
+      await db.workOrderVolumes.clear();
       await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
       await db.meta.delete(TIME_ROUNDING_SETTINGS_KEY);
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
@@ -647,6 +700,13 @@ export async function getPendingSignOffs(currentUserId: string): Promise<LocalSi
 export async function getPendingSyncWorkOrderIds(currentUserId: string): Promise<Set<string>> {
   const rows = await getPendingSignOffs(currentUserId);
   return new Set(rows.map((row) => row.workOrderId));
+}
+
+/** Removes `workOrderId`'s local sign-off row — used when the finish POST is
+ * rejected with a validation error (400): the order is NOT finished, so Today
+ * must not keep showing it as signed. */
+export async function deleteLocalSignOff(workOrderId: string): Promise<void> {
+  await db.signoffs.delete(workOrderId);
 }
 
 /** Flips `workOrderId`'s sign-off to synced — called once `retry-finish.ts`
@@ -818,6 +878,50 @@ export async function getCachedWorkOrderDetail(
 }
 
 /* ------------------------------------------------------------------------ *
+ * Issue #225 — volumes: read-through cache + offline reading queue.
+ * ------------------------------------------------------------------------ */
+
+/** Caches `/api/work-orders/[id]/volumes` for `workOrderId` (point-in-time snapshot). */
+export async function saveWorkOrderVolumes(
+  workOrderId: string,
+  data: WorkOrderVolumesResponse,
+  currentUserId: string,
+): Promise<void> {
+  await ensureCacheBelongsTo(currentUserId);
+  await db.workOrderVolumes.put({ workOrderId, userId: currentUserId, data, cachedAt: Date.now() });
+}
+
+/** The cached volumes response, or `null` if never fetched on this device. */
+export async function getCachedWorkOrderVolumes(
+  workOrderId: string,
+  currentUserId: string,
+): Promise<CachedWorkOrderVolumes | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.workOrderVolumes.get(workOrderId);
+  return row && row.userId === currentUserId ? row : null;
+}
+
+/** Queued (offline-entered) readings for `workOrderId`, oldest first. */
+export async function getLocalVolumeReadings(
+  workOrderId: string,
+  currentUserId: string,
+): Promise<LocalVolumeReading[]> {
+  await ensureCacheBelongsTo(currentUserId);
+  const rows = await db.localVolumeReadings.where({ workOrderId }).toArray();
+  return rows.filter((row) => row.userId === currentUserId).sort((a, b) => a.readAt.localeCompare(b.readAt));
+}
+
+/** Queues a reading (caller generates `id`). */
+export async function addLocalVolumeReading(reading: LocalVolumeReading): Promise<void> {
+  await db.localVolumeReadings.put(reading);
+}
+
+/** Removes a still-queued reading. */
+export async function deleteLocalVolumeReading(id: string): Promise<void> {
+  await db.localVolumeReadings.delete(id);
+}
+
+/* ------------------------------------------------------------------------ *
  * Article-catalog read-through cache (bug report, 2026-09-13) — see this
  * file's own top doc comment on `catalog`/`CachedCatalogArticle`.
  * ------------------------------------------------------------------------ */
@@ -970,13 +1074,20 @@ export async function decrementLocalMyStockQuantity(
  * file's job to also decide when synced data is safe to delete, so that
  * decision (and this call) lives at the call site instead.
  *
+ * Also clears the queued offline volume readings (`localVolumeReadings`,
+ * issue #225) — they were sent inside the same finish POST.
+ *
  * Also clears `detailDrafts` for `workOrderId` (bug report, 2026-09-13) —
  * once Finish succeeds the draft's job is done, and the order isn't
  * reachable from Today again anyway (see `LocalDetailDraft`'s own doc
  * comment), so leaving it behind would just be dead rows.
  */
 export async function clearSyncedWorkOrderData(workOrderId: string, currentUserId: string): Promise<void> {
-  await db.transaction("rw", db.clockPeriods, db.localArticles, db.detailDrafts, async () => {
+  await db.transaction("rw", db.clockPeriods, db.localArticles, db.detailDrafts, db.localVolumeReadings, async () => {
+    const volumeReadings = await db.localVolumeReadings.where({ workOrderId }).toArray();
+    const volumeIds = volumeReadings.filter((row) => row.userId === currentUserId).map((row) => row.id);
+    if (volumeIds.length > 0) await db.localVolumeReadings.bulkDelete(volumeIds);
+
     const periods = await db.clockPeriods.where({ workOrderId }).toArray();
     const periodIds = periods
       .filter((period) => period.userId === currentUserId && period.id !== undefined)

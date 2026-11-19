@@ -10,6 +10,9 @@
  * for that work order) to retry from scratch here, without the engineer
  * re-doing anything.
  *
+ * Issue #225: queued offline volume readings (`localVolumeReadings`) are sent
+ * in the same POST (`volumeReadings`) and cleared with the rest.
+ *
  * Called from `today-screen.tsx` on mount and on the browser's `online`
  * event — not from the work-order-detail screen itself, since a
  * `pendingSync` order is no longer reachable from Today (product feedback,
@@ -18,8 +21,10 @@
  */
 import {
   clearSyncedWorkOrderData,
+  deleteLocalSignOff,
   getClockPeriodsForOrder,
   getLocalArticles,
+  getLocalVolumeReadings,
   getPendingSignOffs,
   markSignOffSynced,
 } from "./db";
@@ -35,9 +40,10 @@ export async function retryPendingSignOffs(currentUserId: string): Promise<void>
   const pending = await getPendingSignOffs(currentUserId);
   for (const signOff of pending) {
     try {
-      const [periods, articles] = await Promise.all([
+      const [periods, articles, volumeReadings] = await Promise.all([
         getClockPeriodsForOrder(signOff.workOrderId, currentUserId),
         getLocalArticles(signOff.workOrderId, currentUserId),
+        getLocalVolumeReadings(signOff.workOrderId, currentUserId),
       ]);
       const response = await fetch(`/api/work-orders/${signOff.workOrderId}/finish`, {
         method: "POST",
@@ -48,9 +54,32 @@ export async function retryPendingSignOffs(currentUserId: string): Promise<void>
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: articles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
           solution: signOff.solution,
+          volumeReadings: volumeReadings.map((reading) => ({
+            id: reading.id,
+            volumeItemId: reading.volumeItemId,
+            value: reading.value,
+            readAt: reading.readAt,
+            notes: reading.notes,
+          })),
         }),
       });
-      if (!response.ok) continue;
+      if (!response.ok) {
+        // Issue #225: a 400 means the server rejected the finish itself (e.g.
+        // a required volume/solution is missing — typically a finish queued
+        // by an older app version). Retrying can never succeed, so drop the
+        // local sign-off: the work order becomes openable on Today again and
+        // the engineer completes the Sign tab's checklist and finishes anew.
+        // Hours/articles/volume readings stay queued locally (not cleared),
+        // and the solution/signature draft is kept in `drafts`.
+        if (response.status === 400) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          console.error(
+            `retryPendingSignOffs: server rejected finish of ${signOff.workOrderId}: ${payload?.error ?? "unknown"}`,
+          );
+          await deleteLocalSignOff(signOff.workOrderId);
+        }
+        continue;
+      }
       // Same cleanup order `handleFinish` itself does on a first-try
       // success — see `clearSyncedWorkOrderData`'s own doc comment on why
       // this only ever runs after the POST is confirmed to have landed.

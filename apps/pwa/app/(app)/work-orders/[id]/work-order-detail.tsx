@@ -22,6 +22,8 @@ import {
   getLocalDraft,
   getLocalPhotos,
   getLocalSignOff,
+  getLocalVolumeReadings,
+  deleteLocalSignOff,
   markSignOffSynced,
   saveCachedTimeRoundingSettings,
   saveLocalDraft,
@@ -32,6 +34,8 @@ import {
   type LocalPhoto,
   type LocalSignOff,
 } from "@/lib/offline/db";
+import { useWorkOrderVolumes } from "@/lib/asset-volumes/use-work-order-volumes";
+import { computeVolumeProgress } from "@/lib/asset-volumes/progress";
 import { computeClockSummary, finishWorkOrderClock, toggleClock, type ClockKind } from "@/lib/time/clocks";
 import type { TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
 import { TimerCard } from "./timer-card";
@@ -111,6 +115,18 @@ export function WorkOrderDetailScreen({
   const [localArticles, setLocalArticles] = useState<LocalArticle[]>([]);
   const [localPhotos, setLocalPhotos] = useState<LocalPhoto[]>([]);
   const [signOff, setSignOff] = useState<LocalSignOff | null>(null);
+  // Issue #225: counters (live or cached) + offline-queued readings, shared by
+  // the Work tab's Volumes block and the Sign tab's checklist.
+  const {
+    data: volumes,
+    localReadings: localVolumeReadings,
+    reload: reloadVolumes,
+    refreshLocal: refreshLocalVolumes,
+  } = useWorkOrderVolumes(workOrderId, currentUserId);
+  const volumeProgress = useMemo(
+    () => computeVolumeProgress(volumes, localVolumeReadings, workOrderId),
+    [volumes, localVolumeReadings, workOrderId],
+  );
   // Lifted out of `SignOffSection` (product feedback, 2026-09-13 — "Solution"
   // now lives on the Work tab, under Description) so it survives switching
   // between sections instead of being local state a Sign-tab-only component
@@ -283,6 +299,10 @@ export function WorkOrderDetailScreen({
     async (signatureDataUrl: string | null) => {
       const timestamp = Date.now();
       const trimmedSolution = solution.trim() ? solution.trim() : null;
+      // Issue #225: the Sign tab gates the button on these, re-checked here so
+      // nothing partial is ever written.
+      if (!trimmedSolution) throw new Error("A solution is required.");
+      if (!signatureDataUrl) throw new Error("A signature is required.");
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
       if (signatureDataUrl || trimmedSolution) {
         await saveLocalSignOff({
@@ -297,9 +317,10 @@ export function WorkOrderDetailScreen({
       // Re-read after finishWorkOrderClock above so the just-closed
       // running period is included (`endedAt` is no longer null) — the
       // server route only accepts closed periods.
-      const [finalPeriods, finalArticles] = await Promise.all([
+      const [finalPeriods, finalArticles, finalVolumeReadings] = await Promise.all([
         getClockPeriodsForOrder(workOrderId, currentUserId),
         getLocalArticles(workOrderId, currentUserId),
+        getLocalVolumeReadings(workOrderId, currentUserId),
       ]);
       // Issue #224: best-effort photo upload alongside Finish — never
       // awaited, so photos cannot block finishing; Today retries the rest.
@@ -313,8 +334,23 @@ export function WorkOrderDetailScreen({
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: finalArticles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
           solution: trimmedSolution,
+          volumeReadings: finalVolumeReadings.map((reading) => ({
+            id: reading.id,
+            volumeItemId: reading.volumeItemId,
+            value: reading.value,
+            readAt: reading.readAt,
+            notes: reading.notes,
+          })),
         }),
       });
+      if (response.status === 400) {
+        // Issue #225: the server rejected the finish (missing solution/
+        // volume). Not finished: drop the pending sign-off so Today doesn't
+        // show it as signed, and surface the server's message.
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        await deleteLocalSignOff(workOrderId);
+        throw new Error(payload?.error ?? "The server rejected this finish. Check the missing items and try again.");
+      }
       if (!response.ok) {
         throw new Error("Couldn't mark this work order as completed. Check your connection and try again.");
       }
@@ -391,7 +427,19 @@ export function WorkOrderDetailScreen({
         )}
 
         {section === "home" && <HomeSection workOrder={workOrder} />}
-        {section === "work" && <WorkSection workOrderId={workOrderId} workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
+        {section === "work" && (
+          <WorkSection
+            workOrderId={workOrderId}
+            currentUserId={currentUserId}
+            workOrder={workOrder}
+            solution={solution}
+            onSolutionChange={setSolution}
+            volumes={volumes}
+            localVolumeReadings={localVolumeReadings}
+            onVolumesChanged={reloadVolumes}
+            onLocalVolumesChanged={refreshLocalVolumes}
+          />
+        )}
         {section === "hours" && (
           <>
             {/* Start/stop only shows on the Hours tab (product feedback,
@@ -435,6 +483,9 @@ export function WorkOrderDetailScreen({
             signatureDraft={signatureDraft}
             onSignatureDraftChange={setSignatureDraft}
             onFinish={handleFinish}
+            solutionDone={solution.trim().length > 0}
+            volumeProgress={volumeProgress}
+            onJumpToSection={(target) => router.push(`/work-orders/${workOrderId}?section=${target}`)}
           />
         )}
       </PwaBody>

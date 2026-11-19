@@ -28,6 +28,9 @@ export interface WorkOrderVolumeCounter {
   /** The signed-in engineer's own recent readings for this asset+counter,
    * newest first (max 5) — each one deletable via DELETE. */
   myReadings: WorkOrderVolumeReading[];
+  /** True when at least one reading by anyone exists on THIS work order
+   * (issue #225: finishing requires one per counter). */
+  hasReadingOnWorkOrder: boolean;
 }
 
 export interface WorkOrderVolumesResponse {
@@ -52,4 +55,16 @@ export interface CreateWorkOrderVolumeReadingBody {
 
 export interface CreateWorkOrderVolumeReadingResponse {
   reading: WorkOrderVolumeReading & { volumeItemId: string };
+}
+
+/** One queued (offline-entered) reading, as sent in the finish POST's
+ * `volumeReadings` array (issue #225). `id` is the client uuid and doubles as
+ * the `asset_volume_readings.id` idempotency key. */
+export interface FinishVolumeReadingInput {
+  id: string;
+  volumeItemId: string;
+  value: number;
+  /** ISO timestamp WITH offset (the moment the engineer entered it). */
+  readAt: string;
+  notes: string | null;
 }

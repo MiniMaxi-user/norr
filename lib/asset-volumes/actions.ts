@@ -50,6 +50,10 @@ export interface AssetVolumeReading {
   createdByName: string | null;
   /** ISO timestamp. */
   createdAt: string;
+  /** Issue #225: accepted offline although inconsistent with a neighbour; awaits office review. */
+  needsReview: boolean;
+  /** 'below_previous' | 'above_next' when `needsReview`. */
+  reviewReason: string | null;
   /** Whether the current actor may delete THIS reading (any, or own for engineers). */
   canDelete: boolean;
 }
@@ -177,6 +181,8 @@ interface ReadingRow {
   work_order_id: string | null;
   created_by: string | null;
   created_at: string;
+  needs_review: boolean;
+  review_reason: string | null;
   work_order: { work_order_number: string; external_reference: string | null } | null;
   creator: { email: string; full_name: string | null } | null;
 }
@@ -221,7 +227,7 @@ export async function getAssetVolumes(assetId: string): Promise<ActionResult<Ass
     supabase
       .from("asset_volume_readings")
       .select(
-        "id, volume_item_id, value, read_at, notes, work_order_id, created_by, created_at, work_order:work_orders(work_order_number, external_reference), creator:users!asset_volume_readings_created_by_fkey(email, full_name)",
+        "id, volume_item_id, value, read_at, notes, work_order_id, created_by, created_at, needs_review, review_reason, work_order:work_orders(work_order_number, external_reference), creator:users!asset_volume_readings_created_by_fkey(email, full_name)",
       )
       .eq("asset_id", assetId)
       .order("read_at", { ascending: false })
@@ -253,6 +259,8 @@ export async function getAssetVolumes(assetId: string): Promise<ActionResult<Ass
       createdBy: r.created_by,
       createdByName: r.creator ? r.creator.full_name?.trim() || r.creator.email : null,
       createdAt: r.created_at,
+      needsReview: r.needs_review,
+      reviewReason: r.review_reason,
       canDelete: canDeleteAny || (canDeleteOwn && r.created_by !== null && r.created_by === session.userId),
     };
     const list = readingsByCounter.get(r.volume_item_id);

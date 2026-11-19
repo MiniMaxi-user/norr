@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Callout, ConfirmDeleteDialog, Input, Label } from "@yourorg/ui";
-import { PwaNote, WebAmount, WebButton, WebCard } from "@yourorg/ui/web";
+import { PwaNote, WebAmount, WebButton, WebCard, WebStatusBadge } from "@yourorg/ui/web";
 import { AlertTriangle, Trash2 } from "@yourorg/ui/icons";
 import { formatVolumeValue } from "@/lib/asset-volumes/errors";
+import { addLocalVolumeReading, deleteLocalVolumeReading, type LocalVolumeReading } from "@/lib/offline/db";
 import type { WorkOrderVolumeCounter, WorkOrderVolumeReading, WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
 
 function formatDate(iso: string): string {
@@ -27,42 +28,69 @@ function useOnlineStatus(): boolean {
   return online;
 }
 
+/** Parses an engineer-typed reading into a number, or an error message. */
+function parseReadingValue(raw: string): { value: number } | { error: string } {
+  const normalized = raw.trim().replace(",", ".");
+  if (!normalized) return { error: "Enter a value." };
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return { error: "Value must be a number." };
+  if (value < 0) return { error: "Value cannot be negative." };
+  if (value > 999_999_999_999.999) return { error: "Value is too large." };
+  if (Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-6) return { error: "Value has at most 3 decimals." };
+  return { value };
+}
+
 /**
- * "Volumes" block (issue #221) — meter readings for the work order's asset.
- * Online-only: the server validates each value against neighbouring
- * readings, so there is no offline queue. Renders nothing while loading,
- * when the fetch fails, or when the asset has no counters.
+ * "Volumes" block (issues #221, #225) — meter readings for the work order's
+ * asset. Online: each reading is POSTed immediately and the server validates
+ * it. Offline (or when the POST can't reach the server): it is checked
+ * against the last known value, queued in Dexie (`localVolumeReadings`, shown
+ * with a "Pending" badge, deletable while queued) and sent along with
+ * Finish, where an out-of-order value is stored flagged for office review.
+ * Renders from the cached counters when offline; nothing when the asset has
+ * no counters or none were ever loaded.
  */
-export function VolumesBlock({ workOrderId }: { workOrderId: string }) {
+export function VolumesBlock({
+  workOrderId,
+  currentUserId,
+  data,
+  localReadings,
+  onChanged,
+  onLocalChanged,
+}: {
+  workOrderId: string;
+  currentUserId: string;
+  data: WorkOrderVolumesResponse | null;
+  localReadings: LocalVolumeReading[];
+  onChanged: () => Promise<void>;
+  onLocalChanged: () => Promise<void>;
+}) {
   const online = useOnlineStatus();
-  const [data, setData] = useState<WorkOrderVolumesResponse | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/work-orders/${workOrderId}/volumes`);
-      if (!response.ok) return;
-      setData((await response.json()) as WorkOrderVolumesResponse);
-    } catch {
-      // Offline/failed: keep whatever was last fetched in memory.
-    }
-  }, [workOrderId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   if (!data || data.counters.length === 0) return null;
-  const disabled = !online || !data.canCreate;
+  const disabled = !data.canCreate;
 
   return (
     <WebCard size="touch" title="Volumes" meta={data.asset?.name}>
       {!online && (
         <div className="pwa-card-pad">
-          <Callout icon={AlertTriangle}>Readings require a connection.</Callout>
+          <Callout icon={AlertTriangle}>
+            {"You're offline. Readings are checked against the last known value and sent when you finish."}
+          </Callout>
         </div>
       )}
       {data.counters.map((counter) => (
-        <CounterRow key={counter.volumeItemId} workOrderId={workOrderId} counter={counter} disabled={disabled} online={online} onChanged={load} />
+        <CounterRow
+          key={counter.volumeItemId}
+          workOrderId={workOrderId}
+          currentUserId={currentUserId}
+          counter={counter}
+          queued={localReadings.filter((reading) => reading.volumeItemId === counter.volumeItemId)}
+          disabled={disabled}
+          online={online}
+          onChanged={onChanged}
+          onLocalChanged={onLocalChanged}
+        />
       ))}
     </WebCard>
   );
@@ -70,16 +98,22 @@ export function VolumesBlock({ workOrderId }: { workOrderId: string }) {
 
 function CounterRow({
   workOrderId,
+  currentUserId,
   counter,
+  queued,
   disabled,
   online,
   onChanged,
+  onLocalChanged,
 }: {
   workOrderId: string;
+  currentUserId: string;
   counter: WorkOrderVolumeCounter;
+  queued: LocalVolumeReading[];
   disabled: boolean;
   online: boolean;
   onChanged: () => Promise<void>;
+  onLocalChanged: () => Promise<void>;
 }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -88,22 +122,56 @@ function CounterRow({
   const idBase = `volume-${counter.volumeItemId}`;
   const unit = counter.unitLabel ? ` ${counter.unitLabel}` : "";
 
+  // The value a new reading must not go below: the newest known reading, or a
+  // higher one already queued locally (queued readings are newer by time).
+  const queuedMax = queued.reduce<number | null>((max, r) => (max === null || r.value > max ? r.value : max), null);
+  const floor = Math.max(counter.latest?.value ?? 0, queuedMax ?? 0);
+  const hasFloor = counter.latest !== null || queuedMax !== null;
+
+  async function queueOffline(numeric: number) {
+    if (hasFloor && numeric < floor) {
+      setError(`Value ${formatVolumeValue(numeric)} is lower than the latest known reading (${formatVolumeValue(floor)}).`);
+      return;
+    }
+    await addLocalVolumeReading({
+      id: crypto.randomUUID(),
+      workOrderId,
+      userId: currentUserId,
+      volumeItemId: counter.volumeItemId,
+      value: numeric,
+      readAt: new Date().toISOString(),
+      notes: null,
+    });
+    setValue("");
+    await onLocalChanged();
+  }
+
   async function handleSave() {
     setError(null);
-    if (!value.trim()) {
-      setError("Enter a value.");
+    const parsed = parseReadingValue(value);
+    if ("error" in parsed) {
+      setError(parsed.error);
       return;
     }
     setSaving(true);
     try {
-      // The reading time is always "now": the route defaults `readAt` to the
-      // current date-time, so neither `readAt` nor `notes` is ever sent.
-      const body: Record<string, unknown> = { volumeItemId: counter.volumeItemId, value: value.trim().replace(",", ".") };
-      const response = await fetch(`/api/work-orders/${workOrderId}/volumes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (!online) {
+        await queueOffline(parsed.value);
+        return;
+      }
+      let response: Response;
+      try {
+        // The reading time is always "now": the route defaults `readAt`.
+        response = await fetch(`/api/work-orders/${workOrderId}/volumes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ volumeItemId: counter.volumeItemId, value: parsed.value }),
+        });
+      } catch {
+        // Couldn't reach the server despite looking online: queue it.
+        await queueOffline(parsed.value);
+        return;
+      }
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         setError(payload?.error ?? "Couldn't save this reading.");
@@ -111,8 +179,6 @@ function CounterRow({
       }
       setValue("");
       await onChanged();
-    } catch {
-      setError("Couldn't save this reading. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -162,7 +228,7 @@ function CounterRow({
           id={`${idBase}-value`}
           inputMode="decimal"
           autoComplete="off"
-          placeholder={counter.latest ? `≥ ${formatVolumeValue(counter.latest.value)}` : "0"}
+          placeholder={hasFloor ? `≥ ${formatVolumeValue(floor)}` : "0"}
           value={value}
           disabled={disabled}
           onChange={(event) => setValue(event.target.value)}
@@ -175,9 +241,37 @@ function CounterRow({
         </PwaNote>
       )}
       <WebButton size="touch" block disabled={disabled || saving || !value.trim()} onClick={() => void handleSave()}>
-        {saving ? "Saving…" : "Save reading"}
+        {saving ? "Saving…" : online ? "Save reading" : "Save reading (offline)"}
       </WebButton>
-      {!online && <PwaNote>Readings require a connection.</PwaNote>}
+
+      {queued.length > 0 && (
+        <div className="pwa-stack" data-gap="sm">
+          <PwaNote>Waiting to be sent</PwaNote>
+          {queued.map((reading) => (
+            <div key={reading.id} className="pwa-row" data-justify="between">
+              <span className="pwa-list-main">
+                <span className="pwa-list-title pwa-mono">
+                  {formatVolumeValue(reading.value)}
+                  {unit}
+                </span>
+                <span className="pwa-note">{formatDate(reading.readAt)}</span>
+              </span>
+              <WebStatusBadge tone="warning" size="touch">
+                Pending
+              </WebStatusBadge>
+              <button
+                type="button"
+                className="pwa-icon-btn"
+                data-bare="true"
+                aria-label={`Delete pending reading ${formatVolumeValue(reading.value)} for ${counter.label}`}
+                onClick={() => void deleteLocalVolumeReading(reading.id).then(onLocalChanged)}
+              >
+                <Trash2 aria-hidden width={18} height={18} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {counter.myReadings.length > 0 && (
         <div className="pwa-stack" data-gap="sm">
@@ -189,9 +283,7 @@ function CounterRow({
                   {formatVolumeValue(reading.value)}
                   {unit}
                 </span>
-                <span className="pwa-note">
-                  {formatDate(reading.readAt)}
-                </span>
+                <span className="pwa-note">{formatDate(reading.readAt)}</span>
               </span>
               <button
                 type="button"

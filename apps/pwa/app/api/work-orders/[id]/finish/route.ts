@@ -3,6 +3,8 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { mapVolumeReadingError } from "@/lib/asset-volumes/errors";
+import type { FinishVolumeReadingInput } from "@/lib/asset-volumes/types";
 
 /**
  * POST /api/work-orders/[id]/finish — "Finish workitem" (product feedback,
@@ -34,6 +36,17 @@ import { createClient } from "@/lib/supabase/server";
  *    rather than merging. `completed_at` is still stamped HERE, not on
  *    approval — it represents when the engineer physically finished the job
  *    in the field, not when the office later reviews/approves it.
+ *
+ * Issue #225 — finishing now REQUIRES (400, before anything is written):
+ * a non-empty Solution, and — when the work order's asset has counters
+ * configured on its model — at least one volume reading per counter with
+ * `work_order_id` = this work order. The body's `volumeReadings` (readings
+ * the engineer queued offline) are inserted first (user session, RLS) with
+ * `needs_review: true`, so a value that turns out to break the chronological
+ * check is stored flagged for office review instead of being rejected; the DB
+ * trigger clears the flag again when the value is actually consistent. Inserts
+ * are idempotent on the client uuid `id` (a retried finish ignores
+ * duplicates). The signature is not sent to the server (client-only check).
  *
  * Same session -> `canAny()` -> RLS-scoped-query pattern as every other
  * route in this app. `time_entries_insert_scoped`/`work_order_articles_
@@ -76,8 +89,10 @@ interface FinishRequestBody {
   periods?: FinishPeriodInput[];
   articles?: FinishArticleInput[];
   /** Free-text resolution written on the Sign off tab — `work_orders.solution`.
-   * Optional, same as a signature: finishing with nothing written is valid. */
+   * Required (issue #225): an empty value is rejected with 400. */
   solution?: string;
+  /** Readings queued offline (issue #225). */
+  volumeReadings?: FinishVolumeReadingInput[];
 }
 
 /** Matches `activities.solution`'s app-layer cap
@@ -94,6 +109,31 @@ function isFinishPeriodInput(value: unknown): value is FinishPeriodInput {
     typeof period.startedAt === "number" &&
     typeof period.endedAt === "number" &&
     period.endedAt >= period.startedAt
+  );
+}
+
+const ISO_WITH_OFFSET_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+const MAX_VOLUME_VALUE = 999_999_999_999.999;
+const FUTURE_TOLERANCE_MS = 10 * 60 * 1000;
+
+function isFinishVolumeReadingInput(value: unknown): value is FinishVolumeReadingInput {
+  if (!value || typeof value !== "object") return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.id === "string" &&
+    UUID_RE.test(r.id) &&
+    typeof r.volumeItemId === "string" &&
+    UUID_RE.test(r.volumeItemId) &&
+    typeof r.value === "number" &&
+    Number.isFinite(r.value) &&
+    r.value >= 0 &&
+    r.value <= MAX_VOLUME_VALUE &&
+    Math.abs(r.value * 1000 - Math.round(r.value * 1000)) <= 1e-6 &&
+    typeof r.readAt === "string" &&
+    ISO_WITH_OFFSET_RE.test(r.readAt) &&
+    !Number.isNaN(Date.parse(r.readAt)) &&
+    Date.parse(r.readAt) <= Date.now() + FUTURE_TOLERANCE_MS &&
+    (r.notes === null || r.notes === undefined || (typeof r.notes === "string" && r.notes.length <= 2000))
   );
 }
 
@@ -123,9 +163,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "You do not have permission to update this work order." }, { status: 403 });
   }
 
-  // Body is optional (finishing with nothing logged is valid — e.g. a job
-  // that turned out to need no visit) — an empty/missing body just means
-  // no periods/articles to flush.
+  // Body is optional at parse time — an empty/missing body just means no
+  // periods/articles/readings to flush (a solution is still required, below).
   let body: FinishRequestBody = {};
   try {
     const raw = await request.text();
@@ -137,6 +176,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const articles = Array.isArray(body.articles) ? body.articles.filter(isFinishArticleInput) : [];
   const trimmedSolution = typeof body.solution === "string" ? body.solution.trim() : "";
   const solution = trimmedSolution ? trimmedSolution.slice(0, SOLUTION_MAX_LENGTH) : null;
+  const rawVolumeReadings: unknown[] = Array.isArray(body.volumeReadings) ? body.volumeReadings : [];
+  const volumeReadings = rawVolumeReadings.filter(isFinishVolumeReadingInput);
+  // A malformed reading must never be dropped silently (it would surface as
+  // a misleading "reading required" error, or lose the engineer's value).
+  if (volumeReadings.length !== rawVolumeReadings.length) {
+    return NextResponse.json({ error: "One or more volume readings are invalid." }, { status: 400 });
+  }
+
+  // Issue #225: a Solution is required — checked before anything is written.
+  if (!solution) {
+    return NextResponse.json({ error: "A solution is required." }, { status: 400 });
+  }
 
   const supabase = await createClient();
 
@@ -148,7 +199,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // covers both "doesn't exist" and "not yours".
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select("organization_id")
+    .select("organization_id, asset_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -158,6 +209,72 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (!workOrder) {
     return NextResponse.json({ error: "Work order not found." }, { status: 404 });
+  }
+
+  // Issue #225: volume readings. Insert the queued offline readings (flagged
+  // needs_review), then require >= 1 reading per configured counter on THIS
+  // work order. Runs before periods/articles/status so a 400 here leaves
+  // nothing half-written (the readings inserted above are idempotent on id).
+  if (workOrder.asset_id) {
+    for (const reading of volumeReadings) {
+      const { error: readingError } = await supabase.from("asset_volume_readings").upsert(
+        {
+          id: reading.id,
+          asset_id: workOrder.asset_id,
+          volume_item_id: reading.volumeItemId,
+          value: reading.value,
+          read_at: reading.readAt,
+          notes: reading.notes?.trim() ? reading.notes.trim() : null,
+          work_order_id: id,
+          needs_review: true,
+        },
+        { onConflict: "id", ignoreDuplicates: true },
+      );
+      if (readingError) {
+        const friendly = mapVolumeReadingError(readingError, reading.value);
+        if (friendly) return NextResponse.json({ error: friendly.message }, { status: 400 });
+        console.error("POST /api/work-orders/[id]/finish: failed to insert volume reading", readingError);
+        return NextResponse.json({ error: "Failed to save volume readings." }, { status: 500 });
+      }
+    }
+
+    const { data: asset, error: assetError } = await supabase
+      .from("assets")
+      .select("model_id")
+      .eq("id", workOrder.asset_id)
+      .maybeSingle();
+    if (assetError) {
+      console.error("POST /api/work-orders/[id]/finish: failed to load asset", assetError);
+      return NextResponse.json({ error: "Failed to load asset." }, { status: 500 });
+    }
+
+    if (asset?.model_id) {
+      const [configuredResult, onWorkOrderResult] = await Promise.all([
+        supabase
+          .from("asset_model_volumes")
+          .select("volume_item_id, sort_order, item:reference_list_items(label)")
+          .eq("asset_model_id", asset.model_id)
+          .order("sort_order", { ascending: true }),
+        supabase.from("asset_volume_readings").select("volume_item_id").eq("work_order_id", id),
+      ]);
+      if (configuredResult.error || onWorkOrderResult.error) {
+        console.error(
+          "POST /api/work-orders/[id]/finish: failed to check volume readings",
+          configuredResult.error ?? onWorkOrderResult.error,
+        );
+        return NextResponse.json({ error: "Failed to check volume readings." }, { status: 500 });
+      }
+      const done = new Set(((onWorkOrderResult.data ?? []) as { volume_item_id: string }[]).map((r) => r.volume_item_id));
+      const missing = ((configuredResult.data ?? []) as unknown as { volume_item_id: string; item: { label: string } | null }[])
+        .filter((c) => !done.has(c.volume_item_id))
+        .map((c) => c.item?.label ?? "Unknown counter");
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { error: `A volume reading is required for: ${missing.join(", ")}.` },
+          { status: 400 },
+        );
+      }
+    }
   }
 
   if (periods.length > 0) {

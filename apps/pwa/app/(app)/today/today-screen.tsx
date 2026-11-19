@@ -30,6 +30,7 @@ import {
   saveCatalog,
   saveWorkItems,
   saveWorkOrderDetail,
+  saveWorkOrderVolumes,
   type CachedWorkItem,
 } from "@/lib/offline/db";
 import { retryPendingPhotoUploads } from "@/lib/offline/photo-sync";
@@ -42,6 +43,7 @@ import {
   type ClockSummary,
 } from "@/lib/time/clocks";
 import type { CatalogArticle, TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
+import type { WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
 import { deriveTodayWorkItems, selectNowItem, type TodayWorkItem } from "./derive";
 import { PullToRefresh } from "./pull-to-refresh";
 
@@ -100,6 +102,8 @@ async function prefetchShell(url: string): Promise<void> {
  * moment `saveWorkItems` above resolves):
  * - `/api/work-orders/{id}` -> `workOrderDetails` (so `getCachedWorkOrderDetail`
  *   has data for every scheduled job, not just ones already opened once).
+ * - `/api/work-orders/{id}/volumes` -> `workOrderVolumes` (issue #225: counters
+ *   + latest readings, so the Volumes block and the Sign checklist work offline).
  * - the work order's shell HTML, for EVERY section (`WORK_ORDER_SHELL_SECTIONS`,
  *   bug report 2026-09-14 — a section's shell must be cached under its own
  *   exact URL now, see `sw.js`'s top-of-file comment on that date) ->
@@ -138,6 +142,15 @@ async function warmOfflineCaches(items: CachedWorkItem[], currentUserId: string)
         } catch {
           // Leaves whatever was cached before (or nothing) — a later sync
           // retries every item again from scratch.
+        }
+        // Issue #225: counters + latest values, so volumes work offline.
+        try {
+          const volumesResponse = await fetch(`/api/work-orders/${item.id}/volumes`);
+          if (volumesResponse.ok) {
+            await saveWorkOrderVolumes(item.id, (await volumesResponse.json()) as WorkOrderVolumesResponse, currentUserId);
+          }
+        } catch {
+          // Leaves whatever was cached before; the next sync retries.
         }
         await prefetchShell(`/work-orders/${item.id}`);
         await Promise.all(

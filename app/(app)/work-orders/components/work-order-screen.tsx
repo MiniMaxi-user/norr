@@ -38,6 +38,7 @@ import { clockOut, type TimeEntryRecord } from "../time-entries-actions";
 import type { WorkOrderCostSummary } from "../quote-sync-actions";
 import type { WorkOrderArticleRecord } from "../work-order-articles-actions";
 import type { WorkOrderPhotoRecord } from "../photo-actions";
+import type { WorkOrderVolumeReadingRecord } from "../volume-actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 import { createQuoteFromWorkOrder } from "../create-quote-actions";
 import { DeleteWorkOrderDialog } from "./delete-work-order-dialog";
@@ -48,6 +49,7 @@ import { WorkOrderHoursPanel } from "./work-order-hours-panel";
 import { WorkOrderMaterialsPanel } from "./work-order-materials-panel";
 import { WorkOrderChecklistPanel } from "./work-order-checklist-panel";
 import { WorkOrderPhotosPanel } from "./work-order-photos-panel";
+import { WorkOrderVolumesPanel } from "./work-order-volumes-panel";
 import { WorkOrderRail } from "./work-order-rail";
 import { buildWorkOrderTimeline } from "./work-order-timeline";
 import { getLivePanel } from "./work-order-live-panel";
@@ -55,7 +57,7 @@ import { approvalBlockers } from "../approval-readiness";
 import { useClientScopedLists } from "./use-client-scoped-lists";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "./constants";
 
-export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "checklist";
+export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "volumes" | "checklist";
 
 export interface WorkOrderHoursData {
   timeEntries: TimeEntryRecord[];
@@ -133,6 +135,8 @@ export interface WorkOrderScreenProps {
   checklistData?: WorkOrderChecklistData | null;
   /** Field photos (issue #224); `null` = viewer may not read them: no tab. */
   photos?: WorkOrderPhotoRecord[] | null;
+  /** Meter readings on this work order (issues #221/#225); `null` = no tab. */
+  volumes?: WorkOrderVolumeReadingRecord[] | null;
   defaultTab?: WorkOrderDetailTab;
 }
 
@@ -209,6 +213,7 @@ export function WorkOrderScreen({
   material = null,
   checklistData = null,
   photos = null,
+  volumes = null,
   defaultTab = "overview",
 }: WorkOrderScreenProps) {
   const router = useRouter();
@@ -426,10 +431,11 @@ export function WorkOrderScreen({
             ...(hours ? [{ id: "hours", label: "Hours", count: hours.timeEntries.length }] : []),
             ...(material ? [{ id: "materials", label: "Material", count: material.workOrderArticles.length }] : []),
             ...(photos ? [{ id: "photos", label: "Photos", count: photos.length }] : []),
+            ...(volumes ? [{ id: "volumes", label: "Volumes", count: volumes.length }] : []),
             ...(checklistData ? [{ id: "checklist", label: "Checklist", count: checklistData.items.length }] : []),
           ]),
     ],
-    [isCreate, hours, material, photos, checklistData],
+    [isCreate, hours, material, photos, volumes, checklistData],
   );
 
   useEffect(() => {
@@ -447,6 +453,9 @@ export function WorkOrderScreen({
       badges.push({ label: "Overdue", variant: "danger" });
     }
     if (locked) badges.push({ label: "Checked out · read-only", variant: "warning" });
+    if (volumes?.some((reading) => reading.needsReview)) {
+      badges.push({ label: "Volume needs review", variant: "warning" });
+    }
     if (priority) badges.push({ label: priority.label });
     if (typeItem) badges.push({ label: typeItem.label });
     if (workOrder?.scheduled_at) badges.push({ label: `Planned ${formatDateTimeWeb(workOrder.scheduled_at)}` });
@@ -588,6 +597,7 @@ export function WorkOrderScreen({
         )}
 
         {tab === "photos" && photos && workOrder && <WorkOrderPhotosPanel photos={photos} />}
+        {tab === "volumes" && volumes && workOrder && <WorkOrderVolumesPanel readings={volumes} />}
 
         {tab === "checklist" && checklistData && workOrder && (
           <WorkOrderChecklistPanel

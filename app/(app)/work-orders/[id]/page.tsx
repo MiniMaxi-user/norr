@@ -21,12 +21,13 @@ import {
 import { listTimeEntries } from "../time-entries-actions";
 import { listWorkOrderArticles } from "../work-order-articles-actions";
 import { listWorkOrderPhotos } from "../photo-actions";
+import { listWorkOrderVolumes } from "../volume-actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
 import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
 
-const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "checklist"];
+const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "volumes", "checklist"];
 
 /** Fallback no-op rule when the org's rounding settings cannot be read. */
 const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
@@ -152,6 +153,12 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
   // in this file already follows.
   const canSeeCosts = quotesEnabled && can(actor, "planning", "read") && canAny(actor, "quotes", ["read"]);
 
+  // Volumes (issues #221/#225): rides on the `assets` entitlement + `asset_volumes` read.
+  const canReadVolumes =
+    (await hasFeature(session.organization, "assets")) &&
+    canAccessModule(actor, "assets") &&
+    can(actor, "asset_volumes", "read");
+
   // Everything the page needs, in one parallel round (timed as one stage,
   // issue #150). Lists the actor cannot render are never requested.
   const [
@@ -173,6 +180,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
     checklistResult,
     checklistTemplatesResult,
     photosResult,
+    volumesResult,
     lastUsedTab,
   ] = await withTiming("work-order-detail:fetch", () =>
     Promise.all([
@@ -203,6 +211,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       canAttachChecklist ? listChecklistTemplates() : Promise.resolve(null),
       // Photos tab (issue #224) — signed URLs, rides on `planning` read/read_own.
       listWorkOrderPhotos(workOrder.id),
+      // Volumes tab (issues #221/#225): own `assets` entitlement + `asset_volumes` read.
+      canReadVolumes ? listWorkOrderVolumes(workOrder.id) : Promise.resolve(null),
       preferencesStore.getLastUsedView(session.userId, WORK_ORDER_DETAIL_VIEW_KEY),
     ]),
   );
@@ -342,6 +352,11 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
         canUpdateOwn: canUpdateWorkOrderArticlesOwn,
       }}
       photos={photosResult.data?.photos ?? null}
+      volumes={
+        volumesResult?.data && (volumesResult.data.readings.length > 0 || volumesResult.data.hasConfiguredCounters)
+          ? volumesResult.data.readings
+          : null
+      }
       checklistData={
         canAccessChecklists
           ? {

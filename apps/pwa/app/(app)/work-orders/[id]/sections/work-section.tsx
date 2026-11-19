@@ -3,6 +3,8 @@
 import { Textarea } from "@yourorg/ui";
 import { PwaCardPad, PwaCardText, PwaStack, WebCard } from "@yourorg/ui/web";
 import type { WorkOrderDetail } from "@/lib/work-orders/types";
+import type { WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
+import type { LocalVolumeReading } from "@/lib/offline/db";
 import { VolumesBlock } from "./volumes-block";
 
 /**
@@ -17,14 +19,24 @@ import { VolumesBlock } from "./volumes-block";
  */
 export function WorkSection({
   workOrderId,
+  currentUserId,
   workOrder,
   solution,
   onSolutionChange,
+  volumes,
+  localVolumeReadings,
+  onVolumesChanged,
+  onLocalVolumesChanged,
 }: {
   workOrderId: string;
+  currentUserId: string;
   workOrder: WorkOrderDetail;
   solution: string;
   onSolutionChange: (value: string) => void;
+  volumes: WorkOrderVolumesResponse | null;
+  localVolumeReadings: LocalVolumeReading[];
+  onVolumesChanged: () => Promise<void>;
+  onLocalVolumesChanged: () => Promise<void>;
 }) {
   const { description } = workOrder;
 
@@ -46,7 +58,14 @@ export function WorkSection({
         </PwaCardPad>
       </WebCard>
 
-      <VolumesBlock workOrderId={workOrderId} />
+      <VolumesBlock
+        workOrderId={workOrderId}
+        currentUserId={currentUserId}
+        data={volumes}
+        localReadings={localVolumeReadings}
+        onChanged={onVolumesChanged}
+        onLocalChanged={onLocalVolumesChanged}
+      />
     </PwaStack>
   );
 }

@@ -21,10 +21,10 @@ import type {
  * POST: records a reading for one counter; `work_order_id` is set to this
  * work order and the asset is always the work order's own (never client-sent).
  *
- * ONLINE-ONLY: unlike time/articles (local Dexie rows flushed on finish) a
- * reading must be validated against the previous/next reading by the DB
- * (AV002/AV003), which needs the live server — so there is no outbox/offline
- * queue for readings. Same session -> permission -> RLS-scoped query pattern
+ * POST is the ONLINE path (the DB validates against the previous/next
+ * reading, AV002/AV003). Offline, the PWA queues readings locally (Dexie
+ * `localVolumeReadings`) and sends them with `POST /api/work-orders/[id]/
+ * finish`, which inserts them flagged `needs_review` (issue #225). Same session -> permission -> RLS-scoped query pattern
  * as the sibling routes; RLS (`asset_volume_readings_*`) is the real boundary.
  *
  * Note: the PWA has no `hasFeature()` helper; the `assets` entitlement is
@@ -103,7 +103,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(empty);
   }
 
-  const [configuredResult, latestResult, mineResult] = await Promise.all([
+  const [configuredResult, latestResult, mineResult, onWorkOrderResult] = await Promise.all([
     supabase
       .from("asset_model_volumes")
       .select("volume_item_id, sort_order, item:reference_list_items(id, label, description, parent_item_id)")
@@ -120,8 +120,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .eq("created_by", session.userId)
       .order("read_at", { ascending: false })
       .limit(200),
+    supabase.from("asset_volume_readings").select("volume_item_id").eq("work_order_id", wo.id),
   ]);
-  for (const r of [configuredResult, latestResult, mineResult]) {
+  for (const r of [configuredResult, latestResult, mineResult, onWorkOrderResult]) {
     if (r.error) {
       console.error("GET /api/work-orders/[id]/volumes: query failed", r.error);
       return NextResponse.json({ error: "Failed to load asset volumes." }, { status: 500 });
@@ -166,6 +167,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     mineByCounter.set(row.volume_item_id, list);
   }
 
+  const onWorkOrder = new Set(
+    ((onWorkOrderResult.data ?? []) as { volume_item_id: string }[]).map((r) => r.volume_item_id),
+  );
+
   const counters: WorkOrderVolumeCounter[] = [];
   for (const c of configured) {
     if (!c.item) continue;
@@ -176,6 +181,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       unitLabel: c.item.parent_item_id ? (unitLabels.get(c.item.parent_item_id) ?? null) : null,
       latest: latestByCounter.get(c.volume_item_id) ?? null,
       myReadings: mineByCounter.get(c.volume_item_id) ?? [],
+      hasReadingOnWorkOrder: onWorkOrder.has(c.volume_item_id),
     });
   }
 

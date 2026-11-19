@@ -14,6 +14,7 @@ import {
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
+import type { VolumeProgress } from "@/lib/asset-volumes/progress";
 import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
 
 /** How often the drawn-so-far signature is pushed up to `work-order-
@@ -30,7 +31,14 @@ const SIGNATURE_AUTOSAVE_MS = 500;
  * records the local sign-off (when a signature was drawn), and marks the
  * work order `completed` server-side (`POST /api/work-orders/[id]/finish`)
  * before returning to Today — see `work-order-detail.tsx`'s `handleFinish`
- * for the full sequence. A signature is optional, not required to finish.
+ * for the full sequence.
+ *
+ * Issue #225: finishing requires a Solution, a drawn signature and, for every
+ * counter of the asset's model, a volume reading on this work order (server
+ * or queued locally). A checklist at the top shows what's done/missing (a
+ * missing item jumps to the right tab) and the Finish button stays disabled
+ * until all of it is met. If the counters were never loaded (offline, no
+ * cache) volumes count as unknown and block finishing.
  *
  * Product feedback (2026-09-12) simplified this from the original
  * two-label design (`"Finish work order"` while unsigned, `"Send work
@@ -67,6 +75,9 @@ export function SignOffSection({
   signatureDraft,
   onSignatureDraftChange,
   onFinish,
+  solutionDone,
+  volumeProgress,
+  onJumpToSection,
 }: {
   summary: ClockSummary;
   articleCount: number;
@@ -75,9 +86,12 @@ export function SignOffSection({
   signatureDraft: string | null;
   onSignatureDraftChange: (dataUrl: string | null) => void;
   onFinish: (signatureDataUrl: string | null) => void | Promise<void>;
+  solutionDone: boolean;
+  volumeProgress: VolumeProgress;
+  onJumpToSection: (section: "work") => void;
 }) {
   const padRef = useRef<SignaturePadHandle>(null);
-  const [hasSignature, setHasSignature] = useState(Boolean(existingSignOff || signatureDraft));
+  const [hasSignature, setHasSignature] = useState(Boolean(signatureDraft || existingSignOff?.signatureDataUrl));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +104,10 @@ export function SignOffSection({
     // — stable across renders, so this interval is set up once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const volumesRequired = !volumeProgress.known || volumeProgress.total > 0;
+  const volumesDone = volumeProgress.known && volumeProgress.complete;
+  const canFinish = solutionDone && hasSignature && (volumeProgress.known ? volumeProgress.complete : false);
 
   async function handlePrimaryAction() {
     setSubmitting(true);
@@ -107,6 +125,25 @@ export function SignOffSection({
   return (
     <>
       <PwaStack>
+        <WebCard size="touch" title="Before you can finish">
+          <PwaCardPad>
+            <div className="pwa-pick-list">
+              <ChecklistRow label="Solution" done={solutionDone} onOpen={() => onJumpToSection("work")} />
+              <ChecklistRow label="Signature" done={hasSignature} />
+              {volumesRequired && (
+                <ChecklistRow
+                  label={volumeProgress.known ? `Volumes: ${volumeProgress.done} of ${volumeProgress.total}` : "Volumes"}
+                  done={volumesDone}
+                  onOpen={volumeProgress.known ? () => onJumpToSection("work") : undefined}
+                />
+              )}
+            </div>
+            {!volumeProgress.known && (
+              <Callout icon={AlertTriangle}>Open this work order once while online to load its counters.</Callout>
+            )}
+          </PwaCardPad>
+        </WebCard>
+
         <WebCard size="touch" title="Summary">
           <PwaKeyValue
             rows={[
@@ -157,10 +194,34 @@ export function SignOffSection({
       {/* The one primary action of the screen, in the fixed action bar above
           the bottom bar. */}
       <PwaActionBar>
-        <WebButton variant="primary" size="touch" block disabled={submitting} onClick={() => void handlePrimaryAction()}>
+        <WebButton variant="primary" size="touch" block disabled={submitting || !canFinish} onClick={() => void handlePrimaryAction()}>
           {submitting ? "Finishing…" : "Finish workitem"}
         </WebButton>
       </PwaActionBar>
     </>
+  );
+}
+
+/** One checklist line: a done item is plain; a missing one is a button that
+ * jumps to the tab where it can be fixed (when `onOpen` is given). */
+function ChecklistRow({ label, done, onOpen }: { label: string; done: boolean; onOpen?: () => void }) {
+  const badge = (
+    <WebStatusBadge tone={done ? "success" : "warning"} size="touch">
+      {done ? "Done" : "Missing"}
+    </WebStatusBadge>
+  );
+  if (done || !onOpen) {
+    return (
+      <div className="pwa-pick-row">
+        <span>{label}</span>
+        {badge}
+      </div>
+    );
+  }
+  return (
+    <button type="button" className="pwa-pick-row" onClick={onOpen}>
+      <span>{label}</span>
+      {badge}
+    </button>
   );
 }
