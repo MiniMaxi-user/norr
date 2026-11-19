@@ -42,7 +42,11 @@ export interface WorkOrderLivePanelRecord {
  *  2. a time registration is running (own timers first, then anyone's the
  *     viewer may stop): live clock since the start, action Stop.
  *
- * Deliberately NOT triggers: a status (badge), a planned date in the past
+ *  0. field status (product decision 2026-11-19): while the work order is in
+ *     the field flow — scheduled, checked out, en route, in progress — the
+ *     panel shows that status with the planned day, times and engineer.
+ *
+ * Deliberately NOT triggers: any other status (badge), a planned date in the past
  * ("Overdue" is a header badge — nothing hard is due), the missing billing
  * rate (a note on the Hours tab). There is no SLA / deadline data on a work
  * order. More than one trigger => highest priority shown, the rest listed
@@ -50,6 +54,9 @@ export interface WorkOrderLivePanelRecord {
  */
 export function getLivePanel(record: WorkOrderLivePanelRecord, viewer: LivePanelViewer | null): LivePanelData | null {
   const panels: LivePanelData[] = [];
+
+  const field = fieldStatusPanel(record);
+  if (field) panels.push(field);
 
   if (record.canApproveReview) {
     const blockers = record.approvalBlockers;
@@ -118,4 +125,53 @@ export function getLivePanel(record: WorkOrderLivePanelRecord, viewer: LivePanel
 
   const [first, ...rest] = panels;
   return first ? { ...first, others: rest } : null;
+}
+
+/** Field-flow statuses shown in the LivePanel; `scheduled` is calm (info),
+ * the engineer actually being out is `attention`. */
+const FIELD_STATUSES: Record<string, { title: string; variant: LivePanelData["variant"] }> = {
+  scheduled: { title: "SCHEDULED", variant: "info" },
+  checkout: { title: "CHECKED OUT BY ENGINEER", variant: "attention" },
+  en_route: { title: "ENGINEER EN ROUTE", variant: "attention" },
+  in_progress: { title: "ENGINEER AT WORK", variant: "attention" },
+};
+
+function fieldStatusPanel(record: WorkOrderLivePanelRecord): LivePanelData | null {
+  const { workOrder } = record;
+  const status = workOrder.work_order_status;
+  const config = status ? FIELD_STATUSES[status.value] : undefined;
+  if (!status || !config) return null;
+
+  const parts: string[] = [];
+  if (workOrder.scheduled_at) {
+    const start = new Date(workOrder.scheduled_at);
+    if (!Number.isNaN(start.getTime())) {
+      const day = new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "Europe/Amsterdam",
+      }).format(start);
+      const end =
+        workOrder.duration_minutes != null
+          ? new Date(start.getTime() + workOrder.duration_minutes * 60000).toISOString()
+          : null;
+      parts.push(day, end ? `${formatTimeOfDay(workOrder.scheduled_at)}–${formatTimeOfDay(end)}` : formatTimeOfDay(workOrder.scheduled_at));
+    }
+  } else {
+    parts.push("No date planned");
+  }
+  if (workOrder.assigned_to) {
+    const engineer = record.members.find((member) => member.id === workOrder.assigned_to);
+    parts.push(memberDisplayName(engineer));
+  }
+
+  return {
+    variant: config.variant,
+    title: config.title,
+    value: status.label,
+    context: parts.join(" · "),
+    actions: [],
+  };
 }

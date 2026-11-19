@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-export type LivePanelVariant = "attention" | "urgent";
+export type LivePanelVariant = "attention" | "urgent" | "info";
 
 export interface LivePanelAction {
   label: string;
@@ -17,7 +17,8 @@ export interface LivePanelAction {
 }
 
 export interface LivePanelData {
-  /** attention = running / needs you (warning colours); urgent = overdue. */
+  /** attention = running / needs you (warning colours); urgent = overdue;
+   * info = a calm field status (scheduled), teal. */
   variant: LivePanelVariant;
   /** Overline: "RUNNING TIMER", "SLA EXPIRES", "ACTION NEEDED FROM YOU". */
   title: string;

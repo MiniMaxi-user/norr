@@ -2186,6 +2186,11 @@ a.web-tree-id:hover {
   background: var(--danger-bg);
   color: var(--danger-text);
 }
+.web-live[data-variant="info"] {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-text);
+}
 .web-live-value {
   font: 400 26px/32px var(--font-serif);
   font-variant-numeric: tabular-nums;
