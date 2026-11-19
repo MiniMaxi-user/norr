@@ -23,21 +23,24 @@ import { WebMenu, type WebMenuItem } from "./menu";
 import { getMainScrollArea } from "./scroll";
 
 /* ---------------------------------------------------------------------- *
- * StatusText — status as coloured text, or a soft badge when it deviates.
+ * StatusText — status-like value as a soft round badge (calm or coloured).
  * ---------------------------------------------------------------------- */
 
 export type StatusTone = WebStatusTone;
 export { toneFromColor };
 
 /**
- * A status in a table cell or card value (DS 06 §4: badges mark what
- * deviates).
- * - `text` (default): coloured text.
- * - `auto`: for lists with a "normal" state — a success-tone status (Active)
- *   stays coloured text, any other tone becomes a soft round badge (In repair,
- *   Blocked). Neutral-tone statuses stay plain text.
- * - `badge`: workflow lists where the status is the main information (work
- *   orders: Open, Planned, In progress, Done) — every status is a badge.
+ * A status-like value (DS 06 §4 "badges, no Christmas tree"): a column with a
+ * fixed, small set of states (status, priority, warranty, payment) is always
+ * a soft round badge — calm grey for the normal/finished state, coloured only
+ * for what needs attention.
+ * - `auto`: lists with a normal state (assets, clients, contracts). Gold
+ *   (warning) and red (danger) stay coloured; success, info and neutral
+ *   render calm grey.
+ * - `badge`: workflow lists (work orders, quotes, activities). Like `auto`,
+ *   but info (teal) stays coloured: the step that is running now.
+ * - `text` (default): coloured text — only outside status columns (a count,
+ *   an inline error, a colour preview).
  */
 export function StatusText({
   tone = "neutral",
@@ -48,10 +51,10 @@ export function StatusText({
   display?: "text" | "auto" | "badge";
   children: ReactNode;
 }) {
-  const asBadge = display === "badge" || (display === "auto" && tone !== "success" && tone !== "neutral");
-  if (asBadge) {
+  if (display !== "text") {
+    const coloured = tone === "warning" || tone === "danger" || (display === "badge" && tone === "info");
     return (
-      <WebStatusBadge tone={tone} size="table">
+      <WebStatusBadge tone={coloured ? tone : "neutral"} size="table">
         {children}
       </WebStatusBadge>
     );
@@ -396,7 +399,8 @@ export interface WebColumn<T> {
   sortable?: boolean;
   /** Numbers, amounts, durations: right-aligned, tabular-nums. */
   align?: "end";
-  /** The record's name/ID: rendered as the row's link/button. */
+  /** The record's name/ID: rendered as the row's link/button, 600 — the only
+   * bold column (DS 06 §3). */
   primary?: boolean;
   /** Mono face for IDs and serial numbers. */
   mono?: boolean;
@@ -805,6 +809,7 @@ export function WebDataTableCard<T>({
                           key={column.id}
                           data-numeric={column.align === "end" ? "true" : undefined}
                           data-id={column.mono ? "true" : undefined}
+                          data-primary={column.primary ? "true" : undefined}
                         >
                           {content ?? "—"}
                         </td>

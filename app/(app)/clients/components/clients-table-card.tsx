@@ -83,9 +83,9 @@ export function ClientsTableCard({
           <>
             {client.name}
             {client.organization_is_active === true ? (
-              <StatusText tone="success"> · Tenant</StatusText>
+              <>{" "}<StatusText display="auto">Tenant</StatusText></>
             ) : client.organization_is_active === false ? (
-              <StatusText tone="danger"> · Tenant deactivated</StatusText>
+              <>{" "}<StatusText display="auto" tone="danger">Tenant deactivated</StatusText></>
             ) : null}
           </>
         ),

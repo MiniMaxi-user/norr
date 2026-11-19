@@ -74,7 +74,7 @@ export function ActivitiesTableCard({
             <StatusText display="badge" tone={toneFromColor(a.activity_status.color)}>{a.activity_status.label}</StatusText>
           ) : null,
       },
-      { id: "client", header: "Client", render: (a) => a.client?.name ?? null },
+      { id: "client", header: "Client", render: (a) => (a.client ? <Link href={`/clients/${a.client.id}`}>{a.client.name}</Link> : null) },
       { id: "holder", header: "Action holder", render: (a) => (a.action_holder ? memberDisplayName(a.action_holder) : null) },
       { id: "reported", header: "Reported", sortable: true, render: (a) => formatDateTime(a.reported_at) },
     ],

@@ -15,6 +15,11 @@ import { ASSETS_PAGE_SIZE } from "./assets-query";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
 import { ASSETS_DROPDOWN_IDS, ASSETS_WARRANTY_SEGMENT } from "./assets-filter-defs";
 
+/** Client reference cell: a link in `text-link` (DS: clickable = coloured). */
+function clientLink(clientId: string | null | undefined, name: string | undefined) {
+  return clientId && name ? <Link href={`/clients/${clientId}`}>{name}</Link> : null;
+}
+
 export interface AssetsTableProps {
   assets: AssetRecord[];
   clientNameById: Map<string, string>;
@@ -59,7 +64,7 @@ export function AssetsTable({
     () => [
       { id: "name", header: "Name", primary: true, sortable: true, render: (asset) => asset.name },
       { id: "type", header: "Type", render: (asset) => asset.asset_type?.label ?? null },
-      { id: "client", header: "Client", render: (asset) => clientNameById.get(asset.client_id) ?? null },
+      { id: "client", header: "Client", render: (asset) => clientLink(asset.client_id, clientNameById.get(asset.client_id)) },
       { id: "serial", header: "Serial number", mono: true, sortable: true, render: (asset) => asset.serial_number },
       {
         id: "status",

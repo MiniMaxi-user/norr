@@ -8,6 +8,11 @@ import type { QuoteRecord } from "../actions";
 import { DeleteQuoteDialog } from "./delete-quote-dialog";
 import { QUOTE_TYPE_OPTIONS, QUOTES_DROPDOWN_IDS, QUOTES_OPEN_SEGMENT, QUOTES_PAGE_SIZE } from "./quotes-query";
 
+/** Client reference cell: a link in `text-link` (DS: clickable = coloured). */
+function clientLink(clientId: string | null | undefined, name: string | undefined) {
+  return clientId && name ? <Link href={`/clients/${clientId}`}>{name}</Link> : null;
+}
+
 export interface QuotesTableProps {
   quotes: QuoteRecord[];
   clientNameById: Map<string, string>;
@@ -57,11 +62,11 @@ export function QuotesTable({
         render: (quote) => (
           <>
             {quote.name}
-            {showDraftBadge && quote.is_auto_draft ? <StatusText tone="neutral"> · Concept</StatusText> : null}
+            {showDraftBadge && quote.is_auto_draft ? <>{" "}<StatusText display="auto">Concept</StatusText></> : null}
           </>
         ),
       },
-      { id: "client", header: "Client", render: (quote) => clientNameById.get(quote.client_id) ?? null },
+      { id: "client", header: "Client", render: (quote) => clientLink(quote.client_id, clientNameById.get(quote.client_id)) },
       { id: "type", header: "Type", render: (quote) => (quote.quote_type === "contract" ? "Contract" : "Default") },
       {
         id: "status",

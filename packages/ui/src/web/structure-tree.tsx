@@ -473,7 +473,7 @@ export function StructureTree({
                     {node.isCurrent ? <span className="web-tree-here">{currentLabel}</span> : null}
                   </div>
                   <span className="web-tree-status">
-                    {node.status ? <StatusText tone={node.status.tone}>{node.status.label}</StatusText> : null}
+                    {node.status ? <StatusText display="auto" tone={node.status.tone}>{node.status.label}</StatusText> : null}
                   </span>
                   {showQuantity ? <span className="web-tree-qty">{node.quantity ?? ""}</span> : null}
                   <span className="web-tree-actions">

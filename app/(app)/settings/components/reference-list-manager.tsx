@@ -184,7 +184,7 @@ export function ReferenceListManager({
       header: "Status",
       sortValue: (row) => (row.is_active ? 0 : 1),
       render: (row) => (
-        <StatusText tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</StatusText>
+        <StatusText display="auto" tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</StatusText>
       ),
     });
     return result;

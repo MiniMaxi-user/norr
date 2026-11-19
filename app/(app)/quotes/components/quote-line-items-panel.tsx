@@ -93,7 +93,7 @@ export function QuoteLineItemsPanel({
         header: "Article",
         mono: true,
         sortValue: (row) => row.article_number ?? "",
-        render: (row) => row.article_number ?? "—",
+        render: (row) => (row.article_id && row.article_number ? <Link href={`/articles/${row.article_id}`}>{row.article_number}</Link> : row.article_number ?? "—"),
       },
       {
         id: "description",

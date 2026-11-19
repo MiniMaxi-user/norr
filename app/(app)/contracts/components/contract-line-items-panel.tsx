@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Combobox, type ComboboxOption } from "@yourorg/ui";
@@ -71,7 +72,7 @@ export function ContractLineItemsPanel({
         header: "Article",
         mono: true,
         sortValue: (row) => row.article_number ?? "",
-        render: (row) => row.article_number ?? "—",
+        render: (row) => (row.article_id && row.article_number ? <Link href={`/articles/${row.article_id}`}>{row.article_number}</Link> : row.article_number ?? "—"),
       },
       {
         id: "description",

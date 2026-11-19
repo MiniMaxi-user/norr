@@ -15,6 +15,11 @@ import { getContractStatus, type ContractPhase } from "./contract-status";
 import { CONTRACTS_DROPDOWN_IDS, CONTRACTS_PAGE_SIZE, CONTRACTS_PHASE_SEGMENT } from "./contracts-query";
 import { DeleteContractDialog } from "./delete-contract-dialog";
 
+/** Client reference cell: a link in `text-link` (DS: clickable = coloured). */
+function clientLink(clientId: string | null | undefined, name: string | undefined) {
+  return clientId && name ? <Link href={`/clients/${clientId}`}>{name}</Link> : null;
+}
+
 const PHASE_TONE: Record<ContractPhase, StatusTone> = {
   active: "success",
   upcoming: "info",
@@ -69,7 +74,7 @@ export function ContractsTable({
         render: (contract) => contract.contract_number,
       },
       { id: "reference", header: "Reference", render: (contract) => contract.external_reference },
-      { id: "client", header: "Client", render: (contract) => clientNameById.get(contract.client_id) ?? null },
+      { id: "client", header: "Client", render: (contract) => clientLink(contract.client_id, clientNameById.get(contract.client_id)) },
       { id: "type", header: "Type", render: (contract) => contract.contract_type?.label ?? null },
       { id: "sla", header: "SLA tier", render: (contract) => contract.sla_tier?.label ?? null },
       {

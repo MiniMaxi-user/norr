@@ -58,7 +58,7 @@ export function ArticlesTableCard({
         render: (a) => (
           <>
             {a.description}
-            {a.is_composite ? <StatusText tone="info"> · Composite</StatusText> : null}
+            {a.is_composite ? <>{" "}<StatusText display="auto">Composite</StatusText></> : null}
           </>
         ),
       },

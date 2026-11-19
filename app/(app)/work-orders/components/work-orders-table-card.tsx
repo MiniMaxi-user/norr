@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   StatusText,
   WebDataTableCard,
@@ -16,6 +17,11 @@ import type { WorkOrderRecord } from "../actions";
 import { CreateWorkOrderButton } from "./create-work-order-button";
 import { DeleteWorkOrderDialog } from "./delete-work-order-dialog";
 import { WORK_ORDERS_DROPDOWN_IDS, WORK_ORDERS_PAGE_SIZE, WORK_ORDERS_STAGE_SEGMENT } from "./work-orders-query";
+
+/** Client reference cell: a link in `text-link` (DS: clickable = coloured). */
+function clientLink(clientId: string | null | undefined, name: string | undefined) {
+  return clientId && name ? <Link href={`/clients/${clientId}`}>{name}</Link> : null;
+}
 
 export interface WorkOrdersTableCardProps {
   workOrders: WorkOrderRecord[];
@@ -65,7 +71,7 @@ export function WorkOrdersTableCard({
     () => [
       { id: "number", header: "Number", primary: true, mono: true, sortable: true, render: (wo) => wo.work_order_number },
       { id: "reference", header: "External reference", render: (wo) => wo.external_reference },
-      { id: "client", header: "Client", render: (wo) => clientNameById.get(wo.client_id) ?? null },
+      { id: "client", header: "Client", render: (wo) => clientLink(wo.client_id, clientNameById.get(wo.client_id)) },
       {
         id: "status",
         header: "Status",
@@ -79,7 +85,7 @@ export function WorkOrdersTableCard({
         header: "Priority",
         render: (wo) =>
           wo.work_order_priority ? (
-            <StatusText tone={toneFromColor(wo.work_order_priority.color)}>{wo.work_order_priority.label}</StatusText>
+            <StatusText display="auto" tone={toneFromColor(wo.work_order_priority.color)}>{wo.work_order_priority.label}</StatusText>
           ) : null,
       },
       {
