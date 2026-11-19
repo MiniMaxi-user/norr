@@ -54,6 +54,7 @@ export type Module =
   | "checklists"
   | "quotes"
   | "invoicing"
+  | "work_receipts"
   | "activities"
   | "articles"
   | "inventory"
@@ -268,6 +269,25 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: NONE,
     administratie: ["create", "read"],
   },
+  // Work receipts / "werkbon" (issue #226): versioned PDF receipts generated
+  // from an approved work order and e-mailed to one recipient
+  // (`work_receipts`, concurrent migration). Own key because neither neighbour
+  // fits: `planning` gives planner CRUD and administratie only read, while
+  // here administratie generates/sends as well; `invoicing` excludes planner
+  // and finance, while here planner generates and finance may read. Receipts
+  // are permanent (no delete policy), so no `delete`: `create` = generate a
+  // new version, `update` = mark sent / send e-mail. Engineer has no access.
+  // Entitlement follows the `planning` (work orders) feature; there is no
+  // separate sellable flag. NOT used for the per-org work receipt e-mail
+  // settings: those are owner + administratie only (like invoice e-mail
+  // settings, gated via `invoicing`), narrower than this module's planner.
+  work_receipts: {
+    owner: ["create", "read", "update"],
+    planner: ["create", "read", "update"],
+    engineer: NONE,
+    finance: READ_ONLY,
+    administratie: ["create", "read", "update"],
+  },
   // Activities (issue #59, "melding"): a NEW top-level module (a ticket-like
   // entity preceding a Work Order), a NEW shape — not a `planning` alias, per
   // the issue's explicit instruction — mirroring
@@ -428,6 +448,8 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // `TENANT_PERMISSIONS.invoicing.owner` above already covers. Same NONE
   // shape as `planning`/`checklists`/`quotes`.
   invoicing: NONE,
+  // Work receipts (issue #226): tenant-only, same NONE shape as `invoicing`.
+  work_receipts: NONE,
   // No "Read (support only)"-style cross-tenant carve-out documented for
   // Activities either — same NONE shape as `planning`/`checklists`/`quotes`/
   // `invoicing`.

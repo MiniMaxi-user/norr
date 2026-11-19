@@ -22,12 +22,13 @@ import { listTimeEntries } from "../time-entries-actions";
 import { listWorkOrderArticles } from "../work-order-articles-actions";
 import { listWorkOrderPhotos } from "../photo-actions";
 import { listWorkOrderVolumes } from "../volume-actions";
+import { listWorkReceipts, getWorkOrderSignature } from "../work-receipt-actions";
 import { getWorkOrderChecklist } from "../checklist-actions";
 import { getWorkOrderCostSummary, getUnresolvedWorkOrderTimeEntries } from "../quote-sync-actions";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "../components/constants";
 import { WorkOrderScreen, type WorkOrderDetailTab } from "../components/work-order-screen";
 
-const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "volumes", "checklist"];
+const TAB_IDS: WorkOrderDetailTab[] = ["overview", "hours", "materials", "photos", "volumes", "receipts", "checklist"];
 
 /** Fallback no-op rule when the org's rounding settings cannot be read. */
 const DEFAULT_TIME_ROUNDING_SETTINGS: OrganizationTimeRoundingSettings = {
@@ -181,6 +182,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
     checklistTemplatesResult,
     photosResult,
     volumesResult,
+    receiptsResult,
+    signatureResult,
     lastUsedTab,
   ] = await withTiming("work-order-detail:fetch", () =>
     Promise.all([
@@ -213,6 +216,9 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       listWorkOrderPhotos(workOrder.id),
       // Volumes tab (issues #221/#225): own `assets` entitlement + `asset_volumes` read.
       canReadVolumes ? listWorkOrderVolumes(workOrder.id) : Promise.resolve(null),
+      // Work receipts tab + signature card (issue #226) — the actions enforce their own read gate.
+      listWorkReceipts(workOrder.id),
+      getWorkOrderSignature(workOrder.id),
       preferencesStore.getLastUsedView(session.userId, WORK_ORDER_DETAIL_VIEW_KEY),
     ]),
   );
@@ -351,6 +357,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
         canUpdateAny: canUpdateWorkOrderArticlesAny,
         canUpdateOwn: canUpdateWorkOrderArticlesOwn,
       }}
+      receipts={receiptsResult.data ?? null}
+      signature={signatureResult.data?.signature ?? null}
       photos={photosResult.data?.photos ?? null}
       volumes={
         volumesResult?.data && (volumesResult.data.readings.length > 0 || volumesResult.data.hasConfiguredCounters)

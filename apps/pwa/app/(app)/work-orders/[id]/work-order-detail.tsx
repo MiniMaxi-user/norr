@@ -334,6 +334,8 @@ export function WorkOrderDetailScreen({
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: finalArticles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
           solution: trimmedSolution,
+          signatureDataUrl,
+          signedAt: timestamp,
           volumeReadings: finalVolumeReadings.map((reading) => ({
             id: reading.id,
             volumeItemId: reading.volumeItemId,

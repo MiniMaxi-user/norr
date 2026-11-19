@@ -46,7 +46,11 @@ import type { FinishVolumeReadingInput } from "@/lib/asset-volumes/types";
  * check is stored flagged for office review instead of being rejected; the DB
  * trigger clears the flag again when the value is actually consistent. Inserts
  * are idempotent on the client uuid `id` (a retried finish ignores
- * duplicates). The signature is not sent to the server (client-only check).
+ * duplicates). Issue #226: the signature (PNG data URL, required, <= 1 MB) is
+ * uploaded to the private `work-order-signatures` bucket at
+ * `{organization_id}/{work_order_id}/signature.png` and recorded in
+ * `work_order_signatures` (idempotent upserts, user session / RLS), right
+ * before the status update.
  *
  * Same session -> `canAny()` -> RLS-scoped-query pattern as every other
  * route in this app. `time_entries_insert_scoped`/`work_order_articles_
@@ -93,7 +97,15 @@ interface FinishRequestBody {
   solution?: string;
   /** Readings queued offline (issue #225). */
   volumeReadings?: FinishVolumeReadingInput[];
+  /** `canvas.toDataURL()` PNG of the signature (issue #226). Required. */
+  signatureDataUrl?: string;
+  /** Epoch ms of the sign-off on the device (optional; defaults to now). */
+  signedAt?: number;
 }
+
+const SIGNATURE_PREFIX = "data:image/png;base64,";
+const SIGNATURE_MAX_BYTES = 1024 * 1024;
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /** Matches `activities.solution`'s app-layer cap
  * (`app/(app)/activities/schema.ts`'s `optionalText(5000)`) — same free-text
@@ -189,6 +201,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "A solution is required." }, { status: 400 });
   }
 
+  // Issue #226: a signature is required — decoded/validated before any write.
+  const signatureDataUrl = typeof body.signatureDataUrl === "string" ? body.signatureDataUrl : "";
+  if (!signatureDataUrl) {
+    return NextResponse.json({ error: "A signature is required." }, { status: 400 });
+  }
+  const signatureBase64 = signatureDataUrl.startsWith(SIGNATURE_PREFIX)
+    ? signatureDataUrl.slice(SIGNATURE_PREFIX.length)
+    : "";
+  if (
+    !signatureBase64 ||
+    signatureBase64.length > Math.ceil((SIGNATURE_MAX_BYTES * 4) / 3) + 4 ||
+    !BASE64_RE.test(signatureBase64)
+  ) {
+    return NextResponse.json({ error: "The signature is invalid or too large." }, { status: 400 });
+  }
+  const signatureBytes = Buffer.from(signatureBase64, "base64");
+  // Must really be a PNG (magic bytes): a corrupt image would make every later
+  // work receipt render for this work order fail.
+  const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const isPng = PNG_MAGIC.every((byte, index) => signatureBytes[index] === byte);
+  if (!isPng || signatureBytes.length > SIGNATURE_MAX_BYTES) {
+    return NextResponse.json({ error: "The signature is invalid or too large." }, { status: 400 });
+  }
+  const signedAtMs =
+    typeof body.signedAt === "number" && Number.isFinite(body.signedAt) && body.signedAt <= Date.now() + FUTURE_TOLERANCE_MS
+      ? body.signedAt
+      : Date.now();
+
   const supabase = await createClient();
 
   // organization_id, to resolve the CALLER'S OWN org's "completed"
@@ -275,6 +315,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         );
       }
     }
+  }
+
+  // Issue #226: signature upload + row, idempotent (upsert) so a retried
+  // finish simply overwrites. Deliberately BEFORE the non-idempotent
+  // time_entries/work_order_articles inserts below: a failure here returns
+  // 500 and the PWA retries, which must not duplicate hours/material.
+  // Path must be exactly org/work order/signature.png.
+  const signaturePath = `${workOrder.organization_id}/${id}/signature.png`;
+  const { error: signatureUploadError } = await supabase.storage
+    .from("work-order-signatures")
+    .upload(signaturePath, signatureBytes, { contentType: "image/png", upsert: true });
+  if (signatureUploadError) {
+    console.error("POST /api/work-orders/[id]/finish: failed to upload signature", signatureUploadError);
+    return NextResponse.json({ error: "Failed to save the signature." }, { status: 500 });
+  }
+  const { error: signatureRowError } = await supabase
+    .from("work_order_signatures")
+    .upsert(
+      { work_order_id: id, storage_path: signaturePath, signed_at: new Date(signedAtMs).toISOString() },
+      { onConflict: "work_order_id" },
+    );
+  if (signatureRowError) {
+    console.error("POST /api/work-orders/[id]/finish: failed to save signature row", signatureRowError);
+    return NextResponse.json({ error: "Failed to save the signature." }, { status: 500 });
   }
 
   if (periods.length > 0) {

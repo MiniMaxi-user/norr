@@ -54,6 +54,8 @@ export async function retryPendingSignOffs(currentUserId: string): Promise<void>
             .map((period) => ({ kind: period.kind, startedAt: period.startedAt, endedAt: period.endedAt })),
           articles: articles.map((article) => ({ articleId: article.articleId, quantity: article.quantity })),
           solution: signOff.solution,
+          signatureDataUrl: signOff.signatureDataUrl,
+          signedAt: signOff.signedAt,
           volumeReadings: volumeReadings.map((reading) => ({
             id: reading.id,
             volumeItemId: reading.volumeItemId,

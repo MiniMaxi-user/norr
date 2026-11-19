@@ -69,6 +69,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       },
       // Issue #218 - per-tenant work order number prefix + next number.
       { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering", ownHeader: true },
+      // Issue #226 - per-tenant work receipt (werkbon) email: sender, CC, subject, body.
+      { key: "work_receipt_email", label: "Work receipt e-mail", href: "/settings/work-receipt-email", ownHeader: true },
     ],
   },
   {

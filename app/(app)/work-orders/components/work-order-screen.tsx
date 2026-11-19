@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@yourorg/ui";
 import {
+  WebButton,
   WebDetailLayout,
   WebPage,
   type WebBadgeVariant,
@@ -11,6 +12,7 @@ import {
 } from "@yourorg/ui/web";
 import {
   EditDiscardDialog,
+  WebConfirmDialog,
   PageHeader,
   scrollMainToTop,
   toneFromColor,
@@ -41,6 +43,7 @@ import type { WorkOrderPhotoRecord } from "../photo-actions";
 import type { WorkOrderVolumeReadingRecord } from "../volume-actions";
 import type { WorkOrderChecklistItemRecord, WorkOrderChecklistRecord } from "../checklist-actions";
 import { createQuoteFromWorkOrder } from "../create-quote-actions";
+import { generateWorkReceipt } from "../work-receipt-actions";
 import { DeleteWorkOrderDialog } from "./delete-work-order-dialog";
 import { draftFromWorkOrder, emptyDraft, type WorkOrderDraft } from "./work-order-draft";
 import { buildWorkOrderSchema, createWorkOrderFromDraft, saveWorkOrderEdits } from "./work-order-form-schema";
@@ -50,6 +53,7 @@ import { WorkOrderMaterialsPanel } from "./work-order-materials-panel";
 import { WorkOrderChecklistPanel } from "./work-order-checklist-panel";
 import { WorkOrderPhotosPanel } from "./work-order-photos-panel";
 import { WorkOrderVolumesPanel } from "./work-order-volumes-panel";
+import { WorkOrderReceiptsPanel, type WorkOrderReceiptsData } from "./work-order-receipts-panel";
 import { WorkOrderRail } from "./work-order-rail";
 import { buildWorkOrderTimeline } from "./work-order-timeline";
 import { getLivePanel } from "./work-order-live-panel";
@@ -57,7 +61,7 @@ import { approvalBlockers } from "../approval-readiness";
 import { useClientScopedLists } from "./use-client-scoped-lists";
 import { WORK_ORDER_DETAIL_VIEW_KEY } from "./constants";
 
-export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "volumes" | "checklist";
+export type WorkOrderDetailTab = "overview" | "hours" | "materials" | "photos" | "volumes" | "receipts" | "checklist";
 
 export interface WorkOrderHoursData {
   timeEntries: TimeEntryRecord[];
@@ -137,6 +141,10 @@ export interface WorkOrderScreenProps {
   photos?: WorkOrderPhotoRecord[] | null;
   /** Meter readings on this work order (issues #221/#225); `null` = no tab. */
   volumes?: WorkOrderVolumeReadingRecord[] | null;
+  /** Work receipts (issue #226); `null` = viewer may not read them: no tab. */
+  receipts?: WorkOrderReceiptsData | null;
+  /** Client signature from the field sign-off (issue #226). */
+  signature?: { url: string; signedAt: string } | null;
   defaultTab?: WorkOrderDetailTab;
 }
 
@@ -214,6 +222,8 @@ export function WorkOrderScreen({
   checklistData = null,
   photos = null,
   volumes = null,
+  receipts = null,
+  signature = null,
   defaultTab = "overview",
 }: WorkOrderScreenProps) {
   const router = useRouter();
@@ -222,6 +232,8 @@ export function WorkOrderScreen({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
   const [quotePending, startQuote] = useTransition();
+  const [receiptConfirmOpen, setReceiptConfirmOpen] = useState(false);
+  const [receiptPending, startReceipt] = useTransition();
 
   // ---- Edit mode ------------------------------------------------------------
   const record = useMemo<WorkOrderDraft>(
@@ -432,10 +444,11 @@ export function WorkOrderScreen({
             ...(material ? [{ id: "materials", label: "Material", count: material.workOrderArticles.length }] : []),
             ...(photos ? [{ id: "photos", label: "Photos", count: photos.length }] : []),
             ...(volumes ? [{ id: "volumes", label: "Volumes", count: volumes.length }] : []),
+            ...(receipts ? [{ id: "receipts", label: "Work receipts", count: receipts.receipts.length }] : []),
             ...(checklistData ? [{ id: "checklist", label: "Checklist", count: checklistData.items.length }] : []),
           ]),
     ],
-    [isCreate, hours, material, photos, volumes, checklistData],
+    [isCreate, hours, material, photos, volumes, receipts, checklistData],
   );
 
   useEffect(() => {
@@ -489,10 +502,37 @@ export function WorkOrderScreen({
     });
   }
 
-  // No navy primary on a work order: approving the review and creating the
-  // quote afterwards are both LivePanel actions (they only exist at one
-  // status each), so the header keeps just Edit + ···.
-  const primary = undefined;
+  function handleGenerateReceipt() {
+    if (!workOrder) return;
+    startReceipt(async () => {
+      const result = await generateWorkReceipt(workOrder.id);
+      setReceiptConfirmOpen(false);
+      if (!result.data) {
+        toast({ tone: "danger", title: "Could not generate the work receipt", description: result.error ?? "Something went wrong." });
+        return;
+      }
+      toast({ tone: "success", title: "Work receipt generated", description: result.data.receipt.receiptNumber, duration: 4000 });
+      selectTab("receipts");
+      refresh();
+    });
+  }
+
+  // Approving the review and creating the quote are LivePanel actions (they
+  // only exist at one status each). The one navy primary is the work receipt:
+  // offered once the work order is approved (completed/invoiced) and the actor
+  // may generate it. The first generation runs straight away; later ones
+  // create a new version after a confirmation.
+  const latestReceipt = receipts?.receipts[0] ?? null;
+  const primary =
+    !isCreate && receipts?.isApproved && receipts.canGenerate ? (
+      <WebButton
+        variant="primary"
+        loading={receiptPending}
+        onClick={() => (latestReceipt ? setReceiptConfirmOpen(true) : handleGenerateReceipt())}
+      >
+        {latestReceipt ? "Generate new version" : "Generate work receipt"}
+      </WebButton>
+    ) : undefined;
 
   const header = (
     <PageHeader
@@ -558,6 +598,7 @@ export function WorkOrderScreen({
             members={members}
             lockedClientId={lockedClientId}
             isNew={isCreate}
+            signature={signature}
             sourceActivityId={sourceActivityId}
           />
         )}
@@ -599,6 +640,8 @@ export function WorkOrderScreen({
         {tab === "photos" && photos && workOrder && <WorkOrderPhotosPanel photos={photos} />}
         {tab === "volumes" && volumes && workOrder && <WorkOrderVolumesPanel readings={volumes} />}
 
+        {tab === "receipts" && receipts && workOrder && <WorkOrderReceiptsPanel data={receipts} workOrderId={workOrder.id} />}
+
         {tab === "checklist" && checklistData && workOrder && (
           <WorkOrderChecklistPanel
             workOrderId={workOrder.id}
@@ -615,6 +658,17 @@ export function WorkOrderScreen({
       </WebDetailLayout>
 
       <EditDiscardDialog confirm={edit.confirm} />
+
+      <WebConfirmDialog
+        open={receiptConfirmOpen}
+        title="Generate a new version?"
+        confirmLabel="Generate new version"
+        pending={receiptPending}
+        onCancel={() => setReceiptConfirmOpen(false)}
+        onConfirm={handleGenerateReceipt}
+      >
+        This creates version {(latestReceipt?.version ?? 0) + 1} of the work receipt; previous versions stay available.
+      </WebConfirmDialog>
 
       {!isCreate && workOrder && deleteOpen && (
         <DeleteWorkOrderDialog workOrder={workOrder} open onOpenChange={setDeleteOpen} redirectOnDelete />

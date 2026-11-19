@@ -24,6 +24,7 @@ import { memberDisplayName } from "@/lib/members/format";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import type { WorkOrderRecord } from "../actions";
 import type { WorkOrderDraft } from "./work-order-draft";
+import { WorkOrderSignatureCard } from "./work-order-signature-card";
 
 export interface WorkOrderClientScoped {
   sites: SiteRecord[];
@@ -51,6 +52,8 @@ export interface WorkOrderOverviewCardsProps {
   isNew: boolean;
   /** Source activity of a work order being created from one. */
   sourceActivityId?: string;
+  /** Client signature from the field sign-off (issue #226), when present. */
+  signature?: { url: string; signedAt: string } | null;
 }
 
 /**
@@ -81,6 +84,7 @@ export function WorkOrderOverviewCards({
   lockedClientId,
   isNew,
   sourceActivityId,
+  signature = null,
 }: WorkOrderOverviewCardsProps) {
   const saved = edit.record;
   const draft = edit.draft;
@@ -322,6 +326,7 @@ export function WorkOrderOverviewCards({
           />
         </WebCardPair>
       )}
+      {signature && !isNew ? <WorkOrderSignatureCard signature={signature} /> : null}
       <TextCard
         title="Notes"
         fieldKey="notes"
