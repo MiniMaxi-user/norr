@@ -71,7 +71,7 @@ export function WorkOrdersTableCard({
         header: "Status",
         render: (wo) =>
           wo.work_order_status ? (
-            <StatusText tone={toneFromColor(wo.work_order_status.color)}>{wo.work_order_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(wo.work_order_status.color)}>{wo.work_order_status.label}</StatusText>
           ) : null,
       },
       {

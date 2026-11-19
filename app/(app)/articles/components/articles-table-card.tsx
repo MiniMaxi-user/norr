@@ -83,7 +83,7 @@ export function ArticlesTableCard({
       {
         id: "status",
         header: "Status",
-        render: (a) => <StatusText tone={a.is_active ? "success" : "neutral"}>{a.is_active ? "Active" : "Inactive"}</StatusText>,
+        render: (a) => <StatusText display="auto" tone={a.is_active ? "success" : "neutral"}>{a.is_active ? "Active" : "Inactive"}</StatusText>,
       },
     ],
     [],

@@ -45,7 +45,7 @@ export function ActivitiesPanel({ clientId, assetId, urlPrefix = "activities", a
         sortValue: (activity) => activity.activity_status?.label ?? "",
         render: (activity) =>
           activity.activity_status ? (
-            <StatusText tone={toneFromColor(activity.activity_status.color)}>{activity.activity_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(activity.activity_status.color)}>{activity.activity_status.label}</StatusText>
           ) : (
             "—"
           ),

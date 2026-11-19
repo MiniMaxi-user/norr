@@ -96,7 +96,7 @@ export function ClientsTableCard({
         sortable: true,
         render: ({ client }) => {
           const label = CLIENT_STATUS_OPTIONS.find((option) => option.value === client.status)?.label ?? client.status;
-          return <StatusText tone={STATUS_TONE[client.status] ?? "neutral"}>{label}</StatusText>;
+          return <StatusText display="auto" tone={STATUS_TONE[client.status] ?? "neutral"}>{label}</StatusText>;
         },
       },
       { id: "manager", header: "Account manager", render: (row) => row.manager },

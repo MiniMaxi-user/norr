@@ -68,7 +68,7 @@ export function ActivityWorkOrdersPanel({ activityId, workOrders, canCreate }: A
         sortValue: (order) => order.work_order_status?.label ?? "",
         render: (order) =>
           order.work_order_status ? (
-            <StatusText tone={toneFromColor(order.work_order_status.color)}>{order.work_order_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(order.work_order_status.color)}>{order.work_order_status.label}</StatusText>
           ) : (
             "—"
           ),

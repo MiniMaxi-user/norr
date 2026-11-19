@@ -71,7 +71,7 @@ export function ActivitiesTableCard({
         header: "Status",
         render: (a) =>
           a.activity_status ? (
-            <StatusText tone={toneFromColor(a.activity_status.color)}>{a.activity_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(a.activity_status.color)}>{a.activity_status.label}</StatusText>
           ) : null,
       },
       { id: "client", header: "Client", render: (a) => a.client?.name ?? null },

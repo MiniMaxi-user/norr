@@ -68,7 +68,7 @@ export function QuotesTable({
         header: "Status",
         render: (quote) =>
           quote.quote_status ? (
-            <StatusText tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
           ) : null,
       },
       {

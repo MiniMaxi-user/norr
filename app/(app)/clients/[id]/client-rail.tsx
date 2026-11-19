@@ -1,6 +1,6 @@
 "use client";
 
-import { SidebarRows, SidebarSection, WebAmount, WebStatusPill } from "@yourorg/ui/web";
+import { SidebarRows, SidebarSection, WebAmount, WebStatusBadge } from "@yourorg/ui/web";
 import { LivePanel, type LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateTimeWeb, formatMoneyWeb } from "@/lib/format/web";
 import { SiteMapLoader, type SiteMapPin } from "./site-map-loader";
@@ -50,7 +50,7 @@ export function ClientRail({
             value:
               activeContracts.count > 0 ? (
                 <>
-                  <WebStatusPill tone="success">{activeContracts.count} active</WebStatusPill>
+                  <WebStatusBadge tone="success">{activeContracts.count} active</WebStatusBadge>
                   {activeContracts.value > 0 ? ` · ${formatMoneyWeb(activeContracts.value, { whole: true })}` : null}
                 </>
               ) : (
@@ -65,7 +65,7 @@ export function ClientRail({
             label: "Open work orders",
             value:
               openWorkOrders.count > 0 ? (
-                <WebStatusPill tone="warning">{openWorkOrders.count} open</WebStatusPill>
+                <WebStatusBadge tone="warning">{openWorkOrders.count} open</WebStatusBadge>
               ) : (
                 "0"
               ),

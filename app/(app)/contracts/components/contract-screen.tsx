@@ -8,7 +8,6 @@ import {
   EditDiscardDialog,
   PageHeader,
   scrollMainToTop,
-  toneFromColor,
   useEditMode,
   webTabIds,
   type PageHeaderBadge,
@@ -198,8 +197,6 @@ export function ContractScreen({
   const saved = edit.record;
   const labelOf = (items: { id: string; label: string }[], id: string, fallback?: string | null) =>
     items.find((item) => item.id === id)?.label ?? fallback ?? "";
-  const typeItem = lists.contractTypes.find((item) => item.id === saved.typeId);
-  const slaItem = lists.slaTiers.find((item) => item.id === saved.slaTierId);
   const typeLabel = labelOf(lists.contractTypes, saved.typeId, contract?.contract_type?.label);
   const slaLabel = labelOf(lists.slaTiers, saved.slaTierId, saved.slaTierId === contract?.sla_tier_id ? contract?.sla_tier?.label : null);
 
@@ -290,9 +287,10 @@ export function ContractScreen({
       });
     }
     if (typeLabel) {
-      badges.push({ label: typeLabel, variant: typeItem?.color ? (toneFromColor(typeItem.color) as WebBadgeVariant) : "neutral" });
+      // Classification: always neutral on the dark header (DS PageHeader).
+      badges.push({ label: typeLabel });
     }
-    if (slaLabel) badges.push({ label: slaLabel, variant: slaItem?.color ? (toneFromColor(slaItem.color) as WebBadgeVariant) : "neutral" });
+    if (slaLabel) badges.push({ label: slaLabel });
     if (saved.autoRenew) badges.push({ label: "Auto-renews" });
   }
 

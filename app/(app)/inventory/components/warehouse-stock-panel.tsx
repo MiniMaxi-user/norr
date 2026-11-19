@@ -126,7 +126,7 @@ export function WarehouseStockPanel({ warehouseId, stock, canCreate, canUpdate, 
         sortValue: (row) => STOCK_STATUS_LABEL[statusOf(row)],
         render: (row) => {
           const status = statusOf(row);
-          return <StatusText tone={STOCK_STATUS_TONE[status]}>{STOCK_STATUS_LABEL[status]}</StatusText>;
+          return <StatusText display="auto" tone={STOCK_STATUS_TONE[status]}>{STOCK_STATUS_LABEL[status]}</StatusText>;
         },
       },
     ],

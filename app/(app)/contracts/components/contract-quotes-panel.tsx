@@ -38,7 +38,7 @@ export function ContractQuotesPanel({ quotes }: ContractQuotesPanelProps) {
         header: "Status",
         sortValue: (quote) => quote.status?.label ?? "",
         render: (quote) =>
-          quote.status ? <StatusText tone={toneFromColor(quote.status.color)}>{quote.status.label}</StatusText> : "—",
+          quote.status ? <StatusText display="badge" tone={toneFromColor(quote.status.color)}>{quote.status.label}</StatusText> : "—",
       },
       {
         id: "total",

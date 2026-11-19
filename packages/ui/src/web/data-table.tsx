@@ -18,46 +18,44 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "../icons";
-import { WebButton, WebCard } from "./primitives";
+import { WebButton, WebCard, WebStatusBadge, toneFromColor, type WebStatusTone } from "./primitives";
 import { WebMenu, type WebMenuItem } from "./menu";
 import { getMainScrollArea } from "./scroll";
 
 /* ---------------------------------------------------------------------- *
- * StatusText — status as coloured text, never a badge per row.
+ * StatusText — status as coloured text, or a soft badge when it deviates.
  * ---------------------------------------------------------------------- */
 
-export type StatusTone = "success" | "warning" | "danger" | "info" | "neutral";
+export type StatusTone = WebStatusTone;
+export { toneFromColor };
 
-/** Maps a reference-list colour name (`reference_list_items.color`) to a
- * design-system tone. Unknown/empty colours read as plain text. */
-export function toneFromColor(color: string | null | undefined): StatusTone {
-  switch ((color ?? "").toLowerCase()) {
-    case "green":
-    case "success":
-    case "emerald":
-      return "success";
-    case "amber":
-    case "yellow":
-    case "orange":
-    case "warning":
-    case "gold":
-      return "warning";
-    case "red":
-    case "danger":
-    case "rose":
-      return "danger";
-    case "blue":
-    case "teal":
-    case "cyan":
-    case "info":
-    case "sky":
-      return "info";
-    default:
-      return "neutral";
+/**
+ * A status in a table cell or card value (DS 06 §4: badges mark what
+ * deviates).
+ * - `text` (default): coloured text.
+ * - `auto`: for lists with a "normal" state — a success-tone status (Active)
+ *   stays coloured text, any other tone becomes a soft round badge (In repair,
+ *   Blocked). Neutral-tone statuses stay plain text.
+ * - `badge`: workflow lists where the status is the main information (work
+ *   orders: Open, Planned, In progress, Done) — every status is a badge.
+ */
+export function StatusText({
+  tone = "neutral",
+  display = "text",
+  children,
+}: {
+  tone?: StatusTone;
+  display?: "text" | "auto" | "badge";
+  children: ReactNode;
+}) {
+  const asBadge = display === "badge" || (display === "auto" && tone !== "success" && tone !== "neutral");
+  if (asBadge) {
+    return (
+      <WebStatusBadge tone={tone} size="table">
+        {children}
+      </WebStatusBadge>
+    );
   }
-}
-
-export function StatusText({ tone = "neutral", children }: { tone?: StatusTone; children: ReactNode }) {
   return (
     <span className="web-status" data-tone={tone}>
       {children}

@@ -31,7 +31,7 @@ export function QuotesPanel({ quotes }: QuotesPanelProps) {
         sortValue: (quote) => quote.quote_status?.label ?? "",
         render: (quote) =>
           quote.quote_status ? (
-            <StatusText tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
+            <StatusText display="badge" tone={toneFromColor(quote.quote_status.color)}>{quote.quote_status.label}</StatusText>
           ) : (
             "—"
           ),

@@ -158,9 +158,9 @@ export function TeamManager({
         sortValue: (row) => (row.kind === "member" ? 0 : 1),
         render: (row) =>
           row.kind === "member" ? (
-            <StatusText tone="success">Active</StatusText>
+            <StatusText display="auto" tone="success">Active</StatusText>
           ) : (
-            <StatusText tone="warning">Invited</StatusText>
+            <StatusText display="auto" tone="warning">Invited</StatusText>
           ),
       },
       {

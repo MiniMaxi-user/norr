@@ -77,7 +77,7 @@ export function ContractsTable({
         header: "Status",
         render: (contract) => {
           const status = getContractStatus(contract);
-          return <StatusText tone={PHASE_TONE[status.phase]}>{status.label}</StatusText>;
+          return <StatusText display="auto" tone={PHASE_TONE[status.phase]}>{status.label}</StatusText>;
         },
       },
       { id: "billing", header: "Billing terms", render: (contract) => contract.billing_terms?.label ?? null },

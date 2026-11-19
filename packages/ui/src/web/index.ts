@@ -16,9 +16,11 @@ export {
   WebInput,
   WebFigures,
   WebLinkButton,
-  WebStatusPill,
+  WebStatusBadge,
   WebAmount,
+  toneFromColor,
 } from "./primitives";
+export type { WebStatusTone } from "./primitives";
 export type {
   WebBadgeProps,
   WebBadgeVariant,

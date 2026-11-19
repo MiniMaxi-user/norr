@@ -84,6 +84,7 @@
   --on-dark-hover: rgba(255, 255, 255, 0.1);
   --on-dark-avatar: rgba(255, 255, 255, 0.15);
   --tab-count-bg: #34444b;
+  --header-badge-neutral: #364a53;
   --card-header-bg: #f8faf6;
   --card-header-border: #e7ebe5;
 
@@ -537,13 +538,14 @@ html:has(.web-shell) body {
 /* ---------------------------------------------------------------------- *
  * Badge
  * ---------------------------------------------------------------------- */
+/* All badges are round (DS: radius-full). */
 .web-badge {
   display: inline-flex;
   align-items: center;
   height: 22px;
-  padding: 0 9px;
+  padding: 0 10px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   background: var(--surface-card);
   color: var(--text-muted);
   font: 400 11.5px/15px var(--font-sans);
@@ -945,33 +947,49 @@ html:has(.web-shell) body {
   background: var(--brand-gold-hover);
   border-color: var(--brand-gold-border);
 }
-.web-page-header .web-segmented {
-  background: var(--on-dark-hover);
-}
+/* View switcher on the dark header: track `header-badge-neutral`, the
+   active segment light (`surface-page`) with navy 600. */
 .web-page-header .web-segmented-option {
   color: var(--text-on-dark-muted);
 }
+
+.web-page-header .web-segmented {
+  background: var(--header-badge-neutral);
+}
 .web-page-header .web-segmented-option[aria-checked="true"] {
-  background: var(--surface-card);
-  border-color: var(--surface-card);
-  color: var(--text-ink);
+  background: var(--surface-page);
+  border-color: var(--surface-page);
+  color: var(--brand-navy);
 }
 
-/* Badges on the dark header: status keeps its light coloured variant;
-   attention (warning, Edit mode, New) is filled gold; neutral facts are
-   transparent with a light border. */
+/* Badges on the dark header: what matters is filled and bright (max 2,
+   enforced by PageHeader); neutral facts sit on a dark pill without border. */
+.web-page-header .web-badge {
+  border: 0;
+  font-weight: 600;
+}
 .web-page-header .web-badge[data-variant="neutral"],
 .web-page-header .web-badge[data-variant="mono"] {
-  background: transparent;
-  border-color: var(--on-dark-border);
+  background: var(--header-badge-neutral);
   color: var(--on-dark-text);
+  font-weight: 400;
+}
+.web-page-header .web-badge[data-variant="info"] {
+  background: var(--info-text);
+  color: var(--text-on-dark);
+}
+.web-page-header .web-badge[data-variant="success"] {
+  background: var(--success-text);
+  color: var(--text-on-dark);
 }
 .web-page-header .web-badge[data-variant="warning"],
 .web-page-header .web-badge[data-variant="attention"] {
   background: var(--brand-gold);
-  border-color: var(--brand-gold);
   color: var(--brand-navy);
-  font-weight: 600;
+}
+.web-page-header .web-badge[data-variant="danger"] {
+  background: var(--danger-fill);
+  color: var(--text-on-dark);
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1109,8 +1127,11 @@ html:has(.web-shell) body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* Status pill: a meaningful count as a rail value ("1 active", "3 open"). */
-.web-status-pill {
+/* Soft status badge on light (cards, tables, rail): round, no border. Rail
+   (default) 20px/11.5px, table 20px/11px, key/value row 22px/11.5px. Only for
+   what matters (a deviating status, a meaningful count); ordinary values stay
+   text. */
+.web-status-badge {
   display: inline-flex;
   align-items: center;
   height: 20px;
@@ -1119,18 +1140,35 @@ html:has(.web-shell) body {
   font: 600 11.5px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  vertical-align: middle;
 }
-.web-status-pill[data-tone="success"] {
+.web-status-badge[data-size="table"] {
+  font-size: 11px;
+}
+.web-status-badge[data-size="kv"] {
+  height: 22px;
+  padding: 0 10px;
+}
+.web-status-badge[data-tone="success"] {
   background: var(--success-bg);
   color: var(--success-text);
 }
-.web-status-pill[data-tone="warning"] {
+.web-status-badge[data-tone="warning"] {
   background: var(--warning-bg);
   color: var(--warning-text);
 }
-.web-status-pill[data-tone="danger"] {
+.web-status-badge[data-tone="danger"] {
   background: var(--danger-bg);
   color: var(--danger-text);
+}
+.web-status-badge[data-tone="info"] {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.web-status-badge[data-tone="neutral"] {
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 /* Key amount (potential, contract value, total): serif 15px, max 1-2 per
    card or rail section; ordinary amounts stay sans. */
@@ -2262,7 +2300,58 @@ a.web-tree-id:hover {
  * scroll area below it holding a single card.
  * ---------------------------------------------------------------------- */
 .web-page-header[data-kind="list"] {
-  padding-bottom: 18px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+/* Overview page (DS 06): actions aligned to the bottom of the title block. */
+.web-page-header[data-kind="list"] .web-page-header-row {
+  align-items: flex-end;
+}
+.web-page-header[data-kind="list"] > .web-breadcrumb + .web-page-header-row {
+  margin-top: 10px;
+}
+.web-page-header[data-kind="list"] > .web-page-header-row:first-child {
+  margin-top: 0;
+}
+.web-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.web-list-title-row .web-page-title {
+  min-width: 0;
+}
+/* Round count pill after the title: the total without filters. */
+.web-list-count {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-full);
+  background: var(--header-badge-neutral);
+  color: var(--on-dark-text);
+  font: 400 12px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/* Attention badges that are quick filters (`<button aria-pressed>`). */
+.web-quick-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.web-quick-filter {
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+.web-quick-filter:hover {
+  filter: brightness(1.08);
+}
+.web-quick-filter[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--surface-card);
 }
 .web-page-header[data-kind="list"] .web-page-header-left {
   gap: 10px;

@@ -93,7 +93,7 @@ export function AssetsPanel({
         sortValue: (asset) => asset.asset_status?.label ?? "",
         render: (asset) =>
           asset.asset_status ? (
-            <StatusText tone={toneFromColor(asset.asset_status.color)}>{asset.asset_status.label}</StatusText>
+            <StatusText display="auto" tone={toneFromColor(asset.asset_status.color)}>{asset.asset_status.label}</StatusText>
           ) : (
             "—"
           ),

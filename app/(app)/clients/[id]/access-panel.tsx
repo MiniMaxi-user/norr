@@ -145,7 +145,7 @@ export function AccessPanel({ clientId, contacts, statusByEmail: initialStatusBy
         sortValue: (contact) => STATUS_LABEL[statusFor(contact)],
         render: (contact) => {
           const status = statusFor(contact);
-          return <StatusText tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusText>;
+          return <StatusText display="auto" tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusText>;
         },
       },
     ],

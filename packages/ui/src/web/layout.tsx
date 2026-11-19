@@ -215,13 +215,21 @@ export function WebDetailLayout({ header, children, rail, timeline, locked, main
  * ---------------------------------------------------------------------- */
 
 export interface WebListPageProps {
-  /** Module name: the single breadcrumb level ("Clients"). */
+  /** Module name ("Clients"). Not rendered as a breadcrumb: a module-level
+   * list has none (it would only repeat the title, DS 06 §1); used as the
+   * header's accessible name. */
   module: string;
-  /** The H1 (usually the same as `module`, or a longer name). */
+  /** The H1: the module name in plural ("Assets", "Clients"). */
   title: string;
-  /** Total number of records, shown as a mono count badge next to the title.
-   * Omit while it is unknown. */
+  /** Only for a list that sits deeper (work orders inside a contract): the
+   * levels ABOVE the title. */
+  breadcrumb?: WebBreadcrumbItem[];
+  /** Total number of records WITHOUT filters, shown as a round mono count
+   * pill right after the title. Omit while it is unknown. */
   count?: number | null;
+  /** Attention badges that work as quick filters (`WebQuickFilters`), max 3.
+   * Omit when nothing needs attention. */
+  quickFilters?: ReactNode;
   /** Secondary actions, left of the primary one: `[Export]`, a
    * `WebViewSwitcher`. Only add what really exists. */
   actions?: ReactNode;
@@ -237,25 +245,30 @@ export interface WebListPageProps {
 function ListHeader({
   module,
   title,
+  breadcrumb,
   count,
+  quickFilters,
   actions,
   primary,
 }: Omit<WebListPageProps, "children">) {
   return (
-    <header className="web-page-header" data-mode="read" data-kind="list">
-      <WebBreadcrumb items={[{ label: module }]} />
+    <header className="web-page-header" data-mode="read" data-kind="list" aria-label={module}>
+      {breadcrumb && breadcrumb.length > 0 ? <WebBreadcrumb items={[...breadcrumb, { label: title }]} /> : null}
       <div className="web-page-header-row">
         <div className="web-page-header-left">
           <div className="web-page-header-text">
-            <h1 className="web-page-title" title={title}>
-              {title}
-            </h1>
+            <div className="web-list-title-row">
+              <h1 className="web-page-title" title={title}>
+                {title}
+              </h1>
+              {typeof count === "number" ? (
+                <span className="web-list-count" aria-label={`${count} in total`}>
+                  {count}
+                </span>
+              ) : null}
+            </div>
+            {quickFilters}
           </div>
-          {typeof count === "number" ? (
-            <WebBadge variant="mono" aria-label={`${count} records`}>
-              {count}
-            </WebBadge>
-          ) : null}
         </div>
         {actions || primary ? (
           <div className="web-page-header-actions">
@@ -287,8 +300,9 @@ function ListHeader({
  * </WebListPage>
  * ```
  *
- * Layout: the topbar, a white page header (breadcrumb with the module name,
- * H1, optional count badge, `[actions] [primary]` on the right), and below
+ * Layout (DS 06): the topbar, a dark page header without a module-level
+ * breadcrumb (H1 + round count pill, optional quick-filter attention badges,
+ * max three actions on the right: view switcher, ···, gold primary), and below
  * it one full-width scroll area holding the card. The browser page never
  * scrolls; the FilterBar and the column headers stay stuck to the top of that
  * area. No tabs, no right rail.

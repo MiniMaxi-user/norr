@@ -241,7 +241,7 @@ export function QuoteScreen({
       variant: quote.quote_status?.color ? (toneFromColor(quote.quote_status.color) as WebBadgeVariant) : "neutral",
     });
     if (daysLeft !== null && daysLeft < 0) badges.push({ label: "Expired", variant: "warning" });
-    if (quote.quote_type === "contract") badges.push({ label: "Contract", variant: "info" });
+    if (quote.quote_type === "contract") badges.push({ label: "Contract" });
     if (quote.is_auto_draft) badges.push({ label: "Auto-draft" });
   }
 

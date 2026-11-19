@@ -201,7 +201,7 @@ export function ArticleScreen({
   const badges: PageHeaderBadge[] = [];
   if (article) {
     badges.push({ label: saved.isActive ? "Active" : "Inactive", variant: saved.isActive ? "success" : "neutral" });
-    if (saved.isComposite) badges.push({ label: "Composite", variant: "info" });
+    if (saved.isComposite) badges.push({ label: "Composite" });
     const groupText = savedLeafGroup?.path ?? article.article_group?.name;
     if (groupText) badges.push({ label: groupText });
   }

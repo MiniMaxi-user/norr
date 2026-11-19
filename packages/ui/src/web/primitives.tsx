@@ -31,17 +31,52 @@ export function WebBadge({ variant = "neutral", className, children, ...rest }: 
   );
 }
 
-/** Rounded status pill for a meaningful count as a value in a rail row
- * (`1 active` green, `3 open` gold, `2 overdue` red). Rail only — in cards
- * and tables status stays coloured text. */
-export function WebStatusPill({
+export type WebStatusTone = "success" | "warning" | "danger" | "info" | "neutral";
+
+/** Maps a reference-list colour name (`reference_list_items.color`) to a
+ * design-system tone. Unknown/empty colours read as plain text. Server-safe
+ * (also re-exported from `@yourorg/ui/web-client`). */
+export function toneFromColor(color: string | null | undefined): WebStatusTone {
+  switch ((color ?? "").toLowerCase()) {
+    case "green":
+    case "success":
+    case "emerald":
+      return "success";
+    case "amber":
+    case "yellow":
+    case "orange":
+    case "warning":
+    case "gold":
+      return "warning";
+    case "red":
+    case "danger":
+    case "rose":
+      return "danger";
+    case "blue":
+    case "teal":
+    case "cyan":
+    case "info":
+    case "sky":
+      return "info";
+    default:
+      return "neutral";
+  }
+}
+
+/** Soft round status badge on light surfaces — only for what matters: a
+ * meaningful count in the rail (`1 active`, `3 open`), a deviating status in
+ * a table row (`In repair`), a notable status/setting in a key/value row
+ * (`Lead`, `Off · default`). Ordinary values stay text. Max one per row.
+ * Size: `rail` (default, 20px), `table` (20px, 11px), `kv` (22px). */
+export function WebStatusBadge({
   tone,
+  size = "rail",
   className,
   children,
   ...rest
-}: HTMLAttributes<HTMLSpanElement> & { tone: "success" | "warning" | "danger" }) {
+}: HTMLAttributes<HTMLSpanElement> & { tone: WebStatusTone; size?: "rail" | "table" | "kv" }) {
   return (
-    <span className={cx("web-status-pill", className)} data-tone={tone} {...rest}>
+    <span className={cx("web-status-badge", className)} data-tone={tone} data-size={size} {...rest}>
       {children}
     </span>
   );

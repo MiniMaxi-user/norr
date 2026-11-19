@@ -1,4 +1,5 @@
-import { WebCard, WebDataTableEmpty, WebLinkButton, WebListPage } from "@yourorg/ui/web";
+import { WebCard, WebDataTableEmpty, WebLinkButton, WebListPage, toneFromColor } from "@yourorg/ui/web";
+import { WebQuickFilters, type WebQuickFilter } from "@yourorg/ui/web-client";
 import { listAssets, type AssetRecord } from "../actions";
 import {
   listClients,
@@ -69,6 +70,50 @@ function optionsFromAssets(assets: AssetRecord[], pick: (asset: AssetRecord) => 
 }
 
 /**
+ * Attention badges of the overview header (DS 06 §1), each a quick filter on
+ * the existing URL filters: assets in a deviating status (a gold or red
+ * status in the tenant's status list, e.g. "In repair") and assets whose
+ * warranty has expired. Counts are module-wide (not narrowed by the current
+ * filters); zero counts are left out, max 3.
+ */
+async function loadAssetQuickFilters(
+  statuses: { id: string; label: string; color: string | null }[],
+): Promise<WebQuickFilter[]> {
+  const deviating = statuses
+    .map((status) => ({ status, tone: toneFromColor(status.color) }))
+    .filter(({ tone }) => tone === "warning" || tone === "danger")
+    .slice(0, 2);
+
+  const [statusCounts, expired] = await Promise.all([
+    Promise.all(deviating.map(({ status }) => listAssets({ statusId: status.id, limit: 1 }))),
+    listAssets({ warranty: "expired", limit: 1 }),
+  ]);
+
+  const filters: WebQuickFilter[] = [];
+  deviating.forEach(({ status, tone }, index) => {
+    const total = statusCounts[index]?.data?.count ?? 0;
+    if (total > 0) {
+      filters.push({
+        key: `status-${status.id}`,
+        label: `${total} ${status.label.toLowerCase()}`,
+        tone: tone === "danger" ? "danger" : "attention",
+        params: { status: status.id },
+      });
+    }
+  });
+  const expiredCount = expired.data?.count ?? 0;
+  if (expiredCount > 0) {
+    filters.push({
+      key: "warranty-expired",
+      label: `${expiredCount} warranty expired`,
+      tone: "danger",
+      params: { seg: "expired" },
+    });
+  }
+  return filters.slice(0, 3);
+}
+
+/**
  * The data-fetching heart of the Assets module — rendered inside a
  * `Suspense` boundary by `app/(app)/assets/page.tsx` (fallback
  * `WebListSkeleton`, route-level streaming per docs/ARCHITECTURE.md). Renders
@@ -125,7 +170,15 @@ export async function AssetsScreen({ view, params, canCreate, canEdit, canDelete
     : optionsFromAssets(assets, (asset) => (asset.asset_status ? { id: asset.status_id, label: asset.asset_status.label } : null));
 
   const filterOptions = { clientOptions, siteOptions, typeOptions, statusOptions };
-  const header = { module: "Assets", title: "Assets", count: unfilteredCount ?? count, actions, primary };
+  const quickFilters = await loadAssetQuickFilters(statusesResult.data?.items ?? []);
+  const header = {
+    module: "Assets",
+    title: "Assets",
+    count: unfilteredCount ?? count,
+    quickFilters: quickFilters.length > 0 ? <WebQuickFilters filters={quickFilters} /> : undefined,
+    actions,
+    primary,
+  };
 
   if (isMapView) {
     const distinctClientIds = Array.from(new Set(assets.map((asset) => asset.client_id)));

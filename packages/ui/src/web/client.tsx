@@ -33,6 +33,8 @@ export { WebMenu } from "./menu";
 export { scrollMainToTop } from "./scroll";
 export { LivePanel } from "./live-panel";
 export { WebListFilterBar } from "./list-filter-bar";
+export { WebQuickFilters } from "./quick-filters";
+export type { WebQuickFilter } from "./quick-filters";
 export type { WebListFilterBarProps } from "./list-filter-bar";
 export type { LivePanelAction, LivePanelData, LivePanelVariant } from "./live-panel";
 export { StructureTree } from "./structure-tree";
@@ -217,6 +219,7 @@ export function webTabIds(id: string) {
 }
 
 const MAX_BADGES = 5;
+const MAX_FILLED_BADGES = 2;
 
 function initialsOf(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -321,7 +324,14 @@ export function PageHeader({
   editStatus,
 }: PageHeaderProps) {
   const editing = mode !== "read";
-  const visibleBadges = (badges ?? []).slice(0, MAX_BADGES);
+  // Max 5 badges; at most 2 of them filled (bright) — the rest neutral.
+  let filled = 0;
+  const visibleBadges = (badges ?? []).slice(0, MAX_BADGES).map((badge) => {
+    const isFilled = badge.variant !== undefined && badge.variant !== "neutral" && badge.variant !== "mono";
+    if (!isFilled) return badge;
+    filled += 1;
+    return filled <= MAX_FILLED_BADGES ? badge : { ...badge, variant: "neutral" as const };
+  });
   // At most one gold count pill per tab band.
   const firstAttentionTab = (tabs ?? []).findIndex((tab) => Boolean(tab.attention && tab.count));
 
