@@ -262,6 +262,9 @@ export interface WebListPageProps {
    * href="/clients/new">New client</WebLinkButton>`. Omit when the user may
    * not create. */
   primary?: ReactNode;
+  /** Key figures of the list (a compact `StatStrip`, as on the dashboard),
+   * shown in the dark header under the title row. Omit when the list has none. */
+  stats?: ReactNode;
   /** The page body: normally ONE `WebDataTableCard` (FilterBar + table), or
    * a different view of the same data (board, map). No tabs, no rail. */
   children: ReactNode;
@@ -275,6 +278,7 @@ function ListHeader({
   quickFilters,
   actions,
   primary,
+  stats,
 }: Omit<WebListPageProps, "children">) {
   return (
     <header className="web-page-header" data-mode="read" data-kind="list" aria-label={module}>
@@ -304,6 +308,7 @@ function ListHeader({
           </div>
         ) : null}
       </div>
+      {stats ? <div className="web-page-header-stats">{stats}</div> : null}
     </header>
   );
 }

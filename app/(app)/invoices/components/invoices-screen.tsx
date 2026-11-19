@@ -1,4 +1,5 @@
-import { WebCard, WebDataTableEmpty, WebFigures, WebListPage } from "@yourorg/ui/web";
+import { StatStrip } from "@yourorg/ui";
+import { WebCard, WebDataTableEmpty, WebListPage } from "@yourorg/ui/web";
 import { listClients, type ClientRecord } from "@/app/(app)/clients/actions";
 import { formatMoneyWeb } from "@/lib/format/web";
 import { listInvoices, type InvoiceKpis } from "../actions";
@@ -8,11 +9,17 @@ import { InvoicesTable } from "./invoices-table";
 function Kpis({ kpis, periodLabel }: { kpis: InvoiceKpis; periodLabel: string }) {
   const count = (n: number) => `${n} ${n === 1 ? "invoice" : "invoices"}`;
   return (
-    <WebFigures
+    <StatStrip
+      compact
       items={[
         { label: "Invoiced in period", value: formatMoneyWeb(kpis.invoicedInPeriod), hint: `${periodLabel} · ${count(kpis.invoicedInPeriodCount)}` },
         { label: "Outstanding", value: formatMoneyWeb(kpis.outstandingAmount), hint: count(kpis.outstandingCount) },
-        { label: "Overdue", value: formatMoneyWeb(kpis.overdueAmount), hint: count(kpis.overdueCount) },
+        {
+          label: "Overdue",
+          value: formatMoneyWeb(kpis.overdueAmount),
+          hint: kpis.overdueCount > 0 ? `${count(kpis.overdueCount)} past due date` : "none past due date",
+          hintTone: kpis.overdueCount > 0 ? "accent" : "muted",
+        },
       ]}
     />
   );
@@ -47,8 +54,12 @@ export async function InvoicesScreen({ params }: { params: InvoicesSearchParams 
   const periodLabel = INVOICE_PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? "All time";
 
   return (
-    <WebListPage module="Invoices" title="Invoices" count={noMatch ? 0 : count}>
-      <Kpis kpis={kpis} periodLabel={periodLabel} />
+    <WebListPage
+      module="Invoices"
+      title="Invoices"
+      count={noMatch ? 0 : count}
+      stats={<Kpis kpis={kpis} periodLabel={periodLabel} />}
+    >
       <InvoicesTable
         invoices={noMatch ? [] : invoices}
         server={{ total: noMatch ? 0 : count, page, clientOptions }}

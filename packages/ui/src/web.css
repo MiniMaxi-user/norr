@@ -691,6 +691,14 @@ html:has(.web-shell) body {
   background: var(--header-bg);
   color: var(--text-on-dark);
 }
+/* Key figures of a list page (WebListPage `stats`): a compact StatStrip,
+   fully rounded since it sits inside the header rather than at its edge. */
+.web-page-header-stats {
+  margin-top: 14px;
+}
+.web-page-header-stats .ui-stat-strip {
+  border-radius: var(--ui-radius-lg);
+}
 .web-page-header:has(> .web-tabs) {
   padding-bottom: 0;
 }
