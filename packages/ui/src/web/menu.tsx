@@ -31,7 +31,10 @@ export type WebMenuItem =
   | { type: "label"; key: string; node: ReactNode }
   /** Arbitrary node (e.g. a logout `<form>`); the menu does not close on
    * click, so the node owns its own submit/close behaviour. */
-  | { type: "custom"; key: string; node: ReactNode };
+  | { type: "custom"; key: string; node: ReactNode }
+  /** Toggleable option (role=menuitemcheckbox); the menu stays open so
+   * several can be toggled in a row (multiselect filters). */
+  | { type: "checkbox"; key: string; label: ReactNode; checked: boolean; onToggle: () => void };
 
 export interface WebMenuProps {
   /** Accessible name of the trigger. */
@@ -118,7 +121,7 @@ export function WebMenu({ label, trigger, triggerClassName, triggerActive, align
 
   useEffect(() => {
     if (!open) return;
-    popoverRef.current?.querySelector<HTMLElement>("[role='menuitem']:not([aria-disabled='true'])")?.focus({
+    popoverRef.current?.querySelector<HTMLElement>("[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox']")?.focus({
       preventScroll: true,
     });
   }, [open]);
@@ -127,7 +130,7 @@ export function WebMenu({ label, trigger, triggerClassName, triggerActive, align
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     const entries = Array.from(
-      popoverRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']:not([aria-disabled='true'])") ?? [],
+      popoverRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox']") ?? [],
     );
     if (entries.length === 0) return;
     const index = entries.indexOf(document.activeElement as HTMLElement);
@@ -157,6 +160,21 @@ export function WebMenu({ label, trigger, triggerClassName, triggerActive, align
           );
         }
         if (item.type === "custom") return <div key={item.key}>{item.node}</div>;
+        if (item.type === "checkbox") {
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={item.checked}
+              className="web-menu-item"
+              onClick={item.onToggle}
+            >
+              <input type="checkbox" checked={item.checked} readOnly tabIndex={-1} aria-hidden="true" />
+              {item.label}
+            </button>
+          );
+        }
         const content = (
           <>
             {item.icon}

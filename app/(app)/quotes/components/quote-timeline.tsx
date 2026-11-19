@@ -5,6 +5,11 @@ import type { QuoteLineItemRecord, QuoteRecord } from "../actions";
 import type { InvoiceSummary } from "../invoice-actions";
 
 
+const euroFormatter = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" });
+function formatEuro(value: number): string {
+  return euroFormatter.format(value);
+}
+
 interface Event {
   id: string;
   at: string;
@@ -14,18 +19,21 @@ interface Event {
 /**
  * The Quote page's TIMELINE, built from data the page already loads (no new
  * fetch): the quote's own created/changed stamps, its line items and — for a
- * viewer who can read invoices — the invoice and its e-mail. Newest first, at
- * most 8. None of these rows store an actor name the page loads, so entries
+ * viewer who can read invoices — every invoice, credit note, e-mail and payment. Newest first.
+ * None of these rows store an actor name the page loads, so entries
  * carry no actor.
  */
 export function buildQuoteTimeline(input: {
   quote: QuoteRecord;
   lineItems: QuoteLineItemRecord[];
   invoice: InvoiceSummary | null;
+  /** Every invoice and credit note of the quote (payments + credit notes become events); falls back to `invoice`. */
+  invoices?: InvoiceSummary[];
   /** Label + id of the work order this quote was made from, when it has one. */
   sourceWorkOrder: { id: string; label: string } | null;
 }): TimelineItem[] {
   const { quote, lineItems, invoice, sourceWorkOrder } = input;
+  const allInvoices = input.invoices ?? (invoice ? [invoice] : []);
   const events: Event[] = [
     {
       id: "quote-created",
@@ -54,10 +62,25 @@ export function buildQuoteTimeline(input: {
     });
   }
 
-  if (invoice) {
-    events.push({ id: "invoice", at: invoice.generatedAt, title: `Invoice ${invoice.invoiceNumber} generated` });
-    if (invoice.emailedAt && invoice.emailedTo) {
-      events.push({ id: "invoice-sent", at: invoice.emailedAt, title: `Invoice emailed to ${invoice.emailedTo}` });
+  for (const doc of allInvoices) {
+    const isCredit = doc.kind === "credit_note";
+    const noun = isCredit ? "Credit note" : "Invoice";
+    events.push({
+      id: `invoice-${doc.id}`,
+      at: doc.generatedAt,
+      title: isCredit
+        ? `Credit note ${doc.invoiceNumber} generated${doc.creditsInvoiceNumber ? ` for invoice ${doc.creditsInvoiceNumber}` : ""}`
+        : `Invoice ${doc.invoiceNumber} generated`,
+    });
+    if (doc.emailedAt && doc.emailedTo) {
+      events.push({ id: `invoice-sent-${doc.id}`, at: doc.emailedAt, title: `${noun} ${doc.invoiceNumber} emailed to ${doc.emailedTo}` });
+    }
+    for (const payment of doc.payments) {
+      events.push({
+        id: `payment-${payment.id}`,
+        at: payment.createdAt,
+        title: `Payment of ${formatEuro(payment.amount)} registered on invoice ${doc.invoiceNumber} (${payment.methodLabel || "payment"})`,
+      });
     }
   }
 

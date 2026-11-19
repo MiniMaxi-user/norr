@@ -307,6 +307,12 @@ export interface DashboardModel {
     malfunctionsReported: Kpi;
     completedWorkOrders: Kpi;
     averageCompletionHours: number | null;
+    /** Open invoices (not fully paid, not credited): total outstanding + count. */
+    outstandingAmount: number;
+    outstandingCount: number;
+    /** Subset of the open invoices past their due date. */
+    overdueInvoiceAmount: number;
+    overdueInvoiceCount: number;
   };
   revenueSeries: SeriesPoint[];
   flowSeries: SeriesPoint[];
@@ -446,7 +452,18 @@ export function computeDashboard(
     (q) => q.status === "draft" && quotePass(q),
   );
 
+  const openReceivables = data.receivables.filter(
+    (r) => !filters.clientId || r.clientId === filters.clientId,
+  );
+  const overdueReceivables = openReceivables.filter((r) => r.isOverdue);
+  const sumOutstanding = (rows: typeof openReceivables) =>
+    rows.reduce((sum, r) => sum + r.outstanding, 0);
+
   const kpis: DashboardModel["kpis"] = {
+    outstandingAmount: sumOutstanding(openReceivables),
+    outstandingCount: openReceivables.length,
+    overdueInvoiceAmount: sumOutstanding(overdueReceivables),
+    overdueInvoiceCount: overdueReceivables.length,
     revenue: { value: sumTotal(invoicedNow), previous: sumTotal(invoicedPrev) },
     marginPercent: {
       value: margin(invoicedNow),
@@ -819,7 +836,8 @@ export function computeDashboard(
     isEmpty:
       data.workOrders.length === 0 &&
       data.activities.length === 0 &&
-      data.quotes.length === 0,
+      data.quotes.length === 0 &&
+      data.receivables.length === 0,
   };
 }
 

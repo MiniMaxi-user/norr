@@ -6,6 +6,7 @@ import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny, type PermissionActor } from "@/lib/rbac/permissions";
 import { memberDisplayName } from "@/lib/members/format";
 import type {
+  DashboardReceivable,
   DashboardActivity,
   DashboardDataset,
   DashboardQuote,
@@ -103,7 +104,7 @@ interface QuoteRow {
   created_at: string;
   updated_at: string;
   status: Embedded<{ value: string }>;
-  invoice?: Embedded<{ invoice_number: string | null; generated_at: string | null }>;
+  invoice?: Embedded<{ invoice_number: string | null; generated_at: string | null; kind?: string; credited_at?: string | null }>;
   quote_line_items: QuoteLineRow[] | null;
 }
 
@@ -168,7 +169,9 @@ function toActivity(row: ActivityRow, clients: Map<string, string>): DashboardAc
 
 function toQuote(row: QuoteRow, clients: Map<string, string>): DashboardQuote {
   const status = one(row.status)?.value === "invoiced" ? "invoiced" : "draft";
-  const invoice = one(row.invoice);
+  const invoices = Array.isArray(row.invoice) ? row.invoice : row.invoice ? [row.invoice] : [];
+  // A quote can hold credited invoices + credit notes; the live one is the revenue.
+  const invoice = invoices.find((i) => (i.kind ?? "invoice") === "invoice" && !i.credited_at) ?? invoices[0] ?? null;
   let total = 0;
   let costedTotal = 0;
   let cost = 0;
@@ -218,19 +221,21 @@ export async function getDashboardDataset(
   const empty = (now: Date): DashboardDataset => ({
     now: now.toISOString(),
     windowStart: now.toISOString(),
-    visible: { workOrders: false, activities: false, finance: false },
+    visible: { workOrders: false, activities: false, finance: false, receivables: false },
     truncated: false,
     workOrders: [],
     activities: [],
     quotes: [],
+    receivables: [],
   });
   const now = new Date();
   if (!organization) return empty(now);
 
-  const [planningOn, activitiesOn, quotesOn] = await Promise.all([
+  const [planningOn, activitiesOn, quotesOn, invoicingOn] = await Promise.all([
     hasFeature(organization, "planning"),
     hasFeature(organization, "activities"),
     hasFeature(organization, "quotes"),
+    hasFeature(organization, "invoicing"),
   ]);
   const visible = {
     workOrders: planningOn && canAny(actor, "planning", ["read", "read_own"]),
@@ -239,8 +244,9 @@ export async function getDashboardDataset(
     // right to create quotes (owner/planner) or to read billing (owner/finance/
     // administratie). Engineers can read quotes by RLS, but not see revenue here.
     finance: quotesOn && can(actor, "quotes", "read") && (can(actor, "quotes", "create") || can(actor, "billing", "read")),
+    receivables: invoicingOn && can(actor, "invoicing", "read"),
   };
-  if (!visible.workOrders && !visible.activities && !visible.finance) return empty(now);
+  if (!visible.workOrders && !visible.activities && !visible.finance && !visible.receivables) return empty(now);
 
   const windowStart = new Date(now.getFullYear(), now.getMonth() - (HISTORY_MONTHS - 1), 1);
   const since = windowStart.toISOString();
@@ -322,12 +328,15 @@ export async function getDashboardDataset(
 
   const quotesPromise = visible.finance ? fetchQuotes(supabase, since) : null;
 
-  const [clients, engineers, workOrderPages, activityPages, quoteResult] = await Promise.all([
+  const receivablesPromise = visible.receivables ? fetchReceivables(supabase) : null;
+
+  const [clients, engineers, workOrderPages, activityPages, quoteResult, receivableResult] = await Promise.all([
     clientsPromise.catch(() => new Map<string, string>()),
     Promise.resolve(engineersPromise).catch(() => new Map<string, string>()),
     workOrdersPromise?.catch(logFailure) ?? null,
     activitiesPromise?.catch(logFailure) ?? null,
     quotesPromise?.catch(logFailure) ?? null,
+    receivablesPromise?.catch(logFailure) ?? null,
   ]);
 
   const workOrders: DashboardWorkOrder[] = [];
@@ -362,6 +371,12 @@ export async function getDashboardDataset(
     for (const row of quoteResult.rows) quotes.push(toQuote(row, clients));
   }
 
+  const receivables: DashboardReceivable[] = [];
+  if (receivableResult) {
+    truncated ||= receivableResult.truncated;
+    receivables.push(...receivableResult.rows);
+  }
+
   return {
     now: now.toISOString(),
     windowStart: since,
@@ -369,11 +384,13 @@ export async function getDashboardDataset(
       workOrders: visible.workOrders && workOrderPages !== null,
       activities: visible.activities && activityPages !== null,
       finance: visible.finance && quoteResult !== null,
+      receivables: visible.receivables && receivableResult !== null,
     },
     truncated,
     workOrders,
     activities,
     quotes,
+    receivables,
   };
 }
 
@@ -391,7 +408,7 @@ async function fetchQuotes(
   since: string,
 ): Promise<{ rows: QuoteRow[]; truncated: boolean }> {
   const build = (withInvoice: boolean) => {
-    const invoiceEmbed = withInvoice ? ", invoice:invoices(invoice_number,generated_at)" : "";
+    const invoiceEmbed = withInvoice ? ", invoice:invoices(invoice_number,generated_at,kind,credited_at)" : "";
     return Promise.all([
       fetchPaged<QuoteRow>(({ from, to }) =>
         supabase
@@ -425,6 +442,37 @@ async function fetchQuotes(
   return {
     rows: pages.flatMap((page) => page.rows),
     truncated: pages.some((page) => page.truncated),
+  };
+}
+
+/** Open invoices (payment_status open / partially_paid / overdue) from the
+ * `invoice_overview` view; the view is security_invoker, so RLS applies. */
+async function fetchReceivables(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ rows: DashboardReceivable[]; truncated: boolean }> {
+  const page = await fetchPaged<{
+    id: string;
+    client_id: string | null;
+    outstanding: number | string | null;
+    payment_status: string;
+  }>(({ from, to }) =>
+    supabase
+      .from("invoice_overview")
+      .select("id, client_id, outstanding, payment_status")
+      .in("payment_status", ["open", "partially_paid", "overdue"])
+      .order("id")
+      .range(from, to),
+  );
+  return {
+    rows: page.rows
+      .map((row) => ({
+        invoiceId: row.id,
+        clientId: row.client_id,
+        outstanding: Number(row.outstanding ?? 0),
+        isOverdue: row.payment_status === "overdue",
+      }))
+      .filter((row) => row.outstanding > 0),
+    truncated: page.truncated,
   };
 }
 

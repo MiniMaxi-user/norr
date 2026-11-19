@@ -113,6 +113,18 @@ export const NAV_ITEMS: NavItem[] = [
   // matches the `quotes` feature key/RBAC module both already registered in
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
   { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
+  // Invoices overview (issues #234-#236) — customer invoices, payments and
+  // credit notes. `Receipt` is shared with the SaaS "Billing" placeholder
+  // below (the icon set has no second receipt-like glyph). Finance-only:
+  // `requiredPermission` drops the entry entirely for planner/engineer.
+  {
+    moduleKey: "invoicing",
+    label: "Invoices",
+    href: "/invoices",
+    icon: Receipt,
+    group: "Operations",
+    requiredPermission: { module: "invoicing", action: "read" },
+  },
   // Inventory (issue #181) — an overview of every engineer's per-engineer
   // warehouse (one row per engineer), for admins (Owner/Planner/
   // Administratie/Finance) only. `icon: Boxes`

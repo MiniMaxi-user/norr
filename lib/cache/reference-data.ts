@@ -79,7 +79,7 @@ export type ReferenceDataCacheKind =
  * the pre-migration rows until the safety TTL below expires. Part of the cache
  * key, so a bump orphans all existing entries on the next deploy.
  */
-const REFERENCE_DATA_CACHE_VERSION = "3";
+const REFERENCE_DATA_CACHE_VERSION = "4";
 
 /**
  * Safety net for out-of-band DB changes (migrations, manual SQL) that don't go

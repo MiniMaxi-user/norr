@@ -7,9 +7,11 @@ import { getClientLogoUrl } from "@/lib/clients/logo-url";
 import { InvoiceDocument, type InvoicePdfAddress, type InvoicePdfLineItem } from "./invoice-pdf";
 
 /**
- * Invoice PDF: render once, store, serve the stored file (issues #227/#232).
- * NOT a "use server" file: used by the route handler (`./[id]/invoice/route.ts`)
- * and the e-mail step in `./invoice-actions.ts`.
+ * Invoice PDF: render once, store, serve the stored file (issues #227/#232/#236).
+ * NOT a "use server" file: used by the route handlers (`./[id]/invoice/route.ts`,
+ * `../invoices/[id]/pdf/route.ts`) and the e-mail step in `./invoice-actions.ts`.
+ * Works by invoice id; credit notes (`kind = 'credit_note'`) render from their
+ * own snapshot (their lines are already negated) with the credit-note layout.
  *
  * Everything printed comes from the invoice SNAPSHOT (`invoices` snapshot
  * columns + `invoice_lines`, written by the DB function `create_invoice` /
@@ -37,6 +39,9 @@ interface InvoiceRow {
   id: string;
   organization_id: string;
   quote_id: string;
+  kind: "invoice" | "credit_note";
+  credits_invoice_id: string | null;
+  credit_reason: string | null;
   invoice_number: string;
   invoice_date: string;
   due_date: string;
@@ -72,7 +77,7 @@ interface InvoiceLineRow {
 }
 
 const INVOICE_COLUMNS =
-  "id, organization_id, quote_id, invoice_number, invoice_date, due_date, payment_term_days, subtotal, vat_total, total," +
+  "id, organization_id, quote_id, kind, credits_invoice_id, credit_reason, invoice_number, invoice_date, due_date, payment_term_days, subtotal, vat_total, total," +
   " vat_breakdown, reference, work_order_reference, notes, recipient, sender, pdf_path";
 
 // "en-GB" (not "nl-NL") to match `invoice-pdf.tsx`'s English copy.
@@ -107,6 +112,16 @@ async function renderFromSnapshot(
   supabase: SupabaseServerClient,
   invoice: InvoiceRow,
 ): Promise<{ pdf: Buffer; error?: undefined } | { pdf?: undefined; error: string }> {
+  let creditNote: { originalInvoiceNumber: string; reason: string } | null = null;
+  if (invoice.kind === "credit_note") {
+    const { data: original } = await supabase
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", invoice.credits_invoice_id ?? "")
+      .maybeSingle<{ invoice_number: string }>();
+    creditNote = { originalInvoiceNumber: original?.invoice_number ?? "", reason: invoice.credit_reason ?? "" };
+  }
+
   const { data: lineData, error: linesError } = await supabase
     .from("invoice_lines")
     .select("article_number, description, asset_label, quantity, unit_price, discount_percent, vat_percent, line_total")
@@ -158,6 +173,7 @@ async function renderFromSnapshot(
     total: Number(invoice.total),
     iban: invoice.sender.iban,
     paymentTermDays: invoice.payment_term_days,
+    creditNote,
   }) as unknown as ReactElement<DocumentProps>;
 
   try {
@@ -176,6 +192,7 @@ async function download(supabase: SupabaseServerClient, path: string): Promise<B
 export interface InvoicePdf {
   pdf: Buffer;
   invoiceId: string;
+  kind: "invoice" | "credit_note";
   invoiceNumber: string;
   clientName: string;
   reference: string;
@@ -184,25 +201,45 @@ export interface InvoicePdf {
   dueDateLabel: string;
 }
 
-export type InvoicePdfErrorCode = "not_invoiced" | "failed";
+export type InvoicePdfErrorCode = "not_invoiced" | "not_found" | "failed";
+
+export type InvoicePdfOutcome =
+  | { result: InvoicePdf; error?: undefined; code?: undefined }
+  | { result?: undefined; error: string; code: InvoicePdfErrorCode };
 
 /**
- * The invoice PDF of `quoteId`: the stored file when there is one; otherwise
- * render it from the snapshot, store it and record `pdf_path` (first open).
- * Two concurrent first opens are safe: the loser's upload fails because the
- * object exists (no upsert), and it then reads the winner's file.
+ * The PDF of the quote's live invoice (kind invoice, not credited), else its
+ * latest invoice/credit note. See `getInvoicePdfById`.
  */
-export async function getInvoicePdfForQuote(
-  supabase: SupabaseServerClient,
-  quoteId: string,
-): Promise<{ result: InvoicePdf; error?: undefined; code?: undefined } | { result?: undefined; error: string; code: InvoicePdfErrorCode }> {
-  const { data, error } = await supabase.from("invoices").select(INVOICE_COLUMNS).eq("quote_id", quoteId).maybeSingle();
+export async function getInvoicePdfForQuote(supabase: SupabaseServerClient, quoteId: string): Promise<InvoicePdfOutcome> {
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("id, kind, credited_at, generated_at")
+    .eq("quote_id", quoteId)
+    .order("generated_at", { ascending: false });
   if (error) return { error: error.message, code: "failed" };
-  if (!data) return { error: "This quote has not been invoiced yet.", code: "not_invoiced" };
+  const rows = (data ?? []) as { id: string; kind: string; credited_at: string | null }[];
+  const first = rows[0];
+  if (!first) return { error: "This quote has not been invoiced yet.", code: "not_invoiced" };
+  const live = rows.find((row) => row.kind === "invoice" && !row.credited_at);
+  return getInvoicePdfById(supabase, (live ?? first).id);
+}
+
+/**
+ * The PDF of invoice/credit note `invoiceId`: the stored file when there is
+ * one; otherwise render it from the snapshot, store it and record `pdf_path`
+ * (first open). Two concurrent first opens are safe: the loser's upload fails
+ * because the object exists (no upsert), and it then reads the winner's file.
+ */
+export async function getInvoicePdfById(supabase: SupabaseServerClient, invoiceId: string): Promise<InvoicePdfOutcome> {
+  const { data, error } = await supabase.from("invoices").select(INVOICE_COLUMNS).eq("id", invoiceId).maybeSingle();
+  if (error) return { error: error.message, code: "failed" };
+  if (!data) return { error: "Invoice not found.", code: "not_found" };
   const invoice = data as unknown as InvoiceRow;
 
   const meta = {
     invoiceId: invoice.id,
+    kind: invoice.kind,
     invoiceNumber: invoice.invoice_number,
     clientName: invoice.recipient.name,
     reference: invoice.reference ?? "",

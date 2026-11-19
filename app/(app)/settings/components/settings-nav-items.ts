@@ -158,6 +158,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // Issues #210/#211 - per-tenant invoice email (sender, CC, subject, body).
       // Issue #232 - default payment term for new invoices.
       { key: "invoicing", label: "Invoicing", href: "/settings/invoicing", ownHeader: true },
+      { key: "payment_method", label: findTitle("payment_method"), href: "/settings/reference-lists/payment_method" },
       { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email", ownHeader: true },
     ],
   },

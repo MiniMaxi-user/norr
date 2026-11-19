@@ -5,33 +5,32 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
-import { sendEmail } from "@/lib/email/resend";
-import { formatInvoiceTotal, getInvoicePdfForQuote } from "./invoice-render";
-import {
-  DEFAULT_INVOICE_EMAIL_BODY,
-  DEFAULT_INVOICE_EMAIL_SUBJECT,
-  renderInvoiceEmailTemplate,
-} from "./invoice-email-schema";
+import { getInvoicePdfById } from "./invoice-render";
+import { sendInvoiceEmailById, type InvoiceEmailOutcome as EmailOutcome } from "./invoice-email";
 
 /**
- * Server Actions for invoicing a quote (issues #119, #211, #227, #232, #233).
+ * Server Actions for invoicing a quote (issues #119, #211, #227, #232, #233,
+ * #234-#236).
  *
  * Flow of `invoiceQuote` ("Generate invoice"):
  *  1. `invoicing` feature + `can(actor, "invoicing", "create")` (owner /
- *     administratie), Zod-validated id.
+ *     finance / administratie), Zod-validated id.
  *  2. The DB function `create_invoice` does the rest in ONE transaction: role
- *     and quote checks (not already invoiced, not an auto-draft, not
+ *     and quote checks (no live invoice yet, not an auto-draft, not
  *     rejected/expired, has lines, own company configured), the sequential
  *     number, the `invoices` row and the snapshot (`invoice_lines`, totals,
  *     VAT breakdown, payment term + due date, addresses). The existing AFTER
  *     INSERT triggers set the quote to Invoiced, advance the contract period
  *     and move a Completed source work order to Invoiced. There is no direct
- *     INSERT grant on `invoices` any more.
+ *     INSERT grant on `invoices`.
  *  3. The PDF is rendered from that snapshot and stored (`invoices.pdf_path`),
  *     so every later open and e-mail uses exactly this document.
  *  4. Best effort: e-mail the stored PDF to the client's invoice contact (see
- *     `sendInvoiceEmail`). Invoicing succeeds even when storing or e-mailing
- *     fails; opening the PDF later stores it then.
+ *     `sendInvoiceEmailById`). Invoicing succeeds even when storing or
+ *     e-mailing fails; opening the PDF later stores it then.
+ *
+ * Since #236 a quote can hold several invoices (credited ones, their credit
+ * notes and one live invoice), so everything below works by invoice id.
  *
  * Every query runs under the caller's own session (RLS is the real backstop);
  * no service-role client.
@@ -39,12 +38,7 @@ import {
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
-
-export type InvoiceEmailOutcome =
-  | { status: "sent"; to: string }
-  | { status: "skipped"; reason: string }
-  | { status: "failed"; to: string | null; error: string };
+export type InvoiceEmailOutcome = EmailOutcome;
 
 export interface InvoiceQuoteResult {
   invoiceId: string;
@@ -55,158 +49,13 @@ export interface InvoiceQuoteResult {
   email: InvoiceEmailOutcome;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 /** `create_invoice` raises its own user-facing messages (not invoiced twice,
  * no lines, company details missing, …) with these codes; show those as-is
  * instead of `mapDbError`'s generic text. */
 function invoiceDbError(error: { code?: string; message: string }): string {
   if (error.code && ["P0002", "23505", "23514"].includes(error.code)) return error.message;
-  if (error.code === "42501") return "Only an owner or administratie member can generate invoices.";
+  if (error.code === "42501") return "Only an owner, finance or administratie member can generate invoices.";
   return mapDbError(error);
-}
-
-function formatMailbox(name: string | null, email: string): string {
-  const cleanName = (name ?? "").replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
-  return cleanName ? `${cleanName} <${email}>` : email;
-}
-
-interface InvoiceEmailSettingsRow {
-  from_email: string | null;
-  from_name: string | null;
-  cc_email: string | null;
-  subject_template: string | null;
-  body_template: string | null;
-}
-
-/**
- * Best-effort invoice e-mail. Never throws. Recipient = the invoice contact of
- * the client's `is_invoice_address` site.
- *
- * Recording policy on `invoices` (emailed_to / emailed_at / email_error):
- *  - no invoice-address site, or no invoice contact on it: nothing is sent and
- *    NOTHING is recorded (a legitimate "don't e-mail" configuration).
- *  - contact without e-mail address: email_error = "Invoice contact has no
- *    e-mail address".
- *  - sender not configured: email_error = "Invoice email sender not configured".
- *  - provider/render failure: email_error = the error message.
- *  - success: emailed_to + emailed_at set, email_error cleared.
- */
-async function sendInvoiceEmail(
-  supabase: SupabaseServerClient,
-  organizationId: string,
-  organizationName: string,
-  quoteId: string,
-  clientId: string,
-): Promise<InvoiceEmailOutcome> {
-  try {
-    const { data: invoiceSites, error: siteError } = await supabase
-      .from("sites")
-      .select("invoice_contact_id")
-      .eq("client_id", clientId)
-      .eq("is_invoice_address", true)
-      .not("invoice_contact_id", "is", null);
-    if (siteError) return { status: "failed", to: null, error: siteError.message };
-
-    const contactId = (invoiceSites ?? []).map((s) => s.invoice_contact_id as string | null).find(Boolean);
-    if (!contactId) return { status: "skipped", reason: "No invoice address or invoice contact" };
-
-    const { data: invoiceRow } = await supabase
-      .from("invoices")
-      .select("id")
-      .eq("quote_id", quoteId)
-      .maybeSingle<{ id: string }>();
-    if (!invoiceRow) return { status: "failed", to: null, error: "Invoice not found" };
-
-    const record = async (patch: {
-      emailed_to?: string | null;
-      emailed_at?: string | null;
-      email_error: string | null;
-    }) => {
-      await supabase.from("invoices").update(patch).eq("id", invoiceRow.id);
-    };
-
-    const { data: contact, error: contactError } = await supabase
-      .from("contacts")
-      .select("email")
-      .eq("id", contactId)
-      .maybeSingle<{ email: string | null }>();
-    if (contactError) return { status: "failed", to: null, error: contactError.message };
-
-    const rawEmail = contact?.email?.trim() || null;
-    if (!rawEmail) {
-      const error = "Invoice contact has no e-mail address";
-      await record({ email_error: error });
-      return { status: "failed", to: null, error };
-    }
-    if (!z.string().email().safeParse(rawEmail).success) {
-      const error = "Invoice contact has an invalid e-mail address";
-      await record({ email_error: error });
-      return { status: "failed", to: null, error };
-    }
-    const to = rawEmail;
-
-    const { data: settings } = await supabase
-      .from("invoice_email_settings")
-      .select("from_email, from_name, cc_email, subject_template, body_template")
-      .eq("organization_id", organizationId)
-      .maybeSingle<InvoiceEmailSettingsRow>();
-
-    if (!settings?.from_email) {
-      const error = "Invoice email sender not configured";
-      await record({ email_error: error });
-      return { status: "failed", to, error };
-    }
-
-    const { result: rendered, error: renderError } = await getInvoicePdfForQuote(supabase, quoteId);
-    if (!rendered) {
-      const error = renderError ?? "Could not render the invoice PDF.";
-      await record({ email_error: error });
-      return { status: "failed", to, error };
-    }
-
-    const { data: quoteRow } = await supabase
-      .from("quotes")
-      .select("name")
-      .eq("id", quoteId)
-      .maybeSingle<{ name: string }>();
-
-    const values = {
-      invoice_number: rendered.invoiceNumber,
-      client_name: rendered.clientName,
-      quote_name: quoteRow?.name ?? rendered.reference,
-      total: formatInvoiceTotal(rendered.total),
-      due_date: rendered.dueDateLabel,
-      organization_name: organizationName,
-    };
-    const subject = renderInvoiceEmailTemplate(settings.subject_template || DEFAULT_INVOICE_EMAIL_SUBJECT, values)
-      .replace(/[\r\n]+/g, " ")
-      .trim();
-    const text = renderInvoiceEmailTemplate(settings.body_template || DEFAULT_INVOICE_EMAIL_BODY, values);
-    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`;
-
-    const sent = await sendEmail({
-      from: formatMailbox(settings.from_name, settings.from_email),
-      to: [to],
-      cc: settings.cc_email ? [settings.cc_email] : undefined,
-      subject,
-      text,
-      html,
-      attachments: [{ filename: `${rendered.invoiceNumber}.pdf`, content: rendered.pdf }],
-    });
-
-    if (!sent.ok) {
-      await record({ email_error: sent.error });
-      return { status: "failed", to, error: sent.error };
-    }
-
-    await record({ emailed_to: to, emailed_at: new Date().toISOString(), email_error: null });
-    return { status: "sent", to };
-  } catch (error) {
-    return { status: "failed", to: null, error: error instanceof Error ? error.message : "Unexpected e-mail error" };
-  }
 }
 
 /** "Generate invoice": see the module comment for the full flow. */
@@ -219,7 +68,7 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
   const { actor, organizationId, session } = ctx.context;
 
   if (!can(actor, "invoicing", "create")) {
-    return fail("Only an owner or administratie member can generate invoices.");
+    return fail("Only an owner, finance or administratie member can generate invoices.");
   }
 
   const supabase = await createSupabaseServerClient();
@@ -247,7 +96,7 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
   // Store the PDF now (rendered from the snapshot), so the very first open
   // and e-mail already use the stored document. Best effort: when it fails,
   // the first open stores it instead.
-  await getInvoicePdfForQuote(supabase, quote.id);
+  await getInvoicePdfById(supabase, invoice.id);
 
   // The DB trigger on invoices sets the quote status to 'invoiced'; re-read to report it.
   const { data: statusRow } = await supabase
@@ -257,67 +106,96 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
     .maybeSingle<{ quote_status: { value: string } | null }>();
   const statusUpdated = statusRow?.quote_status?.value === "invoiced";
 
-  const email = await sendInvoiceEmail(
-    supabase,
-    organizationId,
-    session.organization?.name ?? "",
-    quote.id,
-    quote.client_id,
-  );
+  const email = await sendInvoiceEmailById(supabase, organizationId, session.organization?.name ?? "", invoice.id);
 
   return ok({ invoiceId: invoice.id, invoiceNumber, statusUpdated, email });
 }
 
 // ---------------------------------------------------------------------------
-// sendInvoiceEmailForQuote
+// sendInvoiceEmailForInvoice / sendInvoiceEmailForQuote
 // ---------------------------------------------------------------------------
 
-/** "Send invoice": manually (re)sends the invoice e-mail for an invoiced quote
+/** "Send invoice": manually (re)sends the e-mail of one invoice or credit note
  * — e.g. it was skipped or failed at invoicing time, or the client wants it at
  * a different address (change the invoice contact, then resend). Allowed any
  * number of times; the UI confirms first when it was already sent. Same
- * recipient/recording rules as `sendInvoiceEmail` (a successful resend
- * overwrites emailed_to/emailed_at). */
+ * recipient/recording rules as `sendInvoiceEmailById` (a successful resend
+ * overwrites emailed_to/emailed_at). Needs `invoicing` `update`. */
+export async function sendInvoiceEmailForInvoice(invoiceId: string): Promise<ActionResult<{ email: InvoiceEmailOutcome }>> {
+  const idResult = uuidSchema.safeParse(invoiceId);
+  if (!idResult.success) return fail("Invalid invoice id.");
+
+  const ctx = await requireModuleContext("invoicing");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId, session } = ctx.context;
+
+  if (!can(actor, "invoicing", "update")) {
+    return fail("Only an owner, finance or administratie member can send invoices.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: invoice, error } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string }>();
+  if (error) return fail(mapDbError(error));
+  if (!invoice) return fail("Invoice not found, or you do not have permission to view it.");
+
+  const email = await sendInvoiceEmailById(supabase, organizationId, session.organization?.name ?? "", invoice.id);
+  return ok({ email });
+}
+
+/** Quote-level wrapper kept for the existing UI: re-sends the quote's LIVE
+ * invoice (kind invoice, not credited). */
 export async function sendInvoiceEmailForQuote(quoteId: string): Promise<ActionResult<{ email: InvoiceEmailOutcome }>> {
   const idResult = uuidSchema.safeParse(quoteId);
   if (!idResult.success) return fail("Invalid quote id.");
 
   const ctx = await requireModuleContext("invoicing");
   if (!ctx.ok) return fail(ctx.error);
-  const { actor, organizationId, session } = ctx.context;
-
-  if (!can(actor, "invoicing", "create")) {
-    return fail("Only an owner or administratie member can send invoices.");
+  if (!can(ctx.context.actor, "invoicing", "update")) {
+    return fail("Only an owner, finance or administratie member can send invoices.");
   }
 
   const supabase = await createSupabaseServerClient();
-
-  const { data: quote, error: quoteError } = await supabase
-    .from("quotes")
-    .select("id, client_id")
-    .eq("id", idResult.data)
-    .maybeSingle<{ id: string; client_id: string }>();
-  if (quoteError) return fail(mapDbError(quoteError));
-  if (!quote) return fail("Quote not found, or you do not have permission to view it.");
-
-  const { data: invoice, error: invoiceError } = await supabase
+  const { data: invoice, error } = await supabase
     .from("invoices")
     .select("id")
-    .eq("quote_id", quote.id)
+    .eq("quote_id", idResult.data)
+    .eq("kind", "invoice")
+    .is("credited_at", null)
     .maybeSingle<{ id: string }>();
-  if (invoiceError) return fail(mapDbError(invoiceError));
+  if (error) return fail(mapDbError(error));
   if (!invoice) return fail("This quote has not been invoiced yet.");
 
-  const email = await sendInvoiceEmail(supabase, organizationId, session.organization?.name ?? "", quote.id, quote.client_id);
-  return ok({ email });
+  return sendInvoiceEmailForInvoice(invoice.id);
 }
 
 // ---------------------------------------------------------------------------
 // getInvoiceForQuote
 // ---------------------------------------------------------------------------
 
+export type InvoicePaymentStatus = "open" | "partially_paid" | "paid" | "overdue" | "credited" | "credit_note";
+
+export interface InvoicePaymentSummary {
+  id: string;
+  paidOn: string;
+  amount: number;
+  methodId: string;
+  methodLabel: string;
+  note: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  /** The payment's creator, or a member whose role has `invoicing` `delete` (owner). */
+  canDelete: boolean;
+}
+
 export interface InvoiceSummary {
   id: string;
+  /** 'credit_note' rows are negative documents that credit `creditsInvoiceId`. */
+  kind: "invoice" | "credit_note";
   invoiceNumber: string;
   generatedAt: string;
   /** Snapshot fields (issue #232): fixed at invoicing time. */
@@ -326,6 +204,7 @@ export interface InvoiceSummary {
   paymentTermDays: number;
   subtotal: number;
   vatTotal: number;
+  /** Negative for a credit note. */
   total: number;
   /** Whether the PDF has been stored (issue #227); false only for an invoice
    * that predates stored PDFs and has not been opened since. */
@@ -333,66 +212,159 @@ export interface InvoiceSummary {
   emailedTo: string | null;
   emailedAt: string | null;
   emailError: string | null;
+  /** Credit notes only. */
+  creditsInvoiceId: string | null;
+  creditsInvoiceNumber: string | null;
+  creditReason: string | null;
+  /** Set on the ORIGINAL invoice once it has been credited. */
+  creditedAt: string | null;
+  paymentStatus: InvoicePaymentStatus;
+  paidAmount: number;
+  /** 0 for credit notes and credited invoices. */
+  outstanding: number;
+  /** Oldest first. */
+  payments: InvoicePaymentSummary[];
 }
 
-/** Whether `quoteId` already has an invoice (drives "Generate invoice" vs.
- * "Open PDF" on the Quote detail page), with its snapshot amounts and due
- * date. The PDF itself is served by `GET /quotes/[id]/invoice`. */
+interface OverviewRow {
+  id: string;
+  kind: "invoice" | "credit_note";
+  invoice_number: string;
+  generated_at: string;
+  invoice_date: string;
+  due_date: string;
+  payment_term_days: number;
+  subtotal: number | string;
+  vat_total: number | string;
+  total: number | string;
+  pdf_path: string | null;
+  emailed_to: string | null;
+  emailed_at: string | null;
+  email_error: string | null;
+  credits_invoice_id: string | null;
+  credit_reason: string | null;
+  credited_at: string | null;
+  paid_amount: number | string | null;
+  outstanding: number | string | null;
+  payment_status: InvoicePaymentStatus;
+}
+
+interface PaymentRow {
+  id: string;
+  invoice_id: string;
+  paid_on: string;
+  amount: number | string;
+  method_id: string;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+const OVERVIEW_COLUMNS =
+  "id, kind, invoice_number, generated_at, invoice_date, due_date, payment_term_days, subtotal, vat_total, total, pdf_path," +
+  " emailed_to, emailed_at, email_error, credits_invoice_id, credit_reason, credited_at, paid_amount, outstanding, payment_status";
+
+/** All invoices and credit notes of `quoteId` (newest first) with their derived
+ * payment status and payments. The live invoice (kind invoice, not credited)
+ * is also returned separately as `invoice` — it drives "Generate invoice" vs.
+ * "Open PDF" on the Quote detail page. PDFs are served by
+ * `GET /invoices/[id]/pdf` (and `GET /quotes/[id]/invoice` for the live one). */
 export async function getInvoiceForQuote(
   quoteId: string,
-): Promise<ActionResult<{ invoice: InvoiceSummary | null }>> {
+): Promise<ActionResult<{ invoice: InvoiceSummary | null; invoices: InvoiceSummary[] }>> {
   const idResult = uuidSchema.safeParse(quoteId);
   if (!idResult.success) return fail("Invalid quote id.");
 
   const ctx = await requireModuleContext("invoicing");
   if (!ctx.ok) return fail(ctx.error);
+  const { actor, session } = ctx.context;
 
-  if (!can(ctx.context.actor, "invoicing", "read")) {
+  if (!can(actor, "invoicing", "read")) {
     return fail("You do not have permission to view invoices.");
   }
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from("invoices")
-    .select(
-      "id, invoice_number, generated_at, invoice_date, due_date, payment_term_days, subtotal, vat_total, total, pdf_path," +
-        " emailed_to, emailed_at, email_error",
-    )
+    .from("invoice_overview")
+    .select(OVERVIEW_COLUMNS)
     .eq("quote_id", idResult.data)
-    .maybeSingle<{
-      id: string;
-      invoice_number: string;
-      generated_at: string;
-      invoice_date: string;
-      due_date: string;
-      payment_term_days: number;
-      subtotal: number | string;
-      vat_total: number | string;
-      total: number | string;
-      pdf_path: string | null;
-      emailed_to: string | null;
-      emailed_at: string | null;
-      email_error: string | null;
-    }>();
-
+    .order("generated_at", { ascending: false });
   if (error) return fail(mapDbError(error));
-  if (!data) return ok({ invoice: null });
 
-  return ok({
-    invoice: {
-      id: data.id,
-      invoiceNumber: data.invoice_number,
-      generatedAt: data.generated_at,
-      invoiceDate: data.invoice_date,
-      dueDate: data.due_date,
-      paymentTermDays: data.payment_term_days,
-      subtotal: Number(data.subtotal),
-      vatTotal: Number(data.vat_total),
-      total: Number(data.total),
-      pdfStored: Boolean(data.pdf_path),
-      emailedTo: data.emailed_to,
-      emailedAt: data.emailed_at,
-      emailError: data.email_error,
-    },
-  });
+  const rows = (data ?? []) as unknown as OverviewRow[];
+  if (rows.length === 0) return ok({ invoice: null, invoices: [] });
+
+  const { data: paymentData, error: paymentError } = await supabase
+    .from("invoice_payments")
+    .select("id, invoice_id, paid_on, amount, method_id, note, created_by, created_at")
+    .in(
+      "invoice_id",
+      rows.map((row) => row.id),
+    )
+    .order("paid_on", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (paymentError) return fail(mapDbError(paymentError));
+  const paymentRows = (paymentData ?? []) as unknown as PaymentRow[];
+
+  const methodIds = [...new Set(paymentRows.map((p) => p.method_id))];
+  const userIds = [...new Set(paymentRows.map((p) => p.created_by).filter((id): id is string => Boolean(id)))];
+  const [methodResult, userResult] = await Promise.all([
+    methodIds.length > 0
+      ? supabase.from("reference_list_items").select("id, label").in("id", methodIds)
+      : Promise.resolve({ data: [] as { id: string; label: string }[] }),
+    userIds.length > 0
+      ? supabase.from("users").select("id, full_name, email").in("id", userIds)
+      : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string }[] }),
+  ]);
+  const methodLabels = new Map((methodResult.data ?? []).map((m) => [m.id as string, m.label as string]));
+  const userNames = new Map(
+    (userResult.data ?? []).map((u) => [
+      u.id as string,
+      ((u.full_name as string | null)?.trim() || (u.email as string | null)) ?? null,
+    ]),
+  );
+
+  const canDeleteAny = can(actor, "invoicing", "delete");
+  const numberById = new Map(rows.map((row) => [row.id, row.invoice_number]));
+
+  const invoices: InvoiceSummary[] = rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    invoiceNumber: row.invoice_number,
+    generatedAt: row.generated_at,
+    invoiceDate: row.invoice_date,
+    dueDate: row.due_date,
+    paymentTermDays: row.payment_term_days,
+    subtotal: Number(row.subtotal),
+    vatTotal: Number(row.vat_total),
+    total: Number(row.total),
+    pdfStored: Boolean(row.pdf_path),
+    emailedTo: row.emailed_to,
+    emailedAt: row.emailed_at,
+    emailError: row.email_error,
+    creditsInvoiceId: row.credits_invoice_id,
+    creditsInvoiceNumber: row.credits_invoice_id ? (numberById.get(row.credits_invoice_id) ?? null) : null,
+    creditReason: row.credit_reason,
+    creditedAt: row.credited_at,
+    paymentStatus: row.payment_status,
+    paidAmount: Number(row.paid_amount ?? 0),
+    outstanding: Number(row.outstanding ?? 0),
+    payments: paymentRows
+      .filter((p) => p.invoice_id === row.id)
+      .map((p) => ({
+        id: p.id,
+        paidOn: p.paid_on,
+        amount: Number(p.amount),
+        methodId: p.method_id,
+        methodLabel: methodLabels.get(p.method_id) ?? "",
+        note: p.note,
+        createdBy: p.created_by,
+        createdByName: p.created_by ? (userNames.get(p.created_by) ?? null) : null,
+        createdAt: p.created_at,
+        canDelete: canDeleteAny || p.created_by === session.userId,
+      })),
+  }));
+
+  const live = invoices.find((invoice) => invoice.kind === "invoice" && !invoice.creditedAt) ?? null;
+  return ok({ invoice: live, invoices });
 }

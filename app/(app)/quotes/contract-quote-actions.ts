@@ -103,6 +103,15 @@ const CONTRACT_SELECT =
 
 const MAX_CONTRACTS_PER_RUN = 500;
 
+type InvoiceEmbed = { invoice_number: string; kind: "invoice" | "credit_note"; credited_at: string | null };
+
+/** A quote can have credited invoices and credit notes besides its live
+ * invoice (issue #236); the contract's quote list shows the live one. */
+function pickLiveInvoice(embed: InvoiceEmbed | InvoiceEmbed[] | null): { invoice_number: string } | null {
+  const rows = Array.isArray(embed) ? embed : embed ? [embed] : [];
+  return rows.find((r) => r.kind === "invoice" && r.credited_at === null) ?? null;
+}
+
 export async function generateContractQuotes(): Promise<ActionResult<GenerateContractQuotesResult>> {
   const quotesCtx = await requireModuleContext("quotes");
   if (!quotesCtx.ok) return fail(quotesCtx.error);
@@ -291,7 +300,7 @@ export async function listQuotesForContract(
       "id, name, quote_type, contract_period_start, contract_period_end, created_at," +
         " quote_status:reference_list_items!quotes_status_id_fkey(value,label,color)," +
         " quote_line_items(quantity,unit_price,discount_percent)," +
-        " invoice:invoices(invoice_number)",
+        " invoice:invoices(invoice_number,kind,credited_at)",
     )
     .eq("contract_id", idResult.data)
     .order("created_at", { ascending: false });
@@ -306,7 +315,7 @@ export async function listQuotesForContract(
     created_at: string;
     quote_status: { value: string; label: string; color: string | null } | null;
     quote_line_items: { quantity: number | string; unit_price: number | string; discount_percent: number | string }[];
-    invoice: { invoice_number: string } | { invoice_number: string }[] | null;
+    invoice: InvoiceEmbed | InvoiceEmbed[] | null;
   };
 
   const quotes = ((data ?? []) as unknown as Row[]).map((row): ContractQuoteRecord => {
@@ -314,7 +323,7 @@ export async function listQuotesForContract(
       (acc, item) => acc + Number(item.quantity) * Number(item.unit_price) * (1 - Number(item.discount_percent) / 100),
       0,
     );
-    const invoice = Array.isArray(row.invoice) ? (row.invoice[0] ?? null) : row.invoice;
+    const invoice = pickLiveInvoice(row.invoice);
     return {
       id: row.id,
       name: row.name,

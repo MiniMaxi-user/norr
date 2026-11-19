@@ -9,7 +9,7 @@ import { invoiceEmailSettingsSchema } from "./invoice-email-schema";
 /**
  * Per-tenant invoice e-mail settings (issue #211): one `invoice_email_settings`
  * row per organization. Same boundary as invoicing itself (owner /
- * administratie): `read` to load, `create` to save. Placeholders and defaults
+ * finance / administratie): `read` to load, `create` to save. Placeholders and defaults
  * live in `./invoice-email-schema.ts` (`INVOICE_EMAIL_PLACEHOLDERS`,
  * `DEFAULT_INVOICE_EMAIL_SUBJECT`, `DEFAULT_INVOICE_EMAIL_BODY`).
  */
@@ -70,7 +70,7 @@ export async function saveInvoiceEmailSettings(
   if (!ctx.ok) return fail(ctx.error);
   const { actor, organizationId } = ctx.context;
   if (!can(actor, "invoicing", "create")) {
-    return fail("Only an owner or administratie member can change invoice e-mail settings.");
+    return fail("Only an owner, finance or administratie member can change invoice e-mail settings.");
   }
 
   const parsed = invoiceEmailSettingsSchema.safeParse(input);

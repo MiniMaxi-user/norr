@@ -111,6 +111,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
       sourceWorkOrder={workOrderResult?.data?.workOrder ?? null}
       contract={contractResult?.data?.contract ?? null}
       invoice={invoiceResult?.data?.invoice ?? null}
+      invoices={invoiceResult?.data?.invoices ?? []}
       canInvoice={canInvoice}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
     />

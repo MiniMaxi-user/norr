@@ -316,10 +316,14 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
         canAccessModule(actor, "invoicing") &&
         can(actor, "invoicing", "read");
       if (canReadInvoices) {
+        // A quote can have credited invoices and credit notes besides its
+        // live invoice (issue #236): show the live one.
         const { data: invoiceRow } = await supabase
           .from("invoices")
           .select("invoice_number, generated_at")
           .eq("quote_id", existingQuote.id)
+          .eq("kind", "invoice")
+          .is("credited_at", null)
           .maybeSingle<{ invoice_number: string; generated_at: string }>();
         if (invoiceRow) {
           invoice = { ...invoice, invoiceNumber: invoiceRow.invoice_number, invoicedAt: invoiceRow.generated_at };

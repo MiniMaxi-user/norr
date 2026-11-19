@@ -73,6 +73,14 @@ export interface DashboardQuote {
   lines: DashboardQuoteLine[];
 }
 
+/** One open (not fully paid, not credited) invoice, for the Outstanding/Overdue KPIs (#236). */
+export interface DashboardReceivable {
+  invoiceId: string;
+  clientId: string | null;
+  outstanding: number;
+  isOverdue: boolean;
+}
+
 export interface DashboardDataset {
   /** ISO timestamp the dataset was built; all "now" maths use this so SSR and client agree. */
   now: string;
@@ -82,10 +90,13 @@ export interface DashboardDataset {
     workOrders: boolean;
     activities: boolean;
     finance: boolean;
+    /** Outstanding/Overdue invoice KPIs: needs the invoicing feature + read permission. */
+    receivables: boolean;
   };
   /** True when a query hit its row cap, so older figures may be understated. */
   truncated: boolean;
   workOrders: DashboardWorkOrder[];
   activities: DashboardActivity[];
   quotes: DashboardQuote[];
+  receivables: DashboardReceivable[];
 }

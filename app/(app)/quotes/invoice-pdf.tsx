@@ -108,6 +108,8 @@ export interface InvoicePdfProps {
   iban: string | null;
   /** Payment term in days from the invoice snapshot (issue #232); 0 = pay immediately. */
   paymentTermDays: number;
+  /** Set for a credit note (issue #236): switches title, wording and the payment footer. */
+  creditNote?: { originalInvoiceNumber: string; reason: string } | null;
 }
 
 const styles = StyleSheet.create({
@@ -282,6 +284,9 @@ const styles = StyleSheet.create({
     borderTopColor: "#dddddd",
     paddingTop: 8,
   },
+  notesBlockTight: {
+    marginBottom: 12,
+  },
   notesBlock: {
     marginTop: 20,
     marginBottom: 70,
@@ -351,7 +356,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
   const { sender, recipient } = props;
 
   return (
-    <Document title={`Invoice ${props.invoiceNumber}`}>
+    <Document title={`${props.creditNote ? "Credit note" : "Invoice"} ${props.invoiceNumber}`}>
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.headerRow}>
           {sender.logoUrl ? (
@@ -366,7 +371,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
             <Text style={styles.brandFallback}>{sender.name}</Text>
           )}
           <View style={styles.headerRight}>
-            <Text style={styles.title}>Invoice</Text>
+            <Text style={styles.title}>{props.creditNote ? "Credit note" : "Invoice"}</Text>
             <Text style={styles.invoiceNumber}>{props.invoiceNumber}</Text>
           </View>
         </View>
@@ -389,13 +394,15 @@ export function InvoiceDocument(props: InvoicePdfProps) {
 
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Text style={styles.label}>INVOICE DATE</Text>
+            <Text style={styles.label}>{props.creditNote ? "CREDIT NOTE DATE" : "INVOICE DATE"}</Text>
             <Text style={styles.metaValue}>{props.invoiceDateLabel}</Text>
           </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.label}>DUE DATE</Text>
-            <Text style={styles.metaValue}>{props.dueDateLabel}</Text>
-          </View>
+          {props.creditNote ? null : (
+            <View style={styles.metaItem}>
+              <Text style={styles.label}>DUE DATE</Text>
+              <Text style={styles.metaValue}>{props.dueDateLabel}</Text>
+            </View>
+          )}
           {props.workOrderReference ? (
             <View style={styles.metaItem}>
               <Text style={styles.label}>WORK ORDER</Text>
@@ -407,6 +414,13 @@ export function InvoiceDocument(props: InvoicePdfProps) {
             <Text style={styles.metaValue}>{props.reference}</Text>
           </View>
         </View>
+
+        {props.creditNote ? (
+          <View style={styles.notesBlockTight}>
+            <Text style={styles.metaValue}>Credit note for invoice {props.creditNote.originalInvoiceNumber}</Text>
+            <Text style={styles.notesText}>Reason: {props.creditNote.reason}</Text>
+          </View>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Items</Text>
 
@@ -442,7 +456,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
             </View>
           ))}
           <View style={styles.totalsRowFinal}>
-            <Text style={styles.totalsLabelFinal}>Total due</Text>
+            <Text style={styles.totalsLabelFinal}>{props.creditNote ? "Total credited" : "Total due"}</Text>
             <Text style={styles.totalsValueFinal}>{formatCurrency(props.total)}</Text>
           </View>
         </View>
@@ -455,6 +469,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
         ) : null}
 
         <View style={styles.footer} fixed>
+          {props.creditNote ? null : (
           <View style={styles.footerNoteBlock}>
             <Text style={styles.footerNoteLabel}>PAYMENT</Text>
             <Text style={styles.footerNoteText}>
@@ -466,6 +481,7 @@ export function InvoiceDocument(props: InvoicePdfProps) {
               {props.workOrderReference ? ` and work order ${props.workOrderReference}` : ""}.
             </Text>
           </View>
+          )}
           <Text style={styles.footerTagline}>
             {sender.name}
             {sender.kvkNumber ? ` · KvK ${sender.kvkNumber}` : ""}

@@ -23,6 +23,7 @@ import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import type { ClientVolumeTotalsData } from "@/lib/asset-volumes/actions";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import type { QuoteRecord } from "@/app/(app)/quotes/actions";
+import type { InvoiceListRow } from "@/app/(app)/invoices/actions";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatMonthYearWeb } from "@/lib/format/web";
 import { setLastUsedView } from "@/lib/preferences/actions";
@@ -44,6 +45,7 @@ import { ContactsPanel } from "./contacts-panel";
 import { ContractsPanel } from "./contracts-panel";
 import { ModulesPanel } from "./modules-panel";
 import { QuotesPanel } from "./quotes-panel";
+import { InvoicesPanel } from "./invoices-panel";
 import { ClientRail } from "./client-rail";
 import { getLivePanel } from "./client-live-panel";
 import { CLOSED_WORK_ORDER_STATUS_VALUES, buildClientTimeline } from "./client-timeline";
@@ -62,6 +64,7 @@ export type ClientDetailTab =
   | "workOrders"
   | "contracts"
   | "quotes"
+  | "invoices"
   | "activities"
   | "access"
   | "modules";
@@ -90,6 +93,8 @@ export interface ClientDetailProps {
   canCreateContracts: boolean;
   quotes: QuoteRecord[];
   quotesEnabled: boolean;
+  invoices: InvoiceListRow[];
+  invoicesEnabled: boolean;
   activities: ActivityRecord[];
   activitiesEnabled: boolean;
   canCreateActivities: boolean;
@@ -153,6 +158,8 @@ export function ClientDetail({
   canCreateContracts,
   quotes,
   quotesEnabled,
+  invoices,
+  invoicesEnabled,
   activities,
   activitiesEnabled,
   canCreateActivities,
@@ -331,6 +338,7 @@ export function ClientDetail({
         : []),
       ...(contractsEnabled ? [{ id: "contracts", label: "Contracts", count: contracts.length }] : []),
       ...(quotesEnabled ? [{ id: "quotes", label: "Quotes", count: quotes.length }] : []),
+      ...(invoicesEnabled ? [{ id: "invoices", label: "Invoices", count: invoices.length }] : []),
       ...(activitiesEnabled ? [{ id: "activities", label: "Activities", count: activities.length }] : []),
       ...(tenantAccessVisible
         ? [
@@ -352,6 +360,8 @@ export function ClientDetail({
       contracts.length,
       quotesEnabled,
       quotes.length,
+      invoicesEnabled,
+      invoices.length,
       activitiesEnabled,
       activities.length,
       tenantAccessVisible,
@@ -529,6 +539,8 @@ export function ClientDetail({
         )}
 
         {tab === "quotes" && quotesEnabled && <QuotesPanel quotes={quotes} />}
+
+        {tab === "invoices" && invoicesEnabled && <InvoicesPanel invoices={invoices} />}
 
         {tab === "activities" && activitiesEnabled && (
           <ActivitiesPanel clientId={client.id} activities={activities} canCreate={canCreateActivities} />

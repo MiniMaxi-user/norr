@@ -71,6 +71,8 @@ export interface QuoteScreenProps {
   contract?: ContractRecord | null;
   /** `null` = no invoice yet, or the viewer cannot read invoices. */
   invoice?: InvoiceSummary | null;
+  /** All invoices + credit notes of the quote (timeline events; the Documents panel list). */
+  invoices?: InvoiceSummary[];
   /** `can(actor, "invoicing", "create")` folded with the feature flag. */
   canInvoice?: boolean;
   defaultTab?: QuoteDetailTab;
@@ -114,6 +116,7 @@ export function QuoteScreen({
   sourceWorkOrder = null,
   contract = null,
   invoice = null,
+  invoices = [],
   canInvoice = false,
   defaultTab = "overview",
 }: QuoteScreenProps) {
@@ -122,7 +125,7 @@ export function QuoteScreen({
   const [tab, setTab] = useState<QuoteDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
-  const invoiceFlow = useQuoteInvoice(quote?.id ?? "", invoice);
+  const invoiceFlow = useQuoteInvoice(quote?.id ?? "", invoice, { isContract: quote?.quote_type === "contract" });
   // An invoiced quote's lines are frozen in the database (issue #232); the
   // status covers viewers who cannot read the invoice itself (e.g. planner).
   const linesLocked = Boolean(invoice) || quote?.quote_status?.value === "invoiced";
@@ -199,9 +202,11 @@ export function QuoteScreen({
       ...(isCreate ? [] : [{ id: "lineItems", label: "Line items", count: lineItems.length }]),
       // Generated documents (invoice) and their actions — shown once there is
       // an invoice or the viewer may make one.
-      ...(!isCreate && (invoice || canInvoice) ? [{ id: "documents", label: "Documents", count: invoice ? 1 : 0 }] : []),
+      ...(!isCreate && (invoices.length > 0 || invoice || canInvoice)
+        ? [{ id: "documents", label: "Documents", count: invoices.length || (invoice ? 1 : 0) }]
+        : []),
     ],
-    [isCreate, lineItems.length, invoice, canInvoice],
+    [isCreate, lineItems.length, invoice, invoices.length, canInvoice],
   );
 
   useEffect(() => {
@@ -296,10 +301,11 @@ export function QuoteScreen({
             quote,
             lineItems,
             invoice,
+            invoices,
             sourceWorkOrder: sourceWorkOrder ? { id: sourceWorkOrder.id, label: workOrderLabel(sourceWorkOrder) } : null,
           })
         : [],
-    [quote, lineItems, invoice, sourceWorkOrder],
+    [quote, lineItems, invoice, invoices, sourceWorkOrder],
   );
 
   // ---- Rail -----------------------------------------------------------------
@@ -367,6 +373,7 @@ export function QuoteScreen({
         {tab === "documents" && quote && (
           <QuoteDocumentsPanel
             invoice={invoice}
+            invoices={invoices}
             canInvoice={canInvoice}
             canGenerate={canInvoice && lineItems.length > 0}
             flow={invoiceFlow}

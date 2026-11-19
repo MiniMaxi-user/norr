@@ -169,6 +169,14 @@ export const REFERENCE_LIST_SECTIONS = [
     showDefaultDuration: false,
     showInvoiceInterval: false,
   },
+  // Payment Method (issue #235): how an invoice payment was received.
+  {
+    key: "payment_method",
+    title: "Payment Method",
+    description: "Ways an invoice payment can be received - e.g. Bank transfer, Card (PIN), Cash, Offset. The default is preselected when registering a payment.",
+    showDefaultDuration: false,
+    showInvoiceInterval: false,
+  },
 ] as const;
 
 export type ReferenceListSectionKey = (typeof REFERENCE_LIST_SECTIONS)[number]["key"];

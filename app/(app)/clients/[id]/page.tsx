@@ -16,6 +16,7 @@ import { listAssets } from "@/app/(app)/assets/actions";
 import { listWorkOrders } from "@/app/(app)/work-orders/actions";
 import { listContracts } from "@/app/(app)/contracts/actions";
 import { listQuotes } from "@/app/(app)/quotes/actions";
+import { listInvoices } from "@/app/(app)/invoices/actions";
 import { ClientDetail, type ClientDetailTab } from "./client-detail";
 import { ClientDetailSkeleton } from "./client-detail-skeleton";
 import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
@@ -139,6 +140,13 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     (await hasFeature(session.organization, "quotes")) &&
     canAccessModule(actor, "quotes");
 
+  // The Invoices tab (issues #234-#236): same server-side gate as the other
+  // module tabs — feature entitlement + role access before any data is fetched.
+  const invoicesModuleVisible =
+    Boolean(session.organization) &&
+    (await hasFeature(session.organization, "invoicing")) &&
+    canAccessModule(actor, "invoicing");
+
   // The Activiteiten tab is likewise a view onto a separately-entitled
   // module (issue #59) — gated server-side the same way as Assets/Work
   // Orders/Contracts/Quotes above, before any activity data is fetched, so a
@@ -175,6 +183,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     workOrdersResult,
     contractsResult,
     quotesResult,
+    invoicesResult,
     activitiesResult,
     lastUsedTab,
     accountManagersResult,
@@ -191,6 +200,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       ? listContracts({ clientId: id, limit: ALL_CLIENT_CONTRACTS_LIMIT })
       : Promise.resolve(null),
     quotesModuleVisible ? listQuotes({ clientId: id, limit: ALL_CLIENT_QUOTES_LIMIT }) : Promise.resolve(null),
+    invoicesModuleVisible ? listInvoices({ clientId: id, limit: 200 }) : Promise.resolve(null),
     activitiesModuleVisible
       ? listActivities({ clientId: id, limit: ALL_CLIENT_ACTIVITIES_LIMIT })
       : Promise.resolve(null),
@@ -252,6 +262,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
         return contractsModuleVisible ? "contracts" : null;
       case "quotes":
         return quotesModuleVisible ? "quotes" : null;
+      case "invoices":
+        return invoicesModuleVisible ? "invoices" : null;
       case "activities":
         return activitiesModuleVisible ? "activities" : null;
       case "sites":
@@ -289,6 +301,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       canCreateContracts={canCreateContracts}
       quotes={quotesResult?.data?.quotes ?? []}
       quotesEnabled={quotesModuleVisible}
+      invoices={invoicesResult?.data?.invoices ?? []}
+      invoicesEnabled={invoicesModuleVisible}
       activities={activitiesResult?.data?.activities ?? []}
       activitiesEnabled={activitiesModuleVisible}
       canCreateActivities={activitiesModuleVisible && canAny(actor, "activities", ["create", "create_own"])}

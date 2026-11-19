@@ -85,6 +85,9 @@ export interface FilterBarDropdown {
   onChange: (value: string) => void;
   /** Cascading child: not selectable until its parent has a value. */
   disabled?: boolean;
+  /** Several values at once: `value`/`onChange` carry them comma-separated
+   * (`"open,overdue"`); `""` = All. Rendered as a checkbox popover. */
+  multiple?: boolean;
 }
 
 export interface FilterBarSegment {
@@ -120,7 +123,54 @@ export interface FilterBarProps {
 
 const MAX_VISIBLE_DROPDOWNS = 3;
 
+function MultiDropdown({ dropdown }: { dropdown: FilterBarDropdown }) {
+  const selected = new Set(dropdown.value.split(",").filter(Boolean));
+  const labels = dropdown.options.filter((option) => selected.has(option.value)).map((option) => option.label);
+  const summary = labels.length === 0 ? "All" : labels.length === 1 ? labels[0] : `${labels.length} selected`;
+  function toggle(value: string) {
+    const next = new Set(selected);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    dropdown.onChange(
+      dropdown.options
+        .filter((option) => next.has(option.value))
+        .map((option) => option.value)
+        .join(","),
+    );
+  }
+  const items: WebMenuItem[] = [
+    ...dropdown.options.map((option) => ({
+      type: "checkbox" as const,
+      key: option.value,
+      label: option.label,
+      checked: selected.has(option.value),
+      onToggle: () => toggle(option.value),
+    })),
+    ...(selected.size > 0
+      ? [{ type: "item" as const, key: "__clear", label: "Clear selection", onSelect: () => dropdown.onChange("") }]
+      : []),
+  ];
+  return (
+    <WebMenu
+      label={dropdown.label}
+      triggerClassName="web-filter-select"
+      align="start"
+      trigger={
+        <span className="web-filter-select-face">
+          <span className="web-filter-select-label">{dropdown.label}:</span>
+          <span className="web-filter-select-value">{summary}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+            <path d="M5 9l7 7 7-7" />
+          </svg>
+        </span>
+      }
+      items={items}
+    />
+  );
+}
+
 function Dropdown({ dropdown }: { dropdown: FilterBarDropdown }) {
+  if (dropdown.multiple) return <MultiDropdown dropdown={dropdown} />;
   const current = dropdown.options.find((option) => option.value === dropdown.value);
   return (
     <label
@@ -420,6 +470,9 @@ export interface WebDropdownDef<T> {
   resets?: string[];
   /** Cascading child: disabled until its parent dropdown has a value. */
   disabledWhen?: (values: Record<string, string>) => boolean;
+  /** Multiselect (checkbox popover); the URL value is comma-separated.
+   * Server mode only (client-mode row matching stays single-value). */
+  multiple?: boolean;
 }
 
 /** Server-driven mode of `WebDataTableCard` (see its JSDoc). */
@@ -708,6 +761,7 @@ export function WebDataTableCard<T>({
           value: dropdownValues[dropdown.id] ?? "",
           options: dropdownOptions[dropdown.id] ?? [],
           disabled: dropdown.disabledWhen?.(dropdownValues),
+          multiple: dropdown.multiple,
           onChange: (value) =>
             url.set({
               [dropdown.id]: value,

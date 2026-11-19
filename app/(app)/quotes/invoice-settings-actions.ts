@@ -11,7 +11,7 @@ import { can } from "@/lib/rbac/permissions";
  * organization; no row = defaults. Today only the default payment term, which
  * `create_invoice` uses when the client has no own term
  * (`clients.payment_term_days`). Same boundary as invoicing itself (owner /
- * administratie): `read` to load, `create` to save.
+ * finance / administratie): `read` to load, `create` to save.
  */
 
 // Not exported: a "use server" file may only export async functions.
@@ -51,7 +51,7 @@ export async function saveInvoiceSettings(input: unknown): Promise<ActionResult<
   if (!ctx.ok) return fail(ctx.error);
   const { actor, organizationId } = ctx.context;
   if (!can(actor, "invoicing", "create")) {
-    return fail("Only an owner or administratie member can change invoicing settings.");
+    return fail("Only an owner, finance or administratie member can change invoicing settings.");
   }
 
   const parsed = invoiceSettingsSchema.safeParse(input);

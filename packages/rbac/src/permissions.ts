@@ -259,17 +259,19 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
   // page, not a new top-level Billing section, so it gets its own key
   // instead of prematurely shipping that dormant one.
   //
-  // `finance` gets NONE: the issue names exactly three actor types (owner,
-  // administratie, platform admin) and explicitly does not include finance —
-  // matching CLAUDE.md rule 7 ("build exactly what a story's acceptance
-  // criteria specify"). `engineer`/`planner` are NONE for the same reason.
-  // No `delete` since issue #211: invoices are permanent (no delete policy/grant).
+  // Issues #234-#236: `finance` now has full invoicing (overview, payments,
+  // credit notes, invoice settings); `administratie` keeps its access;
+  // `engineer`/`planner` are NONE. `update` = register payment / send e-mail;
+  // `create` = generate invoice / credit note. `delete` (owner only) = delete a
+  // payment registered by someone else; a payment's own creator may always
+  // delete it (checked against created_by next to this permission).
+  // Invoices themselves are permanent since issue #211 (no delete policy/grant).
   invoicing: {
-    owner: ["create", "read"],
+    owner: ["create", "read", "update", "delete"],
     planner: NONE,
     engineer: NONE,
-    finance: NONE,
-    administratie: ["create", "read"],
+    finance: ["create", "read", "update"],
+    administratie: ["create", "read", "update"],
   },
   // Work receipts / "werkbon" (issue #226): versioned PDF receipts generated
   // from an approved work order and e-mailed to one recipient

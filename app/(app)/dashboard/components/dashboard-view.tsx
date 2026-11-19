@@ -158,7 +158,7 @@ export function DashboardView({ dataset, initialFilters, links }: DashboardViewP
   );
   const subtitle = `${model.rangeLabel} · click any chart to filter`;
 
-  if (!visible.workOrders && !visible.activities && !visible.finance) {
+  if (!visible.workOrders && !visible.activities && !visible.finance && !visible.receivables) {
     return (
       <Stack gap="md">
         <OverviewHeroBand compact title="Dashboard" />
@@ -229,6 +229,22 @@ export function DashboardView({ dataset, initialFilters, links }: DashboardViewP
         value: <span title={money(kpis.averageInvoice.value)}>{compact(kpis.averageInvoice.value)}</span>,
         ...trendOf(avgDelta),
         hint: avgDelta ? vs : `${kpis.invoiceCount} invoices`,
+      },
+    );
+  }
+  if (visible.receivables) {
+    items.push(
+      {
+        group: finance,
+        label: "Outstanding",
+        value: <span title={money(kpis.outstandingAmount)}>{compact(kpis.outstandingAmount)}</span>,
+        hint: `${kpis.outstandingCount} open invoices`,
+      },
+      {
+        group: finance,
+        label: "Overdue invoices",
+        value: <span title={money(kpis.overdueInvoiceAmount)}>{compact(kpis.overdueInvoiceAmount)}</span>,
+        hint: `${kpis.overdueInvoiceCount} past due date`,
       },
     );
   }

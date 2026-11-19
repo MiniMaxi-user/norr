@@ -30,7 +30,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const supabase = await createSupabaseServerClient();
   const { result, error, code } = await getInvoicePdfForQuote(supabase, id);
   if (!result) {
-    const status = code === "not_invoiced" ? 404 : 500;
+    const status = (code === "not_invoiced" || code === "not_found") ? 404 : 500;
     return NextResponse.json({ error }, { status });
   }
 
