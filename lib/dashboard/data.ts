@@ -55,7 +55,7 @@ async function fetchPaged<T>(
 }
 
 const WORK_ORDER_COLUMNS =
-  "id, work_order_number, client_id, asset_id, assigned_to, created_at, scheduled_at, completed_at, duration_minutes";
+  "id, work_order_number, client_id, asset_id, assigned_to, created_at, scheduled_at, completed_at, approved_at, duration_minutes";
 const WORK_ORDER_EMBEDS =
   "type:reference_list_items!work_orders_type_id_fkey(value,label,color), asset:assets!work_orders_asset_id_fkey(id,name)";
 
@@ -68,6 +68,7 @@ interface WorkOrderRow {
   created_at: string;
   scheduled_at: string | null;
   completed_at: string | null;
+  approved_at: string | null;
   duration_minutes: number | null;
   status: Embedded<NonNullable<RefItem>>;
   type: Embedded<NonNullable<RefItem>>;
@@ -134,7 +135,7 @@ function toWorkOrder(
     typeColor: type?.color ?? null,
     createdAt: row.created_at,
     scheduledAt: row.scheduled_at,
-    doneAt: isDone ? (row.completed_at ?? row.scheduled_at ?? row.created_at) : null,
+    doneAt: isDone ? (row.approved_at ?? row.completed_at ?? row.scheduled_at ?? row.created_at) : null,
     durationMinutes: row.duration_minutes,
     isOpen,
     isDone,

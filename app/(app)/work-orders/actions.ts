@@ -139,6 +139,8 @@ export interface WorkOrderRecord {
   duration_minutes: number | null;
   scheduled_at: string | null;
   completed_at: string | null;
+  /** Set when an owner/planner approves the work order (to_review -> completed) in the web app. */
+  approved_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -716,7 +718,7 @@ export async function approveWorkOrderReview(
 
   const { data, error } = await supabase
     .from("work_orders")
-    .update({ status_id: completedItem.id })
+    .update({ status_id: completedItem.id, approved_at: new Date().toISOString() })
     .eq("id", idResult.data)
     .select(WORK_ORDER_SELECT)
     .maybeSingle();

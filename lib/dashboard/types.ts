@@ -22,7 +22,7 @@ export interface DashboardWorkOrder {
   typeColor: string | null;
   createdAt: string;
   scheduledAt: string | null;
-  /** Completion time; falls back to a sensible proxy for done orders that never got `completed_at`. */
+  /** Completion date for done orders: the approval date (`approved_at`), falling back to `completed_at` (PWA finish), then scheduled/created for rows that have neither. */
   doneAt: string | null;
   durationMinutes: number | null;
   /** Neither awaiting review, completed nor invoiced. */
