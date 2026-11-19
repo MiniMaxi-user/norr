@@ -10,9 +10,10 @@ const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outDir = join(packageRoot, "dist");
 mkdirSync(outDir, { recursive: true });
 
-// `styles.css` is shared by the web app and the PWA. `web.css` (issue #222,
-// the new web design system) is imported ONLY by the web app — it is a
-// separate file precisely so none of it can reach the PWA.
-for (const file of ["styles.css", "web.css"]) {
+// `styles.css` (legacy `.ui-*` components) is loaded by both apps. `web.css` is
+// the design-system layer (issue #222: tokens + shared components) and is
+// loaded by BOTH apps too; `pwa.css` (the field-PWA shell/screens) is loaded
+// by the PWA only.
+for (const file of ["styles.css", "web.css", "pwa.css"]) {
   copyFileSync(join(packageRoot, "src", file), join(outDir, file));
 }

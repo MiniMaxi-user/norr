@@ -1,8 +1,9 @@
 // Server-safe half of the web design system (issue #222) — exported as
 // `@yourorg/ui/web`. Interactive pieces (PageHeader, KeyValueCard,
 // useEditMode, menus, dialogs) are in `@yourorg/ui/web-client`. Neither entry
-// is re-exported from the package's main `index.ts`, so the PWA's bundle is
-// unaffected by this layer.
+// is re-exported from the package's main `index.ts`. The PWA consumes the
+// shared primitives (Badge, Button, Card, StatusBadge, TypeBadge with
+// `size="touch"`) and the `Pwa*` layout pieces from this entry.
 export {
   WebBadge,
   WebBreadcrumb,
@@ -17,6 +18,9 @@ export {
   WebFigures,
   WebLinkButton,
   WebStatusBadge,
+  WebTypeBadge,
+  typeBaseColor,
+  typeColorStyle,
   WebAmount,
   toneFromColor,
 } from "./primitives";
@@ -31,7 +35,28 @@ export type {
   WebFieldProps,
   WebFigure,
   WebLinkButtonProps,
+  WebSize,
 } from "./primitives";
+export {
+  PwaActionBar,
+  PwaActions,
+  PwaBody,
+  PwaCardPad,
+  PwaCardText,
+  PwaHeaderMeta,
+  PwaHeaderRow,
+  PwaHeaderTime,
+  PwaKeyValue,
+  PwaNote,
+  PwaOverline,
+  PwaPageHeader,
+  PwaRow,
+  PwaScreen,
+  PwaSection,
+  PwaStack,
+  PwaSyncLine,
+} from "./pwa";
+export type { PwaKeyValueRow, PwaPageHeaderProps } from "./pwa";
 export {
   SidebarNotice,
   SidebarProgress,

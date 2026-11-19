@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, Heading, Stack, Text, Textarea } from "@yourorg/ui";
+import { Textarea } from "@yourorg/ui";
+import { PwaCardPad, PwaCardText, PwaStack, WebCard } from "@yourorg/ui/web";
 import type { WorkOrderDetail } from "@/lib/work-orders/types";
 import { VolumesBlock } from "./volumes-block";
 
@@ -28,19 +29,15 @@ export function WorkSection({
   const { description } = workOrder;
 
   return (
-    <Stack gap="md">
-      <Card>
-        <Stack gap="sm">
-          <Heading level={3}>Description</Heading>
-          <Text>{description || "No description added."}</Text>
-        </Stack>
-      </Card>
+    <PwaStack>
+      <WebCard size="touch" title="Description">
+        <PwaCardText empty={!description}>{description || "No description added."}</PwaCardText>
+      </WebCard>
 
       <VolumesBlock workOrderId={workOrderId} />
 
-      <Card>
-        <Stack gap="sm">
-          <Heading level={3}>Solution</Heading>
+      <WebCard size="touch" title="Solution">
+        <PwaCardPad>
           <Textarea
             aria-label="Solution"
             placeholder="What did you do to resolve this?"
@@ -48,8 +45,8 @@ export function WorkSection({
             onChange={(event) => onSolutionChange(event.target.value)}
             rows={4}
           />
-        </Stack>
-      </Card>
-    </Stack>
+        </PwaCardPad>
+      </WebCard>
+    </PwaStack>
   );
 }

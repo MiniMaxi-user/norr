@@ -2,9 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, Callout, Card, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
-import type { BadgeVariant } from "@yourorg/ui";
-import { AlertTriangle, Check, ClipboardList, MapPin } from "@yourorg/ui/icons";
+import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
+import {
+  PwaBody,
+  PwaHeaderRow,
+  PwaNote,
+  PwaPageHeader,
+  PwaScreen,
+  PwaSection,
+  PwaStack,
+  PwaSyncLine,
+  WebBadge,
+  WebStatusBadge,
+  WebTypeBadge,
+  type WebStatusTone,
+} from "@yourorg/ui/web";
+import { AlertTriangle, ChevronRight, ClipboardList, MapPin } from "@yourorg/ui/icons";
 import {
   getCachedWorkItems,
   getLastSyncedAt,
@@ -163,32 +176,33 @@ function formatTodayDateLabel(date: Date): string {
   return `${weekday} ${dayMonth}`;
 }
 
-/** "WO100 · external reference" - the work order number, then the optional reference. */
-function workItemLabel(item: Pick<CachedWorkItem, "workOrderNumber" | "externalReference">): string {
-  // Items cached before #218 lack workOrderNumber until the next sync.
-  const number = item.workOrderNumber ?? "";
-  if (!item.externalReference) return number;
-  return number ? `${number} · ${item.externalReference}` : item.externalReference;
-}
-
 function locationLabel(site: CachedWorkItem["site"]): string | null {
   if (!site) return null;
   const parts = [site.addressLine1, site.city].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
-/** The Today screen's four-way status pill (IMPLEMENTATION.md §6: "In
- * progress → groen, Urgent → rood-tint, Planned → neutraal, Signed →
- * accent-tint") — mutually exclusive, checked in this priority order.
+/** The Today screen's four-way status badge (IMPLEMENTATION.md §6) —
+ * mutually exclusive, checked in this priority order. Calm grey for the
+ * normal states (Planned, Signed), coloured only for what needs attention
+ * (DS Badge rules): In progress (the running step) and Urgent.
  * `isUrgent` only surfaces its own tag once an order is neither running nor
  * already signed off; a signed-off urgent job isn't "urgent" anymore, and a
- * currently-running job's own green pill already carries more useful
- * information than its priority would. */
-function statusPresentation(item: TodayWorkItem): { label: string; variant: BadgeVariant } {
-  if (item.flowStatus === "signed") return { label: "Signed", variant: "accent" };
-  if (item.flowStatus === "in_progress") return { label: "In progress", variant: "success" };
-  if (item.isUrgent) return { label: "Urgent", variant: "danger" };
-  return { label: "Planned", variant: "muted" };
+ * currently-running job's own badge carries more useful information than its
+ * priority would. */
+function statusPresentation(item: TodayWorkItem): { label: string; tone: WebStatusTone } {
+  if (item.flowStatus === "signed") return { label: "Signed", tone: "neutral" };
+  if (item.flowStatus === "in_progress") return { label: "In progress", tone: "info" };
+  if (item.isUrgent) return { label: "Urgent", tone: "danger" };
+  return { label: "Planned", tone: "neutral" };
+}
+
+/** A breakdown ("storing") work order — the red "N breakdown" badge in the
+ * header. Matched on the activity type's label (the Today API carries the
+ * type's label + colour, not its raw value), same two spellings the web
+ * Planning backlog recognises. */
+function isBreakdown(item: Pick<CachedWorkItem, "type">): boolean {
+  return /^(breakdown|storing)$/i.test(item.type?.label?.trim() ?? "");
 }
 
 /**
@@ -387,167 +401,118 @@ export function TodayScreen({ currentUserId }: { currentUserId: string }) {
     };
   }, [nowItemId, currentUserId]);
 
+  const dateLabel = formatTodayDateLabel(new Date());
+
   if (loading) {
     return (
-      <Stack gap="md">
-        <Skeleton height={44} />
-        <Skeleton height={44} />
-        <Skeleton height={120} />
-        <Skeleton height={88} />
-        <Skeleton height={88} />
-      </Stack>
+      <PwaScreen>
+        <PwaPageHeader overline={dateLabel} title="Today" />
+        <PwaBody>
+          <Skeleton height={44} />
+          <Skeleton height={120} />
+          <Skeleton height={88} />
+          <Skeleton height={88} />
+        </PwaBody>
+      </PwaScreen>
     );
   }
 
+  const breakdownCount = todayItems.filter(isBreakdown).length;
+
   return (
-    <Stack gap="md">
-      <Stack gap="xs">
-        <Text
-          style={{
-            fontSize: "11px",
-            letterSpacing: "0.13em",
-            textTransform: "uppercase",
-            color: "var(--ui-muted-subtle)",
-          }}
-        >
-          {formatTodayDateLabel(new Date())}
-        </Text>
-        <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)", margin: 0 }}>
-          Today&apos;s work
-        </Heading>
-      </Stack>
-
-      <PullToRefresh onRefresh={sync}>
-        <Stack gap="md">
-          {syncFailed && (
-            <Callout icon={AlertTriangle}>
-              {lastSyncedAt
-                ? `Couldn't refresh — last synced ${formatSyncedTime(lastSyncedAt)}.`
-                : "No connection, and nothing synced yet on this device."}
-            </Callout>
+    <PwaScreen>
+      <PwaPageHeader overline={dateLabel} title="Today">
+        <PwaHeaderRow>
+          <WebBadge size="touch">
+            {todayItems.length} {todayItems.length === 1 ? "work order" : "work orders"}
+          </WebBadge>
+          {breakdownCount > 0 && (
+            <WebBadge size="touch" variant="danger">
+              {breakdownCount} {breakdownCount === 1 ? "breakdown" : "breakdowns"}
+            </WebBadge>
           )}
+        </PwaHeaderRow>
+      </PwaPageHeader>
 
-          {todayItems.length === 0 ? (
-            !syncFailed && (
-              <EmptyState
-                icon={<ClipboardList />}
-                heading="No work orders scheduled for today."
-                text="As soon as work orders are planned for today, they'll show up here."
-              />
-            )
-          ) : (
-            <>
-              {nowItem && (
-                <Stack gap="sm">
-                  <Text
-                    style={{
-                      fontSize: "11px",
-                      letterSpacing: "0.13em",
-                      textTransform: "uppercase",
-                      color: "var(--ui-muted-subtle)",
-                    }}
-                  >
-                    Now
-                  </Text>
-                  <TodayWorkItemCard
-                    item={nowItem}
-                    totalMs={signedTotals[nowItem.id]}
-                    runningSummary={runningSummary}
-                    pendingSync={pendingSyncIds.has(nowItem.id)}
-                    emphasized
-                  />
-                </Stack>
-              )}
+      <PwaBody>
+        <PullToRefresh onRefresh={sync}>
+          <PwaStack>
+            {syncFailed && (
+              <Callout icon={AlertTriangle}>
+                {lastSyncedAt
+                  ? `Couldn't refresh — last synced ${formatSyncedTime(lastSyncedAt)}.`
+                  : "No connection, and nothing synced yet on this device."}
+              </Callout>
+            )}
 
-              <Stack gap="sm">
-                <Text
-                  style={{
-                    fontSize: "11px",
-                    letterSpacing: "0.13em",
-                    textTransform: "uppercase",
-                    color: "var(--ui-muted-subtle)",
-                  }}
-                >
-                  Later today
-                </Text>
-                {laterItems.length === 0 ? (
-                  <Text tone="muted">Nothing else scheduled today.</Text>
-                ) : (
-                  <Stack gap="sm">
-                    {laterItems.map((item) => (
-                      <TodayWorkItemCard
-                        key={item.id}
-                        item={item}
-                        totalMs={signedTotals[item.id]}
-                        pendingSync={pendingSyncIds.has(item.id)}
-                      />
-                    ))}
-                  </Stack>
+            {todayItems.length === 0 ? (
+              !syncFailed && (
+                <EmptyState
+                  icon={<ClipboardList />}
+                  heading="No work orders scheduled for today."
+                  text="As soon as work orders are planned for today, they'll show up here."
+                />
+              )
+            ) : (
+              <>
+                {nowItem && (
+                  <PwaSection label="Now">
+                    <TodayWorkItemCard
+                      item={nowItem}
+                      totalMs={signedTotals[nowItem.id]}
+                      runningSummary={runningSummary}
+                      pendingSync={pendingSyncIds.has(nowItem.id)}
+                      emphasized
+                    />
+                  </PwaSection>
                 )}
-              </Stack>
-            </>
-          )}
 
-          <Inline justify="center">
-            <Text tone="muted">
-              {lastSyncedAt ? `Synced ${formatSyncedTime(lastSyncedAt)}` : "Not synced yet"} · pull to refresh
-            </Text>
-          </Inline>
-        </Stack>
-      </PullToRefresh>
-    </Stack>
+                <PwaSection label="Later today">
+                  {laterItems.length === 0 ? (
+                    <PwaNote>Nothing else scheduled today.</PwaNote>
+                  ) : (
+                    <PwaStack gap="sm">
+                      {laterItems.map((item) => (
+                        <TodayWorkItemCard
+                          key={item.id}
+                          item={item}
+                          totalMs={signedTotals[item.id]}
+                          pendingSync={pendingSyncIds.has(item.id)}
+                        />
+                      ))}
+                    </PwaStack>
+                  )}
+                </PwaSection>
+              </>
+            )}
+
+            <PwaSyncLine>
+              {lastSyncedAt ? `Synced ${formatSyncedTime(lastSyncedAt)}` : "Not synced yet"} · pull down to refresh
+            </PwaSyncLine>
+          </PwaStack>
+        </PullToRefresh>
+      </PwaBody>
+    </PwaScreen>
   );
 }
 
-/** The Now card's gold "Travel/Work time running" bar (Today.png) — same
- * solid-`--ui-accent`-fill + dark-navy-`--ui-accent-fg`-text pairing as
- * `timer-card.tsx`'s sticky timer, for the same contrast reason documented
- * there. Not its own `<Link>`: the whole Now card is already wrapped in one
- * (nesting an anchor inside an anchor is invalid), so "Open" is a plain
- * styled span — the click target is the card. */
+/** The Now card's "Travel/Work time running" strip (Today.png) — a navy
+ * surface with a gold action (gold is for dark surfaces, DS 08), the running
+ * digits in mono. Not its own `<Link>`: the whole Now card is already
+ * wrapped in one (nesting an anchor inside an anchor is invalid), so "Open" is
+ * a plain styled span — the click target is the card. */
 function RunningTimeBar({ summary }: { summary: ClockSummary }) {
   if (!summary.runningKind) return null;
   const ms = summary.runningKind === "travel" ? summary.travelMs : summary.workMs;
   const label = summary.runningKind === "travel" ? "Travel time running" : "Work time running";
   return (
-    <Inline
-      justify="between"
-      align="center"
-      gap="sm"
-      style={{
-        borderRadius: "var(--ui-radius-lg)",
-        padding: "0.75rem 0.75rem 0.75rem 1rem",
-        background: "var(--ui-accent)",
-      }}
-    >
-      <Stack gap="xs">
-        <Text style={{ fontSize: "var(--ui-text-sm)", color: "var(--ui-accent-fg)", opacity: 0.75 }}>{label}</Text>
-        <Text
-          style={{
-            fontSize: "2rem",
-            fontWeight: 650,
-            fontVariantNumeric: "tabular-nums",
-            lineHeight: 1,
-            color: "var(--ui-accent-fg)",
-          }}
-        >
-          {formatClockDigits(ms)}
-        </Text>
-      </Stack>
-      <span
-        style={{
-          flexShrink: 0,
-          padding: "0.5rem 1.25rem",
-          borderRadius: "var(--ui-radius-full)",
-          background: "var(--ui-accent-fg)",
-          color: "var(--ui-accent)",
-          fontWeight: 600,
-          fontSize: "var(--ui-text-sm)",
-        }}
-      >
-        Open
+    <div className="pwa-running">
+      <span>
+        <span className="pwa-running-label">{label}</span>
+        <span className="pwa-running-digits">{formatClockDigits(ms)}</span>
       </span>
-    </Inline>
+      <span className="pwa-running-open">Open</span>
+    </div>
   );
 }
 
@@ -572,64 +537,90 @@ function TodayWorkItemCard({
   const signed = item.flowStatus === "signed";
   const clientName = item.client?.name ?? "Unknown client";
   const showingRunningBar = Boolean(emphasized && runningSummary?.runningKind);
+  const timeLabel = item.scheduledAt ? formatTimeLabel(item.scheduledAt) : emphasized ? "No time scheduled" : "—";
+  // Items cached before #218 lack workOrderNumber until the next sync.
+  const number = item.workOrderNumber ?? "";
 
+  // "Now" = large card, "Later today" = compact list card (DS 08 section 4).
   const card = emphasized ? (
-    <Card interactive={!signed}>
-      <Stack gap="sm">
-        <Text tone="muted" style={{ fontSize: "var(--ui-text-sm)" }}>
-          {item.scheduledAt ? formatTimeLabel(item.scheduledAt) : "No time scheduled"}
-        </Text>
+    <>
+      <div className="pwa-work-card-top">
+        <span className="pwa-work-card-time">{timeLabel}</span>
+        {!signed && <ChevronRight aria-hidden className="pwa-work-card-chevron" />}
+      </div>
+      <p className="pwa-work-card-client">{clientName}</p>
+      <p className="pwa-work-card-ref">
+        {number && <span className="pwa-work-card-number">{number}</span>}
+        {item.externalReference && <span>{item.externalReference}</span>}
+      </p>
+      {location && (
+        <p className="pwa-work-card-address">
+          <MapPin aria-hidden />
+          {location}
+        </p>
+      )}
 
-        <Stack gap="xs">
-          <Text style={{ fontSize: "var(--ui-text-xl)", fontWeight: 650 }}>{clientName}</Text>
-          <Text tone="muted">{workItemLabel(item)}</Text>
-          {location && (
-            <Inline gap="xs" align="center">
-              <MapPin aria-hidden width={14} height={14} />
-              <Text tone="muted">{location}</Text>
-            </Inline>
+      {showingRunningBar ? (
+        <RunningTimeBar summary={runningSummary as ClockSummary} />
+      ) : (
+        <div className="pwa-work-card-foot">
+          {!signed && item.type && (
+            <WebTypeBadge size="touch" color={item.type.color}>
+              {item.type.label}
+            </WebTypeBadge>
           )}
-        </Stack>
-
-        {showingRunningBar ? (
-          <RunningTimeBar summary={runningSummary as ClockSummary} />
-        ) : (
-          <Inline gap="xs" align="center">
-            {signed && <Check aria-hidden width={14} height={14} style={{ color: "var(--ui-success)" }} />}
-            <Badge variant={status.variant}>{status.label}</Badge>
-            {!signed && item.type && <Badge color={item.type.color}>{item.type.label}</Badge>}
-            {pendingSync && <Badge variant="warning">Not synced</Badge>}
-          </Inline>
-        )}
-      </Stack>
-    </Card>
+          <WebStatusBadge tone={status.tone} size="touch">
+            {status.label}
+          </WebStatusBadge>
+          {pendingSync && (
+            <WebStatusBadge tone="warning" size="touch">
+              Not synced
+            </WebStatusBadge>
+          )}
+        </div>
+      )}
+    </>
   ) : (
-    <Card interactive={!signed}>
-      <Inline gap="sm" align="start">
-        <Text
-          style={{
-            flexShrink: 0,
-            width: "2.75rem",
-            fontVariantNumeric: "tabular-nums",
-            color: signed ? "var(--ui-muted-subtle)" : "var(--ui-accent)",
-          }}
-        >
-          {item.scheduledAt ? formatTimeLabel(item.scheduledAt) : "—"}
-        </Text>
-        <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
-          <Text>{clientName}</Text>
-          <Text tone="muted">
-            {signed && totalMs !== undefined
-              ? `Signed · ${formatClockHoursMinutes(totalMs)}`
-              : [workItemLabel(item), location].filter(Boolean).join(" — ")}
-          </Text>
-        </Stack>
-        <Inline gap="xs" align="center" style={{ flexShrink: 0 }}>
-          {status.variant !== "muted" && <Badge variant={status.variant}>{status.label}</Badge>}
-          {pendingSync && <Badge variant="warning">Not synced</Badge>}
-        </Inline>
-      </Inline>
-    </Card>
+    <>
+      <span className="pwa-work-card-time">{timeLabel}</span>
+      <div className="pwa-work-card-main">
+        <p className="pwa-work-card-client">{clientName}</p>
+        {signed && totalMs !== undefined ? (
+          <p className="pwa-work-card-ref">{`Signed · ${formatClockHoursMinutes(totalMs)}`}</p>
+        ) : (
+          <>
+            <p className="pwa-work-card-ref">
+              {number && <span className="pwa-work-card-number">{number}</span>}
+              {item.externalReference && <span>{item.externalReference}</span>}
+            </p>
+            {location && (
+              <p className="pwa-work-card-address">
+                <MapPin aria-hidden />
+                {location}
+              </p>
+            )}
+          </>
+        )}
+        <div className="pwa-work-card-foot">
+          {!signed && item.type && (
+            <WebTypeBadge size="touch" color={item.type.color}>
+              {item.type.label}
+            </WebTypeBadge>
+          )}
+          {status.tone !== "neutral" && (
+            <WebStatusBadge tone={status.tone} size="touch">
+              {status.label}
+            </WebStatusBadge>
+          )}
+          {pendingSync && (
+            <WebStatusBadge tone="warning" size="touch">
+              Not synced
+            </WebStatusBadge>
+          )}
+        </div>
+      </div>
+      {!signed && <ChevronRight aria-hidden className="pwa-work-card-chevron" />}
+    </>
   );
 
   // Finished work orders stay visible in the list (so the day still reads
@@ -638,7 +629,7 @@ function TodayWorkItemCard({
   // now, marked `completed` server-side) has nothing left to do.
   if (signed) {
     return (
-      <div aria-disabled="true" style={{ opacity: 0.55 }}>
+      <div className="pwa-work-card" data-compact={emphasized ? undefined : "true"} aria-disabled="true">
         {card}
       </div>
     );
@@ -648,7 +639,8 @@ function TodayWorkItemCard({
   return (
     <Link
       href={href}
-      style={{ display: "block" }}
+      className="pwa-work-card"
+      data-compact={emphasized ? undefined : "true"}
       onClick={(event) => {
         // Bug report, 2026-09-13: a first-time offline open of a work order
         // used to fail outright — Next's client-side transition fetches a

@@ -1,21 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Button,
-  Callout,
-  Card,
-  ConfirmDeleteDialog,
-  Disclosure,
-  Heading,
-  IconButton,
-  Inline,
-  Input,
-  Label,
-  Stack,
-  Text,
-  Textarea,
-} from "@yourorg/ui";
+import { Callout, ConfirmDeleteDialog, Disclosure, Input, Label, Textarea } from "@yourorg/ui";
+import { PwaNote, PwaStack, WebButton, WebCard } from "@yourorg/ui/web";
 import { AlertTriangle, Trash2 } from "@yourorg/ui/icons";
 import { formatVolumeValue } from "@/lib/asset-volumes/errors";
 import type { WorkOrderVolumeCounter, WorkOrderVolumeReading, WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
@@ -75,15 +62,16 @@ export function VolumesBlock({ workOrderId }: { workOrderId: string }) {
   const disabled = !online || !data.canCreate;
 
   return (
-    <Card>
-      <Stack gap="md">
-        <Heading level={3}>Volumes{data.asset ? ` · ${data.asset.name}` : ""}</Heading>
-        {!online && <Callout icon={AlertTriangle}>Readings require a connection.</Callout>}
-        {data.counters.map((counter) => (
-          <CounterRow key={counter.volumeItemId} workOrderId={workOrderId} counter={counter} disabled={disabled} online={online} onChanged={load} />
-        ))}
-      </Stack>
-    </Card>
+    <WebCard size="touch" title={`Volumes${data.asset ? ` · ${data.asset.name}` : ""}`}>
+      {!online && (
+        <div className="pwa-card-pad">
+          <Callout icon={AlertTriangle}>Readings require a connection.</Callout>
+        </div>
+      )}
+      {data.counters.map((counter) => (
+        <CounterRow key={counter.volumeItemId} workOrderId={workOrderId} counter={counter} disabled={disabled} online={online} onChanged={load} />
+      ))}
+    </WebCard>
   );
 }
 
@@ -157,18 +145,18 @@ function CounterRow({
   }
 
   return (
-    <Stack gap="sm">
-      <Stack gap="xs">
-        <Text style={{ fontWeight: 650 }}>
+    <div className="pwa-counter">
+      <div className="pwa-stack" data-gap="sm">
+        <h3 className="pwa-counter-title">
           {counter.label}
-          {counter.unitLabel ? <span style={{ fontWeight: 400 }}> ({counter.unitLabel})</span> : null}
-        </Text>
-        <Text tone="muted">
+          {counter.unitLabel ? <span> ({counter.unitLabel})</span> : null}
+        </h3>
+        <PwaNote>
           {counter.latest ? `Latest: ${formatVolumeValue(counter.latest.value)}${unit} · ${formatDate(counter.latest.readAt)}` : "No readings yet."}
-        </Text>
-      </Stack>
+        </PwaNote>
+      </div>
 
-      <Stack gap="xs">
+      <div className="pwa-field">
         <Label htmlFor={`${idBase}-value`}>New reading</Label>
         <Input
           id={`${idBase}-value`}
@@ -178,15 +166,14 @@ function CounterRow({
           value={value}
           disabled={disabled}
           onChange={(event) => setValue(event.target.value)}
-          style={{ minHeight: 44 }}
         />
-      </Stack>
+      </div>
 
       <Disclosure>
         <Disclosure.Summary>Date and notes</Disclosure.Summary>
         <Disclosure.Content>
-          <Stack gap="sm">
-            <Stack gap="xs">
+          <PwaStack gap="sm">
+            <div className="pwa-field">
               <Label htmlFor={`${idBase}-date`}>Read at (default: now)</Label>
               <Input
                 id={`${idBase}-date`}
@@ -195,10 +182,9 @@ function CounterRow({
                 max={nowLocalInputValue()}
                 disabled={disabled}
                 onChange={(event) => setReadAt(event.target.value)}
-                style={{ minHeight: 44 }}
               />
-            </Stack>
-            <Stack gap="xs">
+            </div>
+            <div className="pwa-field">
               <Label htmlFor={`${idBase}-notes`}>Notes</Label>
               <Textarea
                 id={`${idBase}-notes`}
@@ -208,47 +194,49 @@ function CounterRow({
                 disabled={disabled}
                 onChange={(event) => setNotes(event.target.value)}
               />
-            </Stack>
-          </Stack>
+            </div>
+          </PwaStack>
         </Disclosure.Content>
       </Disclosure>
 
       {error && (
-        <Text role="alert" tone="danger">
+        <PwaNote role="alert" tone="danger">
           {error}
-        </Text>
+        </PwaNote>
       )}
-      <Button fullWidth disabled={disabled || saving || !value.trim()} onClick={() => void handleSave()} style={{ minHeight: 44 }}>
+      <WebButton size="touch" block disabled={disabled || saving || !value.trim()} onClick={() => void handleSave()}>
         {saving ? "Saving…" : "Save reading"}
-      </Button>
-      {!online && <Text tone="muted">Readings require a connection.</Text>}
+      </WebButton>
+      {!online && <PwaNote>Readings require a connection.</PwaNote>}
 
       {counter.myReadings.length > 0 && (
-        <Stack gap="xs">
-          <Text tone="muted">Your recent readings</Text>
+        <div className="pwa-stack" data-gap="sm">
+          <PwaNote>Your recent readings</PwaNote>
           {counter.myReadings.map((reading) => (
-            <Inline key={reading.id} gap="sm" align="center" justify="between">
-              <Stack gap="xs">
-                <Text style={{ fontVariantNumeric: "tabular-nums" }}>
+            <div key={reading.id} className="pwa-row" data-justify="between">
+              <span className="pwa-list-main">
+                <span className="pwa-list-title pwa-mono">
                   {formatVolumeValue(reading.value)}
                   {unit}
-                </Text>
-                <Text tone="muted">
+                </span>
+                <span className="pwa-note">
                   {formatDate(reading.readAt)}
                   {reading.notes ? ` · ${reading.notes}` : ""}
-                </Text>
-              </Stack>
-              <IconButton
+                </span>
+              </span>
+              <button
+                type="button"
+                className="pwa-icon-btn"
+                data-bare="true"
                 aria-label={`Delete reading ${formatVolumeValue(reading.value)} for ${counter.label}`}
                 disabled={!online}
                 onClick={() => setToDelete(reading)}
-                style={{ minWidth: 44, minHeight: 44 }}
               >
                 <Trash2 aria-hidden width={18} height={18} />
-              </IconButton>
-            </Inline>
+              </button>
+            </div>
           ))}
-        </Stack>
+        </div>
       )}
 
       <ConfirmDeleteDialog
@@ -265,6 +253,6 @@ function CounterRow({
         confirmLabel="Delete reading"
         onConfirm={handleDelete}
       />
-    </Stack>
+    </div>
   );
 }

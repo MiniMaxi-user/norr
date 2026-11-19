@@ -1,21 +1,30 @@
-/* @yourorg/ui — WEB design system layer (issue #222).
+/* @yourorg/ui - DESIGN-SYSTEM layer shared by the web app and the field PWA
+   (issue #222).
 
    Source of truth: the downloaded "EAM Console" design-system handoff
-   (tokens.json + the 01-05 guideline docs), applied to Norr. Token names map
+   (tokens.json + the 01-08 guideline docs), applied to Norr. Token names map
    1:1 to tokens.json (`--brand-navy`, `--surface-page`, `--space-card-x`,
    `--radius-lg`, `--font-serif|sans|mono`, ...).
 
-   PWA ISOLATION: this file is imported ONLY by the web app
-   (`app/layout.tsx`, via `@yourorg/ui/web.css`). `apps/pwa` imports
-   `@yourorg/ui/styles.css` exclusively, so nothing in here can reach the PWA.
-   Never move rules from this file into `styles.css`, and never edit
-   `styles.css` rules for web-only needs. Every selector below is either a
-   token declaration or a new `.web-*` class; the only rules that touch
-   pre-existing elements are scoped under `.web-shell` (the web app's own
-   shell wrapper).
+   SHARED BY BOTH APPS: the web app (`app/layout.tsx`) and the PWA
+   (`apps/pwa/app/layout.tsx`) import this file, so there is ONE token set and
+   ONE implementation of the shared components (`.web-btn`, `.web-badge`,
+   `.web-status-badge`, `.web-type-badge`, `.web-card`). The PWA is the
+   `size="touch"` variant of those components (44px tap targets, 15px text) -
+   see the `[data-size="touch"]` rules in the Buttons/Badge/Card sections
+   below. Never copy a component's rules for the PWA; add a size variant.
 
-   Web is light-only (the theme toggle is hidden and `html.dark` is never
-   applied — see `forcedTheme` in `ThemeProvider`). */
+   What stays separate: the web shell (`.web-shell`, `.web-page*`,
+   `.web-detail*`, ...) is web-only layout, and the PWA shell/nav/screens live
+   in `pwa.css` (`.pwa-*`, imported only by the PWA). Neither side may leak
+   rules into the other app: every selector below is a token declaration, a
+   `.web-*` class, or a rule scoped under `.web-shell` (the only rules that
+   touch pre-existing elements). Never move rules from this file into
+   `styles.css`, and never edit `styles.css` rules for web-only needs.
+
+   Both apps are light-only (the theme toggle is gone and `html.dark` is never
+   applied - see `forcedTheme` in `ThemeProvider` / the static `light` class
+   on `<html>`). */
 
 /* ---------------------------------------------------------------------- *
  * Tokens (tokens.json, 1:1)
@@ -535,6 +544,46 @@ html:has(.web-shell) body {
   }
 }
 
+/* Touch size (PWA, DS 08 section 1/5): 44px tap target, 15px text, primary
+   action 50px. Pressed state uses `surface-subtle`/sunken - never hover as
+   the only cue. */
+.web-btn[data-size="touch"] {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  gap: var(--space-2);
+  font: 400 15px/20px var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+.web-btn[data-size="touch"] svg {
+  width: 18px;
+  height: 18px;
+}
+.web-btn[data-size="touch"][data-variant="primary"],
+.web-btn[data-size="touch"][data-variant="save"] {
+  height: 50px;
+}
+.web-btn[data-size="touch"][data-icon-only="true"] {
+  width: 44px;
+  padding: 0;
+}
+.web-btn[data-size="touch"]:active:not(:disabled) {
+  background: var(--surface-sunken);
+}
+.web-btn[data-size="touch"][data-variant="primary"]:active:not(:disabled) {
+  background: var(--brand-navy-hover);
+}
+.web-btn[data-size="touch"][data-variant="save"]:active:not(:disabled) {
+  background: var(--brand-gold-hover);
+}
+.web-btn[data-size="touch"][data-variant="danger"]:active:not(:disabled) {
+  background: var(--danger-text);
+}
+.web-btn[data-block="true"] {
+  display: flex;
+  width: 100%;
+}
+
 /* ---------------------------------------------------------------------- *
  * Badge
  * ---------------------------------------------------------------------- */
@@ -580,6 +629,46 @@ html:has(.web-shell) body {
   background: var(--info-bg);
   border-color: var(--info-border);
   color: var(--info-text);
+}
+
+/* Touch size (PWA, DS 08 / PwaNav preview): 24px, 12.5px. */
+.web-badge[data-size="touch"] {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  line-height: 16px;
+}
+.web-badge[data-size="touch"][data-variant="mono"] {
+  font-size: 13px;
+}
+
+/* Activity-type badge (DS Planning 07 section 4, PWA 08): soft round pill in
+   the activity type's own colour. `--type-color` is set by the component from
+   `reference_list_items.color`; no colour = calm grey. */
+.web-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--type-color, #61716b) 11%, #fff);
+  color: var(--type-color, var(--text-secondary));
+  font: 600 11px/1 var(--font-sans);
+  white-space: nowrap;
+}
+.web-type-badge[data-size="touch"] {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.web-type-badge[data-size="touch"]::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: currentColor;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1149,6 +1238,11 @@ html:has(.web-shell) body {
   height: 22px;
   padding: 0 10px;
 }
+.web-status-badge[data-size="touch"] {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
 .web-status-badge[data-tone="success"] {
   background: var(--success-bg);
   color: var(--success-text);
@@ -1267,6 +1361,22 @@ html:has(.web-shell) body {
   margin: 0;
   font: 600 13px/18px var(--font-sans);
   color: var(--text-ink);
+}
+/* Touch size (PWA): 8px radius, 16px padding, 15px/600 title. */
+.web-card[data-size="touch"] {
+  border-radius: 8px;
+}
+.web-card[data-size="touch"] > .web-card-head {
+  min-height: 48px;
+  padding: 12px var(--space-4);
+  border-radius: 7px 7px 0 0;
+}
+.web-card[data-size="touch"] .web-card-title {
+  font-size: 15px;
+  line-height: 20px;
+}
+.web-card[data-size="touch"] .web-card-meta {
+  font-size: 12px;
 }
 .web-card-meta {
   font: 400 11px/15px var(--font-mono);

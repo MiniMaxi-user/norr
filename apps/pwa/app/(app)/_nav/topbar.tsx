@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Logo } from "@yourorg/ui";
 import { ProfileSheet } from "./profile-sheet";
 import { ProfilePhoto } from "./profile-photo";
 
 /**
- * The field PWA's other permanent nav chrome (product feedback, 2026-09-13),
- * sibling to `BottomBar` — the Norr wordmark on the left and the profile
- * avatar on the right, mounted once in `app/(app)/layout.tsx` so it's
- * visible on every screen, not just Today (where the avatar used to live,
- * as part of `today-screen.tsx`). A normal flex child of `.ui-pwa-shell`
- * (`flex-shrink: 0`, same as `BottomBar`), not `position: fixed` — see
- * `.ui-bottom-bar`'s own doc comment for why that shell shape is what
- * actually keeps chrome from ever running behind/under page content.
+ * The field PWA's app bar (DS 08 section 2): 56px, `header-bg` navy, "Norr"
+ * in serif 24px white on the left, the 36px profile avatar on the right
+ * (opens the profile sheet) — nothing else. Product feedback, 2026-09-13:
+ * visible on every screen, not just Today. Mounted once in
+ * `app/(app)/layout.tsx`, a normal flex child of `.pwa-shell`
+ * (`flex: none`, same as `BottomBar`), not `position: fixed` — see
+ * `.pwa-shell` in pwa.css for why that shell shape is what actually keeps
+ * chrome from ever running behind/under page content.
  *
  * `useOnlineStatus` below is a plain `navigator.onLine` + online/offline
  * event listener, not `today-screen.tsx`'s old `isOnline` (which tracked
@@ -37,13 +36,13 @@ export function Topbar({
 
   return (
     <>
-      <div className="ui-pwa-topbar">
-        <Logo />
+      <div className="pwa-appbar">
+        <p className="pwa-appbar-title">Norr</p>
         <button
           type="button"
           aria-label="Open profile"
           onClick={() => setProfileOpen(true)}
-          className="ui-pwa-topbar-avatar"
+          className="pwa-avatar"
         >
           <ProfilePhoto avatarUrl={avatarUrl} fullName={fullName} email={email} />
         </button>

@@ -30,7 +30,8 @@
       "types": "./dist/web-client.d.ts",
       "import": "./dist/web-client.js"
     },
-    "./web.css": "./dist/web.css"
+    "./web.css": "./dist/web.css",
+    "./pwa.css": "./dist/pwa.css"
   },
   "files": [
     "dist"

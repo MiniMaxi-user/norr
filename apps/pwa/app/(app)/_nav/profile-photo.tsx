@@ -22,5 +22,5 @@ export function ProfilePhoto({
 
   if (!avatarUrl || failed) return <>{initialsOf(fullName, email)}</>;
 
-  return <img className="ui-pwa-avatar-photo" src={avatarUrl} alt="" onError={() => setFailed(true)} />;
+  return <img className="pwa-avatar-photo" src={avatarUrl} alt="" onError={() => setFailed(true)} />;
 }

@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Badge, Button, Callout, Card, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
+import { Callout } from "@yourorg/ui";
+import {
+  PwaActionBar,
+  PwaCardPad,
+  PwaKeyValue,
+  PwaStack,
+  WebButton,
+  WebCard,
+  WebStatusBadge,
+} from "@yourorg/ui/web";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes, type ClockSummary } from "@/lib/time/clocks";
 import type { LocalSignOff } from "@/lib/offline/db";
@@ -98,47 +107,60 @@ export function SignOffSection({
   const totalMs = summary.travelMs + summary.workMs;
 
   return (
-    <Stack gap="md">
-      <Card>
-        <KeyValueList
-          items={[
-            { label: "Hours", value: <Text style={{ fontVariantNumeric: "tabular-nums" }}>{formatClockHoursMinutes(totalMs)}</Text> },
-            { label: "Articles", value: <Text>{articleCount}</Text> },
-            { label: "Engineer", value: <Text>{engineerName}</Text> },
-          ]}
-        />
-      </Card>
+    <>
+      <PwaStack>
+        <WebCard size="touch" title="Summary">
+          <PwaKeyValue
+            rows={[
+              { label: "Hours", value: formatClockHoursMinutes(totalMs) },
+              { label: "Articles", value: articleCount },
+              { label: "Engineer", value: engineerName },
+            ]}
+          />
+        </WebCard>
 
-      <Stack gap="sm">
-        <Text tone="muted">Signature</Text>
-        <SignaturePad
-          ref={padRef}
-          initialDataUrl={signatureDraft ?? existingSignOff?.signatureDataUrl ?? null}
-          onHasSignatureChange={setHasSignature}
-        />
-        <Inline justify="between" align="center">
-          <Inline gap="xs" align="center">
-            <Text tone="muted">{hasSignature ? "Signature added" : "No signature yet"}</Text>
-            {existingSignOff?.pendingSync && <Badge variant="warning">Sync pending</Badge>}
-          </Inline>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              padRef.current?.clear();
-              onSignatureDraftChange(null);
-            }}
-            style={{ minHeight: 44 }}
-          >
-            Clear
-          </Button>
-        </Inline>
-      </Stack>
+        <WebCard size="touch" title="Signature">
+          <PwaCardPad>
+            <div className="pwa-signature">
+              <SignaturePad
+                ref={padRef}
+                initialDataUrl={signatureDraft ?? existingSignOff?.signatureDataUrl ?? null}
+                onHasSignatureChange={setHasSignature}
+              />
+              {!hasSignature && <span className="pwa-signature-hint">Sign here</span>}
+            </div>
+            <div className="pwa-signature-footer">
+              <span className="pwa-row">
+                <span className="pwa-note">{hasSignature ? "Signature added" : "No signature yet"}</span>
+                {existingSignOff?.pendingSync && (
+                  <WebStatusBadge tone="warning" size="touch">
+                    Sync pending
+                  </WebStatusBadge>
+                )}
+              </span>
+              <WebButton
+                size="touch"
+                onClick={() => {
+                  padRef.current?.clear();
+                  onSignatureDraftChange(null);
+                }}
+              >
+                Clear
+              </WebButton>
+            </div>
+          </PwaCardPad>
+        </WebCard>
 
-      {error && <Callout icon={AlertTriangle}>{error}</Callout>}
+        {error && <Callout icon={AlertTriangle}>{error}</Callout>}
+      </PwaStack>
 
-      <Button variant="primary" fullWidth disabled={submitting} onClick={() => void handlePrimaryAction()} style={{ minHeight: 44 }}>
-        {submitting ? "Finishing…" : "Finish workitem"}
-      </Button>
-    </Stack>
+      {/* The one primary action of the screen, in the fixed action bar above
+          the bottom bar. */}
+      <PwaActionBar>
+        <WebButton variant="primary" size="touch" block disabled={submitting} onClick={() => void handlePrimaryAction()}>
+          {submitting ? "Finishing…" : "Finish workitem"}
+        </WebButton>
+      </PwaActionBar>
+    </>
   );
 }

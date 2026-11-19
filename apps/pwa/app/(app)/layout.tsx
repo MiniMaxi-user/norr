@@ -13,13 +13,12 @@ import { Topbar } from "./_nav/topbar";
  * screen, not just Today, where the avatar used to live). Both mounted once
  * here so every route under this layout shares the exact same instances
  * (IMPLEMENTATION.md §3 — "don't reinvent the pattern per module"/per page).
- * `.ui-pwa-shell` (bug report, 2026-09-13) is a whole-viewport flex column —
- * `Topbar` and `BottomBar` each claim their own row, top and bottom,
- * `.ui-pwa-page-content` gets everything in between and scrolls within that
- * bound, so a page's content always stays between the two bars instead of
- * running behind either one. `.ui-pwa-page-content` is also this app's one
- * shared page-padding class (see styles.css) since there's no sidebar
- * chrome to already provide side margins.
+ * `.pwa-shell` (bug report, 2026-09-13) is a whole-viewport flex column —
+ * `Topbar` (the 56px app bar) and `BottomBar` each claim their own row, top
+ * and bottom, `.pwa-scroll` gets everything in between and scrolls within
+ * that bound, so a page's content always stays between the two bars instead
+ * of running behind either one. Each screen renders its own navy page header
+ * + `PwaBody` inside `.pwa-scroll` (DS 08 "Opbouw van elk scherm").
  *
  * `requireEngineerSession()`'s return value (previously discarded) now
  * feeds `Topbar`'s avatar/profile-sheet — the same `fullName`/`email`/
@@ -30,14 +29,14 @@ import { Topbar } from "./_nav/topbar";
 export default async function AppRouteLayout({ children }: { children: ReactNode }) {
   const session = await requireEngineerSession();
   return (
-    <div className="ui-pwa-shell">
+    <div className="pwa-shell">
       <Topbar
         fullName={session.fullName}
         email={session.email}
         avatarUrl={session.avatarUrl}
         currentUserId={session.userId}
       />
-      <div className="ui-pwa-page-content">{children}</div>
+      <div className="pwa-scroll">{children}</div>
       <BottomBar />
     </div>
   );

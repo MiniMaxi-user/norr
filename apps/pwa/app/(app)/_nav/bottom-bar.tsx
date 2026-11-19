@@ -1,40 +1,32 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Text } from "@yourorg/ui";
 import { Boxes, Camera, CalendarDays, ClipboardList, Clock, Home, Signature, type Icon } from "@yourorg/ui/icons";
-
-/** `@yourorg/ui` doesn't publish its internal `cx` helper at a subpath (only
- * `.`/`./icons`/`./styles.css` are exported, see its `package.json`) — this
- * tiny inline join is the same one-liner every call site outside the
- * package itself already falls back to. */
-function cx(...classes: (string | false | null | undefined)[]): string {
-  return classes.filter(Boolean).join(" ");
-}
 
 /**
  * The field PWA's whole primary nav (issue #170, IMPLEMENTATION.md §3;
- * timeline restyle per `docs/designinstructieskanweg/menu.png`/`menu1.png`)
- * — mounted once in `app/(app)/layout.tsx`, not per-page, so both `/today`
- * and `/work-orders/[id]` share one instance.
+ * restyled to the "EAM Console" PwaNav, issue #222) — mounted once in
+ * `app/(app)/layout.tsx`, not per-page, so both `/today` and
+ * `/work-orders/[id]` share one instance.
  *
- * Zone A ("Today") is always rendered, everywhere under `(app)` — a fixed,
- * always-present "default destination" tile, styled as a permanently-lit
- * gold anchor (per the reference designs Today is gold in every shot,
- * independent of which section tab is actually open) rather than only
- * lighting up when `pathname === "/today"`. Zone B (the work-order section
- * tabs, rendered as a swipeable step timeline) only renders AT ALL while a
- * `/work-orders/[id]` route is active — per §3, "Rendert uitsluitend als er
- * een werkorder open is [...] Geen disabled tabs": on `/today` this slot
- * shows one line of plain help text instead of grayed-out targets, since
- * there is nothing to navigate to yet.
+ * Zone A ("Today") is always rendered, everywhere under `(app)` — fixed on
+ * the left, never scrolls. Not active: a white circle with a navy border and
+ * navy label; active (only on `/today`): gold. Zone B (the work-order section
+ * steps) only renders AT ALL while a `/work-orders/[id]` route is active — per
+ * §3, "Rendert uitsluitend als er een werkorder open is [...] Geen disabled
+ * tabs": on `/today` this slot shows one line of plain help text instead of
+ * grayed-out targets, since there is nothing to navigate to yet. The steps
+ * scroll horizontally (70px each); a white fade shows on the side where more
+ * steps are, and the active step scrolls into view.
  *
  * Zone B's step state is a pure function of `activeIndex` (the open
  * section's position in `WORK_ORDER_SECTIONS`), not persisted history: steps
- * before the active one render green ("visited"), the active one gold with
- * a glow, steps after it dim/outline. Selecting an earlier step therefore
- * un-greens everything past it automatically — no extra state to reset.
+ * before the active one are "done" (green), the active one gold, steps after
+ * it plain grey. Selecting an earlier step therefore un-greens everything
+ * past it automatically — no extra state to reset. The 2px connecting line is
+ * green up to the active step and `border-default` after it (no gradient).
  *
  * `usePathname()`/`useSearchParams()` (not props) is deliberate — this is a
  * shared layout-level nav, so it derives "which work order, which section"
@@ -50,30 +42,6 @@ const WORK_ORDER_SECTIONS: { value: string; label: string; icon: Icon }[] = [
   { value: "sign", label: "Sign", icon: Signature },
 ];
 
-/**
- * Builds the single gradient line threading through every step circle:
- * solid green up to the step before the active one, a green→gold fade
- * across the segment leading INTO the active step (menu.png's line turning
- * gold as it nears "SIGN"), and dim/border color for whatever's left after
- * the active step. Segments are hard-stopped pairs (not one continuous
- * gradient) so only that one approach segment actually fades.
- */
-function buildTrackGradient(activeIndex: number, count: number): string {
-  if (count < 2) return "var(--ui-border)";
-  const DONE = "var(--ui-success)";
-  const ACTIVE = "var(--ui-accent)";
-  const UPCOMING = "var(--ui-border)";
-  const stops: string[] = [];
-  for (let i = 0; i < count - 1; i++) {
-    const startPct = (i / (count - 1)) * 100;
-    const endPct = ((i + 1) / (count - 1)) * 100;
-    const [startColor, endColor] =
-      i + 1 < activeIndex ? [DONE, DONE] : i + 1 === activeIndex ? [DONE, ACTIVE] : [UPCOMING, UPCOMING];
-    stops.push(`${startColor} ${startPct}%`, `${endColor} ${endPct}%`);
-  }
-  return `linear-gradient(to right, ${stops.join(", ")})`;
-}
-
 export function BottomBar() {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
@@ -83,29 +51,66 @@ export function BottomBar() {
   const activeSection = searchParams.get("section") ?? "home";
   const isToday = pathname === "/today";
   const activeIndex = WORK_ORDER_SECTIONS.findIndex((section) => section.value === activeSection);
+  const doneCount = Math.max(activeIndex, 0);
+
+  // Presentation only: which side of the step strip has more steps to scroll
+  // to (drives the white fades), and bringing the active step into view.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ start: false, end: false });
+
+  const updateFade = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setFade({
+      start: el.scrollLeft > 1,
+      end: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const active = el.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active) {
+      const left = active.offsetLeft - (el.clientWidth - active.offsetWidth) / 2;
+      el.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+    }
+    updateFade();
+  }, [workOrderId, activeIndex, updateFade]);
 
   return (
-    <nav className="ui-bottom-bar" aria-label="Primary">
-      <Link href="/today" className="ui-bottom-bar-today" aria-current={isToday ? "page" : undefined}>
-        <span className="ui-bottom-bar-circle ui-bottom-bar-circle-active">
-          <CalendarDays aria-hidden width={20} height={20} />
-        </span>
-        <span className="ui-bottom-bar-label ui-bottom-bar-label-active">Today</span>
-      </Link>
+    <nav className="pwa-nav" aria-label="Primary">
+      <div className="pwa-nav-today-slot">
+        <Link
+          href="/today"
+          className="pwa-nav-item"
+          data-today="true"
+          aria-current={isToday ? "page" : undefined}
+        >
+          <span className="pwa-nav-circle">
+            <CalendarDays aria-hidden />
+          </span>
+          <span className="pwa-nav-label">Today</span>
+        </Link>
+      </div>
+      <span className="pwa-nav-divider" aria-hidden />
 
       {workOrderId ? (
-        <>
-          <span className="ui-bottom-bar-dash" aria-hidden />
-          <div className="ui-bottom-bar-context" role="tablist" aria-label="Work order sections">
-            <div className="ui-bottom-bar-track">
-              <span
-                className="ui-bottom-bar-track-line"
-                aria-hidden
-                style={{
-                  background: buildTrackGradient(activeIndex, WORK_ORDER_SECTIONS.length),
-                  width: `calc((${WORK_ORDER_SECTIONS.length - 1}) * var(--ui-bottom-bar-track-item-w))`,
-                }}
-              />
+        <div className="pwa-nav-steps">
+          <div
+            ref={scrollRef}
+            className="pwa-nav-scroll"
+            role="tablist"
+            aria-label="Work order sections"
+            onScroll={updateFade}
+          >
+            <div
+              className="pwa-nav-track"
+              // Number of done steps drives the green part of the connecting line.
+              style={{ ["--pwa-nav-done" as string]: doneCount }}
+            >
+              <span className="pwa-nav-line" aria-hidden />
+              <span className="pwa-nav-line-done" aria-hidden />
               {WORK_ORDER_SECTIONS.map((section, index) => {
                 const Icon = section.icon;
                 const active = index === activeIndex;
@@ -117,36 +122,24 @@ export function BottomBar() {
                     scroll={false}
                     role="tab"
                     aria-selected={active}
-                    className="ui-bottom-bar-track-item"
+                    aria-current={active ? "page" : undefined}
+                    className="pwa-nav-item"
+                    data-state={active ? "active" : done ? "done" : "todo"}
                   >
-                    <span
-                      className={cx(
-                        "ui-bottom-bar-circle",
-                        active && "ui-bottom-bar-circle-active",
-                        done && "ui-bottom-bar-circle-done",
-                      )}
-                    >
-                      <Icon aria-hidden width={20} height={20} />
+                    <span className="pwa-nav-circle">
+                      <Icon aria-hidden />
                     </span>
-                    <span
-                      className={cx(
-                        "ui-bottom-bar-label",
-                        active && "ui-bottom-bar-label-active",
-                        done && "ui-bottom-bar-label-done",
-                      )}
-                    >
-                      {section.label}
-                    </span>
+                    <span className="pwa-nav-label">{section.label}</span>
                   </Link>
                 );
               })}
             </div>
           </div>
-        </>
-      ) : (
-        <div className="ui-bottom-bar-hint">
-          <Text tone="muted">Open a work order for hours, articles, photos &amp; sign off</Text>
+          <span className="pwa-nav-fade" data-side="start" data-visible={fade.start} aria-hidden />
+          <span className="pwa-nav-fade" data-side="end" data-visible={fade.end} aria-hidden />
         </div>
+      ) : (
+        <p className="pwa-nav-hint">Open a work order for hours, articles, photos &amp; sign off</p>
       )}
     </nav>
   );

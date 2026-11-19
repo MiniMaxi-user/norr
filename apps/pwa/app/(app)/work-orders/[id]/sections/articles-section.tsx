@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, EmptyState, IconButton, Inline, Stack, Text } from "@yourorg/ui";
+import { EmptyState } from "@yourorg/ui";
+import { PwaStack, WebButton, WebCard } from "@yourorg/ui/web";
 import { Boxes, Minus, Plus } from "@yourorg/ui/icons";
 import { removeLocalArticle, updateLocalArticleQuantity, type LocalArticle } from "@/lib/offline/db";
 import type { WorkOrderArticleEntry } from "@/lib/work-orders/types";
@@ -50,12 +51,12 @@ export function ArticlesSection({
   const isEmpty = serverArticles.length === 0 && localArticles.length === 0;
 
   return (
-    <Stack gap="md">
+    <PwaStack>
       {isEmpty ? (
         <EmptyState icon={<Boxes />} heading="No articles added yet." />
       ) : (
-        <Card>
-          <Stack gap="sm">
+        <WebCard size="touch" title="Articles">
+          <div className="pwa-list">
             {serverArticles.map((article) => (
               <SwipeableRow key={article.id}>
                 <ArticleRow
@@ -75,16 +76,15 @@ export function ArticlesSection({
                 />
               </SwipeableRow>
             ))}
-          </Stack>
-        </Card>
+          </div>
+        </WebCard>
       )}
 
-      <Button variant="outline" fullWidth onClick={() => setCatalogOpen(true)} style={{ minHeight: 44 }}>
-        <Inline gap="xs" align="center" justify="center">
-          <Plus aria-hidden width={16} height={16} />
-          Add article
-        </Inline>
-      </Button>
+      {/* The add button sits BELOW the list, full width, secondary. */}
+      <WebButton size="touch" block onClick={() => setCatalogOpen(true)}>
+        <Plus aria-hidden />
+        Add article
+      </WebButton>
 
       <ArticleCatalogSheet
         open={catalogOpen}
@@ -94,23 +94,9 @@ export function ArticlesSection({
         localArticles={localArticles}
         onAdded={onLocalArticlesChange}
       />
-    </Stack>
+    </PwaStack>
   );
 }
-
-const quantityBadgeStyle = {
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  borderRadius: "var(--ui-radius-md)",
-  background: "var(--ui-surface-hover)",
-  border: "1px solid var(--ui-border)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 650,
-  fontVariantNumeric: "tabular-nums",
-} as const;
 
 function ArticleRow({
   quantity,
@@ -123,7 +109,7 @@ function ArticleRow({
   articleNumber: string;
   /** Only passed for local (not-yet-synced) rows — see this file's own doc
    * comment on why server-synced rows stay read-only. Tapping the plain
-   * quantity badge reveals a "+"-before/"-"-after stepper in its place. */
+   * quantity box reveals a "+"-before/"-"-after stepper in its place. */
   onQuantityChange?: (delta: number) => void;
 }) {
   const [stepperOpen, setStepperOpen] = useState(false);
@@ -143,49 +129,45 @@ function ArticleRow({
   }, [stepperOpen]);
 
   return (
-    <Inline gap="sm" align="center">
+    <div className="pwa-list-row">
       {!onQuantityChange ? (
-        <span aria-hidden style={quantityBadgeStyle}>
-          {quantity}
+        <span aria-hidden className="pwa-qty">
+          {quantity}×
         </span>
       ) : stepperOpen ? (
-        <div ref={stepperRef} style={{ display: "contents" }}>
-          <Inline gap="xs" align="center">
-            <IconButton
-              variant="ghost"
-              aria-label="Increase quantity"
-              onClick={() => onQuantityChange(1)}
-              style={{ width: 44, height: 44 }}
-            >
-              <Plus aria-hidden width={16} height={16} />
-            </IconButton>
-            <Text style={{ minWidth: "1.5em", textAlign: "center", fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>
-              {quantity}
-            </Text>
-            <IconButton
-              variant="ghost"
-              aria-label="Decrease quantity"
-              onClick={() => onQuantityChange(-1)}
-              style={{ width: 44, height: 44 }}
-            >
-              <Minus aria-hidden width={16} height={16} />
-            </IconButton>
-          </Inline>
+        <div ref={stepperRef} className="pwa-stepper">
+          <button
+            type="button"
+            className="pwa-icon-btn"
+            aria-label="Increase quantity"
+            onClick={() => onQuantityChange(1)}
+          >
+            <Plus aria-hidden width={16} height={16} />
+          </button>
+          <span className="pwa-stepper-value">{quantity}</span>
+          <button
+            type="button"
+            className="pwa-icon-btn"
+            aria-label="Decrease quantity"
+            onClick={() => onQuantityChange(-1)}
+          >
+            <Minus aria-hidden width={16} height={16} />
+          </button>
         </div>
       ) : (
         <button
           type="button"
+          className="pwa-qty"
           onClick={() => setStepperOpen(true)}
           aria-label={`Quantity ${quantity}, tap to adjust`}
-          style={{ ...quantityBadgeStyle, color: "inherit", cursor: "pointer" }}
         >
-          {quantity}
+          {quantity}×
         </button>
       )}
-      <Stack gap="xs">
-        <Text>{description}</Text>
-        <Text tone="muted">{articleNumber}</Text>
-      </Stack>
-    </Inline>
+      <span className="pwa-list-main">
+        <span className="pwa-list-title">{description}</span>
+        <span className="pwa-list-sub">{articleNumber}</span>
+      </span>
+    </div>
   );
 }

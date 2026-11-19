@@ -3,7 +3,7 @@
   "short_name": "Norr",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#14252c",
+  "theme_color": "#1f3540",
   "background_color": "#1f3540",
   "icons": [
     {

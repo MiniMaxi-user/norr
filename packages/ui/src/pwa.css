@@ -1,0 +1,1365 @@
+/* @yourorg/ui - FIELD-ENGINEER PWA layer (issue #222, DS "08 PWA").
+
+   Imported ONLY by the PWA (`apps/pwa/app/layout.tsx`, after `styles.css` and
+   `web.css`). The tokens and the shared components (`.web-btn`, `.web-badge`,
+   `.web-status-badge`, `.web-type-badge`, `.web-card`) come from `web.css` -
+   this file only adds what is different on a phone: the app shell, the app
+   bar, the page header, the PwaNav bottom bar, screen/content patterns and
+   the few touch-only widgets (swipe row, wheel picker, signature pad).
+
+   Rules:
+   - Every class is `.pwa-*` (or a token remap scoped to `html.pwa-html`);
+     nothing here may change how the web app renders (the web app never loads
+     this file).
+   - Values are tokens (`var(--...)`); the only raw numbers are the DS's own
+     mobile measurements (44px tap target, 15px base text, 16px screen
+     padding, 14px card gap - DS 08 section 1).
+   - PWA is light-only (see `apps/pwa/app/layout.tsx`). Gold is used only on
+     dark surfaces and for Save in edit mode; the primary button is navy. */
+
+/* ---------------------------------------------------------------------- *
+ * Document
+ * ---------------------------------------------------------------------- */
+html.pwa-html {
+  /* The PWA keeps the larger root size the remaining `.ui-*` components
+     (inputs, dialogs, skeletons) were tuned for; everything new in this file
+     is written in px against the DS's mobile measurements. */
+  font-size: 112.5%;
+  /* Native-app feel: no double-tap/pinch zoom and no elastic page bounce (the
+     shell is `position: fixed`, only `.pwa-scroll` scrolls). */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  color-scheme: light;
+}
+html.pwa-html body {
+  margin: 0;
+  overscroll-behavior: none;
+  background: var(--surface-page);
+  color: var(--text-ink);
+  font: 400 15px/1.45 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+html.pwa-html a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The `.ui-*` components the PWA still renders (Input, Textarea, Dialog,
+   Skeleton, Callout, ...) read their colours from the older `--ui-*` tokens;
+   re-point the light ones at the design-system tokens so the whole app is one
+   palette. Scoped to the PWA's own <html>. */
+html.pwa-html {
+  --ui-bg: var(--surface-card);
+  --ui-page-bg: var(--surface-page);
+  --ui-bg-inset: var(--surface-subtle);
+  --ui-surface: var(--surface-subtle);
+  --ui-surface-hover: var(--surface-sunken);
+  --ui-surface-2: var(--surface-sunken);
+  --ui-border: var(--border-default);
+  --ui-border-strong: var(--border-input);
+  --ui-fg: var(--text-ink);
+  --ui-fg-secondary: var(--text-secondary);
+  --ui-muted: var(--text-muted);
+  --ui-muted-subtle: var(--text-muted);
+  --ui-focus-ring: rgba(199, 154, 62, 0.45);
+  --ui-danger: var(--danger-fill);
+  --ui-danger-strong: var(--danger-text);
+  --ui-danger-tint: var(--danger-bg);
+  --ui-success: var(--success-fill);
+  --ui-success-strong: var(--success-text);
+  --ui-success-tint: var(--success-bg);
+  --ui-warning-strong: var(--warning-text);
+  --ui-warning-tint: var(--warning-bg);
+  --ui-overlay-scrim: rgba(31, 53, 64, 0.45);
+}
+
+/* Visible gold focus ring everywhere (keyboard / switch access). */
+html.pwa-html :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Shell: app bar / scroll area / (action bar) / bottom bar
+ * ---------------------------------------------------------------------- */
+.pwa-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-page);
+}
+
+/* App bar: 56px, `header-bg`, "Norr" in serif left, avatar right. Nothing
+   else (DS 08 section 2). The safe-area inset is the device's own dark
+   status area, painted in the same navy. */
+.pwa-appbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: calc(56px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--space-4) 0 20px;
+  background: var(--header-bg);
+  color: var(--text-on-dark);
+}
+.pwa-appbar-title {
+  margin: 0;
+  font: 400 24px/1 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--text-on-dark);
+}
+.pwa-avatar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--on-dark-avatar);
+  color: var(--text-on-dark);
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+/* 44px tap target around the 36px avatar. */
+.pwa-avatar::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+.pwa-avatar-photo {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  display: block;
+}
+
+/* The one scrolling region. */
+.pwa-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  background: var(--surface-page);
+  /* An unbroken long string (URL, serial number, e-mail) must never widen the
+     content past the viewport. */
+  overflow-wrap: anywhere;
+}
+.pwa-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Page header: navy, continues seamlessly under the app bar. */
+.pwa-header {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 4px 20px 20px;
+  background: var(--header-bg);
+  color: var(--text-on-dark);
+}
+.pwa-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pwa-header-overline {
+  margin: 0;
+  font: 400 11px/16px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-on-dark-muted);
+}
+.pwa-header-title {
+  margin: 0;
+  font: 400 32px/1.1 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--text-on-dark);
+}
+.pwa-header-time {
+  font: 400 13px/18px var(--font-mono);
+  color: var(--text-on-dark-muted);
+}
+.pwa-header-meta {
+  margin: 0;
+  font: 400 13.5px/19px var(--font-sans);
+  color: var(--text-on-dark-muted);
+}
+.pwa-header a {
+  color: var(--on-dark-link);
+  font-size: 14px;
+}
+.pwa-header a:active {
+  color: var(--text-on-dark);
+}
+/* Badges on the dark header: same rules as web (`.web-page-header .web-badge`):
+   what matters is filled and bright, neutral facts sit on a dark pill. */
+.pwa-header .web-badge {
+  border: 0;
+  font-weight: 600;
+}
+.pwa-header .web-badge[data-variant="neutral"],
+.pwa-header .web-badge[data-variant="mono"] {
+  background: var(--header-badge-neutral);
+  color: var(--on-dark-text);
+  font-weight: 400;
+}
+.pwa-header .web-badge[data-variant="info"] {
+  background: var(--info-text);
+  color: var(--text-on-dark);
+}
+.pwa-header .web-badge[data-variant="success"] {
+  background: var(--success-text);
+  color: var(--text-on-dark);
+}
+.pwa-header .web-badge[data-variant="warning"],
+.pwa-header .web-badge[data-variant="attention"] {
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+}
+.pwa-header .web-badge[data-variant="danger"] {
+  background: var(--danger-fill);
+  color: var(--text-on-dark);
+}
+
+/* Content on `surface-page`: 16px screen padding, 14px between cards. */
+.pwa-body {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) 0;
+}
+.pwa-body > :last-child:not(.pwa-actionbar) {
+  margin-bottom: 24px;
+}
+.pwa-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pwa-stack[data-gap="sm"] {
+  gap: 10px;
+}
+.pwa-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pwa-row[data-justify="between"] {
+  justify-content: space-between;
+}
+.pwa-row[data-wrap="true"] {
+  flex-wrap: wrap;
+}
+
+/* Section label (mono overline): "Now", "Later today", "Hours". */
+.pwa-overline {
+  margin: 0;
+  font: 400 11px/16px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pwa-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Calm one-line notes. */
+.pwa-note {
+  margin: 0;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-note[data-align="center"] {
+  text-align: center;
+}
+.pwa-note[data-tone="danger"] {
+  color: var(--danger-text);
+}
+/* Sync line: one centred muted line under the content. */
+.pwa-sync {
+  margin: 0;
+  padding: 4px 0;
+  text-align: center;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-muted);
+}
+
+/* Fixed action bar above the bottom bar: the one primary action of a screen.
+   Sticks to the bottom of the scroll area (a sibling of the content, never
+   over it). */
+.pwa-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: auto calc(-1 * var(--space-4)) 0;
+  padding: 12px var(--space-4);
+  background: var(--surface-card);
+  border-top: 1px solid var(--border-default);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Cards: bodies
+ * ---------------------------------------------------------------------- */
+.pwa-card-pad {
+  padding: var(--space-4);
+}
+.pwa-card-text {
+  margin: 0;
+  padding: var(--space-4);
+  font: 400 15px/22px var(--font-sans);
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+.pwa-card-text[data-empty="true"] {
+  color: var(--text-muted);
+}
+
+/* Key/value card: 48px rows, muted label left, value right. IDs mono,
+   references as links. */
+.pwa-kv {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pwa-kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 48px;
+  padding: 8px var(--space-4);
+  border-bottom: 1px solid var(--border-row);
+  font: 400 15px/20px var(--font-sans);
+}
+.pwa-kv-row:last-child {
+  border-bottom: 0;
+}
+.pwa-kv-label {
+  flex: none;
+  color: var(--text-muted);
+}
+.pwa-kv-value {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  color: var(--text-ink);
+  font-variant-numeric: tabular-nums;
+}
+.pwa-kv-value[data-mono="true"] {
+  font: 400 14px/20px var(--font-mono);
+}
+.pwa-kv-value a {
+  color: var(--text-link);
+}
+
+/* Action buttons in a card (Navigate / Call contact): side by side, equal
+   width. Unavailable = disabled + one explanatory line below. */
+.pwa-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: var(--space-4);
+}
+.pwa-actions-hint {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-card-address {
+  margin: 0;
+  padding: var(--space-4) var(--space-4) 0;
+  font: 400 15px/22px var(--font-sans);
+  color: var(--text-body);
+}
+
+/* Contract strip on Home. */
+.pwa-contract {
+  padding: var(--space-4);
+}
+.pwa-contract-number {
+  font: 600 15px/20px var(--font-mono);
+  color: var(--text-link);
+}
+
+/* List card (Articles / Hours rows). */
+.pwa-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pwa-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px var(--space-4);
+  background: var(--surface-card);
+}
+.pwa-list > * {
+  border-bottom: 1px solid var(--border-row);
+}
+.pwa-list > *:last-child {
+  border-bottom: 0;
+}
+.pwa-list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pwa-list-title {
+  font: 400 15px/20px var(--font-sans);
+  color: var(--text-ink);
+}
+.pwa-list-sub {
+  font: 400 12.5px/17px var(--font-mono);
+  color: var(--text-muted);
+}
+.pwa-list-end {
+  flex: none;
+  font: 400 15px/20px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+}
+.pwa-list-empty {
+  margin: 0;
+  padding: var(--space-4);
+  font: 400 15px/22px var(--font-sans);
+  color: var(--text-muted);
+}
+/* Quantity in a grey box: "2x", mono 600. A button when it opens the
+   stepper. */
+.pwa-qty {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: var(--text-ink);
+  font: 600 14px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+button.pwa-qty {
+  cursor: pointer;
+}
+button.pwa-qty:active {
+  background: var(--border-default);
+}
+.pwa-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pwa-stepper-value {
+  min-width: 28px;
+  text-align: center;
+  font: 600 15px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.pwa-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  color: var(--text-ink);
+  cursor: pointer;
+}
+.pwa-icon-btn:active:not(:disabled) {
+  background: var(--surface-sunken);
+}
+.pwa-icon-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.pwa-icon-btn[data-bare="true"] {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Today: work cards
+ * ---------------------------------------------------------------------- */
+.pwa-work-card {
+  position: relative;
+  display: block;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+a.pwa-work-card:active {
+  background: var(--surface-subtle);
+}
+.pwa-work-card[aria-disabled="true"] {
+  opacity: 0.6;
+}
+.pwa-work-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.pwa-work-card-time {
+  font: 600 14px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+}
+.pwa-work-card-chevron {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+}
+.pwa-work-card-client {
+  margin: 4px 0 0;
+  font: 600 19px/24px var(--font-sans);
+  color: var(--text-ink);
+}
+.pwa-work-card-ref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 4px 0 0;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-work-card-number {
+  font: 600 13.5px/20px var(--font-mono);
+  color: var(--text-link);
+}
+.pwa-work-card-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-work-card-address svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+.pwa-work-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 12px;
+}
+/* Compact list card ("Later today"): time left, details middle. */
+.pwa-work-card[data-compact="true"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px var(--space-4);
+}
+.pwa-work-card[data-compact="true"] .pwa-work-card-time {
+  flex: none;
+  width: 48px;
+  padding-top: 1px;
+}
+.pwa-work-card-main {
+  flex: 1;
+  min-width: 0;
+}
+.pwa-work-card[data-compact="true"] .pwa-work-card-client {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+}
+.pwa-work-card[data-compact="true"] .pwa-work-card-ref {
+  margin-top: 2px;
+  font-size: 13.5px;
+}
+.pwa-work-card[data-compact="true"] .pwa-work-card-foot {
+  margin-top: 8px;
+}
+.pwa-work-card[data-compact="true"] .pwa-work-card-chevron {
+  align-self: center;
+}
+
+/* Running clock strip on the "Now" card: navy surface, gold action (gold is
+   for dark surfaces). */
+.pwa-running {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--brand-navy);
+  color: var(--text-on-dark);
+}
+.pwa-running-label {
+  display: block;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-on-dark-muted);
+}
+.pwa-running-digits {
+  display: block;
+  font: 600 28px/1.1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-on-dark);
+}
+.pwa-running-open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--brand-gold-border);
+  border-radius: var(--radius-md);
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+  font: 600 14px/1 var(--font-sans);
+}
+
+/* Pull-to-refresh indicator. */
+.pwa-ptr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Timer card
+ * ---------------------------------------------------------------------- */
+.pwa-timer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+.pwa-timer-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pwa-timer-digits {
+  font: 600 32px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+}
+.pwa-timer-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-4);
+  font: 400 13.5px/18px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.pwa-timer-toggles {
+  flex: none;
+  display: flex;
+  gap: var(--space-4);
+}
+.pwa-timer-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.pwa-timer-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--brand-navy);
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  color: var(--brand-navy);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pwa-timer-toggle:active {
+  background: var(--surface-sunken);
+}
+.pwa-timer-toggle[data-active="true"] {
+  border-color: var(--success-fill);
+  background: var(--success-fill);
+  color: var(--text-on-dark);
+}
+.pwa-timer-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 10.5px/14px var(--font-sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pwa-timer-toggle-label[data-active="true"] {
+  color: var(--success-text);
+}
+.pwa-timer-toggle-label[data-active="true"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--success-fill);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Swipe row (Hours / Articles)
+ * ---------------------------------------------------------------------- */
+.pwa-swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+.pwa-swipe-content {
+  position: relative;
+  background: var(--surface-card);
+  transition: transform 0.2s ease-out;
+  will-change: transform;
+}
+.pwa-swipe-content[data-dragging="true"] {
+  transition: none;
+}
+.pwa-swipe-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+}
+.pwa-swipe-actions[data-side="left"] {
+  left: 0;
+}
+.pwa-swipe-actions[data-side="right"] {
+  right: 0;
+}
+.pwa-swipe-action {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-on-dark);
+  font: 600 12px/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pwa-swipe-action[data-kind="edit"] {
+  background: var(--success-fill);
+}
+.pwa-swipe-action[data-kind="delete"] {
+  background: var(--danger-fill);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Hour/minute wheel picker (Edit hours sheet)
+ * ---------------------------------------------------------------------- */
+.pwa-wheel {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+.pwa-wheel-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+.pwa-wheel-column {
+  position: relative;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  width: 72px;
+}
+.pwa-wheel-column::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.pwa-wheel-item {
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 18px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.pwa-wheel-item[aria-selected="true"] {
+  color: var(--text-ink);
+  font-size: 22px;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Photos / signature
+ * ---------------------------------------------------------------------- */
+.pwa-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 96px;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-input);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  font: 400 15px/20px var(--font-sans);
+  cursor: pointer;
+}
+.pwa-dropzone:active {
+  background: var(--surface-subtle);
+}
+.pwa-photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pwa-hidden {
+  display: none;
+}
+
+.pwa-signature {
+  position: relative;
+}
+.pwa-signature-pad {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border: 1px dashed var(--border-input);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+.pwa-signature-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font: 400 15px/20px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-signature-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------- *
+ * PwaNav: the bottom bar. `Today` is fixed on the left, the work-order steps
+ * scroll horizontally. Done steps are decided by the existing logic; this is
+ * only how they look.
+ * ---------------------------------------------------------------------- */
+.pwa-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 10px 0 calc(4px + env(safe-area-inset-bottom));
+  background: var(--surface-card);
+  border-top: 1px solid var(--border-default);
+}
+.pwa-nav-today-slot {
+  flex: none;
+  padding: 0 6px 0 8px;
+}
+.pwa-nav-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 0 18px;
+  background: var(--border-default);
+}
+.pwa-nav-item {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 70px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pwa-nav-item[data-today="true"] {
+  width: 76px;
+}
+.pwa-nav-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  border: 1px solid var(--timeline-dot-muted);
+  color: var(--text-muted);
+}
+.pwa-nav-item:active .pwa-nav-circle {
+  background: var(--surface-subtle);
+}
+.pwa-nav-circle svg {
+  width: 20px;
+  height: 20px;
+}
+.pwa-nav-label {
+  font: 400 10.5px/14px var(--font-sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Not active, Today: white circle, navy border, navy label. */
+.pwa-nav-item[data-today="true"] .pwa-nav-circle {
+  border-color: var(--brand-navy);
+  color: var(--brand-navy);
+}
+.pwa-nav-item[data-today="true"] .pwa-nav-label {
+  color: var(--brand-navy);
+  font-weight: 600;
+}
+/* Done: green. */
+.pwa-nav-item[data-state="done"] .pwa-nav-circle {
+  border: 2px solid var(--success-fill);
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+.pwa-nav-item[data-state="done"] .pwa-nav-label {
+  color: var(--success-text);
+}
+/* Active: gold (exactly one). */
+.pwa-nav-item[data-state="active"] .pwa-nav-circle,
+.pwa-nav-item[data-today="true"][aria-current="page"] .pwa-nav-circle {
+  border: 2px solid var(--brand-gold);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.pwa-nav-item[data-state="active"] .pwa-nav-label,
+.pwa-nav-item[data-today="true"][aria-current="page"] .pwa-nav-label {
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
+.pwa-nav-steps {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.pwa-nav-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pwa-nav-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.pwa-nav-track {
+  --pwa-nav-step: 70px;
+  position: relative;
+  display: flex;
+  width: max-content;
+  padding-left: 6px;
+}
+/* 2px line behind the circles: green up to the last done step, the rest
+   `border-default`. No gradient. */
+.pwa-nav-line,
+.pwa-nav-line-done {
+  position: absolute;
+  top: 21px;
+  left: 43px;
+  height: 0;
+  border-top: 2px solid var(--border-default);
+}
+.pwa-nav-line {
+  right: 0;
+}
+.pwa-nav-line-done {
+  width: calc(var(--pwa-nav-done, 0) * var(--pwa-nav-step));
+  border-top-color: var(--success-fill);
+}
+/* White fade on the side where more steps are. */
+.pwa-nav-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.pwa-nav-fade[data-visible="true"] {
+  opacity: 1;
+}
+.pwa-nav-fade[data-side="end"] {
+  right: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), var(--surface-card));
+}
+.pwa-nav-fade[data-side="start"] {
+  left: 0;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0), var(--surface-card));
+}
+.pwa-nav-hint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 14px;
+  font: 400 13px/1.45 var(--font-sans);
+  color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Sheets (Dialog size="sheet"): the remaining `.ui-dialog-sheet` chrome in
+ * the PWA's palette.
+ * ---------------------------------------------------------------------- */
+html.pwa-html .ui-dialog-sheet {
+  border-radius: 12px 12px 0 0;
+  background: var(--surface-card);
+}
+html.pwa-html .ui-dialog-sheet .ui-dialog-header {
+  padding: 12px var(--space-4);
+  background: var(--card-header-bg);
+  border-bottom: 1px solid var(--card-header-border);
+  font: 600 15px/20px var(--font-sans);
+}
+html.pwa-html .ui-dialog-sheet .ui-dialog-body {
+  padding: var(--space-4);
+}
+html.pwa-html .ui-dialog-sheet .ui-dialog-footer {
+  padding: 12px var(--space-4);
+  background: var(--surface-card);
+}
+.pwa-sheet-title {
+  margin: 0;
+  font: 600 15px/20px var(--font-sans);
+  color: var(--text-ink);
+}
+.pwa-sheet-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pwa-sheet-avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--brand-navy);
+  color: var(--text-on-dark);
+  font: 600 18px/1 var(--font-sans);
+}
+.pwa-sheet-name {
+  margin: 0;
+  font: 400 21px/26px var(--font-serif);
+  color: var(--text-ink);
+}
+.pwa-sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 48px;
+  padding: 8px var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--border-row);
+  background: var(--surface-card);
+  color: var(--text-ink);
+  font: 400 15px/20px var(--font-sans);
+  text-align: left;
+}
+.pwa-sheet-row:last-child {
+  border-bottom: 0;
+}
+button.pwa-sheet-row {
+  cursor: pointer;
+}
+button.pwa-sheet-row:active {
+  background: var(--surface-subtle);
+}
+.pwa-sheet-row-label {
+  color: var(--text-muted);
+}
+.pwa-sheet-row-value {
+  font-weight: 600;
+}
+.pwa-sheet-row-value[data-tone="success"] {
+  color: var(--success-text);
+}
+.pwa-sheet-row-value[data-tone="danger"] {
+  color: var(--danger-text);
+}
+.pwa-sheet-row-value[data-muted="true"] {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.pwa-sheet-chevron {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+/* Selectable row in the catalog / stock sheets. */
+.pwa-pick-list {
+  display: flex;
+  flex-direction: column;
+}
+.pwa-pick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border-row);
+  background: transparent;
+  color: var(--text-ink);
+  text-align: left;
+  font: 400 15px/20px var(--font-sans);
+}
+button.pwa-pick-row {
+  cursor: pointer;
+}
+button.pwa-pick-row:active {
+  background: var(--surface-subtle);
+}
+.pwa-pick-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-4);
+  margin-top: 4px;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-pick-meta strong {
+  color: var(--text-ink);
+  font-weight: 600;
+}
+
+/* Volumes block. */
+.pwa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pwa-field-label {
+  font: 400 13px/18px var(--font-sans);
+  color: var(--text-secondary);
+}
+.pwa-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-row);
+}
+.pwa-counter:last-child {
+  border-bottom: 0;
+}
+.pwa-counter-title {
+  margin: 0;
+  font: 600 15px/20px var(--font-sans);
+  color: var(--text-ink);
+}
+.pwa-counter-title span {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Launch splash + login (navy / light)
+ * ---------------------------------------------------------------------- */
+.pwa-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-navy);
+  pointer-events: none;
+  animation: pwa-splash-out 450ms var(--ui-ease) 1500ms forwards;
+}
+html.pwa-launched .pwa-splash {
+  display: none;
+}
+.pwa-splash .ui-logo {
+  color: var(--text-on-dark);
+}
+.pwa-splash .ui-logo-full-mark {
+  height: 52px;
+}
+.pwa-splash-mark {
+  display: inline-flex;
+  animation: pwa-splash-zoom 1500ms cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+@keyframes pwa-splash-zoom {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes pwa-splash-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pwa-splash-mark {
+    animation: none;
+  }
+  .pwa-splash {
+    animation-delay: 600ms;
+  }
+}
+
+.pwa-login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-page);
+}
+.pwa-login-brand {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: calc(40px + env(safe-area-inset-top)) 20px 36px;
+  background: var(--header-bg);
+  color: var(--text-on-dark);
+}
+.pwa-login-brand .ui-logo {
+  color: var(--text-on-dark);
+}
+.pwa-login-brand .ui-logo-full-mark {
+  height: 48px;
+}
+.pwa-login-main {
+  flex: 1;
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 24px var(--space-4) calc(24px + env(safe-area-inset-bottom));
+}
+.pwa-login-title {
+  margin: 0;
+  font: 400 32px/1.1 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--text-ink);
+}
+.pwa-login-intro {
+  margin: 0;
+  font: 400 15px/22px var(--font-sans);
+  color: var(--text-muted);
+}
+.pwa-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.pwa-login .ui-input {
+  min-height: 48px;
+  /* >= 16px also stops iOS zooming on focus. */
+  font-size: 16px;
+  padding: 0 14px;
+  background: var(--surface-card);
+  border-color: var(--border-input);
+}
+.pwa-login .ui-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Fills the whole width of a flex parent (dialog footer). */
+.pwa-fill {
+  width: 100%;
+}
+
+/* Client name in the work-order header: link colour on dark (the PWA has no
+   client page, so it is styled like the web header's record link but is not
+   an anchor). */
+.pwa-header-link {
+  color: var(--on-dark-link);
+  font: 400 14px/20px var(--font-sans);
+}
+
+.pwa-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/* Section total next to an overline ("Hours  3h 20m"). */
+.pwa-total {
+  font: 600 15px/20px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+}

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Card, Heading, Inline, KeyValueList, Stack, Text } from "@yourorg/ui";
 import { MapPin, Phone } from "@yourorg/ui/icons";
+import { PwaActions, PwaCardText, PwaKeyValue, PwaStack, WebButton, WebCard, type PwaKeyValueRow } from "@yourorg/ui/web";
 import type { WorkOrderDetail } from "@/lib/work-orders/types";
 
 /** `"2019"` from an ISO install date — the Asset row's "bouwjaar"
@@ -17,6 +17,10 @@ function yearOf(iso: string | null): string | null {
  * product feedback, 2026-09-14) — location (Navigate/Call), asset, and the
  * contract block. Description/Solution moved out to their own "WORK" tab
  * (`work-section.tsx`) that now sits right after this one in the bottom bar.
+ *
+ * Presentation (issue #222, DS 08 §4): the Location card holds the address
+ * and the two action buttons side by side, equal width (unavailable = disabled
+ * + one explanatory line below); Asset and Contract are key/value cards.
  */
 export function HomeSection({ workOrder }: { workOrder: WorkOrderDetail }) {
   const { site, asset, contract } = workOrder;
@@ -26,77 +30,63 @@ export function HomeSection({ workOrder }: { workOrder: WorkOrderDetail }) {
   const mapsHref =
     addressParts.length > 0 ? `https://maps.google.com/?q=${encodeURIComponent(addressParts.join(", "))}` : null;
 
+  const assetRows: PwaKeyValueRow[] = asset
+    ? [
+        { label: "Name", value: asset.name },
+        ...(asset.serialNumber ? [{ label: "Serial", value: asset.serialNumber, mono: true }] : []),
+        ...(asset.brand || asset.model
+          ? [{ label: "Brand / model", value: [asset.brand, asset.model].filter(Boolean).join(" ") }]
+          : []),
+        ...(yearOf(asset.installedAt) ? [{ label: "Built", value: yearOf(asset.installedAt) }] : []),
+      ]
+    : [];
+
+  const contractRows: PwaKeyValueRow[] = contract
+    ? [
+        { label: "Number", value: contract.contractNumber, mono: true },
+        { label: "Type", value: contract.type ?? "Contract" },
+        { label: "From", value: new Date(contract.startDate).toLocaleDateString("en-GB") },
+        ...(contract.endDate ? [{ label: "To", value: new Date(contract.endDate).toLocaleDateString("en-GB") }] : []),
+      ]
+    : [];
+
   return (
-    <Stack gap="md">
-      <Card>
-        <Stack gap="sm">
-          <Heading level={3}>Location</Heading>
-          <Text tone="muted">{addressParts.length > 0 ? addressParts.join(", ") : "No address on file."}</Text>
-          <Inline gap="sm" wrap>
-            <Button
-              variant="outline"
-              disabled={!mapsHref}
-              onClick={() => mapsHref && window.open(mapsHref, "_blank", "noopener,noreferrer")}
-              style={{ minHeight: 44 }}
-            >
-              <Inline gap="xs" align="center">
-                <MapPin aria-hidden width={16} height={16} />
-                Navigate
-              </Inline>
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!site?.phone}
-              onClick={() => site?.phone && (window.location.href = `tel:${site.phone}`)}
-              style={{ minHeight: 44 }}
-            >
-              <Inline gap="xs" align="center">
-                <Phone aria-hidden width={16} height={16} />
-                Call contact
-              </Inline>
-            </Button>
-          </Inline>
-        </Stack>
-      </Card>
+    <PwaStack>
+      <WebCard size="touch" title="Location">
+        <PwaCardText empty={addressParts.length === 0}>
+          {addressParts.length > 0 ? addressParts.join(", ") : "No address on file."}
+        </PwaCardText>
+        <PwaActions hint={!site?.phone ? "No contact with a phone number" : undefined}>
+          <WebButton
+            size="touch"
+            disabled={!mapsHref}
+            onClick={() => mapsHref && window.open(mapsHref, "_blank", "noopener,noreferrer")}
+          >
+            <MapPin aria-hidden />
+            Navigate
+          </WebButton>
+          <WebButton
+            size="touch"
+            disabled={!site?.phone}
+            onClick={() => site?.phone && (window.location.href = `tel:${site.phone}`)}
+          >
+            <Phone aria-hidden />
+            Call contact
+          </WebButton>
+        </PwaActions>
+      </WebCard>
 
       {asset && (
-        <Card>
-          <Stack gap="sm">
-            <Heading level={3}>Asset</Heading>
-            <KeyValueList
-              items={[
-                { label: "Name", value: <Text>{asset.name}</Text> },
-                ...(asset.serialNumber ? [{ key: "serial", label: "Serial", value: <Text>{asset.serialNumber}</Text> }] : []),
-                ...(asset.brand || asset.model
-                  ? [
-                      {
-                        key: "make",
-                        label: "Brand / model",
-                        value: <Text>{[asset.brand, asset.model].filter(Boolean).join(" ")}</Text>,
-                      },
-                    ]
-                  : []),
-                ...(yearOf(asset.installedAt)
-                  ? [{ key: "year", label: "Built", value: <Text>{yearOf(asset.installedAt)}</Text> }]
-                  : []),
-              ]}
-            />
-          </Stack>
-        </Card>
+        <WebCard size="touch" title="Asset">
+          <PwaKeyValue rows={assetRows} />
+        </WebCard>
       )}
 
       {contract && (
-        <Card tone="accent">
-          <Stack gap="xs">
-            <Text style={{ fontSize: "11px", letterSpacing: "0.13em", textTransform: "uppercase" }}>Contract</Text>
-            <Heading level={3}>{contract.contractNumber}</Heading>
-            <Text>
-              {contract.type ?? "Contract"} · from {new Date(contract.startDate).toLocaleDateString("en-GB")}
-              {contract.endDate ? ` to ${new Date(contract.endDate).toLocaleDateString("en-GB")}` : ""}
-            </Text>
-          </Stack>
-        </Card>
+        <WebCard size="touch" title="Contract">
+          <PwaKeyValue rows={contractRows} />
+        </WebCard>
       )}
-    </Stack>
+    </PwaStack>
   );
 }

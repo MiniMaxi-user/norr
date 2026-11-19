@@ -132,7 +132,7 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(fu
   return (
     <canvas
       ref={canvasRef}
-      className="ui-signature-pad"
+      className="pwa-signature-pad"
       style={{ touchAction: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

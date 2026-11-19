@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Inline, MediaTile, Stack, Text } from "@yourorg/ui";
+import { MediaTile } from "@yourorg/ui";
+import { PwaNote, PwaStack } from "@yourorg/ui/web";
 import { Camera } from "@yourorg/ui/icons";
 import { addLocalPhoto, type LocalPhoto } from "@/lib/offline/db";
 
@@ -52,40 +53,24 @@ export function PhotosSection({
   }
 
   return (
-    <Stack gap="md">
+    <PwaStack>
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={(event) => void handleFileChange(event)}
-        style={{ display: "none" }}
+        className="pwa-hidden"
       />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        style={{
-          minHeight: 96,
-          borderRadius: "var(--ui-radius-lg)",
-          border: "2px dashed var(--ui-border-strong)",
-          background: "transparent",
-          color: "var(--ui-muted)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "0.5rem",
-          cursor: "pointer",
-        }}
-      >
+      <button type="button" className="pwa-dropzone" onClick={() => inputRef.current?.click()}>
         <Camera aria-hidden width={22} height={22} />
-        <Text>Take photo</Text>
+        Take photo
       </button>
 
       {photos.length === 0 ? (
-        <Text tone="muted">No photos attached yet.</Text>
+        <PwaNote>No photos attached yet.</PwaNote>
       ) : (
-        <Inline gap="sm" wrap>
+        <div className="pwa-photo-grid">
           {photos.map((photo) => (
             <MediaTile
               key={photo.id}
@@ -95,8 +80,8 @@ export function PhotosSection({
               fallback={<Camera aria-hidden />}
             />
           ))}
-        </Inline>
+        </div>
       )}
-    </Stack>
+    </PwaStack>
   );
 }

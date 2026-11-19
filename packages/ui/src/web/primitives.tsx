@@ -1,4 +1,4 @@
-import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, type AnchorHTMLAttributes, type CSSProperties, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import Link from "next/link";
 import { cx } from "../cx";
 
@@ -17,15 +17,20 @@ import { cx } from "../cx";
  * (something that needs attention: "3 open work orders", "No contract"). */
 export type WebBadgeVariant = "success" | "warning" | "attention" | "danger" | "info" | "neutral" | "mono";
 
+/** `web` = the desktop size (22px); `touch` = the field PWA (24px, 12.5px) —
+ * one component, two sizes (DS README: never a copy per app). */
+export type WebSize = "web" | "touch";
+
 export interface WebBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: WebBadgeVariant;
+  size?: WebSize;
 }
 
 /** 22px label for the page header — status, warning, classification, fact
  * or ID. Max 5 per header, enforced by `PageHeader`. */
-export function WebBadge({ variant = "neutral", className, children, ...rest }: WebBadgeProps) {
+export function WebBadge({ variant = "neutral", size = "web", className, children, ...rest }: WebBadgeProps) {
   return (
-    <span className={cx("web-badge", className)} data-variant={variant} {...rest}>
+    <span className={cx("web-badge", className)} data-variant={variant} data-size={size === "touch" ? "touch" : undefined} {...rest}>
       {children}
     </span>
   );
@@ -63,6 +68,52 @@ export function toneFromColor(color: string | null | undefined): WebStatusTone {
   }
 }
 
+/** Base colour of an activity type (DS Planning 07 section 4, PWA 08). The
+ * colour comes from the type item itself (Settings > Activity types, a named
+ * palette value or a hex code) — never from the type's name. Named values map
+ * to the design system's seed tones; an explicit hex code is used as-is. */
+const TYPE_TONE_HEX: Record<WebStatusTone, string> = {
+  danger: "#b2503f",
+  success: "#4f8a4a",
+  info: "#0f6d80",
+  warning: "#8a6522",
+  neutral: "#61716b",
+};
+
+export function typeBaseColor(color: string | null | undefined): string {
+  const trimmed = (color ?? "").trim();
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed)) return trimmed;
+  return TYPE_TONE_HEX[toneFromColor(trimmed)];
+}
+
+/** Inline style that feeds the `--type-color` custom property. */
+export function typeColorStyle(color: string | null | undefined): CSSProperties {
+  return { ["--type-color" as string]: typeBaseColor(color) } as CSSProperties;
+}
+
+/** Soft round pill in the activity type's own colour (`reference_list_items
+ * .color`); calm grey when the type has no colour. Used in the PWA's Today
+ * cards and work-order header (`size="touch"`). */
+export function WebTypeBadge({
+  color,
+  size = "web",
+  className,
+  style,
+  children,
+  ...rest
+}: Omit<HTMLAttributes<HTMLSpanElement>, "color"> & { color?: string | null; size?: WebSize }) {
+  return (
+    <span
+      className={cx("web-type-badge", className)}
+      data-size={size === "touch" ? "touch" : undefined}
+      style={{ ...typeColorStyle(color), ...style }}
+      {...rest}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** Soft round status badge on light surfaces — only for what matters: a
  * meaningful count in the rail (`1 active`, `3 open`), a deviating status in
  * a table row (`In repair`), a notable status/setting in a key/value row
@@ -74,7 +125,7 @@ export function WebStatusBadge({
   className,
   children,
   ...rest
-}: HTMLAttributes<HTMLSpanElement> & { tone: WebStatusTone; size?: "rail" | "table" | "kv" }) {
+}: HTMLAttributes<HTMLSpanElement> & { tone: WebStatusTone; size?: "rail" | "table" | "kv" | "touch" }) {
   return (
     <span className={cx("web-status-badge", className)} data-tone={tone} data-size={size} {...rest}>
       {children}
@@ -104,9 +155,11 @@ interface WebButtonBase {
   variant?: WebButtonVariant;
   /** md = 32px (page header), filter = 30px (FilterBar add button), sm = 27px
    * (pagination, card heads). */
-  size?: "md" | "filter" | "sm";
+  size?: "md" | "filter" | "sm" | "touch";
   /** Square, icon-only button — requires `aria-label`. */
   iconOnly?: boolean;
+  /** Full-width block button (cards, action bars). */
+  block?: boolean;
 }
 
 export interface WebButtonProps extends WebButtonBase, Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
@@ -120,6 +173,7 @@ export function WebButton({
   variant = "secondary",
   size = "md",
   iconOnly,
+  block,
   loading,
   type = "button",
   className,
@@ -134,6 +188,7 @@ export function WebButton({
       data-variant={variant}
       data-size={size}
       data-icon-only={iconOnly ? "true" : undefined}
+      data-block={block ? "true" : undefined}
       disabled={disabled || loading}
       {...rest}
     >
@@ -156,6 +211,7 @@ export function WebLinkButton({
   variant = "secondary",
   size = "md",
   iconOnly,
+  block,
   className,
   children,
   ...rest
@@ -167,6 +223,7 @@ export function WebLinkButton({
       data-variant={variant}
       data-size={size}
       data-icon-only={iconOnly ? "true" : undefined}
+      data-block={block ? "true" : undefined}
       {...rest}
     >
       {children}
@@ -187,6 +244,8 @@ export interface WebCardProps extends Omit<HTMLAttributes<HTMLElement>, "title">
   action?: ReactNode;
   /** Extra head content after the title/meta (validation counters). */
   headExtra?: ReactNode;
+  /** `touch` = the field PWA's card (8px radius, 16px padding, 15px title). */
+  size?: WebSize;
   /** Gives the body its own padding-less frame; the content decides (key/
    * value rows, a table, text). */
   children?: ReactNode;
@@ -195,9 +254,9 @@ export interface WebCardProps extends Omit<HTMLAttributes<HTMLElement>, "title">
 /** White bordered card with a titled head. 1px border, 6px radius, no
  * shadow. Exactly one of three bodies goes inside: key/value rows, a table,
  * or running text (see docs: "02 Kaarten en indeling"). */
-export function WebCard({ title, meta, action, headExtra, className, children, ...rest }: WebCardProps) {
+export function WebCard({ title, meta, action, headExtra, size = "web", className, children, ...rest }: WebCardProps) {
   return (
-    <section className={cx("web-card", className)} {...rest}>
+    <section className={cx("web-card", className)} data-size={size === "touch" ? "touch" : undefined} {...rest}>
       <header className="web-card-head">
         <h2 className="web-card-title">{title}</h2>
         {meta ? <span className="web-card-meta">{meta}</span> : null}

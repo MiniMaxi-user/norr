@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Callout, Dialog, EmptyState, IconButton, Input, Skeleton, Stack, Text } from "@yourorg/ui";
+import { Callout, Dialog, EmptyState, IconButton, Input, Skeleton } from "@yourorg/ui";
+import { PwaStack, WebBadge } from "@yourorg/ui/web";
 import { AlertTriangle, Boxes, X } from "@yourorg/ui/icons";
 import { addLocalArticle, getCachedCatalog, type LocalArticle } from "@/lib/offline/db";
 import type { CatalogArticle } from "@/lib/work-orders/types";
@@ -111,13 +112,13 @@ export function ArticleCatalogSheet({
     <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
       <Dialog.Header>
         <div className="ui-dialog-sheet-handle" />
-        <Text style={{ fontWeight: 650 }}>Add article</Text>
+        <p className="pwa-sheet-title">Add article</p>
         <IconButton variant="ghost" aria-label="Close" onClick={() => onOpenChange(false)}>
           <X aria-hidden />
         </IconButton>
       </Dialog.Header>
       <Dialog.Body>
-        <Stack gap="md">
+        <PwaStack>
           <Input
             type="search"
             placeholder="Search by article number or name"
@@ -134,51 +135,37 @@ export function ArticleCatalogSheet({
               Couldn&apos;t load the article catalog. Try again once you&apos;re online.
             </Callout>
           ) : catalog === null ? (
-            <Stack gap="sm">
+            <PwaStack gap="sm">
               <Skeleton height={56} />
               <Skeleton height={56} />
               <Skeleton height={56} />
-            </Stack>
+            </PwaStack>
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Boxes />}
               heading={catalog.length === 0 ? "No articles in the catalog yet." : "No articles found."}
             />
           ) : (
-            <Stack gap="xs">
+            <div className="pwa-pick-list">
               {filtered.map((article) => {
                 const added = localArticles.find((row) => row.articleId === article.id);
                 return (
-                  <button
-                    key={article.id}
-                    type="button"
-                    onClick={() => void handleAdd(article)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "0.75rem",
-                      minHeight: 56,
-                      padding: "0 0.25rem",
-                      background: "transparent",
-                      border: "none",
-                      borderBottom: "1px solid var(--ui-surface-hover)",
-                      color: "inherit",
-                      textAlign: "left",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Stack gap="xs">
-                      <Text>{article.description}</Text>
-                      <Text tone="muted">{article.articleNumber}</Text>
-                    </Stack>
-                    {added && <Badge variant="accent">×{added.quantity}</Badge>}
+                  <button key={article.id} type="button" onClick={() => void handleAdd(article)} className="pwa-pick-row">
+                    <span className="pwa-list-main">
+                      <span className="pwa-list-title">{article.description}</span>
+                      <span className="pwa-list-sub">{article.articleNumber}</span>
+                    </span>
+                    {added && (
+                      <WebBadge variant="mono" size="touch">
+                        ×{added.quantity}
+                      </WebBadge>
+                    )}
                   </button>
                 );
               })}
-            </Stack>
+            </div>
           )}
-        </Stack>
+        </PwaStack>
       </Dialog.Body>
     </Dialog>
   );

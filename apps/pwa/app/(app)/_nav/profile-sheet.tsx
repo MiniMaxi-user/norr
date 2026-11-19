@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Dialog, Inline, Label, RadioGroup, RadioGroupItem, Stack, Text, useTheme } from "@yourorg/ui";
-import { ChevronRight, LogOut, Moon, Sun } from "@yourorg/ui/icons";
+import { Dialog } from "@yourorg/ui";
+import { PwaNote, PwaStack, WebButton, WebCard } from "@yourorg/ui/web";
+import { ChevronRight, LogOut } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
 import { StockSheet } from "./stock-sheet";
@@ -61,13 +62,6 @@ const APP_VERSION = "0.1.0";
  * never reach the server in this story. Recomputed the moment the sheet
  * opens (not kept continuously ticking) — a rough weekly total, not a
  * second live timer.
- *
- * Also renders `AppearanceSection` (product feedback, 2026-09-12) — a
- * Light/Dark theme choice, same `@yourorg/ui` `ThemeProvider`/`useTheme`
- * (localStorage `norr-ui-theme`) the desktop app's own profile panel
- * already uses (`app/(app)/profile/profile-panel.tsx`'s own
- * `AppearanceSection`), just defaulting to dark here (`app/layout.tsx`)
- * instead of that app's `"system"`.
  */
 export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, currentUserId, isOnline }: ProfileSheetProps) {
   const [weekMinutes, setWeekMinutes] = useState<number | null>(null);
@@ -127,43 +121,18 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, c
       <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
         <Dialog.Body>
           <div className="ui-dialog-sheet-handle" />
-          <Stack gap="md">
-            <Inline gap="sm" align="center">
-              <span
-                aria-hidden
-                style={{
-                  width: "3.375rem",
-                  height: "3.375rem",
-                  borderRadius: "var(--ui-radius-full)",
-                  background: "var(--ui-surface-hover)",
-                  border: "1px solid var(--ui-border)",
-                  color: "var(--ui-fg)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 600,
-                  fontSize: "var(--ui-text-lg)",
-                  flexShrink: 0,
-                  overflow: "hidden",
-                }}
-              >
+          <PwaStack>
+            <div className="pwa-sheet-profile">
+              <span aria-hidden className="pwa-sheet-avatar">
                 <ProfilePhoto avatarUrl={avatarUrl} fullName={fullName} email={email} />
               </span>
-              <Stack gap="xs">
-                <Text style={{ fontFamily: "var(--ui-font-serif)", fontSize: "var(--ui-text-xl)" }}>
-                  {fullName || email}
-                </Text>
-                <Text tone="muted">Service engineer · Norr</Text>
-              </Stack>
-            </Inline>
+              <div>
+                <p className="pwa-sheet-name">{fullName || email}</p>
+                <PwaNote>Service engineer · Norr</PwaNote>
+              </div>
+            </div>
 
-            <div
-              style={{
-                border: "1px solid var(--ui-border)",
-                borderRadius: "var(--ui-radius-lg)",
-                overflow: "hidden",
-              }}
-            >
+            <WebCard size="touch" title="Account">
               <SheetRow label="This week" value={weekMinutes === null ? "…" : formatWeekMinutes(weekMinutes)} />
               <SheetNavRow
                 label="Stock"
@@ -177,60 +146,19 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, c
                 value={isOnline ? "Synced" : "Not synced"}
                 valueTone={isOnline ? "success" : "danger"}
               />
-              <SheetRow label="Version" value={APP_VERSION} muted last />
-            </div>
+              <SheetRow label="Version" value={APP_VERSION} muted />
+            </WebCard>
 
-            <AppearanceSection />
-
-            <Button variant="danger" fullWidth disabled={loggingOut} onClick={() => void handleLogOut()}>
-              <Inline gap="xs" align="center" justify="center">
-                <LogOut aria-hidden width={17} height={17} />
-                {loggingOut ? "Logging out…" : "Log out"}
-              </Inline>
-            </Button>
-          </Stack>
+            <WebButton size="touch" block disabled={loggingOut} onClick={() => void handleLogOut()}>
+              <LogOut aria-hidden />
+              {loggingOut ? "Logging out…" : "Log out"}
+            </WebButton>
+          </PwaStack>
         </Dialog.Body>
       </Dialog>
 
       <StockSheet open={stockOpen} onOpenChange={setStockOpen} currentUserId={currentUserId} />
     </>
-  );
-}
-
-/** Light/Dark theme choice (product feedback, 2026-09-12) — mirrors the
- * desktop app's own `AppearanceSection`
- * (`app/(app)/profile/profile-panel.tsx`) almost exactly, minus a
- * "System" option: this app has no visible System radio there either
- * (its `ThemeProvider` supports it, the UI just never exposes it), and
- * `app/layout.tsx` already defaults this app to dark rather than
- * resolving a system preference on first load. */
-function AppearanceSection() {
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
-
-  return (
-    <div
-      style={{
-        border: "1px solid var(--ui-border)",
-        borderRadius: "var(--ui-radius-lg)",
-        padding: "0.875rem 1rem",
-      }}
-    >
-      <Inline gap="xs" align="center" style={{ marginBottom: "0.625rem" }}>
-        {isDark ? <Moon aria-hidden width={16} height={16} /> : <Sun aria-hidden width={16} height={16} />}
-        <Text tone="muted">Appearance</Text>
-      </Inline>
-      <RadioGroup>
-        <Stack gap="xs">
-          <Label>
-            <RadioGroupItem name="theme" checked={!isDark} onChange={() => setTheme("light")} /> Light
-          </Label>
-          <Label>
-            <RadioGroupItem name="theme" checked={isDark} onChange={() => setTheme("dark")} /> Dark
-          </Label>
-        </Stack>
-      </RadioGroup>
-    </div>
   );
 }
 
@@ -245,33 +173,19 @@ function SheetRow({
   value,
   valueTone,
   muted,
-  last,
 }: {
   label: string;
   value: string;
   valueTone?: "success" | "danger";
   muted?: boolean;
-  last?: boolean;
 }) {
   return (
-    <Inline
-      justify="between"
-      align="center"
-      style={{
-        padding: "0.875rem 1rem",
-        borderBottom: last ? undefined : "1px solid var(--ui-surface-hover)",
-      }}
-    >
-      <Text tone="muted">{label}</Text>
-      <Text
-        style={{
-          fontWeight: muted ? undefined : 600,
-          color: valueTone === "success" ? "var(--ui-success)" : valueTone === "danger" ? "var(--ui-danger)" : muted ? "var(--ui-muted-subtle)" : undefined,
-        }}
-      >
+    <div className="pwa-sheet-row">
+      <span className="pwa-sheet-row-label">{label}</span>
+      <span className="pwa-sheet-row-value" data-tone={valueTone} data-muted={muted ? "true" : undefined}>
         {value}
-      </Text>
-    </Inline>
+      </span>
+    </div>
   );
 }
 
@@ -281,35 +195,9 @@ function SheetRow({
  * row navigates somewhere" convention. */
 function SheetNavRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        // Reset only the specific UA button chrome this row doesn't want —
-        // NOT `all: unset`, which would also wipe the `box-shadow` the
-        // sheet-wide `:focus-visible` rule (packages/ui/src/styles.css)
-        // relies on to draw the keyboard focus ring. Leaving `outline` and
-        // `box-shadow` untouched here lets that global rule cascade through
-        // normally.
-        appearance: "none",
-        background: "none",
-        border: "none",
-        margin: 0,
-        font: "inherit",
-        color: "inherit",
-        textAlign: "left",
-        boxSizing: "border-box",
-        display: "flex",
-        width: "100%",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0.875rem 1rem",
-        borderBottom: "1px solid var(--ui-surface-hover)",
-        cursor: "pointer",
-      }}
-    >
-      <Text>{label}</Text>
-      <ChevronRight aria-hidden width={16} height={16} style={{ color: "var(--ui-muted-subtle)" }} />
+    <button type="button" onClick={onClick} className="pwa-sheet-row">
+      <span>{label}</span>
+      <ChevronRight aria-hidden className="pwa-sheet-chevron" />
     </button>
   );
 }

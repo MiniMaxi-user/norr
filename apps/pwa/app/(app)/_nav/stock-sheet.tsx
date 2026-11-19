@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Callout, Dialog, EmptyState, IconButton, Inline, Input, Skeleton, Stack, Text } from "@yourorg/ui";
-import type { BadgeVariant } from "@yourorg/ui";
+import { Callout, Dialog, EmptyState, IconButton, Input, Skeleton } from "@yourorg/ui";
+import { PwaNote, PwaStack, WebButton, WebStatusBadge, type WebStatusTone } from "@yourorg/ui/web";
 import { AlertTriangle, Boxes, RefreshCw, X } from "@yourorg/ui/icons";
 import { getCachedMyStock, getMyStockLastSyncedAt, saveMyStock } from "@/lib/offline/db";
 import type { MyStockItem } from "@/lib/inventory/types";
@@ -27,10 +27,12 @@ function resolveStockStatus(quantity: number, minThreshold: number | null): Stoc
   return "success";
 }
 
-const STATUS_VARIANT: Record<Exclude<StockStatus, null>, BadgeVariant> = {
+// Calm for the normal state, coloured only for what needs attention (DS
+// Badge rules): "OK" stays grey, low / near-threshold stock is coloured.
+const STATUS_TONE: Record<Exclude<StockStatus, null>, WebStatusTone> = {
   danger: "danger",
   warning: "warning",
-  success: "success",
+  success: "neutral",
 };
 
 const STATUS_LABEL: Record<Exclude<StockStatus, null>, string> = {
@@ -141,13 +143,13 @@ export function StockSheet({
     <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
       <Dialog.Header>
         <div className="ui-dialog-sheet-handle" />
-        <Text style={{ fontWeight: 650 }}>Stock</Text>
+        <p className="pwa-sheet-title">Stock</p>
         <IconButton variant="ghost" aria-label="Close" onClick={() => onOpenChange(false)}>
           <X aria-hidden />
         </IconButton>
       </Dialog.Header>
       <Dialog.Body>
-        <Stack gap="md">
+        <PwaStack>
           <Input
             type="search"
             placeholder="Search by article number or name"
@@ -159,37 +161,33 @@ export function StockSheet({
           {error && <Callout icon={AlertTriangle}>{error}</Callout>}
 
           {stock === null ? (
-            <Stack gap="sm">
+            <PwaStack gap="sm">
               <Skeleton height={56} />
               <Skeleton height={56} />
               <Skeleton height={56} />
-            </Stack>
+            </PwaStack>
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Boxes />}
               heading={stock.length === 0 ? "No stock synced yet." : "No articles found."}
             />
           ) : (
-            <Stack gap="xs">
+            <div className="pwa-pick-list">
               {filtered.map((item) => (
                 <StockRow key={item.id} item={item} />
               ))}
-            </Stack>
+            </div>
           )}
-        </Stack>
+        </PwaStack>
       </Dialog.Body>
       <Dialog.Footer>
-        <Stack gap="xs" style={{ width: "100%" }}>
-          <Button variant="outline" fullWidth onClick={() => void handleSync()} disabled={syncing}>
-            <Inline gap="xs" align="center" justify="center">
-              <RefreshCw aria-hidden width={16} height={16} />
-              {syncing ? "Syncing…" : "Sync"}
-            </Inline>
-          </Button>
-          <Text tone="muted" style={{ textAlign: "center" }}>
-            {lastSyncedAt ? `Last synced: ${formatSyncedAt(lastSyncedAt)}` : "Not synced yet"}
-          </Text>
-        </Stack>
+        <PwaStack gap="sm" className="pwa-fill">
+          <WebButton size="touch" block onClick={() => void handleSync()} disabled={syncing}>
+            <RefreshCw aria-hidden />
+            {syncing ? "Syncing…" : "Sync"}
+          </WebButton>
+          <PwaNote align="center">{lastSyncedAt ? `Last synced: ${formatSyncedAt(lastSyncedAt)}` : "Not synced yet"}</PwaNote>
+        </PwaStack>
       </Dialog.Footer>
     </Dialog>
   );
@@ -198,22 +196,22 @@ export function StockSheet({
 function StockRow({ item }: { item: MyStockItem }) {
   const status = resolveStockStatus(item.quantity, item.minThreshold);
   return (
-    <div style={{ padding: "0.625rem 0.25rem", borderBottom: "1px solid var(--ui-surface-hover)" }}>
-      <Inline justify="between" align="start" gap="sm">
-        <Stack gap="xs" style={{ minWidth: 0 }}>
-          <Text>{item.description}</Text>
-          <Text tone="muted">{item.articleNumber}</Text>
-        </Stack>
-        {status && <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>}
-      </Inline>
-      <Inline gap="md" style={{ marginTop: "0.375rem" }}>
-        <Text tone="muted">
-          Current: <strong>{formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</strong>
-        </Text>
-        <Text tone="muted">
-          Min: {item.minThreshold === null ? "—" : formatQuantity(item.minThreshold)}
-        </Text>
-      </Inline>
+    <div className="pwa-pick-row">
+      <div>
+        <div>{item.description}</div>
+        <div className="pwa-list-sub">{item.articleNumber}</div>
+        <div className="pwa-pick-meta">
+          <span>
+            Current: <strong>{formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</strong>
+          </span>
+          <span>Min: {item.minThreshold === null ? "—" : formatQuantity(item.minThreshold)}</span>
+        </div>
+      </div>
+      {status && (
+        <WebStatusBadge tone={STATUS_TONE[status]} size="touch">
+          {STATUS_LABEL[status]}
+        </WebStatusBadge>
+      )}
     </div>
   );
 }

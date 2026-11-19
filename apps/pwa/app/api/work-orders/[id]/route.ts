@@ -50,6 +50,7 @@ interface WorkOrderDetailRow {
   solution: string | null;
   scheduled_at: string | null;
   work_order_status: ResolvedReferenceRow | null;
+  work_order_type: ResolvedReferenceRow | null;
   work_order_priority: ResolvedReferenceRow | null;
   client: { id: string; name: string } | null;
   site: {
@@ -81,6 +82,7 @@ interface WorkOrderDetailRow {
 const WORK_ORDER_DETAIL_SELECT = `
   id, work_order_number, external_reference, description, solution, scheduled_at,
   work_order_status:reference_list_items!work_orders_status_id_fkey(label,color),
+  work_order_type:reference_list_items!work_orders_type_id_fkey(label,color),
   work_order_priority:reference_list_items!work_orders_priority_id_fkey(label,color),
   client:clients(id,name),
   site:sites(id,address_line1,address_line2,postal_code,city,phone),
@@ -239,6 +241,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     solution: row.solution,
     scheduledAt: row.scheduled_at,
     status: row.work_order_status ? { label: row.work_order_status.label, color: row.work_order_status.color } : null,
+    type: row.work_order_type ? { label: row.work_order_type.label, color: row.work_order_type.color } : null,
     priority: row.work_order_priority
       ? { label: row.work_order_priority.label, color: row.work_order_priority.color }
       : null,

@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Button, Input, Label, Stack, Text } from "@yourorg/ui";
+import { Input, Label } from "@yourorg/ui";
+import { PwaNote, WebButton } from "@yourorg/ui/web";
 import { logInAction, type AuthActionState } from "@/lib/auth/actions";
 
 const initialState: AuthActionState = {};
@@ -18,36 +19,34 @@ export function LoginForm() {
   const [state, formAction] = useActionState(logInAction, initialState);
 
   return (
-    <form action={formAction}>
-      <Stack gap="md">
-        <Stack gap="sm">
-          <Label htmlFor="email">Email address</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@company.com"
-            autoComplete="email"
-            required
-          />
-        </Stack>
+    <form action={formAction} className="pwa-login-form">
+      <div className="pwa-field">
+        <Label htmlFor="email">Email address</Label>
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          placeholder="you@company.com"
+          autoComplete="email"
+          required
+        />
+      </div>
 
-        <Stack gap="sm">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="current-password"
-            required
-          />
-        </Stack>
+      <div className="pwa-field">
+        <Label htmlFor="password">Password</Label>
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          placeholder="••••••••"
+          autoComplete="current-password"
+          required
+        />
+      </div>
 
-        {state.error && <Text tone="danger">{state.error}</Text>}
+      {state.error && <PwaNote tone="danger">{state.error}</PwaNote>}
 
-        <SubmitButton />
-      </Stack>
+      <SubmitButton />
     </form>
   );
 }
@@ -55,8 +54,8 @@ export function LoginForm() {
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" fullWidth disabled={pending}>
+    <WebButton type="submit" variant="primary" size="touch" block disabled={pending}>
       {pending ? "Signing in…" : "Sign in"}
-    </Button>
+    </WebButton>
   );
 }

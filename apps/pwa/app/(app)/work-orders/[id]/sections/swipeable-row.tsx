@@ -79,33 +79,26 @@ export function SwipeableRow({
   }
 
   return (
-    <div className="ui-swipe-row">
+    <div className="pwa-swipe-row">
       {onEdit && (
-        <div className="ui-swipe-row-actions ui-swipe-row-actions-left" style={{ width: REVEAL_WIDTH }}>
-          <button
-            type="button"
-            className="ui-swipe-row-action ui-swipe-row-action-edit"
-            onClick={() => runAction(onEdit)}
-          >
+        <div className="pwa-swipe-actions" data-side="left" style={{ width: REVEAL_WIDTH }}>
+          <button type="button" className="pwa-swipe-action" data-kind="edit" onClick={() => runAction(onEdit)}>
             <Pencil aria-hidden width={18} height={18} />
             Edit
           </button>
         </div>
       )}
       {onDelete && (
-        <div className="ui-swipe-row-actions ui-swipe-row-actions-right" style={{ width: REVEAL_WIDTH }}>
-          <button
-            type="button"
-            className="ui-swipe-row-action ui-swipe-row-action-delete"
-            onClick={() => runAction(onDelete)}
-          >
+        <div className="pwa-swipe-actions" data-side="right" style={{ width: REVEAL_WIDTH }}>
+          <button type="button" className="pwa-swipe-action" data-kind="delete" onClick={() => runAction(onDelete)}>
             <Trash2 aria-hidden width={18} height={18} />
             Delete
           </button>
         </div>
       )}
       <div
-        className={dragging ? "ui-swipe-row-content ui-swipe-row-content-dragging" : "ui-swipe-row-content"}
+        className="pwa-swipe-content"
+        data-dragging={dragging ? "true" : undefined}
         style={{ transform: `translateX(${offset}px)`, touchAction: swipeable ? "pan-y" : undefined }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

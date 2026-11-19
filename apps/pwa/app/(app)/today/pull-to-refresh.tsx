@@ -23,8 +23,8 @@ export interface PullToRefreshProps {
  * so a drag that scrolls the page away from the top mid-gesture correctly
  * abandons the pull instead of fighting native scrolling).
  *
- * Reads/writes the scroll position of `.ui-pwa-page-content` — the field
- * PWA's one bounded scroll region (`app/(app)/layout.tsx`'s `.ui-pwa-shell`,
+ * Reads/writes the scroll position of `.pwa-scroll` — the field
+ * PWA's one bounded scroll region (`app/(app)/layout.tsx`'s `.pwa-shell`,
  * bug report 2026-09-13) — via `closest()` on this component's own root,
  * rather than `document.scrollingElement`/`window.scrollY` the way this
  * used to before that shell existed: the page no longer scrolls at the
@@ -51,7 +51,7 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const scrollContainer = root.closest<HTMLElement>(".ui-pwa-page-content");
+    const scrollContainer = root.closest<HTMLElement>(".pwa-scroll");
 
     function isAtTop() {
       const scrollTop = scrollContainer?.scrollTop ?? 0;

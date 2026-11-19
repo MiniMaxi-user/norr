@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Dialog, IconButton, Stack, Text, useEscapeToClose } from "@yourorg/ui";
+import { Dialog, IconButton, useEscapeToClose } from "@yourorg/ui";
+import { PwaNote, PwaOverline, PwaStack, WebButton } from "@yourorg/ui/web";
 import { X } from "@yourorg/ui/icons";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
 
@@ -90,20 +91,20 @@ function WheelColumn({
   return (
     <div
       ref={ref}
-      className="ui-wheel-picker-column"
+      className="pwa-wheel-column"
       style={{ height: COLUMN_HEIGHT }}
       onScroll={handleScroll}
       role="listbox"
       aria-label={ariaLabel}
     >
-      <div className="ui-wheel-picker-spacer" style={{ height: ITEM_HEIGHT }} aria-hidden />
+      <div className="pwa-wheel-spacer" style={{ height: ITEM_HEIGHT }} aria-hidden />
       {values.map((item) => (
-        <div key={item} className="ui-wheel-picker-item" style={{ height: ITEM_HEIGHT }} role="option" aria-selected={item === value}>
+        <div key={item} className="pwa-wheel-item" style={{ height: ITEM_HEIGHT }} role="option" aria-selected={item === value}>
           {item}
           {suffix}
         </div>
       ))}
-      <div className="ui-wheel-picker-spacer" style={{ height: ITEM_HEIGHT }} aria-hidden />
+      <div className="pwa-wheel-spacer" style={{ height: ITEM_HEIGHT }} aria-hidden />
     </div>
   );
 }
@@ -177,43 +178,43 @@ export function EditHoursDialog({
     <Dialog open={open} onOpenChange={onOpenChange} size="sheet">
       <Dialog.Header>
         <div className="ui-dialog-sheet-handle" />
-        <Text style={{ fontWeight: 650 }}>Edit {row?.kind === "travel" ? "travel" : "work"} time</Text>
+        <p className="pwa-sheet-title">Edit {row?.kind === "travel" ? "travel" : "work"} time</p>
         <IconButton variant="ghost" aria-label="Close" onClick={() => onOpenChange(false)}>
           <X aria-hidden />
         </IconButton>
       </Dialog.Header>
       <Dialog.Body>
-        <Stack gap="lg">
-          <Text tone="muted">{row ? formatDateLabel(row.startedAt) : ""}</Text>
+        <PwaStack>
+          <PwaNote>{row ? formatDateLabel(row.startedAt) : ""}</PwaNote>
 
-          <Stack gap="sm">
-            <Text style={{ fontWeight: 600 }}>Start</Text>
-            <div className="ui-wheel-picker">
-              <div className="ui-wheel-picker-highlight" aria-hidden style={{ height: ITEM_HEIGHT, top: ITEM_HEIGHT }} />
+          <PwaStack gap="sm">
+            <PwaOverline>Start</PwaOverline>
+            <div className="pwa-wheel">
+              <div className="pwa-wheel-highlight" aria-hidden style={{ height: ITEM_HEIGHT, top: ITEM_HEIGHT }} />
               <WheelColumn values={HOURS} value={startHours} onChange={setStartHours} suffix="h" ariaLabel="Start hours" />
               <WheelColumn values={MINUTES} value={startMinutes} onChange={setStartMinutes} suffix="m" ariaLabel="Start minutes" />
             </div>
-          </Stack>
+          </PwaStack>
 
-          <Stack gap="sm">
-            <Text style={{ fontWeight: 600 }}>End</Text>
-            <div className="ui-wheel-picker">
-              <div className="ui-wheel-picker-highlight" aria-hidden style={{ height: ITEM_HEIGHT, top: ITEM_HEIGHT }} />
+          <PwaStack gap="sm">
+            <PwaOverline>End</PwaOverline>
+            <div className="pwa-wheel">
+              <div className="pwa-wheel-highlight" aria-hidden style={{ height: ITEM_HEIGHT, top: ITEM_HEIGHT }} />
               <WheelColumn values={HOURS} value={endHours} onChange={setEndHours} suffix="h" ariaLabel="End hours" />
               <WheelColumn values={MINUTES} value={endMinutes} onChange={setEndMinutes} suffix="m" ariaLabel="End minutes" />
             </div>
-          </Stack>
+          </PwaStack>
 
-          <Text tone="muted">Duration {formatClockHoursMinutes(durationMs)}</Text>
-        </Stack>
+          <PwaNote>Duration {formatClockHoursMinutes(durationMs)}</PwaNote>
+        </PwaStack>
       </Dialog.Body>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <WebButton size="touch" onClick={() => onOpenChange(false)} disabled={saving}>
           Cancel
-        </Button>
-        <Button type="button" variant="primary" onClick={() => void handleSave()} disabled={saving || durationMs <= 0}>
+        </WebButton>
+        <WebButton variant="save" size="touch" onClick={() => void handleSave()} disabled={saving || durationMs <= 0}>
           {saving ? "Saving…" : "Save"}
-        </Button>
+        </WebButton>
       </Dialog.Footer>
     </Dialog>
   );

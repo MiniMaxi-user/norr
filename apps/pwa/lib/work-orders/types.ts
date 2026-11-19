@@ -78,6 +78,11 @@ export interface WorkOrderDetail {
   solution: string | null;
   scheduledAt: string | null;
   status: WorkOrderDetailReference | null;
+  /** The work order's activity type (`work_order_type`) — its `color` drives
+   * the type badge in the PWA's work-order header (issue #222). Optional so a
+   * detail cached on a device before this field existed still type-checks and
+   * simply renders a neutral badge until the next sync. */
+  type?: WorkOrderDetailReference | null;
   priority: WorkOrderDetailReference | null;
   client: WorkOrderDetailClient | null;
   site: WorkOrderDetailSite | null;

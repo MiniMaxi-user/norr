@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Badge, Callout, EmptyState, Heading, Inline, Skeleton, Stack, Text } from "@yourorg/ui";
+import { Callout, EmptyState, Skeleton } from "@yourorg/ui";
+import {
+  PwaBody,
+  PwaHeaderMeta,
+  PwaHeaderRow,
+  PwaHeaderTime,
+  PwaPageHeader,
+  PwaScreen,
+  WebBadge,
+  WebTypeBadge,
+} from "@yourorg/ui/web";
 import { AlertTriangle } from "@yourorg/ui/icons";
 import {
   clearSyncedWorkOrderData,
@@ -321,22 +331,28 @@ export function WorkOrderDetailScreen({
 
   if (loading) {
     return (
-      <Stack gap="md">
-        <Skeleton height={24} />
-        <Skeleton height={48} />
-        <Skeleton height={120} />
-        <Skeleton height={200} />
-      </Stack>
+      <PwaScreen>
+        <PwaBody>
+          <Skeleton height={24} />
+          <Skeleton height={48} />
+          <Skeleton height={120} />
+          <Skeleton height={200} />
+        </PwaBody>
+      </PwaScreen>
     );
   }
 
   if (detailError || !detail) {
     return (
-      <EmptyState
-        icon={<AlertTriangle />}
-        heading="Couldn't load this work order."
-        text={detailError ?? "Try again once you're back online."}
-      />
+      <PwaScreen>
+        <PwaBody>
+          <EmptyState
+            icon={<AlertTriangle />}
+            heading="Couldn't load this work order."
+            text={detailError ?? "Try again once you're back online."}
+          />
+        </PwaBody>
+      </PwaScreen>
     );
   }
 
@@ -346,74 +362,85 @@ export function WorkOrderDetailScreen({
   );
 
   return (
-    <Stack gap="md">
-      {detailOffline && (
-        <Callout icon={AlertTriangle}>{"Showing the last synced copy of this work order — couldn't refresh."}</Callout>
-      )}
+    <PwaScreen>
+      <PwaPageHeader
+        top={
+          <>
+            {workOrder.status && (
+              <WebBadge size="touch">{workOrder.status.label}</WebBadge>
+            )}
+            <PwaHeaderTime>
+              {workOrder.scheduledAt ? formatTimeLabel(workOrder.scheduledAt) : "No time scheduled"}
+            </PwaHeaderTime>
+          </>
+        }
+        title={workOrder.workOrderNumber}
+      >
+        <PwaHeaderRow>
+          {workOrder.type && (
+            <WebTypeBadge size="touch" color={workOrder.type.color}>
+              {workOrder.type.label}
+            </WebTypeBadge>
+          )}
+          <span className="pwa-header-link">{workOrder.client?.name ?? "Unknown client"}</span>
+        </PwaHeaderRow>
+        {workOrder.externalReference && <PwaHeaderMeta>{workOrder.externalReference}</PwaHeaderMeta>}
+        {addressParts.length > 0 && <PwaHeaderMeta>{addressParts.join(", ")}</PwaHeaderMeta>}
+      </PwaPageHeader>
 
-      <Inline gap="sm" align="center" wrap>
-        {workOrder.status && <Badge color={workOrder.status.color}>{workOrder.status.label}</Badge>}
-        <Text tone="muted">{workOrder.scheduledAt ? formatTimeLabel(workOrder.scheduledAt) : "No time scheduled"}</Text>
-      </Inline>
+      <PwaBody>
+        {detailOffline && (
+          <Callout icon={AlertTriangle}>{"Showing the last synced copy of this work order — couldn't refresh."}</Callout>
+        )}
 
-      <Stack gap="xs">
-        <Heading level={1} style={{ fontFamily: "var(--ui-font-serif)" }}>
-          {workOrder.workOrderNumber}
-        </Heading>
-        {workOrder.externalReference && <Text tone="muted">{workOrder.externalReference}</Text>}
-        <Text tone="muted">
-          {workOrder.client?.name ?? "Unknown client"}
-          {addressParts.length > 0 ? ` · ${addressParts.join(", ")}` : ""}
-        </Text>
-      </Stack>
-
-      {section === "home" && <HomeSection workOrder={workOrder} />}
-      {section === "work" && <WorkSection workOrderId={workOrderId} workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
-      {section === "hours" && (
-        <>
-          {/* Start/stop only shows on the Hours tab (product feedback,
-              2026-09-13) — see `timer-card.tsx`'s own doc comment. */}
-          <TimerCard
+        {section === "home" && <HomeSection workOrder={workOrder} />}
+        {section === "work" && <WorkSection workOrderId={workOrderId} workOrder={workOrder} solution={solution} onSolutionChange={setSolution} />}
+        {section === "hours" && (
+          <>
+            {/* Start/stop only shows on the Hours tab (product feedback,
+                2026-09-13) — see `timer-card.tsx`'s own doc comment. */}
+            <TimerCard
+              summary={summary}
+              onToggleTravel={() => void handleToggle("travel")}
+              onToggleWork={() => void handleToggle("work")}
+            />
+            <HoursSection
+              periods={periods}
+              serverTimeEntries={detail.timeEntries}
+              onPeriodsChange={refreshPeriods}
+              roundingSettings={roundingSettings}
+            />
+          </>
+        )}
+        {section === "articles" && (
+          <ArticlesSection
+            workOrderId={workOrderId}
+            currentUserId={currentUserId}
+            serverArticles={detail.articles}
+            localArticles={localArticles}
+            onLocalArticlesChange={refreshArticles}
+          />
+        )}
+        {section === "photos" && (
+          <PhotosSection
+            workOrderId={workOrderId}
+            currentUserId={currentUserId}
+            photos={localPhotos}
+            onPhotosChange={refreshPhotos}
+          />
+        )}
+        {section === "sign" && (
+          <SignOffSection
             summary={summary}
-            onToggleTravel={() => void handleToggle("travel")}
-            onToggleWork={() => void handleToggle("work")}
+            articleCount={detail.articles.length + localArticles.length}
+            engineerName={engineerName}
+            existingSignOff={signOff}
+            signatureDraft={signatureDraft}
+            onSignatureDraftChange={setSignatureDraft}
+            onFinish={handleFinish}
           />
-          <HoursSection
-            periods={periods}
-            serverTimeEntries={detail.timeEntries}
-            onPeriodsChange={refreshPeriods}
-            roundingSettings={roundingSettings}
-          />
-        </>
-      )}
-      {section === "articles" && (
-        <ArticlesSection
-          workOrderId={workOrderId}
-          currentUserId={currentUserId}
-          serverArticles={detail.articles}
-          localArticles={localArticles}
-          onLocalArticlesChange={refreshArticles}
-        />
-      )}
-      {section === "photos" && (
-        <PhotosSection
-          workOrderId={workOrderId}
-          currentUserId={currentUserId}
-          photos={localPhotos}
-          onPhotosChange={refreshPhotos}
-        />
-      )}
-      {section === "sign" && (
-        <SignOffSection
-          summary={summary}
-          articleCount={detail.articles.length + localArticles.length}
-          engineerName={engineerName}
-          existingSignOff={signOff}
-          signatureDraft={signatureDraft}
-          onSignatureDraftChange={setSignatureDraft}
-          onFinish={handleFinish}
-        />
-      )}
-    </Stack>
+        )}
+      </PwaBody>
+    </PwaScreen>
   );
 }

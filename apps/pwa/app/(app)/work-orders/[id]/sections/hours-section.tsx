@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Card, Inline, Stack, Text } from "@yourorg/ui";
+import { PwaKeyValue, PwaNote, PwaOverline, PwaRow, PwaStack, WebCard, WebStatusBadge } from "@yourorg/ui/web";
 import { computeRoundedMinutes, type TimeRoundingRule } from "@yourorg/time-rounding";
 import { deleteClockPeriod, updateClockPeriodTimes, type ClockPeriod } from "@/lib/offline/db";
 import { formatClockHoursMinutes } from "@/lib/time/clocks";
@@ -154,55 +154,53 @@ export function HoursSection({
   }
 
   return (
-    <Stack gap="md">
-      <Inline justify="between" align="center">
-        <Text style={{ fontSize: "11px", letterSpacing: "0.13em", textTransform: "uppercase", color: "var(--ui-muted-subtle)" }}>
-          Hours
-        </Text>
-        <Text style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-          {formatClockHoursMinutes(totalMinutes * 60000)}
-        </Text>
-      </Inline>
+    <PwaStack>
+      <PwaRow justify="between">
+        <PwaOverline>Hours</PwaOverline>
+        <span className="pwa-total">{formatClockHoursMinutes(totalMinutes * 60000)}</span>
+      </PwaRow>
 
-      {rows.length === 0 ? (
-        <Card>
-          <Text tone="muted">Nothing logged yet · 0h 00m</Text>
-        </Card>
-      ) : (
-        <Stack gap="md">
-          {rows.map((row) => {
-            const editable = row.localId !== undefined && row.endedAt !== null;
-            return (
-              <SwipeableRow
-                key={row.id}
-                onEdit={editable ? () => handleEditTap(row) : undefined}
-                onDelete={row.localId !== undefined ? () => void handleDeleteTap(row) : undefined}
-              >
-                <Inline justify="between" align="center" gap="sm">
-                  <Inline gap="sm" align="center">
-                    <Badge variant={row.kind === "travel" ? "muted" : "success"}>
+      <WebCard size="touch" title="Logged time">
+        {rows.length === 0 ? (
+          <p className="pwa-list-empty">Nothing logged yet · 0h 00m</p>
+        ) : (
+          <div className="pwa-list">
+            {rows.map((row) => {
+              const editable = row.localId !== undefined && row.endedAt !== null;
+              return (
+                <SwipeableRow
+                  key={row.id}
+                  onEdit={editable ? () => handleEditTap(row) : undefined}
+                  onDelete={row.localId !== undefined ? () => void handleDeleteTap(row) : undefined}
+                >
+                  <div className="pwa-list-row">
+                    <WebStatusBadge tone="neutral" size="touch">
                       {row.kind === "travel" ? "Travel" : "Work"}
-                    </Badge>
-                    <Text tone="muted" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {formatRange(row.startedAt, row.endedAt)}
-                    </Text>
-                  </Inline>
-                  <Text style={{ fontVariantNumeric: "tabular-nums" }}>
-                    {formatClockHoursMinutes(netMinutesFor(row, roundingSettings, now) * 60000)}
-                  </Text>
-                </Inline>
-              </SwipeableRow>
-            );
-          })}
-        </Stack>
-      )}
+                    </WebStatusBadge>
+                    <span className="pwa-list-main">
+                      <span className="pwa-list-title pwa-mono">{formatRange(row.startedAt, row.endedAt)}</span>
+                    </span>
+                    <span className="pwa-list-end">
+                      {formatClockHoursMinutes(netMinutesFor(row, roundingSettings, now) * 60000)}
+                    </span>
+                  </div>
+                </SwipeableRow>
+              );
+            })}
+          </div>
+        )}
+      </WebCard>
 
-      <Text tone="muted">Times come from the timer on this device.</Text>
+      <WebCard size="touch" title="Summary">
+        <PwaKeyValue
+          rows={[
+            { label: "Travel", value: formatClockHoursMinutes(totals.travelMinutes * 60000) },
+            { label: "Work", value: formatClockHoursMinutes(totals.workMinutes * 60000) },
+          ]}
+        />
+      </WebCard>
 
-      <Inline justify="between" gap="sm" wrap>
-        <Text tone="muted">Travel {formatClockHoursMinutes(totals.travelMinutes * 60000)}</Text>
-        <Text tone="muted">Work {formatClockHoursMinutes(totals.workMinutes * 60000)}</Text>
-      </Inline>
+      <PwaNote>Times come from the timer on this device.</PwaNote>
 
       <EditHoursDialog
         key={editSession}
@@ -213,6 +211,6 @@ export function HoursSection({
         }}
         onSave={handleSaveEdit}
       />
-    </Stack>
+    </PwaStack>
   );
 }
