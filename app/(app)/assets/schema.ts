@@ -97,7 +97,7 @@ export const assetCreateSchema = z.object({
     emptyToUndefined,
     z
       .string({ required_error: "Enter the installation date" })
-      .regex(/^d{4}-d{2}-d{2}$/, "Expected a date in YYYY-MM-DD format."),
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format."),
   ),
   warrantyUntil: isoDateSchema,
   notes: optionalText(5000),
@@ -124,7 +124,7 @@ export const assetUpdateSchema = assetCreateSchema.partial().extend({
   installedAt: z
     .string()
     .min(1, "Enter the installation date")
-    .regex(/^d{4}-d{2}-d{2}$/, "Expected a date in YYYY-MM-DD format.")
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format.")
     .optional(),
 });
 
