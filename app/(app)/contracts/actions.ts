@@ -5,7 +5,13 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
-import { contractCreateSchema, contractUpdateSchema } from "./schema";
+import {
+  contractCreateSchema,
+  contractStatusSchema,
+  contractUpdateSchema,
+  type ContractInvoicingTiming,
+  type ContractStatus,
+} from "./schema";
 
 /**
  * Server Actions for the Contracts module (issue #33 backend half, second
@@ -83,6 +89,11 @@ export interface ContractRecord {
    * end_date, billing terms interval and `invoiced_period_count`. `null` when
    * fully invoiced / beyond end_date. Never sent on create/update. */
   next_invoice_date: string | null;
+  /** Issue #270: draft | active | ended. New contracts start as draft; only
+   * active contracts are invoiced and give work order coverage. */
+  status: ContractStatus;
+  /** Issue #269: in_advance (default) | in_arrears. */
+  invoicing_timing: ContractInvoicingTiming;
   /** DB-managed, read-only (issue #209): billing periods already invoiced. */
   invoiced_period_count: number;
   /** Embedded via `reference_list_items!contracts_type_id_fkey(...)` — see
@@ -209,7 +220,11 @@ function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse
     end_date: input.endDate ?? null,
     value: input.value ?? null,
     notes: input.notes ?? null,
+    // Issue #270: always start as draft (the column default; stated explicitly
+    // so a client can never insert a contract as active).
+    status: "draft",
   };
+  if (input.invoicingTiming !== undefined) row.invoicing_timing = input.invoicingTiming;
   // type_id is intentionally omitted (not even sent as null) when not
   // provided — the `derive_contract_organization_id` DB trigger fills in the
   // organization's default `contract_type` item on insert. Same reasoning as
@@ -236,6 +251,7 @@ function toContractUpdateRow(input: ReturnType<typeof contractUpdateSchema.parse
   if (input.autoRenew !== undefined) row.auto_renew = input.autoRenew;
   if (input.value !== undefined) row.value = input.value ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
+  if (input.invoicingTiming !== undefined) row.invoicing_timing = input.invoicingTiming;
   return row;
 }
 
@@ -260,6 +276,9 @@ export interface ListContractsOptions {
   /** Derived lifecycle (see `contract-status.ts`): `active` = started and not
    * ended, `upcoming` = starts in the future, `ended` = end date in the past. */
   phase?: "active" | "upcoming" | "ended";
+  /** Contract status (issue #270). Pickers that must only offer contracts that
+   * give coverage (work orders, activities) pass `"active"`. */
+  status?: ContractStatus | ContractStatus[];
   /** Sort column; unknown values fall back to newest-created first. */
   sort?: "contract_number" | "start_date" | "end_date" | "next_invoice_date" | "value";
   direction?: "asc" | "desc";
@@ -297,6 +316,12 @@ export async function listContracts(
     }
   }
 
+  const statusFilter =
+    options.status === undefined
+      ? undefined
+      : z.array(contractStatusSchema).min(1).safeParse(Array.isArray(options.status) ? options.status : [options.status]);
+  if (statusFilter && !statusFilter.success) return fail("Invalid status filter.");
+
   const ctx = await requireModuleContext("contracts");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -312,6 +337,7 @@ export async function listContracts(
   if (options.clientId) query = query.eq("client_id", options.clientId);
   if (options.typeId) query = query.eq("type_id", options.typeId);
   if (options.slaTierId) query = query.eq("sla_tier_id", options.slaTierId);
+  if (statusFilter?.success) query = query.in("status", statusFilter.data);
 
   const term = sanitizeSearchTerm(options.search ?? "");
   if (term) {
@@ -424,6 +450,144 @@ export async function createContract(input: unknown): Promise<ActionResult<{ con
   return ok({ contract: data as ContractRecord });
 }
 
+/** A counter reading still required before a contract can be activated, or
+ * (for a newly linked asset) before it counts in settlement (issues #269/#270). */
+export interface MissingBaselineReading {
+  assetId: string;
+  assetName: string;
+  volumeItemId: string;
+  counterLabel: string;
+}
+
+function toMissingBaseline(rows: unknown): MissingBaselineReading[] {
+  return ((rows ?? []) as { asset_id: string; asset_name: string; volume_item_id: string; counter_label: string }[]).map(
+    (row) => ({
+      assetId: row.asset_id,
+      assetName: row.asset_name,
+      volumeItemId: row.volume_item_id,
+      counterLabel: row.counter_label,
+    }),
+  );
+}
+
+function describeMissingBaseline(missing: readonly MissingBaselineReading[]): string {
+  return missing.map((m) => `${m.assetName} – ${m.counterLabel}`).join(", ");
+}
+
+/**
+ * Issue #270: the covered assets / counters that still have no accepted reading
+ * on or before the contract start date (empty = the contract can be activated).
+ * Same RBAC gate as `getContract` (`read`). Backed by the
+ * `contract_missing_baseline_readings` SQL function (security invoker).
+ */
+export async function getContractBaselineStatus(
+  contractId: string,
+): Promise<ActionResult<{ missing: MissingBaselineReading[] }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("contract_missing_baseline_readings", {
+    p_contract_id: idResult.data,
+  });
+  if (error) return fail(mapDbError(error));
+  return ok({ missing: toMissingBaseline(data) });
+}
+
+/** Allowed manual transitions (issue #270): Draft -> Active, Active -> Ended,
+ * Ended -> Active (the DB refuses that one after the end date). */
+const CONTRACT_STATUS_TRANSITIONS: Record<ContractStatus, readonly ContractStatus[]> = {
+  draft: ["active"],
+  active: ["ended"],
+  ended: ["active"],
+};
+
+export interface SetContractStatusResult {
+  /** False when activation was refused because of missing baseline readings. */
+  changed: boolean;
+  contract: ContractRecord | null;
+  /** Filled when `changed` is false because baseline readings are missing. */
+  missingBaseline: MissingBaselineReading[];
+  /** Human-readable reason when `changed` is false. */
+  message: string | null;
+}
+
+/**
+ * Changes a contract's status (issue #270). Owner/finance only (`update`, same
+ * as updateContract). Activating is guarded by the DB trigger
+ * `contracts_guard_status_change`: a 23514 "Missing baseline readings" is
+ * mapped to a clean `changed: false` result with the structured list (re-read
+ * through the RPC); any other refusal (e.g. reactivating after the end date)
+ * is returned as an error with the DB's message.
+ */
+export async function setContractStatus(
+  contractId: string,
+  status: unknown,
+): Promise<ActionResult<SetContractStatusResult>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+
+  if (!can(ctx.context.actor, "contracts", "update")) {
+    return fail("Only an owner or finance user can change a contract's status.");
+  }
+
+  const statusResult = contractStatusSchema.safeParse(status);
+  if (!statusResult.success) return fail("Invalid contract status.");
+  const target = statusResult.data;
+
+  const supabase = await createSupabaseServerClient();
+  const { data: current, error: currentError } = await supabase
+    .from("contracts")
+    .select("status")
+    .eq("id", idResult.data)
+    .maybeSingle<{ status: ContractStatus }>();
+  if (currentError) return fail(mapDbError(currentError));
+  if (!current) return fail("Contract not found.");
+  if (current.status === target) return fail(`The contract is already ${target}.`);
+  if (!CONTRACT_STATUS_TRANSITIONS[current.status].includes(target)) {
+    return fail(`A ${current.status} contract cannot be set to ${target}.`);
+  }
+
+  const { data, error } = await supabase
+    .from("contracts")
+    .update({ status: target })
+    .eq("id", idResult.data)
+    .eq("status", current.status)
+    .select(CONTRACT_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23514" && error.message.startsWith("Missing baseline readings")) {
+      const { data: rows } = await supabase.rpc("contract_missing_baseline_readings", {
+        p_contract_id: idResult.data,
+      });
+      const missing = toMissingBaseline(rows);
+      return ok({
+        changed: false,
+        contract: null,
+        missingBaseline: missing,
+        message: missing.length > 0 ? `Missing baseline readings: ${describeMissingBaseline(missing)}` : error.message,
+      });
+    }
+    if (error.code === "23514" && error.message.startsWith("An ended contract cannot be reactivated")) {
+      return fail(error.message);
+    }
+    return fail(mapDbError(error));
+  }
+  if (!data) return fail("Contract not found, its status changed in the meantime, or you do not have permission to update it.");
+  return ok({ changed: true, contract: data as ContractRecord, missingBaseline: [], message: null });
+}
+
 /** Owner/finance only (per the RBAC matrix + RLS UPDATE policy, both agree). */
 export async function updateContract(
   id: string,
@@ -450,6 +614,23 @@ export async function updateContract(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Switching invoicing timing after a period is invoiced would skip a period's
+  // counter settlement (in advance -> in arrears loses the previous period).
+  if (row.invoicing_timing !== undefined) {
+    const { data: current, error: currentError } = await supabase
+      .from("contracts")
+      .select("invoicing_timing, invoiced_period_count")
+      .eq("id", idResult.data)
+      .maybeSingle<{ invoicing_timing: string; invoiced_period_count: number }>();
+    if (currentError) return fail(mapDbError(currentError));
+    if (current && current.invoicing_timing !== row.invoicing_timing && current.invoiced_period_count > 0) {
+      return fail("Invoicing can't be changed once a period has been invoiced.", {
+        invoicingTiming: ["Invoicing can't be changed once a period has been invoiced."],
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("contracts")
     .update(row)
@@ -523,8 +704,9 @@ export async function countContractsForAsset(assetId: string): Promise<ActionRes
   const supabase = await createSupabaseServerClient();
   const { count, error } = await supabase
     .from("contract_assets")
-    .select("contract_id", { count: "exact", head: true })
-    .eq("asset_id", idResult.data);
+    .select("contract_id, contract:contracts!inner(status)", { count: "exact", head: true })
+    .eq("asset_id", idResult.data)
+    .eq("contract.status", "active");
 
   if (error) return fail(mapDbError(error));
   return ok({ count: count ?? 0 });
@@ -581,8 +763,9 @@ export async function listContractsForAsset(assetId: string): Promise<ActionResu
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("contract_assets")
-    .select(`contract:contracts(${CONTRACT_SELECT})`)
+    .select(`contract:contracts!inner(${CONTRACT_SELECT})`)
     .eq("asset_id", idResult.data)
+    .eq("contract.status", "active")
     .order("created_at", { ascending: false });
 
   if (error) return fail(mapDbError(error));
@@ -663,8 +846,9 @@ export async function listAssetContractCoverage(
   // Direct: identical query to `listContractsForAsset`.
   const { data: directRows, error: directError } = await supabase
     .from("contract_assets")
-    .select(`contract:contracts(${CONTRACT_SELECT})`)
+    .select(`contract:contracts!inner(${CONTRACT_SELECT})`)
     .eq("asset_id", idResult.data)
+    .eq("contract.status", "active")
     .order("created_at", { ascending: false });
   if (directError) return fail(mapDbError(directError));
 
@@ -704,8 +888,9 @@ export async function listAssetContractCoverage(
       supabase.from("assets").select("id,name").in("id", ancestorIds),
       supabase
         .from("contract_assets")
-        .select(`asset_id, contract:contracts(${CONTRACT_SELECT})`)
+        .select(`asset_id, contract:contracts!inner(${CONTRACT_SELECT})`)
         .in("asset_id", ancestorIds)
+        .eq("contract.status", "active")
         .order("created_at", { ascending: false }),
     ]);
   if (ancestorAssetsError) return fail(mapDbError(ancestorAssetsError));
@@ -760,7 +945,16 @@ const linkContractAssetSchema = z.object({
 export async function linkContractAsset(
   contractId: string,
   assetId: string,
-): Promise<ActionResult<{ contractAsset: ContractAssetRecord }>> {
+): Promise<
+  ActionResult<{
+    contractAsset: ContractAssetRecord;
+    /** Issue #270: set when the contract is active and the asset (or one of its
+     * components) has no reading on or before today for a counter of the
+     * contract; it is not counted in settlement until it has one. */
+    warning: string | null;
+    missingBaseline: MissingBaselineReading[];
+  }>
+> {
   const ctx = await requireModuleContext("contracts");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -781,7 +975,37 @@ export async function linkContractAsset(
     .single();
 
   if (error) return fail(mapDbError(error));
-  return ok({ contractAsset: data as unknown as ContractAssetRecord });
+
+  // Active contract: the asset's baseline date is today (added_on), so it needs
+  // a reading on or before today for every counter of the contract.
+  let warning: string | null = null;
+  let missingBaseline: MissingBaselineReading[] = [];
+  const { data: contractRow } = await supabase
+    .from("contracts")
+    .select("status")
+    .eq("id", parsed.data.contractId)
+    .maybeSingle<{ status: ContractStatus }>();
+  if (contractRow?.status === "active") {
+    const today = new Date().toISOString().slice(0, 10);
+    const [{ data: missingRows }, { data: coveredRows }] = await Promise.all([
+      supabase.rpc("contract_missing_baseline_readings_at", {
+        p_contract_id: parsed.data.contractId,
+        p_start_date: today,
+      }),
+      supabase.rpc("contract_covered_assets", { p_contract_id: parsed.data.contractId }),
+    ]);
+    const addedTree = new Set(
+      ((coveredRows ?? []) as { asset_id: string; root_asset_id: string }[])
+        .filter((row) => row.root_asset_id === parsed.data.assetId)
+        .map((row) => row.asset_id),
+    );
+    missingBaseline = toMissingBaseline(missingRows).filter((m) => addedTree.has(m.assetId));
+    if (missingBaseline.length > 0) {
+      warning = `Missing readings on or before today: ${describeMissingBaseline(missingBaseline)}. These are not counted in counter settlement until a reading exists.`;
+    }
+  }
+
+  return ok({ contractAsset: data as unknown as ContractAssetRecord, warning, missingBaseline });
 }
 
 /**

@@ -23,8 +23,7 @@ export const CONTRACTS_DROPDOWN_IDS = {
   slaTier: "slaTierId",
 } as const;
 
-/** The 3-value toggle (All last): derived lifecycle. "Active" = running now;
- * contracts that have not started yet only show under "All". */
+/** The 3-value toggle (All last): the stored contract status (issue #270). Draft contracts show under "All" (the segment is limited to three options). */
 export const CONTRACTS_PHASE_SEGMENT = {
   label: "Status",
   defaultValue: "all",
@@ -59,7 +58,7 @@ export function parseContractsQuery(params: ContractsSearchParams): {
       typeId: params.typeId || undefined,
       slaTierId: params.slaTierId || undefined,
       search: params.q?.trim() || undefined,
-      phase: params.seg === "active" || params.seg === "ended" ? params.seg : undefined,
+      status: params.seg === "active" || params.seg === "ended" ? params.seg : undefined,
       sort: params.sort ? SORT_BY_COLUMN[params.sort] : undefined,
       direction: params.dir === "asc" ? "asc" : "desc",
       limit: CONTRACTS_PAGE_SIZE,

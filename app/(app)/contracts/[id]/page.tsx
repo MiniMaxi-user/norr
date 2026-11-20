@@ -10,6 +10,7 @@ import {
   listContractArticleRules,
   listContractLineItems,
   listContractCounterOptions,
+  getContractBaselineStatus,
 } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
@@ -77,6 +78,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     billingTermsResult,
     billingPeriodsResult,
     quotesResult,
+    baselineResult,
     lastUsedTab,
   ] = await Promise.all([
     getClient(contract.client_id),
@@ -93,6 +95,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     listReferenceItems("billing_terms"),
     listReferenceItems("billing_period"),
     canSeeQuotes ? listQuotesForContract(contract.id) : Promise.resolve(null),
+    contract.status === "draft" ? getContractBaselineStatus(contract.id) : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CONTRACT_DETAIL_VIEW_KEY),
   ]);
 
@@ -134,6 +137,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
       clientAssets={clientAssetsResult.data?.assets ?? []}
       siteLabelById={siteLabelById}
       quotes={quotes}
+      missingBaseline={baselineResult?.data?.missing ?? []}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
     />
   );

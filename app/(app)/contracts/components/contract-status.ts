@@ -1,3 +1,5 @@
+import type { ContractInvoicingTiming, ContractStatus as ContractStoredStatus } from "../schema";
+
 /**
  * Derived lifecycle of a contract, from its dates alone (there is no stored
  * status column): Upcoming (starts in the future), Active, Ended (end date in
@@ -40,3 +42,25 @@ export function getContractStatus(
 export function pluralDays(count: number): string {
   return `${count} ${count === 1 ? "day" : "days"}`;
 }
+
+/* ---- Stored status (issue #270) and invoicing timing (issue #269) ---------- */
+
+export const CONTRACT_STATUS_LABEL: Record<ContractStoredStatus, string> = {
+  draft: "Draft",
+  active: "Active",
+  ended: "Ended",
+};
+
+export const CONTRACT_STATUS_TONE: Record<ContractStoredStatus, "info" | "success" | "neutral"> = {
+  draft: "info",
+  active: "success",
+  ended: "neutral",
+};
+
+export const INVOICING_TIMING_LABEL: Record<ContractInvoicingTiming, string> = {
+  in_advance: "In advance",
+  in_arrears: "In arrears",
+};
+
+export const INVOICING_TIMING_NOTE =
+  "In advance: the counter overage of the previous period is billed on the next invoice (final settlement after the end date). In arrears: invoiced after the period ends, including its overage.";

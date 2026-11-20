@@ -73,7 +73,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
     }
     let cancelled = false;
     setLoadingContracts(true);
-    listContracts({ clientId, limit: ALL_CLIENT_SCOPED_LIMIT })
+    listContracts({ clientId, status: "active", limit: ALL_CLIENT_SCOPED_LIMIT })
       .then((result) => {
         if (!cancelled) setContracts(result.data?.contracts ?? []);
       })

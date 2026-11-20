@@ -1,5 +1,7 @@
 import type { DirtyField, EditSchema, SaveResult } from "@yourorg/ui/web-client";
 import { createContract, updateContract } from "../actions";
+import { INVOICING_TIMING_LABEL } from "./contract-status";
+import type { ContractInvoicingTiming } from "../schema";
 import { draftToInput, type ContractDraft } from "./contract-draft";
 
 /**
@@ -47,6 +49,12 @@ export function buildContractSchema(options: {
     slaTierId: { label: "SLA tier", format: labelled("slaTierId") },
     billingPeriodId: { label: "Billing period", format: labelled("billingPeriodId") },
     billingTermsId: { label: "Billing terms", format: labelled("billingTermsId") },
+    invoicingTiming: {
+      label: "Invoicing",
+      required: true,
+      format: (value) => INVOICING_TIMING_LABEL[value as ContractInvoicingTiming] ?? "",
+      validate: (value) => (value ? null : "Choose when this contract is invoiced"),
+    },
     startDate: {
       label: "Start date",
       required: true,

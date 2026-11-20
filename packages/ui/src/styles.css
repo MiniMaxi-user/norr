@@ -4055,6 +4055,9 @@ select.ui-client-card-status-select {
 .ui-toast-success {
   border-left-color: var(--ui-success);
 }
+.ui-toast-warning {
+  border-left-color: var(--ui-warning);
+}
 .ui-toast-danger {
   border-left-color: var(--ui-danger);
 }

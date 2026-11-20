@@ -6,12 +6,11 @@ import {
   StatusText,
   WebDataTableCard,
   type FilterOption,
-  type StatusTone,
   type WebColumn,
 } from "@yourorg/ui/web-client";
 import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { ContractRecord } from "../actions";
-import { getContractStatus, type ContractPhase } from "./contract-status";
+import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE } from "./contract-status";
 import { CONTRACTS_DROPDOWN_IDS, CONTRACTS_PAGE_SIZE, CONTRACTS_PHASE_SEGMENT } from "./contracts-query";
 import { DeleteContractDialog } from "./delete-contract-dialog";
 
@@ -19,12 +18,6 @@ import { DeleteContractDialog } from "./delete-contract-dialog";
 function clientLink(clientId: string | null | undefined, name: string | undefined) {
   return clientId && name ? <Link href={`/clients/${clientId}`}>{name}</Link> : null;
 }
-
-const PHASE_TONE: Record<ContractPhase, StatusTone> = {
-  active: "success",
-  upcoming: "info",
-  ended: "neutral",
-};
 
 export interface ContractsTableProps {
   contracts: ContractRecord[];
@@ -80,10 +73,11 @@ export function ContractsTable({
       {
         id: "status",
         header: "Status",
-        render: (contract) => {
-          const status = getContractStatus(contract);
-          return <StatusText display="auto" tone={PHASE_TONE[status.phase]}>{status.label}</StatusText>;
-        },
+        render: (contract) => (
+          <StatusText display="auto" tone={CONTRACT_STATUS_TONE[contract.status]}>
+            {CONTRACT_STATUS_LABEL[contract.status]}
+          </StatusText>
+        ),
       },
       { id: "billing", header: "Billing terms", render: (contract) => contract.billing_terms?.label ?? null },
       { id: "start", header: "Start date", sortable: true, render: (contract) => formatDateWeb(contract.start_date) },

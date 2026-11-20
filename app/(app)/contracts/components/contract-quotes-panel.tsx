@@ -34,6 +34,27 @@ export function ContractQuotesPanel({ quotes }: ContractQuotesPanelProps) {
             : "—",
       },
       {
+        id: "settled",
+        header: "Counter settlement",
+        sortValue: (quote) => quote.counter_settlement_start ?? "",
+        render: (quote) => {
+          if (!quote.counter_settlement_start || !quote.counter_settlement_end) {
+            return quote.is_final_settlement ? <StatusText display="badge" tone="neutral">Final settlement</StatusText> : "—";
+          }
+          return (
+            <>
+              {formatDateWeb(quote.counter_settlement_start)} – {formatDateWeb(quote.counter_settlement_end)}
+              {quote.is_final_settlement ? (
+                <>
+                  {" "}
+                  <StatusText display="badge" tone="neutral">Final settlement</StatusText>
+                </>
+              ) : null}
+            </>
+          );
+        },
+      },
+      {
         id: "status",
         header: "Status",
         sortValue: (quote) => quote.status?.label ?? "",

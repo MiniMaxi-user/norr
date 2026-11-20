@@ -7,7 +7,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { cx } from "./cx";
 
-export type ToastTone = "default" | "success" | "danger";
+export type ToastTone = "default" | "success" | "warning" | "danger";
 
 export interface ToastOptions {
   title?: ReactNode;

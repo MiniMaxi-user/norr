@@ -206,6 +206,9 @@ function LinkAssetDialog({
       setError(result.error ?? "Could not link this asset.");
       return;
     }
+    if (result.data.warning) {
+      toast({ title: "Asset linked, baseline reading missing", description: result.data.warning, tone: "warning", duration: 10000 });
+    }
     onClose();
     router.refresh();
   }

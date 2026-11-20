@@ -18,7 +18,7 @@ import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ArticleGroupRecord } from "@/app/(app)/articles/groups-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
-import type { ContractCounterOption } from "../actions";
+import type { ContractCounterOption, MissingBaselineReading } from "../actions";
 import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-actions";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import type {
@@ -32,7 +32,9 @@ import { CONTRACT_DETAIL_VIEW_KEY } from "./constants";
 import { contractTitle } from "./contract-title";
 import { draftFromContract, emptyDraft, type ContractDraft } from "./contract-draft";
 import { buildContractSchema, createContractFromDraft, saveContractEdits } from "./contract-form-schema";
-import { getContractStatus, pluralDays } from "./contract-status";
+import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE, getContractStatus, pluralDays } from "./contract-status";
+import { ContractBaselineCard } from "./contract-baseline-card";
+import { useContractStatusActions } from "./contract-status-actions";
 import { getLivePanel } from "./contract-live-panel";
 import { ContractOverviewCards, type ContractReferenceLists } from "./contract-overview-cards";
 import { ContractRail } from "./contract-rail";
@@ -78,6 +80,8 @@ export interface ContractScreenProps {
   /** Quotes generated for this contract; `null` = the caller cannot see the
    * Quotes module, so its tab does not render at all. */
   quotes?: ContractQuoteRecord[] | null;
+  /** Draft contracts only: counters still lacking a baseline reading. */
+  missingBaseline?: MissingBaselineReading[];
   defaultTab?: ContractDetailTab;
 }
 
@@ -127,6 +131,7 @@ export function ContractScreen({
   clientAssets = [],
   siteLabelById = new Map(),
   quotes = null,
+  missingBaseline = [],
   defaultTab = "overview",
 }: ContractScreenProps) {
   const router = useRouter();
@@ -134,6 +139,7 @@ export function ContractScreen({
   const [tab, setTab] = useState<ContractDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [, startTransition] = useTransition();
+  const statusActions = useContractStatusActions({ contract: contract ?? ({} as ContractRecord), canUpdate: !isCreate && !readOnly && Boolean(contract) });
 
   // ---- Edit mode ------------------------------------------------------------
   const defaultTypeId = lists.contractTypes.find((item) => item.is_default)?.id;
@@ -282,10 +288,10 @@ export function ContractScreen({
 
   const badges: PageHeaderBadge[] = [];
   if (!isCreate) {
-    const statusVariant: WebBadgeVariant =
-      status.phase === "active" ? "success" : status.phase === "upcoming" ? "info" : "neutral";
-    badges.push({ label: status.label, variant: statusVariant });
-    if (status.phase === "active" && status.daysToEnd !== null && status.daysToEnd <= ENDING_SOON_DAYS && !saved.autoRenew) {
+    const storedStatus = contract?.status ?? "active";
+    const statusVariant: WebBadgeVariant = CONTRACT_STATUS_TONE[storedStatus];
+    badges.push({ label: CONTRACT_STATUS_LABEL[storedStatus], variant: statusVariant });
+    if (storedStatus === "active" && status.phase === "active" && status.daysToEnd !== null && status.daysToEnd <= ENDING_SOON_DAYS && !saved.autoRenew) {
       badges.push({
         label: status.daysToEnd === 0 ? "Ends today" : `Ends in ${pluralDays(status.daysToEnd)}`,
         variant: "warning",
@@ -320,6 +326,7 @@ export function ContractScreen({
         canEdit: !isCreate && !readOnly && tab === "overview",
         onEdit: edit.startEdit,
         overflow,
+        primary: isCreate ? undefined : statusActions.button,
         onSave: () => void edit.save(),
         onCancel: edit.requestCancel,
         saving: edit.saving,
@@ -391,6 +398,7 @@ export function ContractScreen({
       >
         {tab === "overview" && (
           <div className="web-tab-stack">
+            {!isCreate && contract?.status === "draft" ? <ContractBaselineCard missing={missingBaseline} /> : null}
             <ContractOverviewCards
               edit={edit}
               contract={contract}
@@ -448,6 +456,7 @@ export function ContractScreen({
       </WebDetailLayout>
 
       <EditDiscardDialog confirm={edit.confirm} />
+      {!isCreate && contract ? statusActions.dialogs : null}
 
       {!isCreate && contract && deleteOpen && (
         <DeleteContractDialog contract={contract} open onOpenChange={setDeleteOpen} redirectOnDelete />

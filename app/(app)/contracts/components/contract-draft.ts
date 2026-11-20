@@ -1,4 +1,5 @@
 import type { ContractRecord } from "../actions";
+import type { ContractInvoicingTiming } from "../schema";
 
 /**
  * The contract's own editable fields, as one flat draft object — the raw
@@ -20,6 +21,7 @@ export type ContractDraft = {
   slaTierId: string;
   billingTermsId: string;
   billingPeriodId: string;
+  invoicingTiming: ContractInvoicingTiming;
   startDate: string;
   endDate: string;
   autoRenew: boolean;
@@ -35,6 +37,7 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
     slaTierId: contract.sla_tier_id ?? "",
     billingTermsId: contract.billing_terms_id ?? "",
     billingPeriodId: contract.billing_period_id ?? "",
+    invoicingTiming: contract.invoicing_timing,
     startDate: contract.start_date,
     endDate: contract.end_date ?? "",
     autoRenew: contract.auto_renew,
@@ -60,6 +63,7 @@ export function emptyDraft(options: { lockedClientId?: string; defaultTypeId?: s
     slaTierId: "",
     billingTermsId: "",
     billingPeriodId: "",
+    invoicingTiming: "in_advance",
     startDate: todayIso(),
     endDate: "",
     autoRenew: false,
@@ -80,6 +84,7 @@ export function draftToInput(patch: Partial<ContractDraft>): Record<string, unkn
   if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId;
   if (patch.billingTermsId !== undefined) input.billingTermsId = patch.billingTermsId;
   if (patch.billingPeriodId !== undefined) input.billingPeriodId = patch.billingPeriodId;
+  if (patch.invoicingTiming) input.invoicingTiming = patch.invoicingTiming;
   if (patch.startDate) input.startDate = patch.startDate;
   if (patch.endDate !== undefined) input.endDate = patch.endDate;
   if (patch.autoRenew !== undefined) input.autoRenew = patch.autoRenew;

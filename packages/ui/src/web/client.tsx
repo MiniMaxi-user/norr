@@ -539,8 +539,12 @@ export interface KvField {
    * `disabledNote` ("Turn on custom rate first"). */
   disabled?: boolean;
   disabledNote?: string;
-  /** Derived fields: explanation under the grey value ("Edit under Sites"). */
+  /** Derived fields: explanation under the grey value ("Edit under Sites").
+   * Editable fields: a hint under the control while there is no error or
+   * change message. */
   note?: string;
+  /** Select without the placeholder option (the field always has a value). */
+  noEmpty?: boolean;
   /** Checkbox text next to the box. */
   checkboxLabel?: string;
   maxLength?: number;
@@ -601,6 +605,8 @@ function EditRow({ field, binding }: { field: KvField; binding: FieldBinding | n
     message = field.disabledNote;
   } else if (binding.changed) {
     message = `Changed · was ${binding.wasText ? binding.wasText : "empty"}`;
+  } else if (field.note) {
+    message = field.note;
   }
   const describedBy = message ? binding.messageId : undefined;
   const common = {
@@ -622,7 +628,7 @@ function EditRow({ field, binding }: { field: KvField; binding: FieldBinding | n
         value={String(binding.value)}
         onChange={(event) => binding.onChange(event.target.value)}
       >
-        <option value="">{field.emptyLabel ?? "Select…"}</option>
+        {field.noEmpty ? null : <option value="">{field.emptyLabel ?? "Select…"}</option>}
         {(field.options ?? []).map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

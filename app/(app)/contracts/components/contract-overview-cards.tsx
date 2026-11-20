@@ -16,6 +16,7 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { ContractRecord } from "../actions";
 import type { ContractDraft } from "./contract-draft";
+import { INVOICING_TIMING_LABEL, INVOICING_TIMING_NOTE } from "./contract-status";
 
 export interface ContractReferenceLists {
   contractTypes: ReferenceListItemRecord[];
@@ -219,6 +220,18 @@ export function ContractOverviewCards({
       read: savedTerms || null,
       options: termsOptions,
       emptyLabel: "No billing terms",
+    },
+    {
+      key: "invoicingTiming",
+      label: "Invoicing",
+      kind: "select",
+      read: INVOICING_TIMING_LABEL[saved.invoicingTiming],
+      options: (Object.keys(INVOICING_TIMING_LABEL) as (keyof typeof INVOICING_TIMING_LABEL)[]).map((value) => ({
+        value,
+        label: INVOICING_TIMING_LABEL[value],
+      })),
+      noEmpty: true,
+      note: INVOICING_TIMING_NOTE,
     },
     {
       key: "value",

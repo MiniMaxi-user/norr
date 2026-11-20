@@ -9,7 +9,10 @@ import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address"
 import {
   computeCounterUsage,
   computeOverage,
+  contractPeriodByIndex,
   describeOverage,
+  isPeriodQuoteDue,
+  planSettlementPeriod,
   type CounterAsset,
   type CounterReading,
 } from "./counter-settlement";
@@ -29,8 +32,20 @@ import {
  * (issue #211, item 7).
  *
  * `generateContractQuotes` — "Generate contract quotes" button on /quotes:
- *  - Candidates: the org's contracts whose `next_invoice_date` is set and
- *    <= today (server date, UTC).
+ *  - Candidates (issues #269/#270): ACTIVE contracts whose `next_invoice_date`
+ *    is set and <= today (server date, UTC); in arrears additionally only once
+ *    the period END is before today. Draft and ended contracts get no new
+ *    period quotes.
+ *  - Counter overage settlement period: in arrears = the invoiced period; in
+ *    advance = the PREVIOUS period (none for the first quote). Stored on the
+ *    quote (counter_settlement_start/end) whenever a counter line is settled,
+ *    even with zero overage, and never settled twice (unique per contract).
+ *    The per-asset baseline is the asset's coverage start (contract start or the
+ *    date it was added; `contract_covered_assets` RPC): a reading on that date
+ *    counts. Included quantity = line quantity x the billing multiplier.
+ *  - Final settlement: in-advance contracts past their end date, fully invoiced,
+ *    active or ended, get one extra quote (is_final_settlement, period start =
+ *    end_date + 1) with only the last period's overage; nothing when there is none.
  *  - One quote per contract per run. A contract is SKIPPED when a contract
  *    quote already exists for (contract_id, contract_period_start =
  *    next_invoice_date) (a 23505 from the partial unique index is treated the
@@ -90,6 +105,7 @@ interface ContractRow {
   end_date: string | null;
   next_invoice_date: string;
   invoiced_period_count: number;
+  invoicing_timing: "in_advance" | "in_arrears";
   contract_type: { label: string } | null;
   billing_terms: { label: string; interval_months: number | null } | null;
   billing_period: { value: string; label: string; interval_months: number | null } | null;
@@ -119,7 +135,7 @@ interface ContractRow {
 }
 
 const CONTRACT_SELECT =
-  "id, client_id, contract_number, external_reference, start_date, end_date, next_invoice_date, invoiced_period_count," +
+  "id, client_id, contract_number, external_reference, start_date, end_date, next_invoice_date, invoiced_period_count, invoicing_timing," +
   " contract_type:reference_list_items!contracts_type_id_fkey(label)," +
   " billing_terms:reference_list_items!contracts_billing_terms_id_fkey(label,interval_months)," +
   " billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,interval_months)," +
@@ -143,8 +159,9 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 }
 
 interface CounterData {
-  /** contract id -> covered asset ids (direct + all component descendants). */
-  coveredByContract: Map<string, Set<string>>;
+  /** contract id -> covered asset id -> coverage start (ISO date; direct + all
+   * component descendants, from the `contract_covered_assets` SQL function). */
+  coveredByContract: Map<string, Map<string, string>>;
   assets: Map<string, CounterAsset & { modelId: string | null }>;
   /** model id -> configured counter (volume item) ids. */
   countersByModel: Map<string, Set<string>>;
@@ -154,63 +171,29 @@ interface CounterData {
 
 /**
  * Bulk-loads everything counter settlement needs for the given contracts (all
- * with at least one counter line): coverage (direct + descendants through
- * asset_components, walked down level by level), asset names/models, counters
- * per model and the readings up to the latest period end. A handful of queries
- * per run, not per asset.
+ * with at least one counter line): coverage + per-asset coverage start (one RPC
+ * per contract), asset names/models, counters per model and the readings up to
+ * the latest settled period end. A handful of queries per run, not per asset.
  */
 async function loadCounterData(
   supabase: Supabase,
   contracts: readonly ContractRow[],
   latestPeriodEnd: string,
 ): Promise<{ data: CounterData } | { error: string }> {
-  const coveredByContract = new Map<string, Set<string>>();
-  const allRoots = new Set<string>();
+  const coveredByContract = new Map<string, Map<string, string>>();
+  const allAssetIdSet = new Set<string>();
   for (const contract of contracts) {
-    const roots = new Set(contract.contract_assets.map((link) => link.asset_id));
-    coveredByContract.set(contract.id, roots);
-    roots.forEach((id) => allRoots.add(id));
-  }
-
-  // Walk down the composition tree: parent -> children, one query per level.
-  const childrenByParent = new Map<string, string[]>();
-  const visited = new Set<string>(allRoots);
-  let frontier = [...allRoots];
-  for (let depth = 0; depth < 100 && frontier.length > 0; depth++) {
-    const next: string[] = [];
-    for (const ids of chunk(frontier, IN_CHUNK)) {
-      const { data, error } = await supabase
-        .from("asset_components")
-        .select("parent_asset_id, component_asset_id")
-        .in("parent_asset_id", ids);
-      if (error) return { error: mapDbError(error) };
-      for (const row of data ?? []) {
-        const parentId = row.parent_asset_id as string;
-        const childId = row.component_asset_id as string;
-        childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), childId]);
-        if (!visited.has(childId)) {
-          visited.add(childId);
-          next.push(childId);
-        }
-      }
+    const { data, error } = await supabase.rpc("contract_covered_assets", { p_contract_id: contract.id });
+    if (error) return { error: mapDbError(error) };
+    const covered = new Map<string, string>();
+    for (const row of (data ?? []) as { asset_id: string; coverage_start: string | null }[]) {
+      covered.set(row.asset_id, row.coverage_start ?? contract.start_date);
+      allAssetIdSet.add(row.asset_id);
     }
-    frontier = next;
+    coveredByContract.set(contract.id, covered);
   }
 
-  for (const covered of coveredByContract.values()) {
-    const stack = [...covered];
-    while (stack.length > 0) {
-      const id = stack.pop() as string;
-      for (const child of childrenByParent.get(id) ?? []) {
-        if (!covered.has(child)) {
-          covered.add(child);
-          stack.push(child);
-        }
-      }
-    }
-  }
-
-  const allAssetIds = [...visited];
+  const allAssetIds = [...allAssetIdSet];
   const assets = new Map<string, CounterAsset & { modelId: string | null }>();
   for (const ids of chunk(allAssetIds, IN_CHUNK)) {
     const { data, error } = await supabase.from("assets").select("id, name, model_id").in("id", ids);
@@ -293,6 +276,17 @@ function pickLiveInvoice(embed: InvoiceEmbed | InvoiceEmbed[] | null): { invoice
   return rows.find((r) => r.kind === "invoice" && r.credited_at === null) ?? null;
 }
 
+/** A contract quote still to generate: a normal period quote, or the extra
+ * final counter settlement quote after the end date (issue #269). */
+interface QuoteTask {
+  contract: ContractRow;
+  kind: "period" | "final";
+  /** Period this quote invoices (fixed lines); for `final` the last period (no fixed lines). */
+  period: { start: string; end: string };
+  /** Counter period whose overage this quote settles; null = nothing to settle. */
+  settlement: { start: string; end: string } | null;
+}
+
 export async function generateContractQuotes(): Promise<ActionResult<GenerateContractQuotesResult>> {
   const quotesCtx = await requireModuleContext("quotes");
   if (!quotesCtx.ok) return fail(quotesCtx.error);
@@ -310,65 +304,130 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
   const supabase = await createSupabaseServerClient();
   const today = new Date().toISOString().slice(0, 10);
 
+  // Period quotes: ACTIVE contracts only (issue #270). In arrears the period
+  // must also have ended (checked below, needs the computed period end).
   const { data: contractData, error: contractsError } = await supabase
     .from("contracts")
     .select(CONTRACT_SELECT)
+    .eq("status", "active")
     .not("next_invoice_date", "is", null)
     .lte("next_invoice_date", today)
     .order("next_invoice_date", { ascending: true })
     .limit(MAX_CONTRACTS_PER_RUN);
   if (contractsError) return fail(mapDbError(contractsError));
-  const contracts = (contractData ?? []) as unknown as ContractRow[];
+  const periodContracts = (contractData ?? []) as unknown as ContractRow[];
 
-  const result: GenerateContractQuotesResult = { created: 0, skipped: 0, errors: [], warnings: [] };
-  if (contracts.length === 0) return ok(result);
-
-  // Existing contract quotes for these contracts -> skip set.
-  const { data: existingData, error: existingError } = await supabase
-    .from("quotes")
-    .select("contract_id, contract_period_start")
-    .eq("quote_type", "contract")
-    .in(
-      "contract_id",
-      contracts.map((c) => c.id),
-    );
-  if (existingError) return fail(mapDbError(existingError));
-  const existing = new Set(
-    (existingData ?? []).map((q) => `${q.contract_id as string}|${q.contract_period_start as string}`),
+  // Final settlement candidates: in advance, ended by date, fully invoiced.
+  // Active or Ended status (an ended contract still gets its final settlement).
+  const { data: finalData, error: finalError } = await supabase
+    .from("contracts")
+    .select(CONTRACT_SELECT)
+    .in("status", ["active", "ended"])
+    .eq("invoicing_timing", "in_advance")
+    .not("end_date", "is", null)
+    .lt("end_date", today)
+    .is("next_invoice_date", null)
+    .gte("invoiced_period_count", 1)
+    .order("end_date", { ascending: true })
+    .limit(MAX_CONTRACTS_PER_RUN);
+  if (finalError) return fail(mapDbError(finalError));
+  const finalContracts = ((finalData ?? []) as unknown as ContractRow[]).filter((c) =>
+    c.contract_line_items.some((l) => l.is_volume && l.volume_item_id),
   );
 
-  const periodOf = (contract: ContractRow) =>
-    computeContractPeriod(
+  const result: GenerateContractQuotesResult = { created: 0, skipped: 0, errors: [], warnings: [] };
+  if (periodContracts.length === 0 && finalContracts.length === 0) return ok(result);
+
+  // Existing contract quotes for these contracts -> skip sets.
+  const allIds = [...new Set([...periodContracts, ...finalContracts].map((c) => c.id))];
+  const existingRows: {
+    contract_id: string;
+    contract_period_start: string;
+    counter_settlement_start: string | null;
+    is_final_settlement: boolean;
+  }[] = [];
+  for (const ids of chunk(allIds, IN_CHUNK)) {
+    const { data: existingData, error: existingError } = await supabase
+      .from("quotes")
+      .select("contract_id, contract_period_start, counter_settlement_start, is_final_settlement")
+      .eq("quote_type", "contract")
+      .in("contract_id", ids);
+    if (existingError) return fail(mapDbError(existingError));
+    existingRows.push(...((existingData ?? []) as typeof existingRows));
+  }
+  const existing = new Set(
+    existingRows.filter((q) => !q.is_final_settlement).map((q) => `${q.contract_id}|${q.contract_period_start}`),
+  );
+  const settled = new Set(
+    existingRows.filter((q) => q.counter_settlement_start).map((q) => `${q.contract_id}|${q.counter_settlement_start}`),
+  );
+  const finalExists = new Set(existingRows.filter((q) => q.is_final_settlement).map((q) => q.contract_id));
+
+  const intervalOf = (contract: ContractRow) => contract.billing_terms?.interval_months ?? null;
+  const hasCounterLine = (contract: ContractRow) =>
+    contract.contract_line_items.some((l) => l.is_volume && l.volume_item_id);
+
+  const tasks: QuoteTask[] = [];
+  for (const contract of periodContracts) {
+    if (existing.has(`${contract.id}|${contract.next_invoice_date}`)) {
+      result.skipped += 1;
+      continue;
+    }
+    const period = computeContractPeriod(
       contract.next_invoice_date,
       contract.start_date,
       contract.invoiced_period_count,
-      contract.billing_terms?.interval_months ?? null,
+      intervalOf(contract),
       contract.end_date,
     );
+    if (!isPeriodQuoteDue(contract.invoicing_timing, period, today)) continue;
+    let settlement = hasCounterLine(contract)
+      ? planSettlementPeriod({
+          timing: contract.invoicing_timing,
+          invoicedPeriod: period,
+          contractStart: contract.start_date,
+          contractEnd: contract.end_date,
+          invoicedPeriodCount: contract.invoiced_period_count,
+          intervalMonths: intervalOf(contract),
+        })
+      : null;
+    // A period's usage is never settled twice (regenerating / crediting).
+    if (settlement && settled.has(`${contract.id}|${settlement.start}`)) settlement = null;
+    tasks.push({ contract, kind: "period", period, settlement });
+  }
+  for (const contract of finalContracts) {
+    if (finalExists.has(contract.id)) continue;
+    const last = contractPeriodByIndex(
+      contract.start_date,
+      contract.invoiced_period_count - 1,
+      intervalOf(contract),
+      contract.end_date,
+    );
+    if (settled.has(`${contract.id}|${last.start}`)) continue;
+    tasks.push({ contract, kind: "final", period: last, settlement: last });
+  }
 
-  // Counter settlement data, loaded once for every contract still to generate.
-  const counterContracts = contracts.filter(
-    (c) =>
-      !existing.has(`${c.id}|${c.next_invoice_date}`) && c.contract_line_items.some((l) => l.is_volume && l.volume_item_id),
-  );
+  // Counter settlement data, loaded once for every task that settles a counter.
+  const counterTasks = tasks.filter((t) => t.settlement && hasCounterLine(t.contract));
   let counterData: CounterData | null = null;
   let counterLoadError: string | null = null;
-  if (counterContracts.length > 0) {
-    const latestEnd = counterContracts.map((c) => periodOf(c).end).reduce((a, b) => (a > b ? a : b));
-    const loaded = await loadCounterData(supabase, counterContracts, latestEnd);
+  if (counterTasks.length > 0) {
+    const latestEnd = counterTasks.map((t) => (t.settlement as { end: string }).end).reduce((a, b) => (a > b ? a : b));
+    const loaded = await loadCounterData(
+      supabase,
+      [...new Map(counterTasks.map((t) => [t.contract.id, t.contract])).values()],
+      latestEnd,
+    );
     if ("error" in loaded) counterLoadError = loaded.error;
     else counterData = loaded.data;
   }
 
-  for (const contract of contracts) {
-    const start = contract.next_invoice_date;
-    if (existing.has(`${contract.id}|${start}`)) {
-      result.skipped += 1;
-      continue;
-    }
-
-    const period = periodOf(contract);
+  for (const task of tasks) {
+    const { contract, settlement } = task;
+    const isFinal = task.kind === "final";
+    const period = task.period;
     const periodLabel = formatPeriodLabel(period.start, period.end);
+    const settlementLabel = settlement ? formatPeriodLabel(settlement.start, settlement.end) : null;
 
     const termsMonths = contract.billing_terms?.interval_months ?? null;
     const multiplier = billingMultiplier(termsMonths, billingPeriodMonths(contract.billing_period));
@@ -385,7 +444,9 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       }));
 
     // Counter settlement: overage lines + warnings per volume line with a counter.
-    const overageLines: {
+    // The included quantity is the line quantity x the billing multiplier of the
+    // SETTLED period (same multiplier as an invoiced period).
+    let overageLines: {
       articleId: string;
       articleNumber: string | null;
       description: string;
@@ -393,110 +454,167 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
       unitPrice: number;
     }[] = [];
     const warnings: string[] = [];
-    for (const line of contract.contract_line_items) {
-      if (!line.is_volume || !line.volume_item_id) continue;
-      const counterLabel = line.volume_item?.label ?? "Counter";
+    let settledCounterLine = false;
+    if (settlement && settlementLabel) {
       if (!counterData) {
-        warnings.push(`${counterLabel}: usage could not be settled (${counterLoadError ?? "no data"}).`);
+        result.errors.push({
+          contractId: contract.id,
+          contractNumber: contract.contract_number,
+          error: `Counter usage could not be settled (${counterLoadError ?? "no data"}).`,
+        });
         continue;
       }
       const data = counterData;
-      const volumeItemId = line.volume_item_id;
-      const covered = [...(data.coveredByContract.get(contract.id) ?? [])]
-        .map((id) => data.assets.get(id))
-        .filter((a): a is NonNullable<typeof a> => {
-          if (!a?.modelId) return false;
-          return data.countersByModel.get(a.modelId)?.has(volumeItemId) ?? false;
+      const baselines = data.coveredByContract.get(contract.id) ?? new Map<string, string>();
+      for (const line of contract.contract_line_items) {
+        if (!line.is_volume || !line.volume_item_id) continue;
+        settledCounterLine = true;
+        const counterLabel = line.volume_item?.label ?? "Counter";
+        const volumeItemId = line.volume_item_id;
+        const covered = [...baselines.keys()]
+          .map((id) => data.assets.get(id))
+          .filter((a): a is NonNullable<typeof a> => {
+            if (!a?.modelId) return false;
+            return data.countersByModel.get(a.modelId)?.has(volumeItemId) ?? false;
+          });
+        const readings = covered.flatMap((a) => data.readings.get(`${a.id}|${volumeItemId}`) ?? []);
+        const usage = computeCounterUsage(
+          covered.map((a) => ({ id: a.id, name: a.name })),
+          readings,
+          settlement.start,
+          settlement.end,
+          baselines,
+        );
+        for (const issue of usage.issues) warnings.push(`${counterLabel}: ${issue}`);
+        if (usage.reviewReadingsInPeriod > 0) {
+          warnings.push(
+            `${counterLabel}: ${usage.reviewReadingsInPeriod} reading(s) in the settled period need review and were ignored.`,
+          );
+        }
+        // The line quantity is the included counter quantity per billing
+        // PERIOD, scaled to the invoice: 500/month invoiced quarterly = 1,500.
+        const included = Math.round(Number(line.quantity) * multiplier * 1000) / 1000;
+        const overage = computeOverage(usage.usage, included);
+        if (overage <= 0) continue;
+        if (line.overage_unit_price === null) {
+          warnings.push(
+            `${counterLabel}: usage exceeds the included quantity but the line has no overage price; no overage line added.`,
+          );
+          continue;
+        }
+        overageLines.push({
+          articleId: line.article_id,
+          articleNumber: line.article_number ?? line.article?.article_number ?? null,
+          description: describeOverage(counterLabel, usage.usage, included, overage, settlementLabel),
+          quantity: overage,
+          unitPrice: Number(line.overage_unit_price),
         });
-      const readings = covered.flatMap((a) => data.readings.get(`${a.id}|${volumeItemId}`) ?? []);
-      const usage = computeCounterUsage(
-        covered.map((a) => ({ id: a.id, name: a.name })),
-        readings,
-        period.start,
-        period.end,
-      );
-      for (const issue of usage.issues) warnings.push(`${counterLabel}: ${issue}`);
-      if (usage.reviewReadingsInPeriod > 0) {
-        warnings.push(
-          `${counterLabel}: ${usage.reviewReadingsInPeriod} reading(s) in this period need review and were ignored.`,
-        );
       }
-      // The line quantity is the included counter quantity per billing
-      // PERIOD, scaled to the invoice: 500/month invoiced quarterly = 1,500.
-      const included = Math.round(Number(line.quantity) * multiplier * 1000) / 1000;
-      const overage = computeOverage(usage.usage, included);
-      if (overage <= 0) continue;
-      if (line.overage_unit_price === null) {
-        warnings.push(
-          `${counterLabel}: usage exceeds the included quantity but the line has no overage price; no overage line added.`,
-        );
-        continue;
-      }
-      overageLines.push({
-        articleId: line.article_id,
-        articleNumber: line.article_number ?? line.article?.article_number ?? null,
-        description: describeOverage(counterLabel, usage.usage, included, overage, periodLabel),
-        quantity: overage,
-        unitPrice: Number(line.overage_unit_price),
-      });
     }
 
-    const notes = [
-      `Contract: ${contract.contract_number}${contract.external_reference ? ` — ${contract.external_reference}` : ""}`,
-      contract.contract_type ? `Type: ${contract.contract_type.label}` : null,
-      contract.billing_terms ? `Billing terms: ${contract.billing_terms.label}` : null,
-      contract.billing_period ? `Billing period: ${contract.billing_period.label}` : null,
-      `Period invoiced: ${periodLabel}`,
-      `Contract start: ${formatPeriodLabel(contract.start_date, null)}`,
-      `Contract end: ${contract.end_date ? formatPeriodLabel(contract.end_date, null) : "open-ended"}`,
-      "",
-      describeContractAssets(assets),
-      warnings.length > 0 ? `\nCounter settlement warnings:\n${warnings.map((w) => `- ${w}`).join("\n")}` : null,
-    ]
-      .filter((line): line is string => line !== null)
-      .join("\n")
-      .trim();
-
-    const name = `${contract.contract_number} — ${periodLabel}`.slice(0, 200);
-
-    const { data: quote, error: quoteError } = await supabase
-      .from("quotes")
-      .insert({
-        client_id: contract.client_id,
-        name,
-        notes,
-        quote_type: "contract",
-        contract_id: contract.id,
-        contract_period_start: period.start,
-        contract_period_end: period.end,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (quoteError) {
-      if (quoteError.code === "23505") {
-        result.skipped += 1;
-      } else {
-        result.errors.push({ contractId: contract.id, contractNumber: contract.contract_number, error: mapDbError(quoteError) });
+    if (isFinal && overageLines.length === 0) {
+      // Nothing to bill: no quote (re-evaluated on the next run), warnings still reported.
+      result.skipped += 1;
+      for (const message of warnings) {
+        result.warnings.push({ contractId: contract.id, contractNumber: contract.contract_number, message });
       }
       continue;
     }
 
-    const lineRows = [...contract.contract_line_items]
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((line, index) => {
-        const scaled = scaleContractLine(Number(line.quantity), Number(line.unit_price), multiplier);
-        const baseDescription = line.description ?? line.article?.description ?? "Contract line";
-        return {
-          quote_id: quote.id,
-          article_id: line.article_id,
-          article_number: line.article_number ?? line.article?.article_number ?? null,
-          description: `${baseDescription} (${periodLabel})`.slice(0, 2000),
-          quantity: scaled.quantity,
-          unit_price: scaled.unitPrice,
-          sort_order: index,
-        };
-      });
+    const buildNotes = (withSettlement: boolean) =>
+      [
+        `Contract: ${contract.contract_number}${contract.external_reference ? ` — ${contract.external_reference}` : ""}`,
+        contract.contract_type ? `Type: ${contract.contract_type.label}` : null,
+        contract.billing_terms ? `Billing terms: ${contract.billing_terms.label}` : null,
+        contract.billing_period ? `Billing period: ${contract.billing_period.label}` : null,
+        contract.invoicing_timing === "in_arrears" ? "Invoicing: in arrears" : "Invoicing: in advance",
+        isFinal ? `Final counter settlement after the contract end date` : `Period invoiced: ${periodLabel}`,
+        withSettlement && settlementLabel ? `Counter usage settled: ${settlementLabel}` : null,
+        `Contract start: ${formatPeriodLabel(contract.start_date, null)}`,
+        `Contract end: ${contract.end_date ? formatPeriodLabel(contract.end_date, null) : "open-ended"}`,
+        "",
+        describeContractAssets(assets),
+        withSettlement && warnings.length > 0
+          ? `\nCounter settlement warnings:\n${warnings.map((w) => `- ${w}`).join("\n")}`
+          : null,
+      ]
+        .filter((line): line is string => line !== null)
+        .join("\n")
+        .trim();
+
+    const name = (
+      isFinal
+        ? `${contract.contract_number} — Final counter settlement ${settlementLabel ?? periodLabel}`
+        : `${contract.contract_number} — ${periodLabel}`
+    ).slice(0, 200);
+
+    // A final settlement quote sits after the contract end (period start =
+    // end_date + 1) so credit_invoice()'s "latest period" rule keeps working.
+    const quotePeriodStart = isFinal ? addDaysIso(contract.end_date as string, 1) : period.start;
+    const quotePeriodEnd = isFinal ? quotePeriodStart : period.end;
+
+    const insertQuote = (withSettlement: boolean) =>
+      supabase
+        .from("quotes")
+        .insert({
+          client_id: contract.client_id,
+          name,
+          notes: buildNotes(withSettlement),
+          quote_type: "contract",
+          contract_id: contract.id,
+          contract_period_start: quotePeriodStart,
+          contract_period_end: quotePeriodEnd,
+          ...(withSettlement && settlement && settledCounterLine
+            ? {
+                counter_settlement_start: settlement.start,
+                counter_settlement_end: settlement.end,
+                ...(isFinal ? { is_final_settlement: true } : {}),
+              }
+            : {}),
+        })
+        .select("id")
+        .single<{ id: string }>();
+
+    let { data: quote, error: quoteError } = await insertQuote(true);
+    if (quoteError?.code === "23505" && !isFinal && settledCounterLine) {
+      // Settlement of that period was claimed in the meantime (unique index
+      // backstop): still create the period quote, without settling again.
+      overageLines = [];
+      warnings.length = 0;
+      settledCounterLine = false;
+      ({ data: quote, error: quoteError } = await insertQuote(false));
+    }
+
+    if (quoteError || !quote) {
+      if (quoteError?.code === "23505") {
+        result.skipped += 1;
+      } else {
+        result.errors.push({
+          contractId: contract.id,
+          contractNumber: contract.contract_number,
+          error: quoteError ? mapDbError(quoteError) : "Quote could not be created.",
+        });
+      }
+      continue;
+    }
+
+    const lineRows = isFinal
+      ? []
+      : [...contract.contract_line_items]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((line, index) => {
+            const scaled = scaleContractLine(Number(line.quantity), Number(line.unit_price), multiplier);
+            const baseDescription = line.description ?? line.article?.description ?? "Contract line";
+            return {
+              quote_id: quote.id,
+              article_id: line.article_id,
+              article_number: line.article_number ?? line.article?.article_number ?? null,
+              description: `${baseDescription} (${periodLabel})`.slice(0, 2000),
+              quantity: scaled.quantity,
+              unit_price: scaled.unitPrice,
+              sort_order: index,
+            };
+          });
 
     for (const overage of overageLines) {
       lineRows.push({
@@ -540,6 +658,11 @@ export interface ContractQuoteRecord {
   status: { value: string; label: string; color: string | null } | null;
   contract_period_start: string | null;
   contract_period_end: string | null;
+  /** Counter period whose overage this quote settles (issue #269), if any. */
+  counter_settlement_start: string | null;
+  counter_settlement_end: string | null;
+  /** Extra quote after the end date with only the last period's overage. */
+  is_final_settlement: boolean;
   total: number;
   created_at: string;
   /** Null while not invoiced, and for roles that cannot read invoices
@@ -566,6 +689,7 @@ export async function listQuotesForContract(
     .from("quotes")
     .select(
       "id, name, quote_type, contract_period_start, contract_period_end, created_at," +
+        " counter_settlement_start, counter_settlement_end, is_final_settlement," +
         " quote_status:reference_list_items!quotes_status_id_fkey(value,label,color)," +
         " quote_line_items(quantity,unit_price,discount_percent)," +
         " invoice:invoices(invoice_number,kind,credited_at)",
@@ -580,6 +704,9 @@ export async function listQuotesForContract(
     quote_type: "default" | "contract";
     contract_period_start: string | null;
     contract_period_end: string | null;
+    counter_settlement_start: string | null;
+    counter_settlement_end: string | null;
+    is_final_settlement: boolean;
     created_at: string;
     quote_status: { value: string; label: string; color: string | null } | null;
     quote_line_items: { quantity: number | string; unit_price: number | string; discount_percent: number | string }[];
@@ -599,6 +726,9 @@ export async function listQuotesForContract(
       status: row.quote_status,
       contract_period_start: row.contract_period_start,
       contract_period_end: row.contract_period_end,
+      counter_settlement_start: row.counter_settlement_start,
+      counter_settlement_end: row.counter_settlement_end,
+      is_final_settlement: row.is_final_settlement,
       total: Math.round(sum * 100) / 100,
       created_at: row.created_at,
       invoice_number: invoice?.invoice_number ?? null,

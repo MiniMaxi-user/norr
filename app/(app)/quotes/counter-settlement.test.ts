@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { computeCounterUsage, computeOverage, describeOverage, type CounterReading } from "./counter-settlement";
+import {
+  computeCounterUsage,
+  computeOverage,
+  contractPeriodByIndex,
+  describeOverage,
+  isPeriodQuoteDue,
+  planSettlementPeriod,
+  type CounterReading,
+} from "./counter-settlement";
 
 const A = { id: "a", name: "Printer A" };
 const B = { id: "b", name: "Printer B" };
@@ -81,6 +89,62 @@ describe("computeCounterUsage", () => {
     expect(result.reviewReadingsInPeriod).toBe(0);
   });
 
+  it("counts a reading on the baseline date as baseline (first period)", () => {
+    const result = computeCounterUsage(
+      [A],
+      [
+        reading("a", "2027-01-01T15:00:00Z", 100), // on the contract start date
+        reading("a", "2027-03-31T10:00:00Z", 160),
+      ],
+      "2027-01-01",
+      "2027-03-31",
+      new Map([["a", "2027-01-01"]]),
+    );
+    expect(result.usage).toBe(60);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("uses the added date as baseline for an asset added mid-period", () => {
+    const result = computeCounterUsage(
+      [A],
+      [
+        reading("a", "2026-12-01T00:00:00Z", 10),
+        reading("a", "2027-02-10T09:00:00Z", 50), // on the added date
+        reading("a", "2027-03-31T10:00:00Z", 80),
+      ],
+      "2027-01-01",
+      "2027-03-31",
+      new Map([["a", "2027-02-10"]]),
+    );
+    expect(result.usage).toBe(30);
+  });
+
+  it("keeps the period start for later periods (baseline before the period)", () => {
+    const result = computeCounterUsage(
+      [A],
+      [reading("a", "2027-03-31T20:00:00Z", 100), reading("a", "2027-06-30T10:00:00Z", 130)],
+      "2027-04-01",
+      "2027-06-30",
+      new Map([["a", "2027-01-01"]]),
+    );
+    expect(result.usage).toBe(30);
+  });
+
+  it("reports a missing baseline reading and ignores an asset added after the period", () => {
+    const result = computeCounterUsage(
+      [A, B],
+      [reading("a", "2027-03-31T10:00:00Z", 80), reading("b", "2027-06-01T00:00:00Z", 5)],
+      "2027-01-01",
+      "2027-03-31",
+      new Map([
+        ["a", "2027-01-01"],
+        ["b", "2027-05-01"],
+      ]),
+    );
+    expect(result.issues).toEqual(["no reading at period start for Printer A"]);
+    expect(result.usage).toBe(0);
+  });
+
   it("rejects negative usage (counter reset) with a message and does not count the asset", () => {
     const result = computeCounterUsage(
       [A, B],
@@ -114,5 +178,54 @@ describe("overage", () => {
     expect(describeOverage("B/W prints", 130, 100, 30, "1 Jan 2027 – 31 Mar 2027")).toBe(
       "B/W prints – usage 130, included 100, overage 30 (1 Jan 2027 – 31 Mar 2027)",
     );
+  });
+});
+
+describe("settlement period planning", () => {
+  const base = {
+    contractStart: "2027-01-01",
+    contractEnd: "2027-12-31" as string | null,
+    intervalMonths: 3 as number | null,
+  };
+
+  it("in arrears settles the invoiced period itself", () => {
+    const invoicedPeriod = { start: "2027-04-01", end: "2027-06-30" };
+    expect(planSettlementPeriod({ ...base, timing: "in_arrears", invoicedPeriod, invoicedPeriodCount: 1 })).toEqual(
+      invoicedPeriod,
+    );
+  });
+
+  it("in advance has no settlement for the first quote", () => {
+    expect(
+      planSettlementPeriod({
+        ...base,
+        timing: "in_advance",
+        invoicedPeriod: { start: "2027-01-01", end: "2027-03-31" },
+        invoicedPeriodCount: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it("in advance settles the previous period", () => {
+    expect(
+      planSettlementPeriod({
+        ...base,
+        timing: "in_advance",
+        invoicedPeriod: { start: "2027-07-01", end: "2027-09-30" },
+        invoicedPeriodCount: 2,
+      }),
+    ).toEqual({ start: "2027-04-01", end: "2027-06-30" });
+  });
+
+  it("caps the last period at the contract end date", () => {
+    expect(contractPeriodByIndex("2027-01-01", 1, 3, "2027-12-31")).toEqual({ start: "2027-04-01", end: "2027-06-30" });
+    expect(contractPeriodByIndex("2027-01-01", 3, 3, "2027-11-15")).toEqual({ start: "2027-10-01", end: "2027-11-15" });
+  });
+
+  it("decides when a period quote is due", () => {
+    const period = { start: "2027-01-01", end: "2027-03-31" };
+    expect(isPeriodQuoteDue("in_advance", period, "2027-01-01")).toBe(true);
+    expect(isPeriodQuoteDue("in_arrears", period, "2027-03-31")).toBe(false);
+    expect(isPeriodQuoteDue("in_arrears", period, "2027-04-01")).toBe(true);
   });
 });

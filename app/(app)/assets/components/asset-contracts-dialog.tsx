@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, Button, Combobox, Dialog, IconButton, Inline, Spinner, Stack, Text } from "@yourorg/ui";
+import { Badge, Button, Combobox, Dialog, IconButton, Inline, Spinner, Stack, Text, toast } from "@yourorg/ui";
 import { X } from "@yourorg/ui/icons";
 import {
   linkContractAsset,
@@ -83,6 +83,9 @@ export function AssetContractsDialog({
     if (!result.data) {
       setError(result.error ?? "Could not link this contract.");
       return;
+    }
+    if (result.data.warning) {
+      toast({ title: "Asset linked, baseline reading missing", description: result.data.warning, tone: "warning", duration: 10000 });
     }
     setLinkContractId("");
     onChange();

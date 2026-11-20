@@ -59,6 +59,14 @@ const optionalMoneySchema = clearable(
     }),
 );
 
+export const CONTRACT_INVOICING_TIMINGS = ["in_advance", "in_arrears"] as const;
+export type ContractInvoicingTiming = (typeof CONTRACT_INVOICING_TIMINGS)[number];
+
+export const CONTRACT_STATUSES = ["draft", "active", "ended"] as const;
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
+
+export const contractStatusSchema = z.enum(CONTRACT_STATUSES, { message: "Invalid contract status." });
+
 export const contractCreateSchema = z.object({
   clientId: z.string().uuid("Invalid client id."),
   /** Optional free-text reference shown on invoices (issue #216, formerly
@@ -105,6 +113,11 @@ export const contractCreateSchema = z.object({
   autoRenew: z.preprocess(emptyToUndefined, z.boolean().optional()),
   value: optionalMoneySchema,
   notes: clearable(z.string().trim().max(5000)),
+  /** Issue #269: invoice the period in advance (default) or in arrears. */
+  invoicingTiming: z.preprocess(
+    emptyToUndefined,
+    z.enum(CONTRACT_INVOICING_TIMINGS, { message: "Invalid invoicing option." }).optional(),
+  ),
 });
 
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
