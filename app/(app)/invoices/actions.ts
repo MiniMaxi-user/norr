@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { applyInvoiceFilters, applyInvoiceSort } from "./invoice-filters";
 import { getInvoicePdfById } from "../quotes/invoice-render";
 import { getLatestInvoiceOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
 import { sendInvoiceEmailById, type InvoiceEmailOutcome as EmailOutcome } from "../quotes/invoice-email";
@@ -111,11 +112,6 @@ const filtersSchema = z.object({
   offset: z.number().int().optional(),
 });
 
-/** Strips characters that would break a PostgREST `or()`/`ilike` pattern. */
-function sanitizeSearchTerm(raw: string): string {
-  return raw.replace(/[,()%*\\"':]/g, " ").replace(/ +/g, " ").trim().slice(0, 80);
-}
-
 const LIST_COLUMNS =
   "id, kind, invoice_number, invoice_date, due_date, subtotal, vat_total, total, client_id, client_name, quote_id, quote_number," +
   " quote_name, quote_type, contract_id, contract_number, paid_amount, outstanding, payment_status, email_status, emailed_to," +
@@ -148,8 +144,6 @@ interface ListRowDb {
   credits_invoice_id: string | null;
   credited_at: string | null;
 }
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 type KpiRow = { total: number | string; outstanding: number | string | null; payment_status: string };
 
@@ -195,20 +189,10 @@ export async function listInvoices(
   const offset = clampOffset(f.offset);
   const supabase = await createSupabaseServerClient();
 
-  let query = supabase.from("invoice_overview").select(LIST_COLUMNS, { count: "exact" });
-  if (f.from) query = query.gte("invoice_date", f.from);
-  if (f.to) query = query.lte("invoice_date", f.to);
-  if (f.clientId) query = query.eq("client_id", f.clientId);
-  if (f.quoteType) query = query.eq("quote_type", f.quoteType);
-  if (f.paymentStatuses && f.paymentStatuses.length > 0) query = query.in("payment_status", f.paymentStatuses);
-  const term = sanitizeSearchTerm(f.search ?? "");
-  if (term) query = query.or(`invoice_number.ilike.%${term}%,client_name.ilike.%${term}%`);
-
-  const sort = f.sort ?? "invoice_date";
-  const ascending = (f.direction ?? "desc") === "asc";
-  query = query.order(sort, { ascending, nullsFirst: false });
-  if (sort !== "invoice_number") query = query.order("invoice_number", { ascending });
-  query = query.order("id").range(offset, offset + limit - 1);
+  const query = applyInvoiceSort(
+    applyInvoiceFilters(supabase.from("invoice_overview").select(LIST_COLUMNS, { count: "exact" }), f),
+    f,
+  ).range(offset, offset + limit - 1);
 
   const kpiQuery = (withPeriod: boolean, onlyOpen: boolean) => () => {
     let q = supabase.from("invoice_overview").select("total, outstanding, payment_status");

@@ -145,3 +145,7 @@ export function parseInvoicesQuery(params: InvoicesSearchParams): {
     },
   };
 }
+
+/** E-invoice export URLs (issue #241), kept in one place. */
+export const invoiceUblUrl = (invoiceId: string) => `/invoices/${invoiceId}/ubl`;
+export const INVOICES_EXPORT_CSV_URL = "/invoices/export.csv";

@@ -14,7 +14,7 @@ export interface SendEmailInput {
   subject: string;
   text: string;
   html?: string;
-  attachments?: { filename: string; content: Buffer }[];
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
   /** Sent as Resend's `Idempotency-Key` header (kept 24 h by Resend): a retry
    * with the same key is not delivered twice. The outbox uses its row id. */
   idempotencyKey?: string;
@@ -53,6 +53,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
               attachments: input.attachments.map((a) => ({
                 filename: a.filename,
                 content: a.content.toString("base64"),
+                ...(a.contentType ? { content_type: a.contentType } : {}),
               })),
             }
           : {}),

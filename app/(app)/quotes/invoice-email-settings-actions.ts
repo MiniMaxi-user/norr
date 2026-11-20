@@ -22,6 +22,8 @@ export interface InvoiceEmailSettings {
   subjectTemplate: string | null;
   /** null = the default body template applies. */
   bodyTemplate: string | null;
+  /** Attach the UBL e-invoice to mails for clients that enabled it (default true). */
+  attachUbl: boolean;
 }
 
 interface SettingsRow {
@@ -30,9 +32,10 @@ interface SettingsRow {
   cc_email: string | null;
   subject_template: string | null;
   body_template: string | null;
+  attach_ubl: boolean | null;
 }
 
-const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template";
+const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, attach_ubl";
 
 function toSettings(row: SettingsRow | null): InvoiceEmailSettings {
   return {
@@ -41,6 +44,7 @@ function toSettings(row: SettingsRow | null): InvoiceEmailSettings {
     ccEmail: row?.cc_email ?? null,
     subjectTemplate: row?.subject_template ?? null,
     bodyTemplate: row?.body_template ?? null,
+    attachUbl: row?.attach_ubl ?? true,
   };
 }
 
@@ -84,6 +88,7 @@ export async function saveInvoiceEmailSettings(
     cc_email: v.ccEmail ?? null,
     subject_template: v.subjectTemplate ?? null,
     body_template: v.bodyTemplate ?? null,
+    ...(v.attachUbl !== undefined ? { attach_ubl: v.attachUbl } : {}),
   };
 
   const supabase = await createSupabaseServerClient();

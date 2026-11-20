@@ -23,6 +23,7 @@ type InvoiceEmailDraft = {
   ccEmail: string;
   subjectTemplate: string;
   bodyTemplate: string;
+  attachUbl: boolean;
 };
 
 type InvoiceEmailKey = keyof InvoiceEmailDraft & string;
@@ -49,6 +50,7 @@ function draftFrom(settings: InvoiceEmailSettings): InvoiceEmailDraft {
     ccEmail: settings.ccEmail ?? "",
     subjectTemplate: settings.subjectTemplate ?? "",
     bodyTemplate: settings.bodyTemplate ?? "",
+    attachUbl: settings.attachUbl ?? true,
   };
 }
 
@@ -78,6 +80,7 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
         validate: (value) =>
           value.length > 5000 ? `Body is ${value.length} characters, the maximum is 5000. Remove ${value.length - 5000}` : null,
       },
+      attachUbl: { label: "E-invoice (UBL)", format: (value) => (value ? "on" : "off") },
     }),
     [],
   );
@@ -95,6 +98,7 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
         ccEmail: draft.ccEmail,
         subjectTemplate: draft.subjectTemplate,
         bodyTemplate: draft.bodyTemplate,
+        attachUbl: draft.attachUbl,
       });
       if (!result.data) {
         return {
@@ -140,6 +144,20 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
             read: saved.subjectTemplate.trim() ? saved.subjectTemplate : `Default: ${DEFAULT_INVOICE_EMAIL_SUBJECT}`,
             placeholder: DEFAULT_INVOICE_EMAIL_SUBJECT,
             maxLength: 300,
+          },
+        ]}
+      />
+      <KeyValueCard
+        title="Attachments"
+        edit={edit}
+        fields={[
+          {
+            key: "attachUbl",
+            label: "E-invoice (UBL)",
+            kind: "checkbox",
+            checkboxLabel: "Attach UBL e-invoice (XML)",
+            read: saved.attachUbl ? "On" : "Off",
+            note: "Only for clients with UBL e-invoicing switched on.",
           },
         ]}
       />

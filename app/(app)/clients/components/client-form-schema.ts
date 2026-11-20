@@ -100,6 +100,10 @@ export function buildClientSchema(options: {
       label: "Custom rate",
       format: (value) => (value ? "on" : "off"),
     },
+    ublEmailEnabled: {
+      label: "E-invoice (UBL)",
+      format: (value) => (value ? "on" : "off"),
+    },
     travelArticleId: {
       label: "Travel article",
       format: (value) => (value ? articleLabel(value) : ""),
@@ -141,6 +145,7 @@ const CLIENT_FIELD_KEYS = [
   "accountManagerId",
   "potentialValue",
   "clientSince",
+  "ublEmailEnabled",
 ] as const;
 const RATE_FIELD_KEYS = ["hasCustomRate", "travelArticleId", "workArticleId", "travelSalePrice", "workSalePrice"] as const;
 

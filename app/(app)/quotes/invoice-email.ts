@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import type { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { kickEmailOutbox, queueEmail } from "@/lib/email/outbox";
+import { ensureInvoiceUbl } from "../invoices/invoice-ubl";
 import { formatInvoiceTotal, getInvoicePdfById } from "./invoice-render";
 import {
   DEFAULT_INVOICE_EMAIL_BODY,
@@ -39,6 +40,7 @@ interface InvoiceEmailSettingsRow {
   cc_email: string | null;
   subject_template: string | null;
   body_template: string | null;
+  attach_ubl: boolean | null;
 }
 
 /**
@@ -126,7 +128,7 @@ export async function sendInvoiceEmailById(
 
     const { data: settings } = await supabase
       .from("invoice_email_settings")
-      .select("from_email, from_name, cc_email, subject_template, body_template")
+      .select("from_email, from_name, cc_email, subject_template, body_template, attach_ubl")
       .eq("organization_id", organizationId)
       .maybeSingle<InvoiceEmailSettingsRow>();
 
@@ -194,6 +196,29 @@ export async function sendInvoiceEmailById(
       return { status: "failed", to, error };
     }
 
+    // UBL e-invoice as a second attachment (#241): the org attaches it by default and the
+    // client opted in. Missing required fields block the mail (never send it without the
+    // file the client expects); the error lists what to fix.
+    let ublPath: string | null = null;
+    let ublFilename: string | null = null;
+    if (settings.attach_ubl !== false) {
+      const { data: clientRow } = await supabase
+        .from("clients")
+        .select("ubl_email_enabled")
+        .eq("id", quoteRow.client_id)
+        .maybeSingle<{ ubl_email_enabled: boolean | null }>();
+      if (clientRow?.ubl_email_enabled) {
+        const ubl = await ensureInvoiceUbl(supabase, invoiceRow.id);
+        if (!ubl.ok || !ubl.path) {
+          const error = ubl.ok ? "The UBL e-invoice is not stored yet." : ubl.error;
+          await record({ email_error: error });
+          return { status: "failed", to, error };
+        }
+        ublPath = ubl.path;
+        ublFilename = ubl.filename;
+      }
+    }
+
     const queued = await queueEmail(supabase, {
       kind: invoiceRow.kind,
       invoiceId: invoiceRow.id,
@@ -205,6 +230,8 @@ export async function sendInvoiceEmailById(
       html,
       attachmentPath: stored.pdf_path,
       attachmentFilename: `${rendered.invoiceNumber}.pdf`,
+      extraAttachmentPath: ublPath ?? undefined,
+      extraAttachmentFilename: ublFilename ?? undefined,
     });
     if (!queued.ok) {
       await record({ email_error: queued.error });

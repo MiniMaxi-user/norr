@@ -1,9 +1,9 @@
 import { StatStrip } from "@yourorg/ui";
-import { WebCard, WebDataTableEmpty, WebListPage } from "@yourorg/ui/web";
+import { WebCard, WebDataTableEmpty, WebLinkButton, WebListPage } from "@yourorg/ui/web";
 import { listClients, type ClientRecord } from "@/app/(app)/clients/actions";
 import { formatMoneyWeb } from "@/lib/format/web";
 import { listInvoices, type InvoiceKpis } from "../actions";
-import { INVOICE_PERIOD_OPTIONS, parseInvoicesQuery, type InvoicesSearchParams } from "./invoices-query";
+import { INVOICE_PERIOD_OPTIONS, INVOICES_EXPORT_CSV_URL, parseInvoicesQuery, type InvoicesSearchParams } from "./invoices-query";
 import { InvoicesTable } from "./invoices-table";
 
 function Kpis({ kpis, periodLabel }: { kpis: InvoiceKpis; periodLabel: string }) {
@@ -51,6 +51,12 @@ export async function InvoicesScreen({ params }: { params: InvoicesSearchParams 
   const clients: ClientRecord[] = clientsResult.data?.clients ?? [];
   const clientOptions = clients.map((client) => ({ value: client.id, label: client.name }));
   const { invoices, count, kpis } = result.data;
+  const exportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value) exportParams.set(key, value);
+  }
+  const exportQuery = exportParams.toString();
+  const exportHref = exportQuery ? `${INVOICES_EXPORT_CSV_URL}?${exportQuery}` : INVOICES_EXPORT_CSV_URL;
   const periodLabel = INVOICE_PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? "All time";
 
   return (
@@ -59,6 +65,11 @@ export async function InvoicesScreen({ params }: { params: InvoicesSearchParams 
       title="Invoices"
       count={noMatch ? 0 : count}
       stats={<Kpis kpis={kpis} periodLabel={periodLabel} />}
+      actions={
+        <WebLinkButton href={exportHref} download>
+          Export CSV
+        </WebLinkButton>
+      }
     >
       <InvoicesTable
         invoices={noMatch ? [] : invoices}

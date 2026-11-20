@@ -18,6 +18,7 @@ import {
   UNPAID_STATUSES,
 } from "./invoices-query";
 import { RegisterPaymentDialog } from "./register-payment-dialog";
+import { downloadInvoiceUbl } from "./ubl-download";
 
 export interface InvoicesTableProps {
   invoices: InvoiceListRow[];
@@ -172,6 +173,7 @@ export function InvoicesTable({ invoices, server, hideClient, urlPrefix = "invoi
   function rowActions(row: InvoiceListRow): WebMenuItem[] {
     const items: WebMenuItem[] = [
       { key: "pdf", label: "Open PDF", onSelect: () => openDocumentPopup(`/invoices/${row.id}/pdf`, "invoice PDF") },
+      { key: "ubl", label: "Download UBL (XML)", onSelect: () => void downloadInvoiceUbl(row.id, row.invoiceNumber) },
       { key: "quote", label: "Open quote", href: `/quotes/${row.quoteId}` },
     ];
     if (row.canRegisterPayment || row.canCredit) items.push({ type: "separator", key: "sep" });

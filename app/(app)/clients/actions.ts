@@ -94,6 +94,8 @@ export interface ClientRecord {
   /** Payment term in days for invoices to this client (issue #232). `null` =
    * the organization default (Settings → Invoicing). */
   payment_term_days: number | null;
+  /** Attach the UBL e-invoice to this client's invoice e-mails (issue #241). Default false. */
+  ubl_email_enabled: boolean;
   /** Read-only — maintained entirely by the DB's `set_client_won_at`
    * trigger, never written by `createClient`/`updateClient`. Timestamp of
    * when this client most recently became `status = 'won'`; drives the
@@ -195,6 +197,7 @@ function toClientInsertRow(input: ReturnType<typeof clientCreateSchema.parse>, o
     potential_value: input.potentialValue ?? null,
     client_since: input.clientSince ?? null,
     payment_term_days: input.paymentTermDays ?? null,
+    ...(input.ublEmailEnabled !== undefined ? { ubl_email_enabled: input.ublEmailEnabled } : {}),
     // `won_at` is never written here — trigger-only, excluded from this
     // table's INSERT column grants entirely (see
     // `20260827100000_clients_kanban_status.sql`).
@@ -246,6 +249,7 @@ function toClientUpdateRow(input: ReturnType<typeof clientUpdateSchema.parse>, r
   } else if (rawInput.paymentTermDays === "") {
     row.payment_term_days = null;
   }
+  if (input.ublEmailEnabled !== undefined) row.ubl_email_enabled = input.ublEmailEnabled;
   // `won_at` is never written here — see `toClientInsertRow`'s comment above.
   return row;
 }

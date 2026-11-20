@@ -87,6 +87,14 @@ const optionalPaymentTermSchema = z.preprocess(
  * `not null default 'lead'` already covers an omitted value on create. */
 export const clientStatusSchema = z.enum(["lead", "qualified", "proposal", "won"]);
 
+/** Checkbox/boolean input; FormData-style strings are accepted, empty = not provided. */
+const optionalBooleanSchema = z.preprocess((value) => {
+  if (value === "true" || value === "on") return true;
+  if (value === "false") return false;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  return value;
+}, z.boolean({ invalid_type_error: "Invalid value." }).optional());
+
 export const clientCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200, "Name is too long."),
   /** Dutch Chamber of Commerce (KvK) registration number — plain text, no
@@ -118,6 +126,8 @@ export const clientCreateSchema = z.object({
   clientSince: optionalIsoDateSchema,
   /** Invoices to this client (issue #232); empty = organization default. */
   paymentTermDays: optionalPaymentTermSchema,
+  /** E-mail the UBL e-invoice as an extra attachment with this client's invoices (issue #241). */
+  ublEmailEnabled: optionalBooleanSchema,
 });
 
 export type ClientCreateInput = z.infer<typeof clientCreateSchema>;

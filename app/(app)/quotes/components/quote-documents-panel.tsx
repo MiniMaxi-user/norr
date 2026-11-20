@@ -5,6 +5,7 @@ import { WebBadge, WebButton, WebCard, WebDataTable } from "@yourorg/ui/web";
 import { WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
 import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import { InvoiceEmailStatusCell, PaymentStatusBadge } from "../../invoices/components/invoice-status";
+import { downloadInvoiceUbl } from "../../invoices/components/ubl-download";
 import type { InvoiceSummary } from "../invoice-actions";
 import type { QuoteInvoiceFlow } from "./use-quote-invoice";
 
@@ -81,6 +82,9 @@ export function QuoteDocumentsPanel({ invoice, invoices, canGenerate, canInvoice
           <>
             <WebButton size="sm" onClick={() => flow.openPdfFor(row.id)}>
               Open PDF
+            </WebButton>
+            <WebButton size="sm" onClick={() => void downloadInvoiceUbl(row.id, row.invoiceNumber)}>
+              UBL (XML)
             </WebButton>
             {canInvoice ? (
               <WebButton

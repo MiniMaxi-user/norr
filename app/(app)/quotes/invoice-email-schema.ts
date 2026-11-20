@@ -54,6 +54,8 @@ export const invoiceEmailSettingsSchema = z.object({
   ccEmail: optionalEmail("Enter a valid CC e-mail address."),
   subjectTemplate: z.preprocess(emptyToUndefined, z.string().trim().max(300, "Subject is too long.").optional()),
   bodyTemplate: z.preprocess(emptyToUndefined, z.string().max(5000, "Body is too long.").optional()),
+  /** Attach the UBL e-invoice for clients that opted in (issue #241). Omitted = unchanged / default true. */
+  attachUbl: z.boolean({ invalid_type_error: "Invalid value." }).optional(),
 });
 
 export type InvoiceEmailSettingsInput = z.infer<typeof invoiceEmailSettingsSchema>;

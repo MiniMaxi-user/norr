@@ -43,6 +43,9 @@ export interface QueueEmailInput {
   /** Storage path of the stored PDF (invoices bucket for invoice/credit_note, work-receipts for work_receipt). */
   attachmentPath?: string;
   attachmentFilename?: string;
+  /** Second attachment: the stored UBL e-invoice (`invoices.ubl_path`, invoice/credit_note only; both fields or neither). */
+  extraAttachmentPath?: string;
+  extraAttachmentFilename?: string;
 }
 
 export type QueueEmailResult = { ok: true; id: string } | { ok: false; error: string };
@@ -63,6 +66,8 @@ export async function queueEmail(supabase: SupabaseServerClient, input: QueueEma
       body_html: input.html ?? null,
       attachment_path: input.attachmentPath ?? null,
       attachment_filename: input.attachmentFilename ?? null,
+      extra_attachment_path: input.extraAttachmentPath ?? null,
+      extra_attachment_filename: input.extraAttachmentFilename ?? null,
     })
     .select("id")
     .single<{ id: string }>();
@@ -112,6 +117,8 @@ interface OutboxRow {
   body_html: string | null;
   attachment_path: string | null;
   attachment_filename: string | null;
+  extra_attachment_path: string | null;
+  extra_attachment_filename: string | null;
   attempts: number;
 }
 
@@ -265,13 +272,24 @@ async function deliver(
   admin: AdminClient,
   row: OutboxRow,
 ): Promise<{ ok: true; id: string | null } | { ok: false; error: string; status: number | null; permanent?: boolean }> {
-  let attachments: { filename: string; content: Buffer }[] | undefined;
+  let attachments: { filename: string; content: Buffer; contentType?: string }[] | undefined;
   if (row.attachment_path && row.attachment_filename) {
     const { data: blob, error } = await admin.storage.from(BUCKET_BY_KIND[row.kind]).download(row.attachment_path);
     if (error || !blob) {
       return { ok: false, error: `Could not read the PDF attachment: ${error?.message ?? "file not found"}`, status: null };
     }
     attachments = [{ filename: row.attachment_filename, content: Buffer.from(await blob.arrayBuffer()) }];
+  }
+  if (row.extra_attachment_path && row.extra_attachment_filename) {
+    // The UBL e-invoice lives in the invoices bucket (kinds invoice / credit_note only).
+    const { data: blob, error } = await admin.storage.from("invoices").download(row.extra_attachment_path);
+    if (error || !blob) {
+      return { ok: false, error: `Could not read the UBL attachment: ${error?.message ?? "file not found"}`, status: null };
+    }
+    attachments = [
+      ...(attachments ?? []),
+      { filename: row.extra_attachment_filename, content: Buffer.from(await blob.arrayBuffer()), contentType: "application/xml" },
+    ];
   }
 
   const sent = await sendEmail({

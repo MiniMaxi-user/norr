@@ -193,7 +193,19 @@ export function ClientOverviewCards({ edit, accountManagers, articles, derived, 
     },
   ];
   // Read mode: only show the article/price rows when a custom rate is on.
-  const visibleRateFields = edit.isEditing || saved.hasCustomRate ? rateFields : rateFields.slice(0, 1);
+  const ublField: KvField = {
+    key: "ublEmailEnabled",
+    label: "E-invoice (UBL)",
+    kind: "checkbox",
+    checkboxLabel: "Attach UBL e-invoice to invoice e-mails",
+    read: saved.ublEmailEnabled ? "On" : "Off",
+  };
+  const [customRateField, ...rateDetailFields] = rateFields;
+  const visibleRateFields = [
+    customRateField!,
+    ublField,
+    ...(edit.isEditing || saved.hasCustomRate ? rateDetailFields : []),
+  ];
 
   return (
     <WebCardStack>

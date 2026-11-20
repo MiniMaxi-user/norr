@@ -37,6 +37,7 @@ export type ClientDraft = {
   workArticleId: string;
   travelSalePrice: string;
   workSalePrice: string;
+  ublEmailEnabled: boolean;
 };
 
 export function draftFromClient(client: ClientRecord): ClientDraft {
@@ -56,6 +57,7 @@ export function draftFromClient(client: ClientRecord): ClientDraft {
     workArticleId: client.work_article_id ?? "",
     travelSalePrice: client.travel_sale_price != null ? String(client.travel_sale_price) : "",
     workSalePrice: client.work_sale_price != null ? String(client.work_sale_price) : "",
+    ublEmailEnabled: client.ubl_email_enabled ?? false,
   };
 }
 
@@ -79,6 +81,7 @@ export function emptyDraft(todayIso: string): ClientDraft {
     workArticleId: "",
     travelSalePrice: "",
     workSalePrice: "",
+    ublEmailEnabled: false,
   };
 }
 
@@ -109,6 +112,7 @@ export function draftToClientInput(patch: Partial<ClientDraft>): Record<string, 
   if (patch.accountManagerId !== undefined) input.accountManagerId = patch.accountManagerId;
   if (patch.potentialValue !== undefined) input.potentialValue = patch.potentialValue;
   if (patch.clientSince !== undefined) input.clientSince = patch.clientSince;
+  if (patch.ublEmailEnabled !== undefined) input.ublEmailEnabled = patch.ublEmailEnabled;
   return input;
 }
 
