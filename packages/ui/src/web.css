@@ -2670,6 +2670,11 @@ a.web-tree-id:hover {
   font: 400 12.5px/17px var(--font-sans);
   color: var(--text-muted);
 }
+.web-hint-warning {
+  margin: 4px 0 0;
+  font: 500 12.5px/17px var(--font-sans);
+  color: var(--warning-text);
+}
 .web-settings-search {
   display: block;
   width: 100%;

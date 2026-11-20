@@ -18,6 +18,7 @@ import type { ClientRecord } from "@/app/(app)/clients/actions";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ArticleGroupRecord } from "@/app/(app)/articles/groups-actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
+import type { ContractCounterOption } from "../actions";
 import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-actions";
 import { setLastUsedView } from "@/lib/preferences/actions";
 import type {
@@ -65,6 +66,8 @@ export interface ContractScreenProps {
   canDelete?: boolean;
   lineItems?: ContractLineItemRecord[];
   articles?: ArticleSelectOption[];
+  /** Counters on the covered assets' models, for volume lines (#238). */
+  counterOptions?: ContractCounterOption[];
   articleGroups?: ArticleGroupRecord[];
   groupRules?: ContractArticleGroupRuleRecord[];
   articleRules?: ContractArticleRuleRecord[];
@@ -115,6 +118,7 @@ export function ContractScreen({
   canDelete = false,
   lineItems = [],
   articles = [],
+  counterOptions = [],
   articleGroups = [],
   groupRules = [],
   articleRules = [],
@@ -403,6 +407,7 @@ export function ContractScreen({
             contractId={contract.id}
             lineItems={lineItems}
             articles={articles}
+            counterOptions={counterOptions}
             canCreate={canCreate}
             canUpdate={canUpdate}
             canDelete={canDelete}

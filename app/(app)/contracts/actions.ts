@@ -128,6 +128,12 @@ export interface ContractLineItemRecord {
   unit_price: number;
   purchase_price: number;
   is_volume: boolean;
+  /** Counter (item of the `volume` reference list) a volume line is settled against (#238). */
+  volume_item_id: string | null;
+  included_quantity: number | null;
+  overage_unit_price: number | null;
+  /** Counter label, embedded by `listContractLineItems`. */
+  volume_item?: { label: string } | null;
   sort_order: number;
   created_by: string | null;
   created_at: string;
@@ -841,8 +847,29 @@ const contractLineItemWriteSchema = z.object({
   unitPrice: z.coerce.number({ invalid_type_error: "Unit price must be a number." }).finite().optional(),
   purchasePrice: z.coerce.number({ invalid_type_error: "Purchase price must be a number." }).finite().optional(),
   isVolume: z.boolean().optional(),
+  volumeItemId: z.string().uuid("Invalid counter id.").nullish(),
+  includedQuantity: z.coerce.number({ invalid_type_error: "Included quantity must be a number." }).finite().min(0, "Included quantity must be 0 or more.").nullish(),
+  overageUnitPrice: z.coerce.number({ invalid_type_error: "Overage price must be a number." }).finite().min(0, "Overage price must be 0 or more.").nullish(),
   sortOrder: z.coerce.number().int().optional(),
 });
+
+/** Counter columns (#238) only exist on volume lines: the DB check
+ * `contract_line_items_counter_requires_volume` rejects them otherwise, so
+ * switching `isVolume` off explicitly nulls all three. */
+function applyCounterColumns(
+  row: Record<string, unknown>,
+  data: { isVolume?: boolean; volumeItemId?: string | null; includedQuantity?: number | null; overageUnitPrice?: number | null },
+) {
+  if (data.isVolume === false) {
+    row.volume_item_id = null;
+    row.included_quantity = null;
+    row.overage_unit_price = null;
+    return;
+  }
+  if (data.volumeItemId !== undefined) row.volume_item_id = data.volumeItemId;
+  if (data.includedQuantity !== undefined) row.included_quantity = data.includedQuantity;
+  if (data.overageUnitPrice !== undefined) row.overage_unit_price = data.overageUnitPrice;
+}
 
 function emptyToUndefined(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -873,13 +900,109 @@ export async function listContractLineItems(
   // list.
   const { data, error } = await supabase
     .from("contract_line_items")
-    .select("id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume")
+    .select(
+      "id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume, volume_item_id, included_quantity, overage_unit_price, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)",
+    )
     .eq("contract_id", idResult.data)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) return fail(mapDbError(error));
-  return ok({ lineItems: (data ?? []) as ContractLineItemRecord[] });
+  return ok({ lineItems: (data ?? []) as unknown as ContractLineItemRecord[] });
+}
+
+/** A counter that occurs on at least one covered asset (#238). */
+export interface ContractCounterOption {
+  id: string;
+  label: string;
+  /** Unit label (parent item of the counter), when the counter has one. */
+  unit: string | null;
+}
+
+/**
+ * Counters offered for a contract's volume lines: the `asset_model_volumes`
+ * of the asset models of every asset linked via `contract_assets`, INCLUDING
+ * the sub-assets of those assets (same inheritance rule as
+ * `listAssetContractCoverage`, walked downward through `asset_components`,
+ * depth-capped at 100 levels).
+ */
+export async function listContractCounterOptions(
+  contractId: string,
+): Promise<ActionResult<{ counters: ContractCounterOption[] }>> {
+  const idResult = uuidSchema.safeParse(contractId);
+  if (!idResult.success) return fail("Invalid contract id.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract's counters.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: links, error: linksError } = await supabase
+    .from("contract_assets")
+    .select("asset_id")
+    .eq("contract_id", idResult.data);
+  if (linksError) return fail(mapDbError(linksError));
+
+  const covered = new Set<string>((links ?? []).map((l) => l.asset_id as string));
+  let frontier = Array.from(covered);
+  for (let depth = 0; depth < 100 && frontier.length > 0; depth++) {
+    const { data: children, error: childError } = await supabase
+      .from("asset_components")
+      .select("component_asset_id")
+      .in("parent_asset_id", frontier);
+    if (childError) return fail(mapDbError(childError));
+    frontier = [];
+    for (const child of children ?? []) {
+      const childId = child.component_asset_id as string;
+      if (!covered.has(childId)) {
+        covered.add(childId);
+        frontier.push(childId);
+      }
+    }
+  }
+  if (covered.size === 0) return ok({ counters: [] });
+
+  const { data: assetRows, error: assetError } = await supabase
+    .from("assets")
+    .select("model_id")
+    .in("id", Array.from(covered));
+  if (assetError) return fail(mapDbError(assetError));
+  const modelIds = Array.from(
+    new Set((assetRows ?? []).map((a) => a.model_id as string | null).filter((m): m is string => !!m)),
+  );
+  if (modelIds.length === 0) return ok({ counters: [] });
+
+  const { data: modelCounters, error: countersError } = await supabase
+    .from("asset_model_volumes")
+    .select("volume_item_id")
+    .in("asset_model_id", modelIds);
+  if (countersError) return fail(mapDbError(countersError));
+  const counterIds = Array.from(new Set((modelCounters ?? []).map((c) => c.volume_item_id as string)));
+  if (counterIds.length === 0) return ok({ counters: [] });
+
+  const { data: items, error: itemsError } = await supabase
+    .from("reference_list_items")
+    .select("id, label, parent_item_id")
+    .in("id", counterIds);
+  if (itemsError) return fail(mapDbError(itemsError));
+  const parentIds = Array.from(
+    new Set((items ?? []).map((i) => i.parent_item_id as string | null).filter((p): p is string => !!p)),
+  );
+  const unitById = new Map<string, string>();
+  if (parentIds.length > 0) {
+    const { data: units } = await supabase.from("reference_list_items").select("id, label").in("id", parentIds);
+    for (const u of units ?? []) unitById.set(u.id as string, u.label as string);
+  }
+  const counters = (items ?? [])
+    .map((i) => ({
+      id: i.id as string,
+      label: i.label as string,
+      unit: i.parent_item_id ? (unitById.get(i.parent_item_id as string) ?? null) : null,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return ok({ counters });
 }
 
 /** Owner/finance only, matching `contract_line_items_insert_owner_or_finance`.
@@ -915,6 +1038,7 @@ export async function createContractLineItem(
   if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
   if (parsed.data.purchasePrice !== undefined) row.purchase_price = parsed.data.purchasePrice;
   if (parsed.data.isVolume !== undefined) row.is_volume = parsed.data.isVolume;
+  applyCounterColumns(row, parsed.data);
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
 
   const supabase = await createSupabaseServerClient();
@@ -956,6 +1080,7 @@ export async function updateContractLineItem(
   if (parsed.data.unitPrice !== undefined) row.unit_price = parsed.data.unitPrice;
   if (parsed.data.purchasePrice !== undefined) row.purchase_price = parsed.data.purchasePrice;
   if (parsed.data.isVolume !== undefined) row.is_volume = parsed.data.isVolume;
+  applyCounterColumns(row, parsed.data);
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (Object.keys(row).length === 0) {
     return fail("No changes provided.");

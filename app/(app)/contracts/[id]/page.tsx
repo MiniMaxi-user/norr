@@ -9,6 +9,7 @@ import {
   listContractArticleGroupRules,
   listContractArticleRules,
   listContractLineItems,
+  listContractCounterOptions,
 } from "../actions";
 import { getClient } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
@@ -66,6 +67,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     contractAssetsResult,
     clientAssetsResult,
     lineItemsResult,
+    counterOptionsResult,
     groupRulesResult,
     articleRulesResult,
     articleGroupsResult,
@@ -81,6 +83,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     listContractAssets(contract.id),
     listAssets({ clientId: contract.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
     listContractLineItems(contract.id),
+    listContractCounterOptions(contract.id),
     listContractArticleGroupRules(contract.id),
     listContractArticleRules(contract.id),
     listArticleGroups(),
@@ -122,6 +125,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
       canUpdate={can(actor, "contracts", "update")}
       canDelete={can(actor, "contracts", "delete")}
       lineItems={lineItemsResult.data?.lineItems ?? []}
+      counterOptions={counterOptionsResult.data?.counters ?? []}
       articles={articlesResult.data?.articles ?? []}
       articleGroups={articleGroupsResult.data?.groups ?? []}
       groupRules={groupRulesResult.data?.rules ?? []}

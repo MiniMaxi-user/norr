@@ -10,6 +10,7 @@ import {
   createContractLineItem,
   deleteContractLineItem,
   updateContractLineItem,
+  type ContractCounterOption,
   type ContractLineItemRecord,
 } from "../actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
@@ -19,6 +20,7 @@ export interface ContractLineItemsPanelProps {
   contractId: string;
   lineItems: ContractLineItemRecord[];
   articles: ArticleSelectOption[];
+  counterOptions: ContractCounterOption[];
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
@@ -39,6 +41,7 @@ export function ContractLineItemsPanel({
   contractId,
   lineItems,
   articles,
+  counterOptions,
   canCreate,
   canUpdate,
   canDelete,
@@ -80,7 +83,20 @@ export function ContractLineItemsPanel({
         sortValue: (row) => row.description ?? "",
         render: (row) => row.description ?? "—",
       },
-      { id: "kind", header: "Kind", sortValue: (row) => kindOf(row), render: (row) => kindOf(row) },
+      {
+        id: "kind",
+        header: "Kind",
+        sortValue: (row) => kindOf(row),
+        render: (row) => {
+          if (!row.is_volume) return kindOf(row);
+          const details = [
+            row.volume_item?.label ?? null,
+            row.included_quantity !== null ? `${formatNumberWeb(row.included_quantity)} included` : null,
+            row.overage_unit_price !== null ? `${formatMoneyWeb(row.overage_unit_price)} overage` : null,
+          ].filter(Boolean);
+          return details.length > 0 ? `Volume · ${details.join(" · ")}` : "Volume";
+        },
+      },
       {
         id: "quantity",
         header: "Quantity",
@@ -189,6 +205,7 @@ export function ContractLineItemsPanel({
           contractId={contractId}
           row={dialog.row}
           articles={articles}
+          counterOptions={counterOptions}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -213,11 +230,13 @@ function LineItemDialog({
   contractId,
   row,
   articles,
+  counterOptions,
   onClose,
 }: {
   contractId: string;
   row: ContractLineItemRecord | null;
   articles: ArticleSelectOption[];
+  counterOptions: ContractCounterOption[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -226,6 +245,11 @@ function LineItemDialog({
   const [salePrice, setSalePrice] = useState(row ? String(row.unit_price) : "");
   const [purchasePrice, setPurchasePrice] = useState(row ? String(row.purchase_price) : "");
   const [isVolume, setIsVolume] = useState(row?.is_volume ?? false);
+  const [volumeItemId, setVolumeItemId] = useState(row?.volume_item_id ?? "");
+  const [includedQuantity, setIncludedQuantity] = useState(
+    row?.included_quantity != null ? String(row.included_quantity) : "",
+  );
+  const [overagePrice, setOveragePrice] = useState(row?.overage_unit_price != null ? String(row.overage_unit_price) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -247,6 +271,17 @@ function LineItemDialog({
     }
   }
 
+  // Only counters on the covered assets; a saved counter stays selectable even
+  // when it dropped out of that set (the warning below flags it).
+  const counterComboOptions: ComboboxOption[] = counterOptions.map((counter) => ({
+    value: counter.id,
+    label: counter.unit ? `${counter.label} (${counter.unit})` : counter.label,
+  }));
+  if (row?.volume_item_id && !counterOptions.some((counter) => counter.id === row.volume_item_id)) {
+    counterComboOptions.push({ value: row.volume_item_id, label: row.volume_item?.label ?? "Current counter" });
+  }
+  const counterNotCovered = isVolume && volumeItemId !== "" && !counterOptions.some((counter) => counter.id === volumeItemId);
+
   async function handleSave() {
     const parsedQuantity = Number(quantity.replace(",", "."));
     const parsedSalePrice = Number(salePrice.replace(",", "."));
@@ -267,6 +302,16 @@ function LineItemDialog({
       setError("Enter a purchase price of 0 or more");
       return;
     }
+    const parsedIncluded = includedQuantity.trim() ? Number(includedQuantity.replace(",", ".")) : null;
+    const parsedOverage = overagePrice.trim() ? Number(overagePrice.replace(",", ".")) : null;
+    if (isVolume && parsedIncluded !== null && (!Number.isFinite(parsedIncluded) || parsedIncluded < 0)) {
+      setError("Enter an included quantity of 0 or more");
+      return;
+    }
+    if (isVolume && parsedOverage !== null && (!Number.isFinite(parsedOverage) || parsedOverage < 0)) {
+      setError("Enter an overage price of 0 or more");
+      return;
+    }
     setError(null);
     setSaving(true);
     const input = {
@@ -277,6 +322,9 @@ function LineItemDialog({
       unitPrice: parsedSalePrice,
       purchasePrice: parsedPurchasePrice,
       isVolume,
+      volumeItemId: isVolume && volumeItemId ? volumeItemId : null,
+      includedQuantity: isVolume ? parsedIncluded : null,
+      overageUnitPrice: isVolume ? parsedOverage : null,
     };
     const result = row ? await updateContractLineItem(row.id, input) : await createContractLineItem(contractId, input);
     setSaving(false);
@@ -362,6 +410,54 @@ function LineItemDialog({
           <input type="checkbox" checked={isVolume} onChange={(event) => setIsVolume(event.target.checked)} />
           Volume (a pre-agreed allowance, not a plain sale-priced line)
         </label>
+        {isVolume ? (
+          <>
+            <div className="web-dialog-field">
+              <label className="web-field-label" htmlFor="contract-line-counter">
+                Counter
+              </label>
+              <Combobox
+                id="contract-line-counter"
+                options={counterComboOptions}
+                value={volumeItemId}
+                onChange={setVolumeItemId}
+                placeholder="Search counters on the covered assets…"
+                emptyMessage="No counters on the covered assets"
+              />
+              {counterNotCovered ? <p className="web-hint-warning" role="status">No covered asset has this counter</p> : null}
+            </div>
+            <div className="web-dialog-field">
+              <label className="web-field-label" htmlFor="contract-line-included">
+                Included per period
+              </label>
+              <input
+                id="contract-line-included"
+                className="web-input"
+                type="number"
+                step="0.001"
+                min="0"
+                data-numeric="true"
+                value={includedQuantity}
+                onChange={(event) => setIncludedQuantity(event.target.value)}
+              />
+            </div>
+            <div className="web-dialog-field">
+              <label className="web-field-label" htmlFor="contract-line-overage">
+                Overage price
+              </label>
+              <input
+                id="contract-line-overage"
+                className="web-input"
+                type="number"
+                step="0.01"
+                min="0"
+                data-numeric="true"
+                value={overagePrice}
+                onChange={(event) => setOveragePrice(event.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
     </WebConfirmDialog>
   );
