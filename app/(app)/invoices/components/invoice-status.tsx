@@ -1,5 +1,7 @@
 import { WebBadge, type WebBadgeVariant } from "@yourorg/ui/web";
 import { formatDateTimeWeb } from "@/lib/format/web";
+import { OutboxStatusBadge } from "@/components/email/outbox-status-badge";
+import type { OutboxMailStatus } from "@/lib/email/outbox-status";
 import type { InvoiceEmailStatus, InvoicePaymentStatusValue } from "../actions";
 
 /** Label and badge tone of every derived payment status (issues #234-#236). */
@@ -30,10 +32,13 @@ export interface InvoiceEmailStatusProps {
   error?: string | null;
   to?: string | null;
   at?: string | null;
+  /** Latest outbox mail (issue #268); wins over the legacy fields when present. */
+  outbox?: OutboxMailStatus | null;
 }
 
 /** E-mail column: Sent / Failed (error in the tooltip) / Not sent. */
-export function InvoiceEmailStatusCell({ status, error, to, at }: InvoiceEmailStatusProps) {
+export function InvoiceEmailStatusCell({ status, error, to, at, outbox }: InvoiceEmailStatusProps) {
+  if (outbox) return <OutboxStatusBadge mail={outbox} />;
   if (status === "failed") {
     return (
       <span title={error ?? "Sending failed"}>

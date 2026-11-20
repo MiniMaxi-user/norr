@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import type { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { sendEmail } from "@/lib/email/resend";
+import { kickEmailOutbox, queueEmail } from "@/lib/email/outbox";
 import { formatInvoiceTotal, getInvoicePdfById } from "./invoice-render";
 import {
   DEFAULT_INVOICE_EMAIL_BODY,
@@ -11,7 +11,7 @@ import {
 } from "./invoice-email-schema";
 
 /**
- * Best-effort e-mail of one invoice or credit note (issues #211, #236). NOT a
+ * Best-effort e-mail of one invoice or credit note (issues #211, #236, #268). NOT a
  * "use server" file: shared by `./invoice-actions.ts` and
  * `../invoices/actions.ts`. Works by invoice id.
  */
@@ -19,7 +19,8 @@ import {
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 export type InvoiceEmailOutcome =
-  | { status: "sent"; to: string }
+  /** The mail is in the outbox; the processor sends it (see lib/email/outbox.ts). */
+  | { status: "queued"; to: string; outboxId: string }
   | { status: "skipped"; reason: string }
   | { status: "failed"; to: string | null; error: string };
 
@@ -52,13 +53,16 @@ interface InvoiceEmailSettingsRow {
  *    e-mail address".
  *  - sender not configured: email_error = "Invoice email sender not configured".
  *  - provider/render failure: email_error = the error message.
- *  - success: emailed_to + emailed_at set, email_error cleared.
+ *  - success: the mail is QUEUED in the e-mail outbox (issue #268); emailed_to +
+ *    emailed_at / email_error are set by the outbox processor once the mail is
+ *    really sent or has definitively failed.
  */
 export async function sendInvoiceEmailById(
   supabase: SupabaseServerClient,
   organizationId: string,
   organizationName: string,
   invoiceId: string,
+  options: { kick?: boolean } = {},
 ): Promise<InvoiceEmailOutcome> {
   try {
     const { data: invoiceRow } = await supabase
@@ -177,23 +181,38 @@ export async function sendInvoiceEmailById(
     }
     const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`;
 
-    const sent = await sendEmail({
+    // The PDF is stored by now (getInvoicePdfById stores it on first use); the outbox
+    // references the stored file, never bytes.
+    const { data: stored } = await supabase
+      .from("invoices")
+      .select("pdf_path")
+      .eq("id", invoiceRow.id)
+      .maybeSingle<{ pdf_path: string | null }>();
+    if (!stored?.pdf_path) {
+      const error = "The invoice PDF is not stored yet.";
+      await record({ email_error: error });
+      return { status: "failed", to, error };
+    }
+
+    const queued = await queueEmail(supabase, {
+      kind: invoiceRow.kind,
+      invoiceId: invoiceRow.id,
       from: formatMailbox(settings.from_name, settings.from_email),
       to: [to],
       cc: settings.cc_email ? [settings.cc_email] : undefined,
       subject,
       text,
       html,
-      attachments: [{ filename: `${rendered.invoiceNumber}.pdf`, content: rendered.pdf }],
+      attachmentPath: stored.pdf_path,
+      attachmentFilename: `${rendered.invoiceNumber}.pdf`,
     });
-
-    if (!sent.ok) {
-      await record({ email_error: sent.error });
-      return { status: "failed", to, error: sent.error };
+    if (!queued.ok) {
+      await record({ email_error: queued.error });
+      return { status: "failed", to, error: queued.error };
     }
 
-    await record({ emailed_to: to, emailed_at: new Date().toISOString(), email_error: null });
-    return { status: "sent", to };
+    if (options.kick !== false) kickEmailOutbox();
+    return { status: "queued", to, outboxId: queued.id };
   } catch (error) {
     return { status: "failed", to: null, error: error instanceof Error ? error.message : "Unexpected e-mail error" };
   }

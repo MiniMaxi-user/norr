@@ -70,7 +70,7 @@ export function QuoteDocumentsPanel({ invoice, invoices, canGenerate, canInvoice
         id: "sent",
         header: "E-mail",
         render: (row) => (
-          <InvoiceEmailStatusCell status={emailState(row)} error={row.emailError} to={row.emailedTo} at={row.emailedAt} />
+          <InvoiceEmailStatusCell status={emailState(row)} error={row.emailError} to={row.emailedTo} at={row.emailedAt} outbox={row.outbox} />
         ),
       },
       {

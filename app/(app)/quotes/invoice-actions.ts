@@ -5,7 +5,10 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
+import { MAX_BATCH_INVOICE_QUOTES } from "./invoice-batch";
+import { kickEmailOutbox } from "@/lib/email/outbox";
 import { getInvoicePdfById } from "./invoice-render";
+import { getLatestInvoiceOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
 import { sendInvoiceEmailById, type InvoiceEmailOutcome as EmailOutcome } from "./invoice-email";
 
 /**
@@ -58,25 +61,25 @@ function invoiceDbError(error: { code?: string; message: string }): string {
   return mapDbError(error);
 }
 
-/** "Generate invoice": see the module comment for the full flow. */
-export async function invoiceQuote(quoteId: string): Promise<ActionResult<InvoiceQuoteResult>> {
-  const idResult = uuidSchema.safeParse(quoteId);
-  if (!idResult.success) return fail("Invalid quote id.");
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  const ctx = await requireModuleContext("invoicing");
-  if (!ctx.ok) return fail(ctx.error);
-  const { actor, organizationId, session } = ctx.context;
-
-  if (!can(actor, "invoicing", "create")) {
-    return fail("Only an owner, finance or administratie member can generate invoices.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-
+/**
+ * The shared core of "Generate invoice" for ONE quote (used by `invoiceQuote`
+ * and, per quote, by `invoiceQuotes`): create the invoice, store the PDF,
+ * re-read the quote status and queue the e-mail. `kick: false` skips starting
+ * the e-mail processor so a batch can kick it once at the end.
+ */
+async function invoiceQuoteCore(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  organizationName: string,
+  quoteId: string,
+  kick: boolean,
+): Promise<ActionResult<InvoiceQuoteResult>> {
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")
     .select("id, client_id")
-    .eq("id", idResult.data)
+    .eq("id", quoteId)
     .maybeSingle<{ id: string; client_id: string }>();
   if (quoteError) return fail(mapDbError(quoteError));
   if (!quote) return fail("Quote not found, or you do not have permission to view it.");
@@ -106,9 +109,118 @@ export async function invoiceQuote(quoteId: string): Promise<ActionResult<Invoic
     .maybeSingle<{ quote_status: { value: string } | null }>();
   const statusUpdated = statusRow?.quote_status?.value === "invoiced";
 
-  const email = await sendInvoiceEmailById(supabase, organizationId, session.organization?.name ?? "", invoice.id);
+  const email = await sendInvoiceEmailById(supabase, organizationId, organizationName, invoice.id, { kick });
 
   return ok({ invoiceId: invoice.id, invoiceNumber, statusUpdated, email });
+}
+
+/** "Generate invoice": see the module comment for the full flow. */
+export async function invoiceQuote(quoteId: string): Promise<ActionResult<InvoiceQuoteResult>> {
+  const idResult = uuidSchema.safeParse(quoteId);
+  if (!idResult.success) return fail("Invalid quote id.");
+
+  const ctx = await requireModuleContext("invoicing");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId, session } = ctx.context;
+
+  if (!can(actor, "invoicing", "create")) {
+    return fail("Only an owner, finance or administratie member can generate invoices.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  return invoiceQuoteCore(supabase, organizationId, session.organization?.name ?? "", idResult.data, true);
+}
+
+// ---------------------------------------------------------------------------
+// invoiceQuotes (issue #237)
+// ---------------------------------------------------------------------------
+
+
+/** Stop starting new invoices after this long (the page's maxDuration is 300 s);
+ * the rest is reported as not processed so nothing is cut off mid-invoice. */
+const BATCH_TIME_BUDGET_MS = 250_000;
+
+const quoteIdsSchema = z
+  .array(z.string().uuid("Invalid quote id."))
+  .min(1, "Select at least one quote.")
+  .max(MAX_BATCH_INVOICE_QUOTES, `You can invoice at most ${MAX_BATCH_INVOICE_QUOTES} quotes at once.`);
+
+export interface InvoiceQuotesResult {
+  /** One entry per quote that now has an invoice. */
+  invoiced: { quoteId: string; quoteLabel: string; invoiceId: string; invoiceNumber: string }[];
+  /** Invoices whose e-mail was queued in the outbox. */
+  emailsQueued: number;
+  /** Quotes that got no invoice (error), or an invoice whose e-mail failed. */
+  problems: { quoteId: string; quoteLabel: string; error: string }[];
+}
+
+/**
+ * Batch "Generate invoice" (issue #237): every quote goes through exactly the
+ * same core as `invoiceQuote`, sequentially; a failure on one quote never stops
+ * the rest. E-mails are queued (issue #268) and the processor is kicked once at
+ * the end.
+ */
+export async function invoiceQuotes(quoteIds: string[]): Promise<ActionResult<InvoiceQuotesResult>> {
+  const idsResult = quoteIdsSchema.safeParse(quoteIds);
+  if (!idsResult.success) return fail(idsResult.error.issues[0]?.message ?? "Invalid selection.");
+  const ids = [...new Set(idsResult.data)];
+
+  const ctx = await requireModuleContext("invoicing");
+  if (!ctx.ok) return fail(ctx.error);
+  const { actor, organizationId, session } = ctx.context;
+
+  if (!can(actor, "invoicing", "create")) {
+    return fail("Only an owner, finance or administratie member can generate invoices.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const organizationName = session.organization?.name ?? "";
+
+  const { data: labelRows, error: labelError } = await supabase
+    .from("quotes")
+    .select("id, quote_number, name")
+    .in("id", ids);
+  if (labelError) return fail(mapDbError(labelError));
+  const labels = new Map(
+    ((labelRows ?? []) as { id: string; quote_number: string; name: string }[]).map((row) => [
+      row.id,
+      row.name ? `${row.quote_number} – ${row.name}` : row.quote_number,
+    ]),
+  );
+
+  const result: InvoiceQuotesResult = { invoiced: [], emailsQueued: 0, problems: [] };
+  const startedAt = Date.now();
+
+  for (const quoteId of ids) {
+    const quoteLabel = labels.get(quoteId) ?? quoteId;
+    if (Date.now() - startedAt > BATCH_TIME_BUDGET_MS) {
+      result.problems.push({ quoteId, quoteLabel, error: "Not processed: the time limit was reached. Select it again." });
+      continue;
+    }
+    try {
+      const response = await invoiceQuoteCore(supabase, organizationId, organizationName, quoteId, false);
+      if (!response.data) {
+        result.problems.push({ quoteId, quoteLabel, error: response.error ?? "Could not create the invoice." });
+        continue;
+      }
+      const { invoiceId, invoiceNumber, email } = response.data;
+      result.invoiced.push({ quoteId, quoteLabel, invoiceId, invoiceNumber });
+      if (email.status === "queued") {
+        result.emailsQueued += 1;
+      } else if (email.status === "failed") {
+        result.problems.push({
+          quoteId,
+          quoteLabel,
+          error: `Invoice ${invoiceNumber} created, but the e-mail failed: ${email.error}`,
+        });
+      }
+    } catch (error) {
+      result.problems.push({ quoteId, quoteLabel, error: error instanceof Error ? error.message : "Unexpected error." });
+    }
+  }
+
+  if (result.emailsQueued > 0) kickEmailOutbox();
+  return ok(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +324,8 @@ export interface InvoiceSummary {
   emailedTo: string | null;
   emailedAt: string | null;
   emailError: string | null;
+  /** Latest e-mail outbox mail of this invoice (issue #268): Queued / Sending / Sent / Failed (+ retry); null when none was queued. */
+  outbox: OutboxMailStatus | null;
   /** Credit notes only. */
   creditsInvoiceId: string | null;
   creditsInvoiceNumber: string | null;
@@ -324,6 +438,11 @@ export async function getInvoiceForQuote(
     ]),
   );
 
+  const outboxById = await getLatestInvoiceOutboxStatus(
+    supabase,
+    rows.map((row) => row.id),
+    can(actor, "invoicing", "update"),
+  );
   const canDeleteAny = can(actor, "invoicing", "delete");
   const numberById = new Map(rows.map((row) => [row.id, row.invoice_number]));
 
@@ -342,6 +461,7 @@ export async function getInvoiceForQuote(
     emailedTo: row.emailed_to,
     emailedAt: row.emailed_at,
     emailError: row.email_error,
+    outbox: outboxById.get(row.id) ?? null,
     creditsInvoiceId: row.credits_invoice_id,
     creditsInvoiceNumber: row.credits_invoice_id ? (numberById.get(row.credits_invoice_id) ?? null) : null,
     creditReason: row.credit_reason,

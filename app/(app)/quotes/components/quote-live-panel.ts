@@ -31,7 +31,7 @@ export interface QuoteLivePanelRecord {
 }
 
 /** Statuses that never lead to an invoice. */
-const NOT_INVOICEABLE = ["rejected", "expired", "invoiced"];
+export const NOT_INVOICEABLE = ["rejected", "expired", "invoiced"];
 
 /** The quote is ready to be invoiced (shown as a LivePanel). */
 export function canGenerateNow(record: Pick<QuoteLivePanelRecord, "quote" | "invoice" | "lineCount" | "canInvoice">) {

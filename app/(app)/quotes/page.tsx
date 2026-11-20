@@ -9,6 +9,9 @@ import type { QuotesSearchParams } from "./components/quotes-query";
 
 export const metadata = { title: "Quotes" };
 
+/** "Invoice selected" (issue #237) runs as a server action on this route: up to 200 invoices + PDFs. */
+export const maxDuration = 300;
+
 /**
  * Quotes module entry point (issue #16, third stage — frontend; list-page
  * shell of issue #222): Server Component resolving session/entitlement/RBAC
@@ -42,6 +45,11 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
     (await hasFeature(session.organization, "contracts")) &&
     canAccessModule(actor, "contracts");
 
+  const canInvoice =
+    can(actor, "invoicing", "create") &&
+    (await hasFeature(session.organization, "invoicing")) &&
+    canAccessModule(actor, "invoicing");
+
   return (
     <Suspense fallback={<WebListSkeleton module="Quotes" title="Quotes" columns={8} />}>
       <QuotesScreen
@@ -49,6 +57,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
         canGenerateContractQuotes={canGenerateContractQuotes}
         canCreate={can(actor, "quotes", "create")}
         canDelete={can(actor, "quotes", "delete")}
+        canInvoice={canInvoice}
       />
     </Suspense>
   );

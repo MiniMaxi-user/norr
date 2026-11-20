@@ -160,6 +160,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { key: "invoicing", label: "Invoicing", href: "/settings/invoicing", ownHeader: true },
       { key: "payment_method", label: findTitle("payment_method"), href: "/settings/reference-lists/payment_method" },
       { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email", ownHeader: true },
+      // Issue #268 - mail queue overview (status, retry) for invoice / credit note / work receipt e-mails.
+      { key: "email_outbox", label: "Outbox", href: "/settings/email-outbox" },
     ],
   },
   {

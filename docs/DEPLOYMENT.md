@@ -22,6 +22,10 @@ source of truth for what needs to exist.
 | `NEXT_PUBLIC_SUPABASE_URL` | Prod + Preview + Dev | Use a separate Supabase project for Preview vs Production if possible, so PR previews don't touch production data. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Prod + Preview + Dev | Public, safe to expose to the browser. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Prod + Preview | Server-only. Never expose via `NEXT_PUBLIC_*`. |
+| `RESEND_API_KEY` | Prod + Preview | Server-only. E-mail provider key (invoices, credit notes, work receipts). |
+| `EMAIL_MAX_PER_SECOND` | Prod + Preview | Outbox throttle, default 1. Match the Resend plan (issue #268). |
+| `EMAIL_MAX_PER_HOUR` / `EMAIL_MAX_PER_DAY` | Prod + Preview | Optional outbox limits across all tenants; when reached the mails stay queued. |
+| `CRON_SECRET` | Prod + Preview | Bearer secret for `/api/cron/email-outbox` (Vercel Cron sends it automatically). Daily cron on Hobby; more frequent on Pro. |
 | `STRIPE_SECRET_KEY` | Prod + Preview | Use Stripe test-mode keys for Preview. Added when billing-engineer wires up Phase 3. |
 | `STRIPE_WEBHOOK_SECRET` | Prod + Preview | Per-endpoint webhook signing secret. |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Prod + Preview + Dev | Public. |

@@ -6,6 +6,7 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
 import { getInvoicePdfById } from "../quotes/invoice-render";
+import { getLatestInvoiceOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
 import { sendInvoiceEmailById, type InvoiceEmailOutcome as EmailOutcome } from "../quotes/invoice-email";
 
 /**
@@ -76,6 +77,8 @@ export interface InvoiceListRow {
   emailedTo: string | null;
   emailedAt: string | null;
   emailError: string | null;
+  /** Latest e-mail outbox mail of this invoice / credit note (issue #268); null when none was queued. */
+  outbox: OutboxMailStatus | null;
   creditsInvoiceId: string | null;
   creditedAt: string | null;
   /** Row-action hints for the signed-in user. */
@@ -230,6 +233,11 @@ export async function listInvoices(
   const canRegister = can(actor, "invoicing", "update");
   const canCredit = can(actor, "invoicing", "create");
   const rows = (listResult.data ?? []) as unknown as ListRowDb[];
+  const outboxById = await getLatestInvoiceOutboxStatus(
+    supabase,
+    rows.map((row) => row.id),
+    canRegister,
+  );
   const invoices: InvoiceListRow[] = rows.map((row) => {
     const payable = row.kind === "invoice" && !row.credited_at;
     return {
@@ -256,6 +264,7 @@ export async function listInvoices(
       emailedTo: row.emailed_to,
       emailedAt: row.emailed_at,
       emailError: row.email_error,
+      outbox: outboxById.get(row.id) ?? null,
       creditsInvoiceId: row.credits_invoice_id,
       creditedAt: row.credited_at,
       canRegisterPayment: canRegister && payable && Number(row.outstanding ?? 0) > 0,

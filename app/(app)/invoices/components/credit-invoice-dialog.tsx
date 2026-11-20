@@ -49,8 +49,8 @@ export function CreditInvoiceDialog({ invoice, open, onOpenChange, onCredited }:
       }
       const { creditNoteNumber, email } = result.data;
       const emailLine =
-        email.status === "sent"
-          ? `Emailed to ${email.to}.`
+        email.status === "queued"
+          ? `Email to ${email.to} queued.`
           : email.status === "skipped"
             ? `Not emailed: ${email.reason}.`
             : `Email failed: ${email.error}`;

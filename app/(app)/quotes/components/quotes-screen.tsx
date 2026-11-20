@@ -11,6 +11,7 @@ export interface QuotesScreenProps {
   canGenerateContractQuotes: boolean;
   canCreate: boolean;
   canDelete: boolean;
+  canInvoice: boolean;
 }
 
 /** `/quotes` URL with the auto-draft toggle flipped, every other param kept
@@ -39,7 +40,7 @@ function draftsToggleHref(params: QuotesSearchParams, showDrafts: boolean): stri
  * "Show auto-drafts" (`?drafts=1`) reveals them, and the table then marks
  * them "Concept" so they stay distinct from real quotes.
  */
-export async function QuotesScreen({ params, canGenerateContractQuotes, canCreate, canDelete }: QuotesScreenProps) {
+export async function QuotesScreen({ params, canGenerateContractQuotes, canCreate, canDelete, canInvoice }: QuotesScreenProps) {
   const { page, showDrafts, options } = parseQuotesQuery(params);
 
   const [statusItemsResult, clientsResult, quotesResult] = await Promise.all([
@@ -96,6 +97,7 @@ export async function QuotesScreen({ params, canGenerateContractQuotes, canCreat
         showDraftBadge={showDrafts}
         canCreate={canCreate}
         canDelete={canDelete}
+        canInvoice={canInvoice}
       />
     </WebListPage>
   );

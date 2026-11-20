@@ -2,9 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Checkbox } from "@yourorg/ui";
+import { WebButton } from "@yourorg/ui/web";
 import { StatusText, WebDataTableCard, toneFromColor, type FilterOption, type WebColumn } from "@yourorg/ui/web-client";
 import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { QuoteRecord } from "../actions";
+import { BatchInvoiceDialog } from "./batch-invoice-dialog";
+import { NOT_INVOICEABLE } from "./quote-live-panel";
+import { MAX_BATCH_INVOICE_QUOTES } from "../invoice-batch";
 import { DeleteQuoteDialog } from "./delete-quote-dialog";
 import { QUOTE_TYPE_OPTIONS, QUOTES_DROPDOWN_IDS, QUOTES_OPEN_SEGMENT, QUOTES_PAGE_SIZE } from "./quotes-query";
 
@@ -27,6 +32,16 @@ export interface QuotesTableProps {
   showDraftBadge?: boolean;
   canCreate: boolean;
   canDelete: boolean;
+  /** `can(actor, "invoicing", "create")` and the invoicing feature: shows the row checkboxes + "Invoice selected". */
+  canInvoice?: boolean;
+}
+
+/** Issue #237: same rule as the Quote page's "Generate invoice" (`NOT_INVOICEABLE`), minus work-order auto-drafts. */
+function invoiceableReason(quote: QuoteRecord): string | null {
+  const status = quote.quote_status?.value ?? "";
+  if (quote.is_auto_draft) return "Work order auto-drafts cannot be invoiced";
+  if (NOT_INVOICEABLE.includes(status)) return `A ${quote.quote_status?.label ?? status} quote cannot be invoiced`;
+  return null;
 }
 
 /**
@@ -49,11 +64,59 @@ export function QuotesTable({
   showDraftBadge,
   canCreate,
   canDelete,
+  canInvoice = false,
 }: QuotesTableProps) {
   const [deletingQuote, setDeletingQuote] = useState<QuoteRecord | null>(null);
+  // Selected quote id -> total (kept across pages so the confirmation can sum them).
+  const [selected, setSelected] = useState<Map<string, number>>(new Map());
+  const [batchOpen, setBatchOpen] = useState(false);
+
+  const invoiceableOnPage = useMemo(() => quotes.filter((quote) => invoiceableReason(quote) === null), [quotes]);
+  const allOnPageSelected = invoiceableOnPage.length > 0 && invoiceableOnPage.every((quote) => selected.has(quote.id));
+  const overLimit = selected.size > MAX_BATCH_INVOICE_QUOTES;
+
+  function toggleQuote(quote: QuoteRecord, checked: boolean) {
+    setSelected((current) => {
+      const next = new Map(current);
+      if (checked) next.set(quote.id, quote.total);
+      else next.delete(quote.id);
+      return next;
+    });
+  }
+
+  function toggleAllOnPage(checked: boolean) {
+    setSelected((current) => {
+      const next = new Map(current);
+      for (const quote of invoiceableOnPage) {
+        if (checked) next.set(quote.id, quote.total);
+        else next.delete(quote.id);
+      }
+      return next;
+    });
+  }
 
   const columns = useMemo<WebColumn<QuoteRecord>[]>(
     () => [
+      ...(canInvoice
+        ? [
+            {
+              id: "select",
+              header: "",
+              render: (quote: QuoteRecord) => {
+                const reason = invoiceableReason(quote);
+                return (
+                  <Checkbox
+                    checked={selected.has(quote.id)}
+                    disabled={reason !== null}
+                    title={reason ?? undefined}
+                    aria-label={`Select ${quote.quote_number}`}
+                    onChange={(event) => toggleQuote(quote, event.target.checked)}
+                  />
+                );
+              },
+            },
+          ]
+        : []),
       { id: "number", header: "Number", primary: true, mono: true, sortable: true, render: (quote) => quote.quote_number },
       {
         id: "name",
@@ -90,7 +153,7 @@ export function QuotesTable({
       { id: "total", header: "Total", align: "end", render: (quote) => formatMoneyWeb(quote.total) },
       { id: "created", header: "Created", sortable: true, render: (quote) => formatDateWeb(quote.created_at) },
     ],
-    [clientNameById, showDraftBadge],
+    [clientNameById, showDraftBadge, canInvoice, selected],
   );
 
   const dropdowns = useMemo(
@@ -124,6 +187,25 @@ export function QuotesTable({
               ]
             : []),
         ]}
+        note={
+          canInvoice && invoiceableOnPage.length > 0 ? (
+            <label>
+              <Checkbox checked={allOnPageSelected} onChange={(event) => toggleAllOnPage(event.target.checked)} /> Select
+              all invoiceable quotes on this page
+            </label>
+          ) : undefined
+        }
+        add={
+          canInvoice && selected.size > 0 ? (
+            <>
+              <WebButton onClick={() => setSelected(new Map())}>Clear selection</WebButton>
+              <WebButton variant="primary" disabled={overLimit} onClick={() => setBatchOpen(true)}>
+                {`Invoice selected (${selected.size})`}
+              </WebButton>
+              {overLimit ? <span>{`Select at most ${MAX_BATCH_INVOICE_QUOTES} quotes.`}</span> : null}
+            </>
+          ) : undefined
+        }
         emptyAction={
           canCreate ? (
             <Link href="/quotes/new" className="web-rail-link">
@@ -132,6 +214,14 @@ export function QuotesTable({
           ) : null
         }
       />
+      {batchOpen ? (
+        <BatchInvoiceDialog
+          quoteIds={[...selected.keys()]}
+          totalAmount={[...selected.values()].reduce((sum, value) => sum + value, 0)}
+          onOpenChange={setBatchOpen}
+          onFinished={() => setSelected(new Map())}
+        />
+      ) : null}
       {deletingQuote ? (
         <DeleteQuoteDialog quote={deletingQuote} open onOpenChange={(next) => !next && setDeletingQuote(null)} />
       ) : null}

@@ -120,7 +120,7 @@ export function InvoicesTable({ invoices, server, hideClient, urlPrefix = "invoi
         id: "email",
         header: "E-mail",
         render: (row) => (
-          <InvoiceEmailStatusCell status={row.emailStatus} error={row.emailError} to={row.emailedTo} at={row.emailedAt} />
+          <InvoiceEmailStatusCell status={row.emailStatus} error={row.emailError} to={row.emailedTo} at={row.emailedAt} outbox={row.outbox} />
         ),
       },
     );

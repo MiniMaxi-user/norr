@@ -6,6 +6,7 @@ import { Dialog, toast, useEscapeToClose } from "@yourorg/ui";
 import { WebBadge, WebButton, WebCard, WebDataTableEmpty, WebField, WebInput } from "@yourorg/ui/web";
 import { WebDataTableCard, type WebColumn } from "@yourorg/ui/web-client";
 import { formatDateTimeWeb } from "@/lib/format/web";
+import { OutboxStatusBadge } from "@/components/email/outbox-status-badge";
 import { openDocumentPopup } from "@/lib/popup";
 import {
   getWorkReceiptRecipientOptions,
@@ -51,6 +52,7 @@ export function WorkOrderReceiptsPanel({ data, workOrderId }: WorkOrderReceiptsP
         id: "sent",
         header: "Sent",
         render: (row) => {
+          if (row.outbox) return <OutboxStatusBadge mail={row.outbox} />;
           if (row.emailError) {
             return (
               <>
@@ -184,7 +186,7 @@ function SendWorkReceiptDialog({
         router.refresh();
         return;
       }
-      toast({ title: "Work receipt sent", description: `${receipt.receiptNumber} to ${result.data.to}`, tone: "success", duration: 4000 });
+      toast({ title: "Work receipt email queued", description: `${receipt.receiptNumber} to ${result.data.to}`, tone: "success", duration: 4000 });
       router.refresh();
       onClose();
     });

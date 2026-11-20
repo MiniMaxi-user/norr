@@ -5,7 +5,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
-import { sendEmail } from "@/lib/email/resend";
+import { kickEmailOutbox, queueEmail } from "@/lib/email/outbox";
+import { getLatestWorkReceiptOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
 import { renderWorkReceiptPdf, getWorkReceiptEmailValues } from "./work-receipt-render";
 import {
   DEFAULT_WORK_RECEIPT_EMAIL_BODY,
@@ -46,6 +47,8 @@ export interface WorkReceiptRecord {
   emailedAt: string | null;
   emailError: string | null;
   emailedByName: string | null;
+  /** Latest e-mail outbox mail of this receipt (issue #268): Queued / Sending / Sent / Failed (+ retry); null when none was queued. */
+  outbox: OutboxMailStatus | null;
 }
 
 interface ReceiptRow {
@@ -66,8 +69,18 @@ const RECEIPT_COLUMNS =
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-async function toRecords(supabase: SupabaseServerClient, rows: ReceiptRow[]): Promise<WorkReceiptRecord[]> {
+async function toRecords(
+  supabase: SupabaseServerClient,
+  rows: ReceiptRow[],
+  canRetryEmail: boolean,
+): Promise<WorkReceiptRecord[]> {
   if (rows.length === 0) return [];
+
+  const outboxById = await getLatestWorkReceiptOutboxStatus(
+    supabase,
+    rows.map((row) => row.id),
+    canRetryEmail,
+  );
 
   const userIds = Array.from(
     new Set(rows.flatMap((row) => [row.generated_by, row.emailed_by]).filter((id): id is string => Boolean(id))),
@@ -100,6 +113,7 @@ async function toRecords(supabase: SupabaseServerClient, rows: ReceiptRow[]): Pr
     emailedAt: row.emailed_at,
     emailError: row.email_error,
     emailedByName: row.emailed_by ? (nameById.get(row.emailed_by) ?? null) : null,
+    outbox: outboxById.get(row.id) ?? null,
   }));
 }
 
@@ -150,7 +164,7 @@ export async function listWorkReceipts(
   if (receiptsResult.error) return fail(mapDbError(receiptsResult.error));
 
   const isApproved = CLOSED_STATUSES.includes(statusResult.data.work_order_status?.value ?? "");
-  const receipts = await toRecords(supabase, receiptsResult.data ?? []);
+  const receipts = await toRecords(supabase, receiptsResult.data ?? [], can(actor, "work_receipts", "update"));
   return ok({
     receipts,
     canGenerate: can(actor, "work_receipts", "create") && isApproved,
@@ -218,7 +232,7 @@ export async function generateWorkReceipt(workOrderId: string): Promise<ActionRe
   if (updateError) return fail(mapDbError(updateError));
   if (!updated) return fail("Could not save the work receipt, or you do not have permission.");
 
-  const [record] = await toRecords(supabase, [updated]);
+  const [record] = await toRecords(supabase, [updated], can(actor, "work_receipts", "update"));
   if (!record) return fail("Could not read the generated work receipt.");
   return ok({ receipt: record });
 }
@@ -332,10 +346,12 @@ interface EmailSettingsRow {
 }
 
 /**
- * E-mails the stored PDF of one receipt to `to` and records the outcome in the
- * receipt's emailed_* columns (also on failure). Returns `{ status: "failed" }`
- * (an ok result) for provider/sender problems so the UI can show the recorded
- * error; invalid input or a missing PDF is a plain `fail`.
+ * Queues the e-mail of the stored PDF of one receipt to `to` in the e-mail outbox
+ * (issue #268); the outbox processor sends it and then records the outcome in
+ * the receipt's emailed_* columns. Returns `{ status: "queued" }` on success and
+ * `{ status: "failed" }` (an ok result) for sender/queue problems, recorded on the
+ * receipt, so the UI can show the error; invalid input or a missing PDF is a
+ * plain `fail`.
  *
  * Note: `work_receipt_email_settings` is readable by owner/planner/
  * administratie (20261119150000_work_receipt_email_settings_planner_read.sql)
@@ -345,7 +361,7 @@ interface EmailSettingsRow {
 export async function sendWorkReceipt(
   receiptId: string,
   to: string,
-): Promise<ActionResult<{ status: "sent" | "failed"; to: string; error?: string }>> {
+): Promise<ActionResult<{ status: "queued" | "failed"; to: string; error?: string }>> {
   const idResult = uuidSchema.safeParse(receiptId);
   if (!idResult.success) return fail("Invalid work receipt id.");
   const emailResult = emailSchema.safeParse(to);
@@ -373,7 +389,7 @@ export async function sendWorkReceipt(
     const { error } = await supabase.from("work_receipts").update(patch).eq("id", receipt.id);
     return error;
   };
-  const failed = async (error: string): Promise<ActionResult<{ status: "sent" | "failed"; to: string; error?: string }>> => {
+  const failed = async (error: string): Promise<ActionResult<{ status: "queued" | "failed"; to: string; error?: string }>> => {
     await record({ emailed_to: recipient, emailed_at: null, email_error: error });
     return ok({ status: "failed" as const, to: recipient, error });
   };
@@ -386,10 +402,6 @@ export async function sendWorkReceipt(
   if (settingsError) return failed(settingsError.message);
   if (!settings?.from_email) return failed("Work receipt e-mail sender not configured");
 
-  const { data: blob, error: downloadError } = await supabase.storage.from("work-receipts").download(receipt.pdf_path);
-  if (downloadError || !blob) return failed(downloadError?.message ?? "Could not read the work receipt PDF");
-  const pdf = Buffer.from(await blob.arrayBuffer());
-
   const tokenValues = await getWorkReceiptEmailValues(supabase, receipt.work_order_id, receipt.receipt_number);
   if (!tokenValues) return failed("Work order not found");
   const values = { ...tokenValues, organization_name: session.organization?.name ?? "" };
@@ -400,20 +412,22 @@ export async function sendWorkReceipt(
   const text = renderWorkReceiptEmailTemplate(settings.body_template || DEFAULT_WORK_RECEIPT_EMAIL_BODY, values);
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`;
 
-  const sent = await sendEmail({
+  const queued = await queueEmail(supabase, {
+    kind: "work_receipt",
+    workReceiptId: receipt.id,
     from: formatMailbox(settings.from_name, settings.from_email),
     to: [recipient],
     cc: settings.cc_email ? [settings.cc_email] : undefined,
     subject,
     text,
     html,
-    attachments: [{ filename: `${receipt.receipt_number}.pdf`, content: pdf }],
+    attachmentPath: receipt.pdf_path,
+    attachmentFilename: `${receipt.receipt_number}.pdf`,
   });
-  if (!sent.ok) return failed(sent.error);
+  if (!queued.ok) return failed(queued.error);
 
-  // The e-mail went out; a failing log write must not turn that into a failure.
-  await record({ emailed_to: recipient, emailed_at: new Date().toISOString(), email_error: null });
-  return ok({ status: "sent" as const, to: recipient });
+  kickEmailOutbox();
+  return ok({ status: "queued" as const, to: recipient });
 }
 
 // ---------------------------------------------------------------------------

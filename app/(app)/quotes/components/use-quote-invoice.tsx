@@ -86,8 +86,8 @@ export function useQuoteInvoice(
       }
       const { invoiceNumber, statusUpdated, email } = result.data;
       const emailLine =
-        email.status === "sent"
-          ? `Emailed to ${email.to}.`
+        email.status === "queued"
+          ? `Email to ${email.to} queued.`
           : email.status === "skipped"
             ? `Not emailed: ${email.reason}.`
             : `Email failed: ${email.error}`;
@@ -116,8 +116,8 @@ export function useQuoteInvoice(
         return;
       }
       const { email } = result.data;
-      if (email.status === "sent") {
-        toast({ tone: "success", title: "Invoice sent", description: `Emailed to ${email.to}.` });
+      if (email.status === "queued") {
+        toast({ tone: "success", title: "Invoice email queued", description: `Email to ${email.to} is queued and will be sent shortly.` });
       } else {
         toast({
           tone: "danger",
