@@ -1,13 +1,14 @@
--- pgTAP tests for contract_line_items.volume_item_id / included_quantity /
--- overage_unit_price (issue #238, 20261122100000_contract_line_counter.sql).
+-- pgTAP tests for contract_line_items.volume_item_id / overage_unit_price
+-- (issue #238, 20261122100000_contract_line_counter.sql; included_quantity was
+-- dropped in 20261122130000: the line quantity is the included quantity).
 --
 -- Run with: supabase test db (Docker), or against the linked project via
 -- `supabase db query --linked` with a forced-exception rollback.
 --
 -- Coverage: valid counter accepted; counter from another organization
--- rejected; item of a non-volume list rejected; counter / included_quantity /
--- overage_unit_price on a non-volume line rejected; negative quantity
--- rejected; RLS still isolates organizations.
+-- rejected; item of a non-volume list rejected; counter / overage_unit_price
+-- on a non-volume line rejected; negative overage price rejected;
+-- included_quantity column is gone; RLS still isolates organizations.
 
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -71,9 +72,9 @@ select pg_temp.act_as('f2111111-1111-1111-1111-111111111111');
 
 select lives_ok(
   $$ insert into public.contract_line_items
-       (contract_id, article_id, is_volume, volume_item_id, included_quantity, overage_unit_price)
+       (contract_id, article_id, is_volume, volume_item_id, overage_unit_price)
      values ('f6000000-0000-0000-0000-00000000000a', 'f8000000-0000-0000-0000-00000000000a',
-       true, 'f0000000-0000-0000-0000-0000000000a1', 1000, 0.05) $$,
+       true, 'f0000000-0000-0000-0000-0000000000a1', 0.05) $$,
   'valid volume line with same-org volume counter is accepted'
 ); -- 1
 
@@ -101,12 +102,8 @@ select throws_ok(
   'volume_item_id on a line with is_volume = false is rejected'
 ); -- 4
 
-select throws_ok(
-  $$ insert into public.contract_line_items (contract_id, article_id, is_volume, included_quantity)
-     values ('f6000000-0000-0000-0000-00000000000a', 'f8000000-0000-0000-0000-00000000000a', false, 10) $$,
-  '23514', null,
-  'included_quantity on a non-volume line is rejected'
-); -- 5
+select hasnt_column('public', 'contract_line_items', 'included_quantity',
+  'included_quantity is dropped (the line quantity is the included quantity)'); -- 5
 
 select throws_ok(
   $$ insert into public.contract_line_items (contract_id, article_id, is_volume, overage_unit_price)
@@ -116,10 +113,10 @@ select throws_ok(
 ); -- 6
 
 select throws_ok(
-  $$ insert into public.contract_line_items (contract_id, article_id, is_volume, included_quantity)
+  $$ insert into public.contract_line_items (contract_id, article_id, is_volume, overage_unit_price)
      values ('f6000000-0000-0000-0000-00000000000a', 'f8000000-0000-0000-0000-00000000000a', true, -1) $$,
   '23514', null,
-  'negative included_quantity is rejected'
+  'negative overage_unit_price is rejected'
 ); -- 7
 
 select throws_ok(

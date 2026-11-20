@@ -57,8 +57,9 @@ import {
  *  - `is_volume` lines (pre-agreed usage bundles, issue #129) are billed like
  *    any other contract line at their contracted quantity x price per period.
  *  - Counter settlement (issue #239): a volume line linked to a counter
- *    (`volume_item_id`) with `included_quantity` (per billing PERIOD, like
- *    the price, so scaled by the same multiplier) gets an extra overage line when usage exceeds it. Usage = sum over
+ *    (`volume_item_id`) includes its own quantity (per billing PERIOD, so
+ *    scaled by the same multiplier as the price) and gets an extra overage
+ *    line at `overage_unit_price` when usage exceeds it. Usage = sum over
  *    the covered assets (direct contract_assets plus all their asset_components
  *    descendants, same coverage rule as listAssetContractCoverage) whose model
  *    has the counter configured, of (latest reading <= end of period end) -
@@ -101,7 +102,6 @@ interface ContractRow {
     sort_order: number;
     is_volume: boolean;
     volume_item_id: string | null;
-    included_quantity: number | string | null;
     overage_unit_price: number | string | null;
     volume_item: { label: string } | null;
     article: { article_number: string; description: string } | null;
@@ -124,7 +124,7 @@ const CONTRACT_SELECT =
   " billing_terms:reference_list_items!contracts_billing_terms_id_fkey(label,interval_months)," +
   " billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,interval_months)," +
   " contract_line_items(article_id,article_number,description,quantity,unit_price,sort_order,is_volume," +
-  "volume_item_id,included_quantity,overage_unit_price," +
+  "volume_item_id,overage_unit_price," +
   "volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)," +
   "article:articles(article_number,description))," +
   " contract_assets(asset_id,asset:assets(name,serial_number,external_reference,site:sites(address_line1,city)," +
@@ -421,10 +421,9 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
           `${counterLabel}: ${usage.reviewReadingsInPeriod} reading(s) in this period need review and were ignored.`,
         );
       }
-      if (line.included_quantity === null) continue;
-      // Included is per billing PERIOD (like the line's price), so it scales
-      // with the invoicing frequency: 500/month invoiced quarterly = 1,500.
-      const included = Math.round(Number(line.included_quantity) * multiplier * 1000) / 1000;
+      // The line quantity is the included counter quantity per billing
+      // PERIOD, scaled to the invoice: 500/month invoiced quarterly = 1,500.
+      const included = Math.round(Number(line.quantity) * multiplier * 1000) / 1000;
       const overage = computeOverage(usage.usage, included);
       if (overage <= 0) continue;
       if (line.overage_unit_price === null) {

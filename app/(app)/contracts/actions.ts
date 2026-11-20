@@ -130,7 +130,6 @@ export interface ContractLineItemRecord {
   is_volume: boolean;
   /** Counter (item of the `volume` reference list) a volume line is settled against (#238). */
   volume_item_id: string | null;
-  included_quantity: number | null;
   overage_unit_price: number | null;
   /** Counter label, embedded by `listContractLineItems`. */
   volume_item?: { label: string } | null;
@@ -848,26 +847,24 @@ const contractLineItemWriteSchema = z.object({
   purchasePrice: z.coerce.number({ invalid_type_error: "Purchase price must be a number." }).finite().optional(),
   isVolume: z.boolean().optional(),
   volumeItemId: z.string().uuid("Invalid counter id.").nullish(),
-  includedQuantity: z.coerce.number({ invalid_type_error: "Included quantity must be a number." }).finite().min(0, "Included quantity must be 0 or more.").nullish(),
   overageUnitPrice: z.coerce.number({ invalid_type_error: "Overage price must be a number." }).finite().min(0, "Overage price must be 0 or more.").nullish(),
   sortOrder: z.coerce.number().int().optional(),
 });
 
 /** Counter columns (#238) only exist on volume lines: the DB check
  * `contract_line_items_counter_requires_volume` rejects them otherwise, so
- * switching `isVolume` off explicitly nulls all three. */
+ * switching `isVolume` off explicitly nulls both. The line quantity is the
+ * included counter quantity per billing period. */
 function applyCounterColumns(
   row: Record<string, unknown>,
-  data: { isVolume?: boolean; volumeItemId?: string | null; includedQuantity?: number | null; overageUnitPrice?: number | null },
+  data: { isVolume?: boolean; volumeItemId?: string | null; overageUnitPrice?: number | null },
 ) {
   if (data.isVolume === false) {
     row.volume_item_id = null;
-    row.included_quantity = null;
     row.overage_unit_price = null;
     return;
   }
   if (data.volumeItemId !== undefined) row.volume_item_id = data.volumeItemId;
-  if (data.includedQuantity !== undefined) row.included_quantity = data.includedQuantity;
   if (data.overageUnitPrice !== undefined) row.overage_unit_price = data.overageUnitPrice;
 }
 
@@ -901,7 +898,7 @@ export async function listContractLineItems(
   const { data, error } = await supabase
     .from("contract_line_items")
     .select(
-      "id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume, volume_item_id, included_quantity, overage_unit_price, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)",
+      "id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume, volume_item_id, overage_unit_price, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)",
     )
     .eq("contract_id", idResult.data)
     .order("sort_order", { ascending: true })

@@ -2443,7 +2443,9 @@ a.web-tree-id:hover {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
-/* Read-only context / effect summary inside a dialog form */
+/* Read-only context / effect summary inside a dialog form.
+   data-tone="info": context the values depend on; data-tone="success": the
+   computed effect of what was entered. */
 .web-dialog-summary {
   margin: 0;
   padding: 10px 12px;
@@ -2453,9 +2455,85 @@ a.web-tree-id:hover {
   font: 400 12.5px/18px var(--font-sans);
   color: var(--text-muted);
 }
+.web-dialog-summary[data-tone="info"] {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.web-dialog-summary[data-tone="success"] {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success-text);
+}
 .web-dialog-summary strong {
   font-weight: 600;
   color: var(--text-ink);
+}
+.web-dialog-summary-title {
+  display: block;
+  margin-bottom: 4px;
+  font: 600 11.5px/16px var(--font-sans);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* Label/value lines in a summary: amounts right-aligned in figures */
+.web-dialog-summary-lines {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 16px;
+  margin: 0;
+}
+.web-dialog-summary-lines dt {
+  color: inherit;
+}
+.web-dialog-summary-lines dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-ink);
+  font-weight: 600;
+}
+
+/* Section heading inside a dialog form */
+.web-dialog-section {
+  margin: 4px 0 -4px;
+  font: 600 11.5px/16px var(--font-sans);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Compact number input with a prefix (€) and/or suffix (unit) */
+.web-input-affix {
+  display: flex;
+  align-items: center;
+  max-width: 190px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--surface-card);
+}
+.web-input-affix:focus-within {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: -1px;
+}
+.web-input-affix > .web-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+}
+.web-input-affix-text {
+  padding: 0 8px;
+  font: 500 12.5px/17px var(--font-sans);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.web-input-affix-text:first-child {
+  padding-right: 0;
+}
+.web-input-affix-text:last-child {
+  padding-left: 0;
 }
 
 /* Checkbox inside a table cell (checklist "Done" column) */
