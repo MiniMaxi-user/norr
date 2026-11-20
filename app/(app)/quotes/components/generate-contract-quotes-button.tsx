@@ -67,6 +67,15 @@ export function GenerateContractQuotesButton() {
                     Created {result.created}, skipped {result.skipped}
                     {result.errors.length > 0 ? `, ${result.errors.length} failed` : ""}.
                   </Text>
+                  {result.warnings.length > 0 && (
+                    <Stack gap="xs">
+                      {result.warnings.map((entry, index) => (
+                        <Text key={`${entry.contractId}-${index}`} tone="danger">
+                          {entry.contractNumber}: {entry.message}
+                        </Text>
+                      ))}
+                    </Stack>
+                  )}
                   {result.errors.length > 0 && (
                     <Stack gap="xs">
                       {result.errors.map((entry) => (
