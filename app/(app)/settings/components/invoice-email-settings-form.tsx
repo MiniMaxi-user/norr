@@ -24,6 +24,8 @@ type InvoiceEmailDraft = {
   subjectTemplate: string;
   bodyTemplate: string;
   attachUbl: boolean;
+  emailInvoices: boolean;
+  emailCreditNotes: boolean;
 };
 
 type InvoiceEmailKey = keyof InvoiceEmailDraft & string;
@@ -51,6 +53,8 @@ function draftFrom(settings: InvoiceEmailSettings): InvoiceEmailDraft {
     subjectTemplate: settings.subjectTemplate ?? "",
     bodyTemplate: settings.bodyTemplate ?? "",
     attachUbl: settings.attachUbl ?? true,
+    emailInvoices: settings.emailInvoices ?? true,
+    emailCreditNotes: settings.emailCreditNotes ?? true,
   };
 }
 
@@ -81,6 +85,8 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
           value.length > 5000 ? `Body is ${value.length} characters, the maximum is 5000. Remove ${value.length - 5000}` : null,
       },
       attachUbl: { label: "E-invoice (UBL)", format: (value) => (value ? "on" : "off") },
+      emailInvoices: { label: "Invoices", format: (value) => (value ? "on" : "off") },
+      emailCreditNotes: { label: "Credit notes", format: (value) => (value ? "on" : "off") },
     }),
     [],
   );
@@ -99,6 +105,8 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
         subjectTemplate: draft.subjectTemplate,
         bodyTemplate: draft.bodyTemplate,
         attachUbl: draft.attachUbl,
+        emailInvoices: draft.emailInvoices,
+        emailCreditNotes: draft.emailCreditNotes,
       });
       if (!result.data) {
         return {
@@ -119,6 +127,28 @@ export function InvoiceEmailSettingsForm({ initial, canWrite }: InvoiceEmailSett
       edit={edit}
       readOnlyNote="Only an owner or administratie member can change these settings."
     >
+      <KeyValueCard
+        title="Sending"
+        edit={edit}
+        fields={[
+          {
+            key: "emailInvoices",
+            label: "Invoices",
+            kind: "checkbox",
+            checkboxLabel: "E-mail invoices",
+            read: saved.emailInvoices ? "On" : "Off",
+            note: "Off: invoices are not e-mailed, neither when invoicing nor via Send.",
+          },
+          {
+            key: "emailCreditNotes",
+            label: "Credit notes",
+            kind: "checkbox",
+            checkboxLabel: "E-mail credit notes",
+            read: saved.emailCreditNotes ? "On" : "Off",
+            note: "Off: credit notes are not e-mailed, neither when crediting nor via Send.",
+          },
+        ]}
+      />
       <KeyValueCard
         title="Sender"
         edit={edit}

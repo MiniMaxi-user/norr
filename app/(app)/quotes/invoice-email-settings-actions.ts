@@ -24,6 +24,10 @@ export interface InvoiceEmailSettings {
   bodyTemplate: string | null;
   /** Attach the UBL e-invoice to mails for clients that enabled it (default true). */
   attachUbl: boolean;
+  /** E-mail invoices at all (default true). */
+  emailInvoices: boolean;
+  /** E-mail credit notes at all (default true). */
+  emailCreditNotes: boolean;
 }
 
 interface SettingsRow {
@@ -33,9 +37,11 @@ interface SettingsRow {
   subject_template: string | null;
   body_template: string | null;
   attach_ubl: boolean | null;
+  email_invoices: boolean | null;
+  email_credit_notes: boolean | null;
 }
 
-const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, attach_ubl";
+const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, attach_ubl, email_invoices, email_credit_notes";
 
 function toSettings(row: SettingsRow | null): InvoiceEmailSettings {
   return {
@@ -45,6 +51,8 @@ function toSettings(row: SettingsRow | null): InvoiceEmailSettings {
     subjectTemplate: row?.subject_template ?? null,
     bodyTemplate: row?.body_template ?? null,
     attachUbl: row?.attach_ubl ?? true,
+    emailInvoices: row?.email_invoices ?? true,
+    emailCreditNotes: row?.email_credit_notes ?? true,
   };
 }
 
@@ -89,6 +97,8 @@ export async function saveInvoiceEmailSettings(
     subject_template: v.subjectTemplate ?? null,
     body_template: v.bodyTemplate ?? null,
     ...(v.attachUbl !== undefined ? { attach_ubl: v.attachUbl } : {}),
+    ...(v.emailInvoices !== undefined ? { email_invoices: v.emailInvoices } : {}),
+    ...(v.emailCreditNotes !== undefined ? { email_credit_notes: v.emailCreditNotes } : {}),
   };
 
   const supabase = await createSupabaseServerClient();

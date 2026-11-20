@@ -343,6 +343,7 @@ interface EmailSettingsRow {
   cc_email: string | null;
   subject_template: string | null;
   body_template: string | null;
+  email_work_receipts: boolean | null;
 }
 
 /**
@@ -396,10 +397,12 @@ export async function sendWorkReceipt(
 
   const { data: settings, error: settingsError } = await supabase
     .from("work_receipt_email_settings")
-    .select("from_email, from_name, cc_email, subject_template, body_template")
+    .select("from_email, from_name, cc_email, subject_template, body_template, email_work_receipts")
     .eq("organization_id", organizationId)
     .maybeSingle<EmailSettingsRow>();
   if (settingsError) return failed(settingsError.message);
+  // Organization switch (Settings -> Work receipt email): nothing is queued or recorded.
+  if (settings?.email_work_receipts === false) return fail("E-mailing work receipts is switched off in Settings.");
   if (!settings?.from_email) return failed("Work receipt e-mail sender not configured");
 
   const tokenValues = await getWorkReceiptEmailValues(supabase, receipt.work_order_id, receipt.receipt_number);

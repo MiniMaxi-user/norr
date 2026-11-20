@@ -23,6 +23,8 @@ export interface WorkReceiptEmailSettings {
   subjectTemplate: string | null;
   /** null = the default body template applies. */
   bodyTemplate: string | null;
+  /** E-mail work receipts at all (default true). */
+  emailWorkReceipts: boolean;
 }
 
 interface SettingsRow {
@@ -31,9 +33,10 @@ interface SettingsRow {
   cc_email: string | null;
   subject_template: string | null;
   body_template: string | null;
+  email_work_receipts: boolean | null;
 }
 
-const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template";
+const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, email_work_receipts";
 
 function toSettings(row: SettingsRow | null): WorkReceiptEmailSettings {
   return {
@@ -42,6 +45,7 @@ function toSettings(row: SettingsRow | null): WorkReceiptEmailSettings {
     ccEmail: row?.cc_email ?? null,
     subjectTemplate: row?.subject_template ?? null,
     bodyTemplate: row?.body_template ?? null,
+    emailWorkReceipts: row?.email_work_receipts ?? true,
   };
 }
 
@@ -88,6 +92,7 @@ export async function updateWorkReceiptEmailSettings(
     cc_email: v.ccEmail ?? null,
     subject_template: v.subjectTemplate ?? null,
     body_template: v.bodyTemplate ?? null,
+    ...(v.emailWorkReceipts !== undefined ? { email_work_receipts: v.emailWorkReceipts } : {}),
   };
 
   const supabase = await createSupabaseServerClient();

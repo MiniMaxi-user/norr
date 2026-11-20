@@ -41,6 +41,8 @@ interface InvoiceEmailSettingsRow {
   subject_template: string | null;
   body_template: string | null;
   attach_ubl: boolean | null;
+  email_invoices: boolean | null;
+  email_credit_notes: boolean | null;
 }
 
 /**
@@ -79,6 +81,19 @@ export async function sendInvoiceEmailById(
         credit_reason: string | null;
       }>();
     if (!invoiceRow) return { status: "failed", to: null, error: "Invoice not found" };
+
+    const { data: settings } = await supabase
+      .from("invoice_email_settings")
+      .select("from_email, from_name, cc_email, subject_template, body_template, attach_ubl, email_invoices, email_credit_notes")
+      .eq("organization_id", organizationId)
+      .maybeSingle<InvoiceEmailSettingsRow>();
+
+    // Organization switches (Settings -> Invoice email): e-mailing off means nothing is
+    // queued or recorded, for the automatic mail and a manual send alike.
+    if (invoiceRow.kind === "credit_note" ? settings?.email_credit_notes === false : settings?.email_invoices === false) {
+      const what = invoiceRow.kind === "credit_note" ? "credit notes" : "invoices";
+      return { status: "skipped", reason: `E-mailing ${what} is switched off in Settings` };
+    }
 
     const { data: quoteRow } = await supabase
       .from("quotes")
@@ -125,12 +140,6 @@ export async function sendInvoiceEmailById(
       return { status: "failed", to: null, error };
     }
     const to = rawEmail;
-
-    const { data: settings } = await supabase
-      .from("invoice_email_settings")
-      .select("from_email, from_name, cc_email, subject_template, body_template, attach_ubl")
-      .eq("organization_id", organizationId)
-      .maybeSingle<InvoiceEmailSettingsRow>();
 
     if (!settings?.from_email) {
       const error = "Invoice email sender not configured";

@@ -55,6 +55,8 @@ export const workReceiptEmailSettingsSchema = z.object({
   ccEmail: optionalEmail("Enter a valid CC e-mail address."),
   subjectTemplate: z.preprocess(emptyToUndefined, z.string().trim().max(300, "Subject is too long.").optional()),
   bodyTemplate: z.preprocess(emptyToUndefined, z.string().max(5000, "Body is too long.").optional()),
+  /** E-mail work receipts at all. Omitted = unchanged / default true. */
+  emailWorkReceipts: z.boolean({ invalid_type_error: "Invalid value." }).optional(),
 });
 
 export type WorkReceiptEmailSettingsInput = z.infer<typeof workReceiptEmailSettingsSchema>;

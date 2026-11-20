@@ -366,3 +366,7 @@ The matrix table itself and the `can()`/`canAny()`/`allowedActions()`/`canAccess
 - **`invoices.recipient.kvk_number`**: `snapshot_invoice()` now snapshots the buyer's KvK number (credit notes inherit it via `credit_invoice()`); existing invoices backfilled once from the current client.
 - **`invoices.ubl_path`**: set-once like `pdf_path`; `guard_invoice_update` allows only null -> `{organization_id}/{quote_id}/{invoice_number}.xml`. Stored in the private `invoices` bucket (existing path-prefix policies, no MIME restriction).
 - **`email_outbox.extra_attachment_path` / `extra_attachment_filename`** (both or neither, insert-only grant): `prepare_email_outbox_insert` requires the path to equal the `ubl_path` of the invoice/credit-note row the mail points to (kinds `invoice`/`credit_note` only; 42501 otherwise).
+
+## E-mail on/off switches per document type
+- **Implemented** in `supabase/migrations/20261123110000_email_enabled_switches.sql` (purely additive, default true = unchanged behaviour).
+- **`invoice_email_settings.email_invoices` / `email_credit_notes`** and **`work_receipt_email_settings.email_work_receipts`** (bool, default true, same row policies; insert/update column grants extended). When off, nothing is queued for that document type: the automatic invoice/credit-note mail returns `skipped`, a manual send is refused with "switched off in Settings".

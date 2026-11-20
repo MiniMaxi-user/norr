@@ -23,6 +23,7 @@ type WorkReceiptEmailDraft = {
   ccEmail: string;
   subjectTemplate: string;
   bodyTemplate: string;
+  emailWorkReceipts: boolean;
 };
 
 type WorkReceiptEmailKey = keyof WorkReceiptEmailDraft & string;
@@ -49,6 +50,7 @@ function draftFrom(settings: WorkReceiptEmailSettings): WorkReceiptEmailDraft {
     ccEmail: settings.ccEmail ?? "",
     subjectTemplate: settings.subjectTemplate ?? "",
     bodyTemplate: settings.bodyTemplate ?? "",
+    emailWorkReceipts: settings.emailWorkReceipts ?? true,
   };
 }
 
@@ -78,6 +80,7 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
         validate: (value) =>
           value.length > 5000 ? `Body is ${value.length} characters, the maximum is 5000. Remove ${value.length - 5000}` : null,
       },
+      emailWorkReceipts: { label: "Work receipts", format: (value) => (value ? "on" : "off") },
     }),
     [],
   );
@@ -95,6 +98,7 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
         ccEmail: draft.ccEmail,
         subjectTemplate: draft.subjectTemplate,
         bodyTemplate: draft.bodyTemplate,
+        emailWorkReceipts: draft.emailWorkReceipts,
       });
       if (!result.data) {
         return {
@@ -115,6 +119,20 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
       edit={edit}
       readOnlyNote="Only an owner or administratie member can change these settings."
     >
+      <KeyValueCard
+        title="Sending"
+        edit={edit}
+        fields={[
+          {
+            key: "emailWorkReceipts",
+            label: "Work receipts",
+            kind: "checkbox",
+            checkboxLabel: "E-mail work receipts",
+            read: saved.emailWorkReceipts ? "On" : "Off",
+            note: "Off: work receipts cannot be e-mailed.",
+          },
+        ]}
+      />
       <KeyValueCard
         title="Sender"
         edit={edit}

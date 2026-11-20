@@ -192,7 +192,6 @@ export function ClientOverviewCards({ edit, accountManagers, articles, derived, 
       disabledNote: rateDisabledNote,
     },
   ];
-  // Read mode: only show the article/price rows when a custom rate is on.
   const ublField: KvField = {
     key: "ublEmailEnabled",
     label: "E-invoice (UBL)",
@@ -201,9 +200,10 @@ export function ClientOverviewCards({ edit, accountManagers, articles, derived, 
     read: saved.ublEmailEnabled ? "On" : "Off",
   };
   const [customRateField, ...rateDetailFields] = rateFields;
+  // UBL first, then the custom rate; read mode only shows the article/price rows when a custom rate is on.
   const visibleRateFields = [
-    customRateField!,
     ublField,
+    customRateField!,
     ...(edit.isEditing || saved.hasCustomRate ? rateDetailFields : []),
   ];
 
