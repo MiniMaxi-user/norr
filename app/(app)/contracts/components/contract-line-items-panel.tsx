@@ -15,9 +15,31 @@ import {
 } from "../actions";
 import type { ArticleSelectOption } from "@/app/(app)/articles/actions";
 import { formatMoneyWeb, formatNumberWeb } from "@/lib/format/web";
+import { billingMultiplier } from "@/app/(app)/quotes/contract-quote-helpers";
+
+/** The contract's billing set-up, so the line dialog can show what the
+ * entered values mean: prices and included quantities are per billing PERIOD;
+ * each invoice (billing TERMS) covers `billingMultiplier` periods. */
+export interface ContractBillingContext {
+  periodLabel: string | null;
+  periodMonths: number | null;
+  termsLabel: string | null;
+  termsMonths: number | null;
+}
+
+/** "month" / "quarter" / "year" / "3 months"; null when unknown. */
+function periodNoun(months: number | null): string | null {
+  if (!months) return null;
+  if (months === 1) return "month";
+  if (months === 3) return "quarter";
+  if (months === 6) return "half year";
+  if (months === 12) return "year";
+  return `${months} months`;
+}
 
 export interface ContractLineItemsPanelProps {
   contractId: string;
+  billing: ContractBillingContext;
   lineItems: ContractLineItemRecord[];
   articles: ArticleSelectOption[];
   counterOptions: ContractCounterOption[];
@@ -42,6 +64,7 @@ export function ContractLineItemsPanel({
   lineItems,
   articles,
   counterOptions,
+  billing,
   canCreate,
   canUpdate,
   canDelete,
@@ -91,7 +114,9 @@ export function ContractLineItemsPanel({
           if (!row.is_volume) return kindOf(row);
           const details = [
             row.volume_item?.label ?? null,
-            row.included_quantity !== null ? `${formatNumberWeb(row.included_quantity)} included` : null,
+            row.included_quantity !== null
+              ? `${formatNumberWeb(row.included_quantity)} included${periodNoun(billing.periodMonths) ? ` / ${periodNoun(billing.periodMonths)}` : ""}`
+              : null,
             row.overage_unit_price !== null ? `${formatMoneyWeb(row.overage_unit_price)} overage` : null,
           ].filter(Boolean);
           return details.length > 0 ? `Volume · ${details.join(" · ")}` : "Volume";
@@ -126,7 +151,7 @@ export function ContractLineItemsPanel({
         render: (row) => formatMoneyWeb(lineTotal(row)),
       },
     ],
-    [],
+    [billing.periodMonths],
   );
 
   const dropdowns = useMemo(
@@ -206,6 +231,7 @@ export function ContractLineItemsPanel({
           row={dialog.row}
           articles={articles}
           counterOptions={counterOptions}
+          billing={billing}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -231,12 +257,14 @@ function LineItemDialog({
   row,
   articles,
   counterOptions,
+  billing,
   onClose,
 }: {
   contractId: string;
   row: ContractLineItemRecord | null;
   articles: ArticleSelectOption[];
   counterOptions: ContractCounterOption[];
+  billing: ContractBillingContext;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -280,6 +308,20 @@ function LineItemDialog({
   if (row?.volume_item_id && !counterOptions.some((counter) => counter.id === row.volume_item_id)) {
     counterComboOptions.push({ value: row.volume_item_id, label: row.volume_item?.label ?? "Current counter" });
   }
+  // What the entered values mean on each invoice (same multiplier as
+  // generateContractQuotes: terms months / period months, else 1).
+  const multiplier = billingMultiplier(billing.termsMonths, billing.periodMonths);
+  const perPeriod = periodNoun(billing.periodMonths);
+  const perLabel = perPeriod ? ` per ${perPeriod}` : "";
+  const toNumber = (text: string) => (text.trim() ? Number(text.replace(",", ".")) : NaN);
+  const qty = toNumber(quantity);
+  const price = toNumber(salePrice);
+  const included = toNumber(includedQuantity);
+  const overage = toNumber(overagePrice);
+  const pickedCounter = counterOptions.find((counter) => counter.id === volumeItemId) ?? null;
+  const counterName = pickedCounter?.label ?? (volumeItemId ? (row?.volume_item?.label ?? "the counter") : null);
+  const unit = pickedCounter?.unit ?? "units";
+
   const counterNotCovered = isVolume && volumeItemId !== "" && !counterOptions.some((counter) => counter.id === volumeItemId);
 
   async function handleSave() {
@@ -339,6 +381,7 @@ function LineItemDialog({
   return (
     <WebConfirmDialog
       open
+      size="lg"
       title={row ? "Edit line item" : "Add line item"}
       confirmLabel="Save"
       confirmVariant="save"
@@ -348,6 +391,25 @@ function LineItemDialog({
       onConfirm={() => void handleSave()}
     >
       <div className="web-dialog-form">
+        <p className="web-dialog-summary">
+          Billing period: <strong>{billing.periodLabel ?? "not set"}</strong> · Billing terms:{" "}
+          <strong>{billing.termsLabel ?? "not set"}</strong>
+          <br />
+          {billing.periodMonths && billing.termsMonths ? (
+            <>
+              Quantity, prices and included quantity are entered <strong>per {perPeriod}</strong>
+              {multiplier !== 1 ? (
+                <>
+                  ; each invoice covers <strong>{formatNumberWeb(multiplier)} ×</strong> that.
+                </>
+              ) : (
+                <>; each invoice covers one {perPeriod}.</>
+              )}
+            </>
+          ) : (
+            <>Billing period or terms is not a fixed interval, so lines are invoiced as entered (× 1).</>
+          )}
+        </p>
         <div className="web-dialog-field">
           <label className="web-field-label" htmlFor="contract-line-article">
             Article
@@ -361,50 +423,52 @@ function LineItemDialog({
             emptyMessage="No matching articles"
           />
         </div>
-        <div className="web-dialog-field">
-          <label className="web-field-label" htmlFor="contract-line-quantity">
-            Quantity
-          </label>
-          <input
-            id="contract-line-quantity"
-            className="web-input"
-            type="number"
-            step="0.001"
-            min="0.001"
-            data-numeric="true"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-          />
-        </div>
-        <div className="web-dialog-field">
-          <label className="web-field-label" htmlFor="contract-line-purchase">
-            Purchase price
-          </label>
-          <input
-            id="contract-line-purchase"
-            className="web-input"
-            type="number"
-            step="0.01"
-            min="0"
-            data-numeric="true"
-            value={purchasePrice}
-            onChange={(event) => setPurchasePrice(event.target.value)}
-          />
-        </div>
-        <div className="web-dialog-field">
-          <label className="web-field-label" htmlFor="contract-line-sale">
-            Sale price
-          </label>
-          <input
-            id="contract-line-sale"
-            className="web-input"
-            type="number"
-            step="0.01"
-            min="0"
-            data-numeric="true"
-            value={salePrice}
-            onChange={(event) => setSalePrice(event.target.value)}
-          />
+        <div className="web-dialog-row">
+          <div className="web-dialog-field">
+            <label className="web-field-label" htmlFor="contract-line-quantity">
+              Quantity{perLabel}
+            </label>
+            <input
+              id="contract-line-quantity"
+              className="web-input"
+              type="number"
+              step="0.001"
+              min="0.001"
+              data-numeric="true"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </div>
+          <div className="web-dialog-field">
+            <label className="web-field-label" htmlFor="contract-line-purchase">
+              Purchase price
+            </label>
+            <input
+              id="contract-line-purchase"
+              className="web-input"
+              type="number"
+              step="0.01"
+              min="0"
+              data-numeric="true"
+              value={purchasePrice}
+              onChange={(event) => setPurchasePrice(event.target.value)}
+            />
+          </div>
+          <div className="web-dialog-field">
+            <label className="web-field-label" htmlFor="contract-line-sale">
+              Sale price
+            </label>
+            <input
+              id="contract-line-sale"
+              className="web-input"
+              type="number"
+              step="0.01"
+              min="0"
+              data-numeric="true"
+              value={salePrice}
+              onChange={(event) => setSalePrice(event.target.value)}
+            />
+          </div>
         </div>
         <label className="web-field-checkbox">
           <input type="checkbox" checked={isVolume} onChange={(event) => setIsVolume(event.target.checked)} />
@@ -426,38 +490,70 @@ function LineItemDialog({
               />
               {counterNotCovered ? <p className="web-hint-warning" role="status">No covered asset has this counter</p> : null}
             </div>
-            <div className="web-dialog-field">
-              <label className="web-field-label" htmlFor="contract-line-included">
-                Included per period
-              </label>
-              <input
-                id="contract-line-included"
-                className="web-input"
-                type="number"
-                step="0.001"
-                min="0"
-                data-numeric="true"
-                value={includedQuantity}
-                onChange={(event) => setIncludedQuantity(event.target.value)}
-              />
-            </div>
-            <div className="web-dialog-field">
-              <label className="web-field-label" htmlFor="contract-line-overage">
-                Overage price
-              </label>
-              <input
-                id="contract-line-overage"
-                className="web-input"
-                type="number"
-                step="0.01"
-                min="0"
-                data-numeric="true"
-                value={overagePrice}
-                onChange={(event) => setOveragePrice(event.target.value)}
-              />
+            <div className="web-dialog-row">
+              <div className="web-dialog-field">
+                <label className="web-field-label" htmlFor="contract-line-included">
+                  Included{perLabel}
+                </label>
+                <input
+                  id="contract-line-included"
+                  className="web-input"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  data-numeric="true"
+                  value={includedQuantity}
+                  onChange={(event) => setIncludedQuantity(event.target.value)}
+                />
+              </div>
+              <div className="web-dialog-field">
+                <label className="web-field-label" htmlFor="contract-line-overage">
+                  Overage price per {pickedCounter?.unit ?? "unit"}
+                </label>
+                <input
+                  id="contract-line-overage"
+                  className="web-input"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  data-numeric="true"
+                  value={overagePrice}
+                  onChange={(event) => setOveragePrice(event.target.value)}
+                />
+              </div>
             </div>
           </>
         ) : null}
+        <div className="web-dialog-summary" role="status" aria-live="polite">
+          <strong>On each invoice{billing.termsLabel ? ` (${billing.termsLabel})` : ""}:</strong>
+          <br />
+          {Number.isFinite(qty) && Number.isFinite(price) ? (
+            <>
+              {multiplier !== 1 ? `${formatNumberWeb(multiplier)} × ` : ""}
+              {formatNumberWeb(qty)} × {formatMoneyWeb(price)} ={" "}
+              <strong>{formatMoneyWeb(Math.round(multiplier * qty * price * 100) / 100)}</strong> fixed
+            </>
+          ) : (
+            <>Enter a quantity and sale price to see the invoiced amount.</>
+          )}
+          {isVolume && Number.isFinite(included) ? (
+            <>
+              <br />
+              Includes <strong>{formatNumberWeb(Math.round(included * multiplier * 1000) / 1000)}</strong> {unit}
+              {multiplier !== 1 ? ` (${formatNumberWeb(multiplier)} × ${formatNumberWeb(included)})` : ""}
+              {counterName ? ` of ${counterName}` : ""}
+              {Number.isFinite(overage) ? (
+                <>
+                  ; usage above that is charged at <strong>{formatMoneyWeb(overage)}</strong> per{" "}
+                  {pickedCounter?.unit ?? "unit"}.
+                </>
+              ) : (
+                <>; without an overage price, usage above that is not charged.</>
+              )}
+              {!counterName ? <> Pick a counter so usage can be settled.</> : null}
+            </>
+          ) : null}
+        </div>
       </div>
     </WebConfirmDialog>
   );

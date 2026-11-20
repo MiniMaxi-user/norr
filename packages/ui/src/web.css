@@ -2437,6 +2437,26 @@ a.web-tree-id:hover {
 .web-dialog-field .web-field-label {
   font: 400 12.5px/17px var(--font-sans);
 }
+/* Fields side by side in a wide (size="lg") dialog; stacks on narrow screens */
+.web-dialog-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+/* Read-only context / effect summary inside a dialog form */
+.web-dialog-summary {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  font: 400 12.5px/18px var(--font-sans);
+  color: var(--text-muted);
+}
+.web-dialog-summary strong {
+  font-weight: 600;
+  color: var(--text-ink);
+}
 
 /* Checkbox inside a table cell (checklist "Done" column) */
 .web-table-checkbox {

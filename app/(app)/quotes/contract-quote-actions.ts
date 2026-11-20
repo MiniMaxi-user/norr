@@ -15,6 +15,8 @@ import {
 } from "./counter-settlement";
 import {
   addDaysIso,
+  billingMultiplier,
+  billingPeriodMonths,
   computeContractPeriod,
   describeContractAssets,
   formatPeriodLabel,
@@ -55,8 +57,8 @@ import {
  *  - `is_volume` lines (pre-agreed usage bundles, issue #129) are billed like
  *    any other contract line at their contracted quantity x price per period.
  *  - Counter settlement (issue #239): a volume line linked to a counter
- *    (`volume_item_id`) with `included_quantity` (per INVOICING period, so not
- *    scaled) gets an extra overage line when usage exceeds it. Usage = sum over
+ *    (`volume_item_id`) with `included_quantity` (per billing PERIOD, like
+ *    the price, so scaled by the same multiplier) gets an extra overage line when usage exceeds it. Usage = sum over
  *    the covered assets (direct contract_assets plus all their asset_components
  *    descendants, same coverage rule as listAssetContractCoverage) whose model
  *    has the counter configured, of (latest reading <= end of period end) -
@@ -77,7 +79,6 @@ export interface GenerateContractQuotesResult {
   warnings: { contractId: string; contractNumber: string; message: string }[];
 }
 
-const BILLING_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, annually: 12 };
 
 interface ContractRow {
   id: string;
@@ -370,10 +371,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
     const periodLabel = formatPeriodLabel(period.start, period.end);
 
     const termsMonths = contract.billing_terms?.interval_months ?? null;
-    const periodMonths = contract.billing_period
-      ? (contract.billing_period.interval_months ?? BILLING_PERIOD_MONTHS[contract.billing_period.value] ?? null)
-      : null;
-    const multiplier = termsMonths && periodMonths ? termsMonths / periodMonths : 1;
+    const multiplier = billingMultiplier(termsMonths, billingPeriodMonths(contract.billing_period));
 
     const assets: ContractAssetNote[] = contract.contract_assets
       .map((link) => link.asset)
@@ -424,7 +422,9 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
         );
       }
       if (line.included_quantity === null) continue;
-      const included = Number(line.included_quantity);
+      // Included is per billing PERIOD (like the line's price), so it scales
+      // with the invoicing frequency: 500/month invoiced quarterly = 1,500.
+      const included = Math.round(Number(line.included_quantity) * multiplier * 1000) / 1000;
       const overage = computeOverage(usage.usage, included);
       if (overage <= 0) continue;
       if (line.overage_unit_price === null) {

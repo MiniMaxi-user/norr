@@ -38,6 +38,7 @@ import { ContractOverviewCards, type ContractReferenceLists } from "./contract-o
 import { ContractRail } from "./contract-rail";
 import { buildContractTimeline } from "./contract-timeline";
 import { ContractLineItemsPanel } from "./contract-line-items-panel";
+import { billingPeriodMonths } from "@/app/(app)/quotes/contract-quote-helpers";
 import { ContractCoveragePanel } from "./contract-coverage-panel";
 import { ContractAssetsPanel } from "./contract-assets-panel";
 import { ContractQuotesPanel } from "./contract-quotes-panel";
@@ -408,6 +409,12 @@ export function ContractScreen({
             lineItems={lineItems}
             articles={articles}
             counterOptions={counterOptions}
+            billing={{
+              periodLabel: contract.billing_period?.label ?? null,
+              periodMonths: billingPeriodMonths(contract.billing_period),
+              termsLabel: contract.billing_terms?.label ?? null,
+              termsMonths: contract.billing_terms?.interval_months ?? null,
+            }}
             canCreate={canCreate}
             canUpdate={canUpdate}
             canDelete={canDelete}

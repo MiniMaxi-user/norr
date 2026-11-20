@@ -100,7 +100,7 @@ export interface ContractRecord {
    * `null` whenever `billing_period_id` is `null`. Independent sibling of
    * `billing_terms` — see `billing_period_id`'s own migration comment
    * (`20260905100000_contracts_billing_period_line_items_and_article_rules.sql`). */
-  billing_period: ResolvedReferenceItem | null;
+  billing_period: (ResolvedReferenceItem & { interval_months: number | null }) | null;
 }
 
 /** A contract's line item — an article the Quote generated from this
@@ -192,7 +192,7 @@ export interface ContractAssetRecord {
  * in one round trip instead of N+1-ing a lookup per row per column — same
  * reasoning as `WORK_ORDER_SELECT` in `app/(app)/work-orders/actions.ts`. */
 const CONTRACT_SELECT =
-  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color,interval_months), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color)";
+  "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color,interval_months), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color,interval_months)";
 
 /** Shared select shape for every query returning a `ContractAssetRecord`. */
 const CONTRACT_ASSET_SELECT = "*, asset:assets(id, name, client_id, site_id)";

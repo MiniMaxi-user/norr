@@ -117,3 +117,22 @@ export function describeContractAssets(assets: readonly ContractAssetNote[]): st
   const more = assets.length > MAX_ASSETS_IN_NOTES ? [`... and ${assets.length - MAX_ASSETS_IN_NOTES} more`] : [];
   return [`Covered assets (${assets.length}):`, ...lines, ...more].join("\n");
 }
+
+const BILLING_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, annually: 12 };
+
+/** Months of a billing PERIOD item (the unit contract line prices and included
+ * quantities are expressed in): its own `interval_months`, else monthly=1,
+ * quarterly=3, annually=12, else null (unknown). */
+export function billingPeriodMonths(
+  period: { value: string; interval_months?: number | null } | null | undefined,
+): number | null {
+  if (!period) return null;
+  return period.interval_months ?? BILLING_PERIOD_MONTHS[period.value] ?? null;
+}
+
+/** How many billing periods one invoice (billing TERMS) covers: terms months /
+ * period months, or 1 when either is unknown or non-recurring. Contract line
+ * quantities/prices AND included counter quantities are scaled by it. */
+export function billingMultiplier(termsMonths: number | null | undefined, periodMonths: number | null | undefined): number {
+  return termsMonths && periodMonths ? termsMonths / periodMonths : 1;
+}

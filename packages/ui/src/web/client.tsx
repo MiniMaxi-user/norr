@@ -92,6 +92,8 @@ export interface WebConfirmDialogProps {
   error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  /** `lg` for a dialog form that needs more width (side-by-side fields). */
+  size?: "sm" | "lg";
 }
 
 export function WebConfirmDialog({
@@ -105,6 +107,7 @@ export function WebConfirmDialog({
   error,
   onCancel,
   onConfirm,
+  size = "sm",
 }: WebConfirmDialogProps) {
   const handleOpenChange = (next: boolean) => {
     if (!next && !pending) onCancel();
@@ -112,7 +115,7 @@ export function WebConfirmDialog({
   // The shared Dialog has no Escape handling of its own (see dialog.tsx).
   useEscapeToClose(open, handleOpenChange);
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange} size="sm">
+    <Dialog open={open} onOpenChange={handleOpenChange} size={size}>
       <Dialog.Header>
         <h2 className="web-dialog-title">{title}</h2>
       </Dialog.Header>
