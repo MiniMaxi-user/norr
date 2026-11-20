@@ -205,20 +205,20 @@ export function ContractOverviewCards({
       read: saved.autoRenew ? "Yes" : "No",
     },
     {
-      key: "billingTermsId",
-      label: "Billing terms",
-      kind: "select",
-      read: savedTerms || null,
-      options: termsOptions,
-      emptyLabel: "No billing terms",
-    },
-    {
       key: "billingPeriodId",
       label: "Billing period",
       kind: "select",
       read: savedPeriod || null,
       options: periodOptions,
       emptyLabel: "No billing period",
+    },
+    {
+      key: "billingTermsId",
+      label: "Billing terms",
+      kind: "select",
+      read: savedTerms || null,
+      options: termsOptions,
+      emptyLabel: "No billing terms",
     },
     {
       key: "value",
