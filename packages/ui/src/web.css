@@ -1706,9 +1706,9 @@ html:has(.web-shell) body {
   gap: 8px;
   min-height: var(--control-height);
   color: var(--text-ink);
-  cursor: pointer;
 }
 .web-field-checkbox input {
+  cursor: pointer;
   width: 15px;
   height: 15px;
   margin: 0;

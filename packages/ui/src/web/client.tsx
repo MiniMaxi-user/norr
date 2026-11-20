@@ -632,15 +632,17 @@ function EditRow({ field, binding }: { field: KvField; binding: FieldBinding | n
     );
   } else if (kind === "checkbox") {
     control = (
-      <label className="web-field-checkbox">
+      // Only the box itself toggles; the text is linked via aria-labelledby, not a <label>.
+      <span className="web-field-checkbox">
         <input
           {...common}
           type="checkbox"
+          aria-labelledby={`${binding.id}-label ${binding.id}-text`}
           checked={Boolean(binding.value)}
           onChange={(event) => binding.onChange(event.target.checked)}
         />
-        {field.checkboxLabel ?? field.label}
-      </label>
+        <span id={`${binding.id}-text`}>{field.checkboxLabel ?? field.label}</span>
+      </span>
     );
   } else {
     const type =
@@ -666,14 +668,25 @@ function EditRow({ field, binding }: { field: KvField; binding: FieldBinding | n
 
   return (
     <div className="web-field" data-state={state} data-has-message={message ? "true" : undefined}>
-      <label className="web-field-label" htmlFor={binding.id}>
-        {field.label}
-        {binding.required ? (
-          <span className="web-field-required" aria-hidden="true">
-            *
-          </span>
-        ) : null}
-      </label>
+      {kind === "checkbox" ? (
+        <span className="web-field-label" id={`${binding.id}-label`}>
+          {field.label}
+          {binding.required ? (
+            <span className="web-field-required" aria-hidden="true">
+              *
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <label className="web-field-label" htmlFor={binding.id}>
+          {field.label}
+          {binding.required ? (
+            <span className="web-field-required" aria-hidden="true">
+              *
+            </span>
+          ) : null}
+        </label>
+      )}
       <div className="web-field-control">{control}</div>
       {message ? (
         <div id={binding.messageId} className="web-field-message">

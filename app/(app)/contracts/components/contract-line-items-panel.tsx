@@ -483,10 +483,15 @@ function LineItemDialog({
           </div>
         </div>
 
-        <label className="web-field-checkbox">
-          <input type="checkbox" checked={isVolume} onChange={(event) => setIsVolume(event.target.checked)} />
-          Volume: the quantity is a pre-agreed allowance, settled against a counter
-        </label>
+        <span className="web-field-checkbox">
+          <input
+            type="checkbox"
+            aria-labelledby="contract-line-volume-text"
+            checked={isVolume}
+            onChange={(event) => setIsVolume(event.target.checked)}
+          />
+          <span id="contract-line-volume-text">Volume: the quantity is a pre-agreed allowance, settled against a counter</span>
+        </span>
 
         {isVolume ? (
           <>
