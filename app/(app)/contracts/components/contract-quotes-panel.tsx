@@ -38,6 +38,14 @@ export function ContractQuotesPanel({ quotes }: ContractQuotesPanelProps) {
         header: "Counter settlement",
         sortValue: (quote) => quote.counter_settlement_start ?? "",
         render: (quote) => {
+          if (quote.is_counter_settlement && quote.counter_settlement_start && quote.counter_settlement_end) {
+            return (
+              <>
+                {formatDateWeb(quote.counter_settlement_start)} – {formatDateWeb(quote.counter_settlement_end)}{" "}
+                <StatusText display="badge" tone="info">Counter settlement</StatusText>
+              </>
+            );
+          }
           if (!quote.counter_settlement_start || !quote.counter_settlement_end) {
             return quote.is_final_settlement ? <StatusText display="badge" tone="neutral">Final settlement</StatusText> : "—";
           }

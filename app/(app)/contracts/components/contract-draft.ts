@@ -1,5 +1,5 @@
 import type { ContractRecord } from "../actions";
-import type { ContractInvoicingTiming } from "../schema";
+import type { ContractInvoicingTiming, CounterSettlementFrequency } from "../schema";
 
 /**
  * The contract's own editable fields, as one flat draft object — the raw
@@ -22,6 +22,10 @@ export type ContractDraft = {
   billingTermsId: string;
   billingPeriodId: string;
   invoicingTiming: ContractInvoicingTiming;
+  /** Issue #271. */
+  counterSettlementFrequency: CounterSettlementFrequency;
+  /** "1"-"12" for quarterly/annually, "" otherwise (the server defaults it to the start month). */
+  counterSettlementMonth: string;
   startDate: string;
   endDate: string;
   autoRenew: boolean;
@@ -38,6 +42,8 @@ export function draftFromContract(contract: ContractRecord): ContractDraft {
     billingTermsId: contract.billing_terms_id ?? "",
     billingPeriodId: contract.billing_period_id ?? "",
     invoicingTiming: contract.invoicing_timing,
+    counterSettlementFrequency: contract.counter_settlement_frequency,
+    counterSettlementMonth: contract.counter_settlement_month === null ? "" : String(contract.counter_settlement_month),
     startDate: contract.start_date,
     endDate: contract.end_date ?? "",
     autoRenew: contract.auto_renew,
@@ -71,6 +77,8 @@ export function emptyDraft(
     billingTermsId: options.defaultBillingTermsId ?? "",
     billingPeriodId: options.defaultBillingPeriodId ?? "",
     invoicingTiming: "in_advance",
+    counterSettlementFrequency: "with_invoice",
+    counterSettlementMonth: "",
     startDate: todayIso(),
     endDate: "",
     autoRenew: false,
@@ -92,6 +100,8 @@ export function draftToInput(patch: Partial<ContractDraft>): Record<string, unkn
   if (patch.billingTermsId) input.billingTermsId = patch.billingTermsId;
   if (patch.billingPeriodId) input.billingPeriodId = patch.billingPeriodId;
   if (patch.invoicingTiming) input.invoicingTiming = patch.invoicingTiming;
+  if (patch.counterSettlementFrequency) input.counterSettlementFrequency = patch.counterSettlementFrequency;
+  if (patch.counterSettlementMonth !== undefined) input.counterSettlementMonth = patch.counterSettlementMonth;
   if (patch.startDate) input.startDate = patch.startDate;
   if (patch.endDate !== undefined) input.endDate = patch.endDate;
   if (patch.autoRenew !== undefined) input.autoRenew = patch.autoRenew;

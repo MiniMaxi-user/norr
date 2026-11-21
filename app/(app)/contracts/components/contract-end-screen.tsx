@@ -1,0 +1,547 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "@yourorg/ui";
+import {
+  WebBadge,
+  WebButton,
+  WebCard,
+  WebCardStack,
+  WebDataTable,
+  WebField,
+  WebHint,
+  WebPage,
+  type WebBadgeVariant,
+} from "@yourorg/ui/web";
+import { PageHeader, WebConfirmDialog } from "@yourorg/ui/web-client";
+import { formatDateWeb, formatMoneyWeb, formatNumberWeb } from "@/lib/format/web";
+import type { QuoteLineDraft } from "@/app/(app)/quotes/contract-balance";
+import {
+  completeContractEnd,
+  getContractEndBalance,
+  scheduleContractEnd,
+  type ContractEndBalance,
+  type ContractEndInput,
+} from "../end-actions";
+import { buildInvoicingExplanation } from "./contract-invoicing-explanation";
+
+const PREVIEW_DEBOUNCE_MS = 400;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+const rowKey = (assetId: string, volumeItemId: string) => `${assetId}|${volumeItemId}`;
+const lineAmount = (line: QuoteLineDraft) => Math.round(line.quantity * line.unitPrice * 100) / 100;
+
+const PERIOD_STATUS: Record<"invoiced" | "quoted" | "open", { label: string; variant: WebBadgeVariant }> = {
+  invoiced: { label: "Invoiced", variant: "success" },
+  quoted: { label: "Quoted, not invoiced", variant: "warning" },
+  open: { label: "Open", variant: "info" },
+};
+
+export interface ContractEndScreenProps {
+  contractId: string;
+  contractNumber: string;
+  startDate: string;
+  /** Balance computed on the server for `initialEndDate`. */
+  initialBalance: ContractEndBalance;
+  initialEndDate: string;
+  canSeeQuotes: boolean;
+}
+
+/**
+ * The End contract page (issue #271): a full page, not a dialog (docs/ARCHITECTURE.md
+ * "Popup vs. full page"), in four numbered steps: 1 End date, 2 Closing readings,
+ * 3 Balance overview (live preview, recomputed server-side, debounced), 4 Confirm.
+ * A future end date only schedules the ending (the contract stays Active). Amounts
+ * are never trusted from here: `completeContractEnd` recomputes everything.
+ */
+export function ContractEndScreen({
+  contractId,
+  contractNumber,
+  startDate,
+  initialBalance,
+  initialEndDate,
+  canSeeQuotes,
+}: ContractEndScreenProps) {
+  const router = useRouter();
+  const [endDate, setEndDate] = useState(initialEndDate);
+  const [entered, setEntered] = useState<Record<string, string>>({});
+  const [skipped, setSkipped] = useState<Record<string, boolean>>({});
+  const [balance, setBalance] = useState<ContractEndBalance>(initialBalance);
+  const [refreshing, setRefreshing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const dateError = !ISO_DATE.test(endDate)
+    ? "Enter the end date"
+    : endDate < startDate
+      ? "The end date cannot be before the contract start date"
+      : null;
+
+  const input = useMemo<ContractEndInput>(() => {
+    const closingReadings: NonNullable<ContractEndInput["closingReadings"]> = [];
+    const skippedRows: NonNullable<ContractEndInput["skipped"]> = [];
+    for (const row of balance.readingRows) {
+      const key = rowKey(row.assetId, row.volumeItemId);
+      if (skipped[key]) {
+        skippedRows.push({ assetId: row.assetId, volumeItemId: row.volumeItemId });
+        continue;
+      }
+      const text = (entered[key] ?? "").trim().replace(",", ".");
+      if (text !== "" && Number.isFinite(Number(text))) {
+        closingReadings.push({ assetId: row.assetId, volumeItemId: row.volumeItemId, value: Number(text) });
+      }
+    }
+    return { endDate, closingReadings, skipped: skippedRows };
+  }, [endDate, entered, skipped, balance.readingRows]);
+
+  // Debounced live preview. The first run (server-rendered balance) is skipped.
+  const firstRun = useRef(true);
+  const requestId = useRef(0);
+  const inputKey = JSON.stringify(input);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    if (dateError) return;
+    const id = ++requestId.current;
+    setRefreshing(true);
+    const timer = setTimeout(() => {
+      void getContractEndBalance(contractId, input).then((result) => {
+        if (id !== requestId.current) return;
+        setRefreshing(false);
+        if (!result.data) {
+          setPreviewError(result.error ?? "Could not calculate the balance.");
+          return;
+        }
+        setPreviewError(null);
+        setBalance(result.data);
+      });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // `input` is covered by its serialized key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputKey, contractId, dateError]);
+
+  const isSchedule = balance.mode === "schedule";
+  const canComplete = !isSchedule && !dateError && !refreshing && !previewError && balance.missingReadings === 0;
+
+  const handleSchedule = useCallback(async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    const result = await scheduleContractEnd(contractId, endDate);
+    setSubmitting(false);
+    if (!result.data) {
+      setSubmitError(result.error ?? "Could not schedule the ending.");
+      return;
+    }
+    toast({ title: "Ending scheduled", description: `Ends on ${formatDateWeb(endDate)}`, tone: "success", duration: 3000 });
+    router.push(`/contracts/${contractId}`);
+    router.refresh();
+  }, [contractId, endDate, router]);
+
+  async function handleComplete() {
+    setSubmitting(true);
+    setSubmitError(null);
+    const result = await completeContractEnd(contractId, input);
+    setSubmitting(false);
+    if (!result.data) {
+      setSubmitError(result.error ?? "Could not complete the final balance.");
+      return;
+    }
+    setConfirmOpen(false);
+    toast({
+      title: "Contract ended",
+      description: result.data.quoteId ? "The final settlement quote was created." : "Nothing was left to invoice.",
+      tone: "success",
+      duration: 4000,
+    });
+    router.push(`/contracts/${contractId}`);
+    router.refresh();
+  }
+
+  const header = (
+    <PageHeader
+      breadcrumb={[
+        { label: "Contracts", href: "/contracts" },
+        { label: contractNumber, href: `/contracts/${contractId}`, mono: true },
+        { label: "End contract" },
+      ]}
+      title="End contract"
+      mode="read"
+      actions={{ canEdit: false, onEdit: () => {}, onSave: () => {}, onCancel: () => {} }}
+    />
+  );
+
+  const summary = balance.contract;
+  const explanation = buildInvoicingExplanation({
+    intervalMonths: summary.intervalMonths,
+    timing: summary.invoicingTiming,
+    frequency: summary.counterSettlementFrequency,
+    settlementMonth: summary.counterSettlementMonth,
+    creditsUnderUse: summary.creditsUnderUse,
+    hasCounterLines: summary.hasCounterLines,
+  });
+
+  return (
+    <WebPage>
+      {header}
+      <div className="web-tab-stack">
+        <WebCardStack>
+          <WebCard title="1. End date">
+            <p className="web-dialog-text">
+              The day the contract stops. Today or earlier completes the final balance now; a later date keeps the
+              contract Active until then.
+            </p>
+            <WebField label="End date" htmlFor="contract-end-date" required error={dateError} messageId="contract-end-date-error">
+              <input
+                id="contract-end-date"
+                type="date"
+                className="web-input"
+                value={endDate}
+                min={startDate}
+                aria-describedby={dateError ? "contract-end-date-error" : undefined}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </WebField>
+            <WebHint>{explanation}</WebHint>
+            {isSchedule && !dateError ? (
+              <>
+                <div className="web-dialog-summary" data-tone="info" role="status">
+                  <span className="web-dialog-summary-title">Scheduled ending</span>
+                  This date is in the future, so <strong>{contractNumber}</strong> stays Active and shows &quot;Ends on{" "}
+                  {formatDateWeb(endDate)}&quot;. Reopen this page after that date to complete the final balance. You
+                  can cancel the ending until then.
+                </div>
+                {submitError ? (
+                  <p className="web-hint-warning" role="alert">
+                    {submitError}
+                  </p>
+                ) : null}
+                <WebButton variant="primary" loading={submitting} onClick={() => void handleSchedule()}>
+                  Schedule ending
+                </WebButton>
+              </>
+            ) : null}
+          </WebCard>
+
+          {isSchedule ? null : (
+            <>
+              <WebCard
+                title="2. Closing readings"
+                meta={
+                  balance.readingRows.length > 0
+                    ? `${balance.readingRows.length - balance.missingReadings} / ${balance.readingRows.length} ready`
+                    : undefined
+                }
+              >
+                <p className="web-dialog-text">
+                  Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
+                  readings when you complete the balance.
+                </p>
+                {balance.readingRows.length === 0 ? (
+                  <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
+                ) : (
+                  <WebDataTable aria-busy={refreshing}>
+                    <thead>
+                      <tr>
+                        <th scope="col">Asset</th>
+                        <th scope="col">Serial number</th>
+                        <th scope="col">Counter</th>
+                        <th scope="col" data-numeric="true">
+                          Last reading
+                        </th>
+                        <th scope="col">Reading on {formatDateWeb(endDate)}</th>
+                        <th scope="col">
+                          <span className="web-sr-only">Settle without reading</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {balance.readingRows.map((row) => {
+                        const key = rowKey(row.assetId, row.volumeItemId);
+                        const inputId = `closing-${row.assetId}-${row.volumeItemId}`;
+                        const isSkipped = Boolean(skipped[key]);
+                        return (
+                          <tr key={key}>
+                            <td data-primary="true">
+                              <Link href={`/assets/${row.assetId}?tab=volumes`}>{row.assetName}</Link>
+                            </td>
+                            <td data-id="true">{row.serialNumber ?? "—"}</td>
+                            <td>{row.counterLabel}</td>
+                            <td data-numeric="true">
+                              {row.lastReading
+                                ? `${formatNumberWeb(row.lastReading.value)} (${formatDateWeb(row.lastReading.readAt.slice(0, 10))})`
+                                : "None"}
+                            </td>
+                            <td>
+                              {row.closingReading ? (
+                                <>
+                                  {formatNumberWeb(row.closingReading.value)}{" "}
+                                  <WebBadge variant="success">Already recorded</WebBadge>
+                                </>
+                              ) : (
+                                <input
+                                  id={inputId}
+                                  className="web-input"
+                                  type="number"
+                                  step="0.001"
+                                  min="0"
+                                  inputMode="decimal"
+                                  data-numeric="true"
+                                  aria-label={`Closing reading ${row.assetName}, ${row.counterLabel}`}
+                                  disabled={isSkipped}
+                                  value={entered[key] ?? ""}
+                                  onChange={(event) => setEntered((current) => ({ ...current, [key]: event.target.value }))}
+                                />
+                              )}
+                            </td>
+                            <td>
+                              {row.closingReading ? null : (
+                                <span className="web-field-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    aria-labelledby={`${inputId}-skip`}
+                                    checked={isSkipped}
+                                    onChange={(event) => setSkipped((current) => ({ ...current, [key]: event.target.checked }))}
+                                  />
+                                  <span id={`${inputId}-skip`}>Settle without reading</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </WebDataTable>
+                )}
+                {balance.missingReadings > 0 ? (
+                  <p className="web-hint-warning" role="status">
+                    {balance.missingReadings} {balance.missingReadings === 1 ? "reading is" : "readings are"} still missing.
+                    Enter it or choose Settle without reading; that asset is then excluded from settlement.
+                  </p>
+                ) : null}
+              </WebCard>
+
+              <BalanceOverview balance={balance} refreshing={refreshing} error={previewError} canSeeQuotes={canSeeQuotes} />
+
+              <WebCard title="4. Confirm">
+                <p className="web-dialog-text">
+                  Creates one draft Final settlement quote for review and invoicing, saves the closing readings and ends
+                  the contract on {formatDateWeb(endDate)}. This cannot be undone.
+                </p>
+                {!canComplete && balance.missingReadings > 0 ? (
+                  <WebHint>Complete step 2 first: every row needs a reading or Settle without reading.</WebHint>
+                ) : null}
+                <WebButton variant="primary" disabled={!canComplete} onClick={() => setConfirmOpen(true)}>
+                  Complete final balance
+                </WebButton>
+              </WebCard>
+            </>
+          )}
+        </WebCardStack>
+      </div>
+
+      <WebConfirmDialog
+        open={confirmOpen}
+        title="Complete final balance?"
+        confirmLabel="Complete final balance"
+        pending={submitting}
+        error={submitError}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => void handleComplete()}
+      >
+        {contractNumber} ends on {formatDateWeb(endDate)}. Total to invoice {formatMoneyWeb(balance.totals.toInvoice)}, to
+        credit {formatMoneyWeb(balance.totals.toCredit)}, net {formatMoneyWeb(balance.totals.net)} excl. VAT.
+      </WebConfirmDialog>
+    </WebPage>
+  );
+}
+
+function BalanceOverview({
+  balance,
+  refreshing,
+  error,
+  canSeeQuotes,
+}: {
+  balance: ContractEndBalance;
+  refreshing: boolean;
+  error: string | null;
+  canSeeQuotes: boolean;
+}) {
+  return (
+    <WebCard title="3. Balance overview" meta={refreshing ? "Updating…" : undefined} aria-busy={refreshing}>
+      <p className="web-dialog-text">
+        What will be invoiced, credited and settled up to the end date. Read-only; it updates as you change the date or
+        the readings.
+      </p>
+      {error ? (
+        <p className="web-hint-warning" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <p className="web-dialog-section">Billing periods</p>
+      {balance.periods.length === 0 ? (
+        <p className="web-dialog-text">No billing periods up to the end date.</p>
+      ) : (
+        <WebDataTable>
+          <thead>
+            <tr>
+              <th scope="col">Period</th>
+              <th scope="col">Status</th>
+              <th scope="col">Quote / invoice</th>
+              <th scope="col" data-numeric="true">
+                Amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {balance.periods.map((period) => {
+              const status = PERIOD_STATUS[period.status];
+              return (
+                <tr key={period.index}>
+                  <td>
+                    {formatDateWeb(period.period.start)} – {formatDateWeb(period.period.end)}
+                    {period.proRata ? ` (pro rata, ${Math.round(period.factor * 1000) / 10}%)` : ""}
+                  </td>
+                  <td>
+                    <WebBadge variant={status.variant}>{status.label}</WebBadge>
+                  </td>
+                  <td data-id="true">
+                    {period.quoteId && canSeeQuotes ? (
+                      <Link href={`/quotes/${period.quoteId}`}>{period.invoiceNumber ?? period.quoteNumber ?? "Quote"}</Link>
+                    ) : (
+                      (period.invoiceNumber ?? period.quoteNumber ?? "—")
+                    )}
+                  </td>
+                  <td data-numeric="true">{period.amount === null ? "—" : formatMoneyWeb(period.amount)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </WebDataTable>
+      )}
+      {balance.quotesToReplace.length > 0 ? (
+        <WebHint>
+          Replaced by the final quote (not invoiced yet):{" "}
+          {balance.quotesToReplace.map((quote) => quote.quoteNumber ?? quote.name).join(", ")}.
+        </WebHint>
+      ) : null}
+
+      {balance.creditLines.length > 0 ? (
+        <>
+          <p className="web-dialog-section">Credit for prepaid time after the end date</p>
+          <LinesTable lines={balance.creditLines} />
+        </>
+      ) : null}
+
+      {balance.counterWindows.length > 0 ? (
+        <>
+          <p className="web-dialog-section">Counter settlement</p>
+          {balance.counterWindows.map((entry) => (
+            <div key={`${entry.window.start}-${entry.window.end}`}>
+              <p className="web-dialog-text">
+                <strong>{entry.label}</strong>
+              </p>
+              <WebDataTable>
+                <thead>
+                  <tr>
+                    <th scope="col">Counter</th>
+                    <th scope="col" data-numeric="true">
+                      Included (pro rata)
+                    </th>
+                    <th scope="col" data-numeric="true">
+                      Used
+                    </th>
+                    <th scope="col" data-numeric="true">
+                      Overage
+                    </th>
+                    <th scope="col" data-numeric="true">
+                      Under-use
+                    </th>
+                    <th scope="col" data-numeric="true">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entry.counters.map((counter) => (
+                    <tr key={counter.lineId}>
+                      <td>{counter.counterLabel}</td>
+                      <td data-numeric="true">{formatNumberWeb(counter.included)}</td>
+                      <td data-numeric="true">{formatNumberWeb(counter.usage)}</td>
+                      <td data-numeric="true">{formatNumberWeb(counter.overage)}</td>
+                      <td data-numeric="true">
+                        {formatNumberWeb(counter.underUse)}
+                        {counter.underUse > 0 && !counter.creditUnderUse ? " (not credited)" : ""}
+                      </td>
+                      <td data-numeric="true">
+                        {formatMoneyWeb(Math.round((counter.overageAmount - counter.underUseCreditAmount) * 100) / 100)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </WebDataTable>
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      {balance.warnings.length > 0 ? (
+        <ul className="web-hint-warning" role="status">
+          {balance.warnings.map((warning, index) => (
+            <li key={index}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="web-dialog-section">Totals (excl. VAT)</p>
+      <WebDataTable>
+        <tbody>
+          <tr>
+            <td>To invoice</td>
+            <td data-numeric="true">{formatMoneyWeb(balance.totals.toInvoice)}</td>
+          </tr>
+          <tr>
+            <td>To credit</td>
+            <td data-numeric="true">{formatMoneyWeb(-balance.totals.toCredit)}</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Final settlement quote</td>
+            <td data-numeric="true">{formatMoneyWeb(balance.totals.net)}</td>
+          </tr>
+        </tfoot>
+      </WebDataTable>
+    </WebCard>
+  );
+}
+
+function LinesTable({ lines }: { lines: QuoteLineDraft[] }) {
+  return (
+    <WebDataTable>
+      <thead>
+        <tr>
+          <th scope="col">Description</th>
+          <th scope="col" data-numeric="true">
+            Amount
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((line, index) => (
+          <tr key={`${line.sortOrder}-${index}`}>
+            <td>{line.description}</td>
+            <td data-numeric="true">{formatMoneyWeb(lineAmount(line))}</td>
+          </tr>
+        ))}
+      </tbody>
+    </WebDataTable>
+  );
+}

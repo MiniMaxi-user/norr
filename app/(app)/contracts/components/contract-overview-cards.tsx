@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { WebCardStack } from "@yourorg/ui/web";
+import { WebCard, WebCardStack } from "@yourorg/ui/web";
 import {
   KeyValueCard,
   TextCard,
@@ -16,7 +16,15 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatDateWeb, formatMoneyWeb } from "@/lib/format/web";
 import type { ContractRecord } from "../actions";
 import type { ContractDraft } from "./contract-draft";
-import { INVOICING_TIMING_LABEL, INVOICING_TIMING_NOTE } from "./contract-status";
+import {
+  COUNTER_SETTLEMENT_LABEL,
+  COUNTER_SETTLEMENT_NOTE,
+  INVOICING_TIMING_LABEL,
+  INVOICING_TIMING_NOTE,
+  MONTH_LABELS,
+} from "./contract-status";
+import { buildInvoicingExplanation } from "./contract-invoicing-explanation";
+import type { CounterSettlementFrequency } from "../schema";
 
 export interface ContractReferenceLists {
   contractTypes: ReferenceListItemRecord[];
@@ -35,6 +43,9 @@ export interface ContractOverviewCardsProps {
   lists: ContractReferenceLists;
   lockedClientId?: string;
   isNew: boolean;
+  /** Facts about the contract's lines for the invoicing explanation; omitted
+   * (new contract) = unknown. */
+  counterInfo?: { hasCounterLines: boolean; creditsUnderUse: boolean };
 }
 
 /**
@@ -59,6 +70,7 @@ export function ContractOverviewCards({
   lists,
   lockedClientId,
   isNew,
+  counterInfo,
 }: ContractOverviewCardsProps) {
   const saved = edit.record;
   const draft = edit.draft;
@@ -78,6 +90,22 @@ export function ContractOverviewCards({
               binding.onChange(value);
               const current = lists.slaTiers.find((item) => item.id === edit.draft.slaTierId);
               if (current && current.parent_item_id !== value) edit.setValue("slaTierId", "");
+            },
+          };
+        }
+        if (key === "counterSettlementFrequency") {
+          return {
+            ...binding,
+            onChange: (value) => {
+              binding.onChange(value);
+              // Quarterly/annually need a settlement month (default: the start month); others have none.
+              if (value === "quarterly" || value === "annually") {
+                if (!edit.draft.counterSettlementMonth) {
+                  edit.setValue("counterSettlementMonth", String(Number(edit.draft.startDate.slice(5, 7)) || 1));
+                }
+              } else if (edit.draft.counterSettlementMonth) {
+                edit.setValue("counterSettlementMonth", "");
+              }
             },
           };
         }
@@ -135,6 +163,24 @@ export function ContractOverviewCards({
   );
   const termsOptions = lists.billingTerms.map((item) => ({ value: item.id, label: item.label }));
   const periodOptions = lists.billingPeriods.map((item) => ({ value: item.id, label: item.label }));
+
+  const shownFrequency: CounterSettlementFrequency = editing
+    ? draft.counterSettlementFrequency
+    : saved.counterSettlementFrequency;
+  const needsMonth = shownFrequency === "quarterly" || shownFrequency === "annually";
+  const shownMonth = editing ? draft.counterSettlementMonth : saved.counterSettlementMonth;
+  const shownTermsId = editing ? draft.billingTermsId : saved.billingTermsId;
+  const intervalMonths =
+    lists.billingTerms.find((item) => item.id === shownTermsId)?.interval_months ??
+    (shownTermsId === contract?.billing_terms_id ? (contract?.billing_terms?.interval_months ?? null) : null);
+  const explanation = buildInvoicingExplanation({
+    intervalMonths,
+    timing: editing ? draft.invoicingTiming : saved.invoicingTiming,
+    frequency: shownFrequency,
+    settlementMonth: needsMonth && shownMonth ? Number(shownMonth) : null,
+    creditsUnderUse: counterInfo?.creditsUnderUse ?? false,
+    hasCounterLines: counterInfo ? counterInfo.hasCounterLines : null,
+  });
 
   const clientLink = savedClient ? <Link href={`/clients/${savedClient.id}`}>{savedClient.name}</Link> : null;
   const clientField: KvField =
@@ -234,6 +280,31 @@ export function ContractOverviewCards({
       note: INVOICING_TIMING_NOTE,
     },
     {
+      key: "counterSettlementFrequency",
+      label: "Counter settlement",
+      kind: "select",
+      read: COUNTER_SETTLEMENT_LABEL[saved.counterSettlementFrequency],
+      options: (Object.keys(COUNTER_SETTLEMENT_LABEL) as CounterSettlementFrequency[]).map((value) => ({
+        value,
+        label: COUNTER_SETTLEMENT_LABEL[value],
+      })),
+      noEmpty: true,
+      note: COUNTER_SETTLEMENT_NOTE,
+    },
+    ...(needsMonth
+      ? ([
+          {
+            key: "counterSettlementMonth",
+            label: "Settlement month",
+            kind: "select",
+            read: saved.counterSettlementMonth ? (MONTH_LABELS[Number(saved.counterSettlementMonth) - 1] ?? null) : null,
+            options: MONTH_LABELS.map((label, index) => ({ value: String(index + 1), label })),
+            noEmpty: true,
+            note: "Settlement date: the 1st of this month (quarterly: every third month from it). Defaults to the start month.",
+          },
+        ] satisfies KvField[])
+      : []),
+    {
       key: "value",
       label: "Value",
       kind: "money",
@@ -245,6 +316,9 @@ export function ContractOverviewCards({
   return (
     <WebCardStack>
       <KeyValueCard title="Details" columns={2} split={5} fields={fields} edit={binder} />
+      <WebCard title="How invoicing works for this contract">
+        <p className="web-dialog-text">{explanation}</p>
+      </WebCard>
       <TextCard
         title="Notes"
         fieldKey="notes"

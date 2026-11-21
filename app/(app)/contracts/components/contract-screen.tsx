@@ -30,9 +30,11 @@ import type {
 } from "../actions";
 import { CONTRACT_DETAIL_VIEW_KEY } from "./constants";
 import { contractTitle } from "./contract-title";
-import { draftFromContract, emptyDraft, type ContractDraft } from "./contract-draft";
+import { draftFromContract, emptyDraft, todayIso, type ContractDraft } from "./contract-draft";
 import { buildContractSchema, createContractFromDraft, saveContractEdits } from "./contract-form-schema";
 import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE, getContractStatus, pluralDays } from "./contract-status";
+import type { ContractFinalBalanceSummary } from "../end-actions";
+import { ContractFinalBalanceCard } from "./contract-final-balance-card";
 import { ContractBaselineCard } from "./contract-baseline-card";
 import { useContractStatusActions } from "./contract-status-actions";
 import { getLivePanel } from "./contract-live-panel";
@@ -41,6 +43,7 @@ import { ContractRail } from "./contract-rail";
 import { buildContractTimeline } from "./contract-timeline";
 import { ContractLineItemsPanel } from "./contract-line-items-panel";
 import { billingPeriodMonths } from "@/app/(app)/quotes/contract-quote-helpers";
+import { describeSettlementSchedule } from "@/app/(app)/quotes/contract-balance";
 import { ContractCoveragePanel } from "./contract-coverage-panel";
 import { ContractAssetsPanel } from "./contract-assets-panel";
 import { ContractQuotesPanel } from "./contract-quotes-panel";
@@ -82,6 +85,8 @@ export interface ContractScreenProps {
   quotes?: ContractQuoteRecord[] | null;
   /** Draft contracts only: counters still lacking a baseline reading. */
   missingBaseline?: MissingBaselineReading[];
+  /** Ended contracts only: read-only final balance summary (issue #271). */
+  finalBalance?: ContractFinalBalanceSummary | null;
   defaultTab?: ContractDetailTab;
 }
 
@@ -132,6 +137,7 @@ export function ContractScreen({
   siteLabelById = new Map(),
   quotes = null,
   missingBaseline = [],
+  finalBalance = null,
   defaultTab = "overview",
 }: ContractScreenProps) {
   const router = useRouter();
@@ -231,6 +237,14 @@ export function ContractScreen({
     [contractAssets],
   );
 
+  const counterInfo = useMemo(
+    () => ({
+      hasCounterLines: lineItems.some((row) => row.is_volume && row.volume_item_id),
+      creditsUnderUse: lineItems.some((row) => row.is_volume && row.volume_item_id && row.credit_under_use),
+    }),
+    [lineItems],
+  );
+
   const showQuotes = !isCreate && quotes !== null;
   const ruleCount = groupRules.length + articleRules.length;
 
@@ -279,6 +293,7 @@ export function ContractScreen({
               canSeeQuotes: showQuotes,
               missingBaselineCount: missingBaseline.length,
               onActivate: statusActions.activate,
+              onCancelEnding: statusActions.cancelEnding,
               onExtend: () => {
                 selectTab("overview");
                 edit.startEdit();
@@ -299,6 +314,7 @@ export function ContractScreen({
       edit.startEdit,
       missingBaseline.length,
       statusActions.activate,
+      statusActions.cancelEnding,
     ],
   );
 
@@ -377,6 +393,22 @@ export function ContractScreen({
       : "Non-recurring"
     : null;
 
+  const settlement = useMemo(() => {
+    if (!contract || contract.status !== "active" || !counterInfo.hasCounterLines) return null;
+    const schedule = describeSettlementSchedule({
+      startDate: contract.start_date,
+      endDate: contract.end_date,
+      timing: contract.invoicing_timing,
+      intervalMonths: contract.billing_terms?.interval_months ?? null,
+      frequency: contract.counter_settlement_frequency,
+      settlementMonth: contract.counter_settlement_month,
+      invoicedPeriodCount: contract.invoiced_period_count,
+      lastSettledEnd: contract.last_settled_end ?? null,
+      today: todayIso(),
+    });
+    return { nextSettlementDate: schedule.nextSettlementDate, currentWindow: schedule.currentWindow };
+  }, [contract, counterInfo.hasCounterLines]);
+
   const rail =
     isCreate || !contract ? (
       <SidebarSection title="After creating">
@@ -394,6 +426,7 @@ export function ContractScreen({
         nextInvoiceDate={contract.next_invoice_date}
         cadence={cadence}
         invoicedPeriodCount={contract.invoiced_period_count}
+        settlement={settlement}
         lineItemCount={lineItems.length}
         lineItemTotal={lineItemTotal}
         coveredAssetCount={contractAssets.length}
@@ -420,6 +453,9 @@ export function ContractScreen({
         {tab === "overview" && (
           <div className="web-tab-stack">
             {!isCreate && contract?.status === "draft" ? <ContractBaselineCard missing={missingBaseline} /> : null}
+            {!isCreate && contract?.status === "ended" && finalBalance ? (
+              <ContractFinalBalanceCard summary={finalBalance} canSeeQuotes={showQuotes} />
+            ) : null}
             <ContractOverviewCards
               edit={edit}
               contract={contract}
@@ -428,6 +464,7 @@ export function ContractScreen({
               lists={lists}
               lockedClientId={lockedClientId}
               isNew={isCreate}
+              counterInfo={isCreate ? undefined : counterInfo}
             />
           </div>
         )}

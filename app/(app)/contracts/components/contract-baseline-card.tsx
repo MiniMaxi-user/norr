@@ -19,6 +19,7 @@ export function ContractBaselineCard({ missing }: ContractBaselineCardProps) {
     return (
       <WebCard title="Baseline readings">
         <p className="web-dialog-text">All baseline readings are present. This contract can be activated.</p>
+        <p className="web-hint">When the contract ends, closing readings are asked for the same counters.</p>
       </WebCard>
     );
   }
@@ -35,6 +36,7 @@ export function ContractBaselineCard({ missing }: ContractBaselineCardProps) {
           </li>
         ))}
       </ul>
+      <p className="web-hint">When the contract ends, closing readings are asked for the same counters.</p>
     </WebCard>
   );
 }

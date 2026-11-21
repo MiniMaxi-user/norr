@@ -1,4 +1,8 @@
-import type { ContractInvoicingTiming, ContractStatus as ContractStoredStatus } from "../schema";
+import type {
+  ContractInvoicingTiming,
+  ContractStatus as ContractStoredStatus,
+  CounterSettlementFrequency,
+} from "../schema";
 
 /**
  * Derived lifecycle of a contract, from its dates alone (there is no stored
@@ -63,4 +67,31 @@ export const INVOICING_TIMING_LABEL: Record<ContractInvoicingTiming, string> = {
 };
 
 export const INVOICING_TIMING_NOTE =
-  "In advance: the counter overage of the previous period is billed on the next invoice (final settlement after the end date). In arrears: invoiced after the period ends, including its overage.";
+  "In advance: each period is invoiced when it starts. In arrears: each period is invoiced after it ends, including its counter overage.";
+
+/* ---- Counter settlement (issue #271) -------------------------------------- */
+
+export const COUNTER_SETTLEMENT_LABEL: Record<CounterSettlementFrequency, string> = {
+  with_invoice: "With every invoice",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  annually: "Annually",
+};
+
+export const COUNTER_SETTLEMENT_NOTE =
+  "When counter overage (and credited under-use) is billed: with every invoice, or on a separate counter settlement quote on a fixed date.";
+
+export const MONTH_LABELS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];

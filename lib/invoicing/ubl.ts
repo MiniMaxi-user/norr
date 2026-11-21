@@ -3,9 +3,14 @@
  * e-invoices (#241). No DB, no Next imports: callers map the frozen invoice
  * snapshot (see `app/(app)/quotes/invoice-render.ts`) onto `UblInput`.
  *
- * Amount conventions: credit notes are stored NEGATED in the database; UBL
- * CreditNote documents must carry POSITIVE amounts, so every amount and
- * quantity is emitted as an absolute value.
+ * Sign conventions: credit notes are stored NEGATED in the database (a negated
+ * copy of the original invoice, see credit_invoice()). The economic sign is
+ * preserved per document kind: an Invoice emits the stored values as they are
+ * (a credit line on an invoice, e.g. an under-use credit, stays negative: negative
+ * InvoicedQuantity and LineExtensionAmount, PriceAmount positive); a CreditNote
+ * emits the stored values negated, so a normal credit note carries positive
+ * amounts and an original credit line becomes a negative CreditedQuantity /
+ * LineExtensionAmount. Tax subtotals and totals use the same signed values.
  *
  * Discount choice: a discounted line is expressed with a line-level
  * `AllowanceCharge` (allowance) next to the GROSS unit price in
@@ -132,8 +137,10 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function amount(name: string, value: number | string, currency: string): XmlNode {
-  return node(name, Math.abs(round2(Number(value))).toFixed(2), { currencyID: currency });
+/** Signed amount; `sign` is -1 for stored-negated credit notes, else 1. Never "-0.00". */
+function amount(name: string, value: number | string, currency: string, sign = 1): XmlNode {
+  const v = round2(sign * Number(value));
+  return node(name, (v === 0 ? 0 : v).toFixed(2), { currencyID: currency });
 }
 
 /** Unit price: at least 2, at most 4 decimals. */
@@ -305,11 +312,16 @@ function taxCategory(tag: string, vatPercent: number | string): XmlNode {
 }
 
 function lineNode(line: UblLine, index: number, kind: "invoice" | "credit_note", cur: string): XmlNode {
-  const qty = Math.abs(Number(line.quantity));
+  const sign = kind === "credit_note" ? -1 : 1;
   const price = Math.abs(Number(line.unit_price));
-  const net = Math.abs(round2(Number(line.line_total)));
-  const gross = round2(qty * price);
-  const allowance = round2(gross - net);
+  const qty = sign * Number(line.quantity) === 0 ? 0 : sign * Number(line.quantity);
+  const net = round2(sign * Number(line.line_total));
+  // Discount on absolute values so the AllowanceCharge amount is always positive. On a
+  // negative line the discount reduces the magnitude, i.e. it is a positive CHARGE
+  // against the negative gross (-100 + 10 = -90), keeping qty x price -/+ allowance = net.
+  const negativeLine = qty < 0 || net < 0;
+  const absGross = round2(Math.abs(qty) * price);
+  const allowance = round2(absGross - Math.abs(net));
   const discount = Math.abs(Number(line.discount_percent));
   const qtyTag = kind === "invoice" ? "cbc:InvoicedQuantity" : "cbc:CreditedQuantity";
   const name = line.description.replace(/\s+/g, " ").trim().slice(0, 200) || "-";
@@ -322,11 +334,11 @@ function lineNode(line: UblLine, index: number, kind: "invoice" | "credit_note",
     amount("cbc:LineExtensionAmount", net, cur),
     allowance > 0
       ? parent("cac:AllowanceCharge", [
-          node("cbc:ChargeIndicator", "false"),
+          node("cbc:ChargeIndicator", negativeLine ? "true" : "false"),
           node("cbc:AllowanceChargeReason", "Discount"),
           discount > 0 ? node("cbc:MultiplierFactorNumeric", String(discount)) : null,
           amount("cbc:Amount", allowance, cur),
-          amount("cbc:BaseAmount", gross, cur),
+          amount("cbc:BaseAmount", absGross, cur),
         ])
       : null,
     parent("cac:Item", [
@@ -339,12 +351,12 @@ function lineNode(line: UblLine, index: number, kind: "invoice" | "credit_note",
   ]);
 }
 
-function breakdownOf(input: UblInput): { vat_percent: number; base: number; amount: number }[] {
+function breakdownOf(input: UblInput, sign: number): { vat_percent: number; base: number; amount: number }[] {
   if (input.invoice.vat_breakdown.length > 0) {
     return input.invoice.vat_breakdown.map((e) => ({
       vat_percent: Number(e.vat_percent),
-      base: Math.abs(Number(e.base)),
-      amount: Math.abs(Number(e.amount)),
+      base: sign * Number(e.base),
+      amount: sign * Number(e.amount),
     }));
   }
   // Fallback for snapshots without a breakdown: group the lines by rate.
@@ -352,7 +364,7 @@ function breakdownOf(input: UblInput): { vat_percent: number; base: number; amou
   for (const l of input.lines) {
     const pct = Number(l.vat_percent);
     const g = groups.get(pct) ?? { vat_percent: pct, base: 0, amount: 0 };
-    g.base = round2(g.base + Math.abs(Number(l.line_total)));
+    g.base = round2(g.base + sign * Number(l.line_total));
     groups.set(pct, g);
   }
   for (const g of groups.values()) g.amount = round2((g.base * g.vat_percent) / 100);
@@ -366,6 +378,7 @@ export function buildUblXml(input: UblInput): UblBuildResult {
   const { invoice } = input;
   const sender = invoice.sender!;
   const isCredit = invoice.kind === "credit_note";
+  const sign = isCredit ? -1 : 1;
   const cur = trimmed(invoice.currency) || "EUR";
   const buyerReference = trimmed(invoice.reference) || invoice.invoice_number;
   const note = trimmed(invoice.notes);
@@ -415,8 +428,8 @@ export function buildUblXml(input: UblInput): UblBuildResult {
       ? null
       : parent("cac:PaymentTerms", [node("cbc:Note", `Payment within ${invoice.payment_term_days} days`)]),
     parent("cac:TaxTotal", [
-      amount("cbc:TaxAmount", invoice.vat_total, cur),
-      ...breakdownOf(input).map((e) =>
+      amount("cbc:TaxAmount", invoice.vat_total, cur, sign),
+      ...breakdownOf(input, sign).map((e) =>
         parent("cac:TaxSubtotal", [
           amount("cbc:TaxableAmount", e.base, cur),
           amount("cbc:TaxAmount", e.amount, cur),
@@ -425,10 +438,10 @@ export function buildUblXml(input: UblInput): UblBuildResult {
       ),
     ]),
     parent("cac:LegalMonetaryTotal", [
-      amount("cbc:LineExtensionAmount", invoice.subtotal, cur),
-      amount("cbc:TaxExclusiveAmount", invoice.subtotal, cur),
-      amount("cbc:TaxInclusiveAmount", invoice.total, cur),
-      amount("cbc:PayableAmount", invoice.total, cur),
+      amount("cbc:LineExtensionAmount", invoice.subtotal, cur, sign),
+      amount("cbc:TaxExclusiveAmount", invoice.subtotal, cur, sign),
+      amount("cbc:TaxInclusiveAmount", invoice.total, cur, sign),
+      amount("cbc:PayableAmount", invoice.total, cur, sign),
     ]),
     ...[...input.lines]
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))

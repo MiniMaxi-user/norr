@@ -272,6 +272,7 @@ function LineItemDialog({
   const [isVolume, setIsVolume] = useState(row?.is_volume ?? false);
   const [volumeItemId, setVolumeItemId] = useState(row?.volume_item_id ?? "");
   const [overagePrice, setOveragePrice] = useState(row?.overage_unit_price != null ? String(row.overage_unit_price) : "");
+  const [creditUnderUse, setCreditUnderUse] = useState(row?.credit_under_use ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -361,6 +362,7 @@ function LineItemDialog({
       isVolume,
       volumeItemId: isVolume && volumeItemId ? volumeItemId : null,
       overageUnitPrice: isVolume ? parsedOverage : null,
+      creditUnderUse: isVolume && Boolean(volumeItemId) ? creditUnderUse : false,
     };
     const result = row ? await updateContractLineItem(row.id, input) : await createContractLineItem(contractId, input);
     setSaving(false);
@@ -545,6 +547,24 @@ function LineItemDialog({
                 </div>
               </div>
             </div>
+            {volumeItemId ? (
+              <>
+                <span className="web-field-checkbox">
+                  <input
+                    type="checkbox"
+                    aria-labelledby="contract-line-credit-text"
+                    aria-describedby="contract-line-credit-hint"
+                    checked={creditUnderUse}
+                    onChange={(event) => setCreditUnderUse(event.target.checked)}
+                  />
+                  <span id="contract-line-credit-text">Credit under-use</span>
+                </span>
+                <p className="web-hint" id="contract-line-credit-hint">
+                  Off = minimum contract: included volume is always paid. On = usage below the included volume is
+                  credited at the sale price.
+                </p>
+              </>
+            ) : null}
           </>
         ) : null}
 

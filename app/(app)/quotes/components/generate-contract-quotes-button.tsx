@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Stack, Text, useEscapeToClose } from "@yourorg/ui";
 import { WebButton } from "@yourorg/ui/web";
+import { formatDateWeb } from "@/lib/format/web";
 import { generateContractQuotes, type GenerateContractQuotesResult } from "../contract-quote-actions";
 
 /**
@@ -11,7 +13,7 @@ import { generateContractQuotes, type GenerateContractQuotesResult } from "../co
  * outcome (created / skipped counts + per-contract errors) in the same
  * dialog and refreshes the list when it is dismissed.
  */
-export function GenerateContractQuotesButton() {
+export function GenerateContractQuotesButton({ canEndContracts }: { canEndContracts: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -65,6 +67,7 @@ export function GenerateContractQuotesButton() {
                 <Stack gap="sm">
                   <Text tone={result.errors.length > 0 ? undefined : "success"}>
                     Created {result.created}, skipped {result.skipped}
+                    {result.settledWithoutQuote > 0 ? `, ${result.settledWithoutQuote} counter settlement(s) closed without a quote` : ""}
                     {result.errors.length > 0 ? `, ${result.errors.length} failed` : ""}.
                   </Text>
                   {result.warnings.length > 0 && (
@@ -72,6 +75,21 @@ export function GenerateContractQuotesButton() {
                       {result.warnings.map((entry, index) => (
                         <Text key={`${entry.contractId}-${index}`} tone="danger">
                           {entry.contractNumber}: {entry.message}
+                        </Text>
+                      ))}
+                    </Stack>
+                  )}
+                  {result.pendingFinalBalance.length > 0 && (
+                    <Stack gap="xs">
+                      <Text>These contracts have ended and need their final balance completed:</Text>
+                      {result.pendingFinalBalance.map((entry) => (
+                        <Text key={entry.contractId}>
+                          {canEndContracts ? (
+                            <Link href={`/contracts/${entry.contractId}/end`}>{entry.contractNumber}</Link>
+                          ) : (
+                            <Link href={`/contracts/${entry.contractId}`}>{entry.contractNumber}</Link>
+                          )}
+                          {entry.endDate ? ` (ended ${formatDateWeb(entry.endDate)})` : ""}
                         </Text>
                       ))}
                     </Stack>

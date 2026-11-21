@@ -9,6 +9,8 @@ import { QuotesTable } from "./quotes-table";
 export interface QuotesScreenProps {
   params: QuotesSearchParams;
   canGenerateContractQuotes: boolean;
+  /** Whether the contracts in "needs a final balance" can be opened on their End contract page (contracts:update). */
+  canEndContracts: boolean;
   canCreate: boolean;
   canDelete: boolean;
   canInvoice: boolean;
@@ -40,7 +42,7 @@ function draftsToggleHref(params: QuotesSearchParams, showDrafts: boolean): stri
  * "Show auto-drafts" (`?drafts=1`) reveals them, and the table then marks
  * them "Concept" so they stay distinct from real quotes.
  */
-export async function QuotesScreen({ params, canGenerateContractQuotes, canCreate, canDelete, canInvoice }: QuotesScreenProps) {
+export async function QuotesScreen({ params, canGenerateContractQuotes, canEndContracts, canCreate, canDelete, canInvoice }: QuotesScreenProps) {
   const { page, showDrafts, options } = parseQuotesQuery(params);
 
   const [statusItemsResult, clientsResult, quotesResult] = await Promise.all([
@@ -54,7 +56,7 @@ export async function QuotesScreen({ params, canGenerateContractQuotes, canCreat
       <WebLinkButton href={draftsToggleHref(params, showDrafts)}>
         {showDrafts ? "Hide auto-drafts" : "Show auto-drafts"}
       </WebLinkButton>
-      {canGenerateContractQuotes ? <GenerateContractQuotesButton /> : null}
+      {canGenerateContractQuotes ? <GenerateContractQuotesButton canEndContracts={canEndContracts} /> : null}
     </>
   );
   const primary = canCreate ? (

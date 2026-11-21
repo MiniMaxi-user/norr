@@ -62,6 +62,22 @@ const optionalMoneySchema = clearable(
 export const CONTRACT_INVOICING_TIMINGS = ["in_advance", "in_arrears"] as const;
 export type ContractInvoicingTiming = (typeof CONTRACT_INVOICING_TIMINGS)[number];
 
+/** Issue #271: when counter overage / under-use is settled. */
+export const COUNTER_SETTLEMENT_FREQUENCIES = ["with_invoice", "monthly", "quarterly", "annually"] as const;
+export type CounterSettlementFrequency = (typeof COUNTER_SETTLEMENT_FREQUENCIES)[number];
+
+/** Settlement month (1-12): required for quarterly/annually (defaults to the contract
+ * start month), always null for the other frequencies. */
+export function resolveSettlementMonth(
+  frequency: CounterSettlementFrequency,
+  month: number | null | undefined,
+  startDate: string,
+): number | null {
+  if (frequency !== "quarterly" && frequency !== "annually") return null;
+  if (month !== null && month !== undefined) return month;
+  return Number(startDate.slice(5, 7));
+}
+
 export const CONTRACT_STATUSES = ["draft", "active", "ended"] as const;
 export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
 
@@ -117,6 +133,23 @@ export const contractCreateSchema = z.object({
   invoicingTiming: z.preprocess(
     emptyToUndefined,
     z.enum(CONTRACT_INVOICING_TIMINGS, { message: "Invalid invoicing option." }).optional(),
+  ),
+  /** Issue #271: counter settlement frequency (default with_invoice). */
+  counterSettlementFrequency: z.preprocess(
+    emptyToUndefined,
+    z.enum(COUNTER_SETTLEMENT_FREQUENCIES, { message: "Invalid counter settlement option." }).optional(),
+  ),
+  /** Month (1-12) of the settlement date for quarterly/annually; defaults to the
+   * start month, ignored (stored null) for the other frequencies. */
+  counterSettlementMonth: z.preprocess(
+    blankToNull,
+    z.coerce
+      .number()
+      .int("Invalid settlement month.")
+      .min(1, "Invalid settlement month.")
+      .max(12, "Invalid settlement month.")
+      .nullable()
+      .optional(),
   ),
 });
 

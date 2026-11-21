@@ -1,7 +1,7 @@
 import type { DirtyField, EditSchema, SaveResult } from "@yourorg/ui/web-client";
 import { createContract, updateContract } from "../actions";
-import { INVOICING_TIMING_LABEL } from "./contract-status";
-import type { ContractInvoicingTiming } from "../schema";
+import { COUNTER_SETTLEMENT_LABEL, INVOICING_TIMING_LABEL, MONTH_LABELS } from "./contract-status";
+import type { ContractInvoicingTiming, CounterSettlementFrequency } from "../schema";
 import { draftToInput, type ContractDraft } from "./contract-draft";
 
 /**
@@ -64,6 +64,14 @@ export function buildContractSchema(options: {
       required: true,
       format: (value) => INVOICING_TIMING_LABEL[value as ContractInvoicingTiming] ?? "",
       validate: (value) => (value ? null : "Choose when this contract is invoiced"),
+    },
+    counterSettlementFrequency: {
+      label: "Counter settlement",
+      format: (value) => COUNTER_SETTLEMENT_LABEL[value as CounterSettlementFrequency] ?? "",
+    },
+    counterSettlementMonth: {
+      label: "Settlement month",
+      format: (value) => (value ? (MONTH_LABELS[Number(value) - 1] ?? "") : ""),
     },
     startDate: {
       label: "Start date",

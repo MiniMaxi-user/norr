@@ -19,6 +19,7 @@ import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
 import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions";
+import { getContractFinalBalanceSummary } from "../end-actions";
 import { ContractScreen, type ContractDetailTab } from "../components/contract-screen";
 import { CONTRACT_DETAIL_VIEW_KEY } from "../components/constants";
 
@@ -79,6 +80,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     billingPeriodsResult,
     quotesResult,
     baselineResult,
+    finalBalanceResult,
     lastUsedTab,
   ] = await Promise.all([
     getClient(contract.client_id),
@@ -96,6 +98,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     listReferenceItems("billing_period"),
     canSeeQuotes ? listQuotesForContract(contract.id) : Promise.resolve(null),
     contract.status === "draft" ? getContractBaselineStatus(contract.id) : Promise.resolve(null),
+    contract.status === "ended" ? getContractFinalBalanceSummary(contract.id) : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CONTRACT_DETAIL_VIEW_KEY),
   ]);
 
@@ -138,6 +141,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
       siteLabelById={siteLabelById}
       quotes={quotes}
       missingBaseline={baselineResult?.data?.missing ?? []}
+      finalBalance={finalBalanceResult?.data ?? null}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
     />
   );

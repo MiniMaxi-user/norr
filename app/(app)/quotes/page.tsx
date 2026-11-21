@@ -55,6 +55,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
       <QuotesScreen
         params={params}
         canGenerateContractQuotes={canGenerateContractQuotes}
+        canEndContracts={canGenerateContractQuotes && can(actor, "contracts", "update")}
         canCreate={can(actor, "quotes", "create")}
         canDelete={can(actor, "quotes", "delete")}
         canInvoice={canInvoice}

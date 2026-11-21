@@ -2,6 +2,7 @@ import type { LivePanelAction, LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateWeb } from "@/lib/format/web";
 import type { ContractRecord } from "../actions";
 import { getContractStatus, pluralDays } from "./contract-status";
+import { todayIso } from "./contract-draft";
 
 /** The signed-in viewer (see the client page's twin of this function). */
 export interface LivePanelViewer {
@@ -18,6 +19,8 @@ export interface ContractLivePanelRecord {
   missingBaselineCount?: number;
   /** Activates a draft contract (Draft -> Active). */
   onActivate: () => void;
+  /** Cancels a scheduled ending (end_scheduled_at set, end date not passed). */
+  onCancelEnding?: () => void;
   onExtend: () => void;
   onShowQuotes: () => void;
   now?: number;
@@ -60,7 +63,48 @@ export function getLivePanel(record: ContractLivePanelRecord, _viewer: LivePanel
       actions: [{ label: "Activate", onClick: record.onActivate }],
     };
   }
+  const endHref = `/contracts/${contract.id}/end`;
+  const today = todayIso();
+
+  // Issue #271: ended without a final balance (legacy) -> complete it.
+  if (contract.status === "ended") {
+    if (!record.canUpdate || contract.has_final_settlement !== false) return null;
+    return {
+      variant: "urgent",
+      title: "FINAL BALANCE MISSING",
+      value: "Not settled yet",
+      context: "This contract ended without a final balance. Invoice the open period, credit prepaid time and settle counters.",
+      actions: [{ label: "Complete final balance", href: endHref }],
+    };
+  }
   if (contract.status !== "active") return null;
+
+  if (contract.end_date) {
+    const scheduled = Boolean(contract.end_scheduled_at);
+    if (contract.end_date >= today && scheduled) {
+      const actions: LivePanelAction[] = [];
+      if (record.canUpdate && record.onCancelEnding) actions.push({ label: "Cancel ending", onClick: record.onCancelEnding });
+      return {
+        variant: "info",
+        title: "ENDING SCHEDULED",
+        value: `Ends on ${formatDateWeb(contract.end_date)}`,
+        context: "The contract stays active until then. After that date, complete the final balance.",
+        actions,
+      };
+    }
+    // Fixed term without auto-renew, or a scheduled ending that has passed.
+    if (contract.end_date < today && (scheduled || !contract.auto_renew)) {
+      if (record.canUpdate) {
+        return {
+          variant: "urgent",
+          title: "FINAL BALANCE DUE",
+          value: "Complete final balance",
+          context: `Ended on ${formatDateWeb(contract.end_date)}. Invoice the open period, credit prepaid time and settle counters.`,
+          actions: [{ label: "Complete final balance", href: endHref }],
+        };
+      }
+    }
+  }
   if (contract.auto_renew || !contract.end_date) return null;
   const status = getContractStatus(contract, record.now);
   if (status.daysToEnd === null || status.phase === "upcoming") return null;

@@ -236,3 +236,97 @@ describe("fixtures", () => {
     expect(readFileSync(path, "utf8")).toBe(xml);
   });
 });
+
+describe("buildUblXml - negative lines (credit lines on an invoice)", () => {
+  const signed = (xml: string, tag: string) =>
+    [...xml.matchAll(new RegExp(`<${tag}[^>]*>(-?[0-9.]+)</${tag}>`, "g"))].map((m) => Number(m[1]));
+
+  // 1 charge of 100 + 1 credit line of -30 (stored negative on the invoice), 21% VAT.
+  const invoiceInput: UblInput = {
+    ...sampleInvoiceInput,
+    invoice: {
+      ...sampleInvoiceInput.invoice,
+      subtotal: 70,
+      vat_total: 14.7,
+      total: 84.7,
+      vat_breakdown: [{ vat_percent: 21, base: 70, amount: 14.7 }],
+    },
+    lines: [
+      { ...sampleInvoiceInput.lines[0]!, quantity: 1, unit_price: 100, discount_percent: 0, vat_percent: 21, line_total: 100 },
+      {
+        ...sampleInvoiceInput.lines[0]!,
+        description: "Under-use credit",
+        quantity: -3,
+        unit_price: 10,
+        discount_percent: 0,
+        vat_percent: 21,
+        line_total: -30,
+        sort_order: 1,
+      },
+    ],
+  };
+
+  it("keeps a credit line negative on an invoice with a positive price", () => {
+    const xml = xmlOf(invoiceInput);
+    expect(signed(xml, "cbc:InvoicedQuantity")).toEqual([1, -3]);
+    expect(xml).toMatch(/<cbc:LineExtensionAmount currencyID="EUR">-30.00</);
+    expect(xml).toMatch(/<cbc:PriceAmount currencyID="EUR">10.00</);
+    expect(xml).not.toMatch(/<cbc:PriceAmount currencyID="EUR">-/);
+    expect(signed(xml, "cbc:TaxableAmount")).toEqual([70]);
+    expect(signed(xml, "cbc:PayableAmount")).toEqual([84.7]);
+    expect(xml).not.toContain("AllowanceCharge");
+  });
+
+  it("credit note of that invoice: charge becomes a negative-stored positive credit, credit line becomes negative", () => {
+    const stored = {
+      ...invoiceInput,
+      invoice: {
+        ...invoiceInput.invoice,
+        kind: "credit_note" as const,
+        invoice_number: "CN-1",
+        subtotal: -70,
+        vat_total: -14.7,
+        total: -84.7,
+        vat_breakdown: [{ vat_percent: 21, base: -70, amount: -14.7 }],
+      },
+      lines: invoiceInput.lines.map((l) => ({
+        ...l,
+        quantity: -Number(l.quantity),
+        line_total: -Number(l.line_total),
+      })),
+      originalInvoice: { invoice_number: "INV-1", invoice_date: "2026-01-01" },
+    };
+    const xml = xmlOf(stored);
+    expect(signed(xml, "cbc:CreditedQuantity")).toEqual([1, -3]);
+    expect(signed(xml, "cbc:LineExtensionAmount")).toEqual([70, 100, -30]);
+    expect(signed(xml, "cbc:TaxableAmount")).toEqual([70]);
+    expect(signed(xml, "cbc:TaxAmount")).toEqual([14.7, 14.7]);
+    expect(signed(xml, "cbc:PayableAmount")).toEqual([84.7]);
+    expect(xml).toMatch(/<cbc:PriceAmount currencyID="EUR">10.00</);
+  });
+
+  it("all-positive fixtures keep positive amounts", () => {
+    const inv = xmlOf(sampleInvoiceInput);
+    const cn = xmlOf(sampleCreditNoteInput);
+    expect(inv).not.toMatch(/>-[0-9]/);
+    expect(cn).not.toMatch(/>-[0-9]/);
+    expect(amounts(cn, "cbc:PayableAmount")[0]).toBeGreaterThan(0);
+  });
+});
+
+describe("buildUblXml - negative line with a discount", () => {
+  it("emits a positive allowance/charge amount and keeps the net negative", () => {
+    const xml = xmlOf({
+      ...sampleInvoiceInput,
+      invoice: { ...sampleInvoiceInput.invoice, subtotal: -90, vat_total: -18.9, total: -108.9, vat_breakdown: [{ vat_percent: 21, base: -90, amount: -18.9 }] },
+      lines: [
+        { ...sampleInvoiceInput.lines[0]!, quantity: -1, unit_price: 100, discount_percent: 10, vat_percent: 21, line_total: -90 },
+      ],
+    });
+    expect(xml).toMatch(/<cbc:LineExtensionAmount currencyID="EUR">-90.00</);
+    expect(xml).toMatch(/<cbc:ChargeIndicator>true</);
+    expect(xml).toMatch(/<cbc:AllowanceChargeReason>Discount</);
+    expect(xml).toMatch(/<cbc:Amount currencyID="EUR">10.00</);
+    expect(xml).toMatch(/<cbc:BaseAmount currencyID="EUR">100.00</);
+  });
+});

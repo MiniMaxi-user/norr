@@ -16,6 +16,8 @@ export interface ContractRailProps {
   /** Billing cadence from the billing terms ("Every 3 months"). */
   cadence: string | null;
   invoicedPeriodCount: number;
+  /** Active contracts with counter lines (issue #271): when the next counter settlement is due. */
+  settlement?: { nextSettlementDate: string | null; currentWindow: { start: string; end: string } | null } | null;
   lineItemCount: number;
   lineItemTotal: number;
   /** Assets linked to the contract and how many distinct sites they sit on. */
@@ -51,6 +53,7 @@ export function ContractRail({
   nextInvoiceDate,
   cadence,
   invoicedPeriodCount,
+  settlement = null,
   lineItemCount,
   lineItemTotal,
   coveredAssetCount,
@@ -101,6 +104,20 @@ export function ContractRail({
             { label: "Next invoice", value: nextInvoiceDate ? formatDateWeb(nextInvoiceDate) : "Fully invoiced" },
             { label: "Cadence", value: cadence ?? "—" },
             { label: "Periods invoiced", value: String(invoicedPeriodCount) },
+            ...(settlement
+              ? [
+                  {
+                    label: "Next settlement",
+                    value: settlement.nextSettlementDate ? formatDateWeb(settlement.nextSettlementDate) : "None planned",
+                  },
+                  {
+                    label: "Settlement window",
+                    value: settlement.currentWindow
+                      ? `${formatDateWeb(settlement.currentWindow.start)} – ${formatDateWeb(settlement.currentWindow.end)}`
+                      : "—",
+                  },
+                ]
+              : []),
           ]}
         />
         {isDue ? <SidebarNotice>An invoice is due for this contract.</SidebarNotice> : null}

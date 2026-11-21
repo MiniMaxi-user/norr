@@ -8,10 +8,11 @@ import { can, canAny } from "@/lib/rbac/permissions";
 import {
   contractCreateSchema,
   contractStatusSchema,
-  requiredIsoDateSchema,
   contractUpdateSchema,
+  resolveSettlementMonth,
   type ContractInvoicingTiming,
   type ContractStatus,
+  type CounterSettlementFrequency,
 } from "./schema";
 
 /**
@@ -97,6 +98,21 @@ export interface ContractRecord {
   invoicing_timing: ContractInvoicingTiming;
   /** DB-managed, read-only (issue #209): billing periods already invoiced. */
   invoiced_period_count: number;
+  /** Issue #271: with_invoice (default) | monthly | quarterly | annually. */
+  counter_settlement_frequency: CounterSettlementFrequency;
+  /** 1-12 for quarterly/annually, null otherwise. */
+  counter_settlement_month: number | null;
+  /** Set while an ending is scheduled (end_date in the future, status still active). */
+  end_scheduled_at: string | null;
+  /** end_date before the ending was scheduled (restored on cancel). */
+  end_date_before_scheduling: string | null;
+  /** True when the contract has a final balance: a final settlement quote OR a final
+   * ledger row. Filled by getContract/listContracts/createContract/updateContract/
+   * setContractStatus (undefined on the asset-coverage lists). */
+  has_final_settlement?: boolean;
+  /** End of the last settled counter window (ledger), null when nothing is settled.
+   * Filled like has_final_settlement. */
+  last_settled_end?: string | null;
   /** Embedded via `reference_list_items!contracts_type_id_fkey(...)` — see
    * `CONTRACT_SELECT` below. Postgres's default FK naming for an unnamed
    * column FK is `<table>_<column>_fkey` (same reasoning
@@ -143,6 +159,8 @@ export interface ContractLineItemRecord {
   /** Counter (item of the `volume` reference list) a volume line is settled against (#238). */
   volume_item_id: string | null;
   overage_unit_price: number | null;
+  /** Issue #271: credit usage below the included volume at the line's unit price. */
+  credit_under_use: boolean;
   /** Counter label, embedded by `listContractLineItems`. */
   volume_item?: { label: string } | null;
   sort_order: number;
@@ -215,6 +233,38 @@ const CONTRACT_ASSET_SELECT =
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
+/** Adds has_final_settlement and last_settled_end (issue #271) to contract records:
+ * two bulk queries (final quotes, ledger rows) for all given contracts. */
+async function attachFinalBalanceInfo(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  contracts: ContractRecord[],
+): Promise<{ contracts: ContractRecord[]; error: string | null }> {
+  if (contracts.length === 0) return { contracts, error: null };
+  const ids = contracts.map((c) => c.id);
+  const [{ data: finalQuotes, error: quotesError }, { data: ledger, error: ledgerError }] = await Promise.all([
+    supabase.from("quotes").select("contract_id").eq("is_final_settlement", true).in("contract_id", ids),
+    supabase.from("contract_counter_settlements").select("contract_id, period_end, is_final").in("contract_id", ids),
+  ]);
+  const error = quotesError ?? ledgerError;
+  if (error) return { contracts, error: mapDbError(error) };
+  const hasFinal = new Set<string>((finalQuotes ?? []).map((r) => r.contract_id as string));
+  const lastEnd = new Map<string, string>();
+  for (const row of ledger ?? []) {
+    const id = row.contract_id as string;
+    if (row.is_final) hasFinal.add(id);
+    const end = row.period_end as string;
+    if (!lastEnd.has(id) || end > (lastEnd.get(id) as string)) lastEnd.set(id, end);
+  }
+  return {
+    contracts: contracts.map((c) => ({
+      ...c,
+      has_final_settlement: hasFinal.has(c.id),
+      last_settled_end: lastEnd.get(c.id) ?? null,
+    })),
+    error: null,
+  };
+}
+
 function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse>) {
   const row: Record<string, unknown> = {
     client_id: input.clientId,
@@ -231,6 +281,9 @@ function toContractInsertRow(input: ReturnType<typeof contractCreateSchema.parse
     status: "draft",
   };
   if (input.invoicingTiming !== undefined) row.invoicing_timing = input.invoicingTiming;
+  const frequency = input.counterSettlementFrequency ?? "with_invoice";
+  row.counter_settlement_frequency = frequency;
+  row.counter_settlement_month = resolveSettlementMonth(frequency, input.counterSettlementMonth, input.startDate);
   // type_id is intentionally omitted (not even sent as null) when not
   // provided — the `derive_contract_organization_id` DB trigger fills in the
   // organization's default `contract_type` item on insert. Same reasoning as
@@ -258,6 +311,7 @@ function toContractUpdateRow(input: ReturnType<typeof contractUpdateSchema.parse
   if (input.value !== undefined) row.value = input.value ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
   if (input.invoicingTiming !== undefined) row.invoicing_timing = input.invoicingTiming;
+  // counter_settlement_frequency / _month are resolved by updateContract (needs the current row).
   return row;
 }
 
@@ -398,8 +452,10 @@ export async function listContracts(
       : Promise.resolve(null),
   ]);
   if (error) return fail(mapDbError(error));
+  const listed = await attachFinalBalanceInfo(supabase, (data ?? []) as ContractRecord[]);
+  if (listed.error) return fail(listed.error);
   return ok({
-    contracts: (data ?? []) as ContractRecord[],
+    contracts: listed.contracts,
     count: count ?? 0,
     ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
   });
@@ -425,7 +481,26 @@ export async function getContract(id: string): Promise<ActionResult<{ contract: 
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Contract not found.");
-  return ok({ contract: data as ContractRecord });
+  const attached = await attachFinalBalanceInfo(supabase, [data as ContractRecord]);
+  if (attached.error) return fail(attached.error);
+  return ok({ contract: attached.contracts[0] as ContractRecord });
+}
+
+const PERIODIC_NEEDS_RECURRING = "Periodic counter settlement requires recurring billing terms";
+
+/** True when the billing terms item has an interval (recurring). */
+async function billingTermsRecurring(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  billingTermsId: string | null | undefined,
+): Promise<{ recurring: boolean } | { error: string }> {
+  if (!billingTermsId) return { recurring: false };
+  const { data, error } = await supabase
+    .from("reference_list_items")
+    .select("interval_months")
+    .eq("id", billingTermsId)
+    .maybeSingle<{ interval_months: number | null }>();
+  if (error) return { error: mapDbError(error) };
+  return { recurring: Boolean(data?.interval_months) };
 }
 
 /** Owner/finance only (per the RBAC matrix + RLS INSERT policy, both agree —
@@ -446,6 +521,13 @@ export async function createContract(input: unknown): Promise<ActionResult<{ con
   }
 
   const supabase = await createSupabaseServerClient();
+  if ((parsed.data.counterSettlementFrequency ?? "with_invoice") !== "with_invoice") {
+    const terms = await billingTermsRecurring(supabase, parsed.data.billingTermsId);
+    if ("error" in terms) return fail(terms.error);
+    if (!terms.recurring) {
+      return fail(PERIODIC_NEEDS_RECURRING, { counterSettlementFrequency: [PERIODIC_NEEDS_RECURRING] });
+    }
+  }
   const { data, error } = await supabase
     .from("contracts")
     .insert(toContractInsertRow(parsed.data))
@@ -453,7 +535,7 @@ export async function createContract(input: unknown): Promise<ActionResult<{ con
     .single();
 
   if (error) return fail(mapDbError(error));
-  return ok({ contract: data as ContractRecord });
+  return ok({ contract: { ...(data as ContractRecord), has_final_settlement: false, last_settled_end: null } });
 }
 
 /** A counter reading still required before a contract can be activated, or
@@ -507,11 +589,12 @@ export async function getContractBaselineStatus(
   return ok({ missing: toMissingBaseline(data) });
 }
 
-/** Allowed manual transitions (issue #270): Draft -> Active, Active -> Ended,
- * Ended -> Active (the DB refuses that one after the end date). */
+/** Allowed manual transitions (issue #270/#271): Draft -> Active and Ended -> Active
+ * (the DB refuses that one after the end date or once a final settlement exists).
+ * Ending goes through the end page / completeContractEnd (contracts/end-actions.ts). */
 const CONTRACT_STATUS_TRANSITIONS: Record<ContractStatus, readonly ContractStatus[]> = {
   draft: ["active"],
-  active: ["ended"],
+  active: [],
   ended: ["active"],
 };
 
@@ -533,15 +616,12 @@ export interface SetContractStatusResult {
  * through the RPC); any other refusal (e.g. reactivating after the end date)
  * is returned as an error with the DB's message.
  *
- * Ending a contract requires `options.endDate` (follow-up on #270, option A):
- * it is saved as `end_date` together with status `ended`, so the final
- * counter settlement (end_date before today) applies to a manually ended
- * contract too. It must not be before the start date.
+ * Issue #271: 'ended' is no longer accepted here. Ending a contract (final balance,
+ * closing readings, scheduled ending) goes through contracts/end-actions.ts.
  */
 export async function setContractStatus(
   contractId: string,
   status: unknown,
-  options: { endDate?: unknown } = {},
 ): Promise<ActionResult<SetContractStatusResult>> {
   const idResult = uuidSchema.safeParse(contractId);
   if (!idResult.success) return fail("Invalid contract id.");
@@ -556,13 +636,16 @@ export async function setContractStatus(
   const statusResult = contractStatusSchema.safeParse(status);
   if (!statusResult.success) return fail("Invalid contract status.");
   const target = statusResult.data;
+  if (target === "ended") {
+    return fail("Use the End contract page to end a contract (final balance).");
+  }
 
   const supabase = await createSupabaseServerClient();
   const { data: current, error: currentError } = await supabase
     .from("contracts")
-    .select("status, start_date")
+    .select("status")
     .eq("id", idResult.data)
-    .maybeSingle<{ status: ContractStatus; start_date: string }>();
+    .maybeSingle<{ status: ContractStatus }>();
   if (currentError) return fail(mapDbError(currentError));
   if (!current) return fail("Contract not found.");
   if (current.status === target) return fail(`The contract is already ${target}.`);
@@ -570,15 +653,7 @@ export async function setContractStatus(
     return fail(`A ${current.status} contract cannot be set to ${target}.`);
   }
 
-  const patch: { status: ContractStatus; end_date?: string } = { status: target };
-  if (target === "ended") {
-    const endDateResult = requiredIsoDateSchema.safeParse(options.endDate);
-    if (!endDateResult.success) return fail("Enter the end date of the contract.");
-    if (endDateResult.data < current.start_date) {
-      return fail("The end date cannot be before the start date of the contract.");
-    }
-    patch.end_date = endDateResult.data;
-  }
+  const patch: { status: ContractStatus } = { status: target };
 
   const { data, error } = await supabase
     .from("contracts")
@@ -601,13 +676,19 @@ export async function setContractStatus(
         message: missing.length > 0 ? `Missing baseline readings: ${describeMissingBaseline(missing)}` : error.message,
       });
     }
-    if (error.code === "23514" && error.message.startsWith("An ended contract cannot be reactivated")) {
+    if (error.code === "23514" && error.message.startsWith("An ended contract")) {
       return fail(error.message);
     }
     return fail(mapDbError(error));
   }
   if (!data) return fail("Contract not found, its status changed in the meantime, or you do not have permission to update it.");
-  return ok({ changed: true, contract: data as ContractRecord, missingBaseline: [], message: null });
+  const attached = await attachFinalBalanceInfo(supabase, [data as ContractRecord]);
+  return ok({
+    changed: true,
+    contract: attached.contracts[0] ?? (data as ContractRecord),
+    missingBaseline: [],
+    message: null,
+  });
 }
 
 /** Owner/finance only (per the RBAC matrix + RLS UPDATE policy, both agree). */
@@ -653,6 +734,48 @@ export async function updateContract(
     }
   }
 
+  // Counter settlement frequency/month (issue #271): the month depends on the
+  // frequency and the start date, so resolve it against the current row.
+  if (
+    parsed.data.counterSettlementFrequency !== undefined ||
+    parsed.data.counterSettlementMonth !== undefined ||
+    parsed.data.billingTermsId !== undefined ||
+    parsed.data.startDate !== undefined
+  ) {
+    const { data: current, error: currentError } = await supabase
+      .from("contracts")
+      .select("start_date, billing_terms_id, counter_settlement_frequency, counter_settlement_month")
+      .eq("id", idResult.data)
+      .maybeSingle<{
+        start_date: string;
+        billing_terms_id: string | null;
+        counter_settlement_frequency: CounterSettlementFrequency;
+        counter_settlement_month: number | null;
+      }>();
+    if (currentError) return fail(mapDbError(currentError));
+    if (!current) return fail("Contract not found, or you do not have permission to update it.");
+    const frequency = parsed.data.counterSettlementFrequency ?? current.counter_settlement_frequency;
+    const startDate = parsed.data.startDate ?? current.start_date;
+    if (frequency !== "with_invoice") {
+      const terms = await billingTermsRecurring(supabase, parsed.data.billingTermsId ?? current.billing_terms_id);
+      if ("error" in terms) return fail(terms.error);
+      if (!terms.recurring) {
+        return fail(PERIODIC_NEEDS_RECURRING, { counterSettlementFrequency: [PERIODIC_NEEDS_RECURRING] });
+      }
+    }
+    // Keep the stored month while the frequency stays calendar-based and no new month is given.
+    const keptMonth =
+      parsed.data.counterSettlementFrequency === undefined || parsed.data.counterSettlementFrequency === current.counter_settlement_frequency
+        ? current.counter_settlement_month
+        : null;
+    row.counter_settlement_frequency = frequency;
+    row.counter_settlement_month = resolveSettlementMonth(
+      frequency,
+      parsed.data.counterSettlementMonth ?? keptMonth,
+      startDate,
+    );
+  }
+
   const { data, error } = await supabase
     .from("contracts")
     .update(row)
@@ -662,7 +785,8 @@ export async function updateContract(
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Contract not found, or you do not have permission to update it.");
-  return ok({ contract: data as ContractRecord });
+  const attached = await attachFinalBalanceInfo(supabase, [data as ContractRecord]);
+  return ok({ contract: attached.contracts[0] ?? (data as ContractRecord) });
 }
 
 /** Owner/finance only (per the RBAC matrix + RLS DELETE policy, both agree).
@@ -1094,6 +1218,7 @@ const contractLineItemWriteSchema = z.object({
   isVolume: z.boolean().optional(),
   volumeItemId: z.string().uuid("Invalid counter id.").nullish(),
   overageUnitPrice: z.coerce.number({ invalid_type_error: "Overage price must be a number." }).finite().min(0, "Overage price must be 0 or more.").nullish(),
+  creditUnderUse: z.boolean().optional(),
   sortOrder: z.coerce.number().int().optional(),
 });
 
@@ -1103,15 +1228,20 @@ const contractLineItemWriteSchema = z.object({
  * included counter quantity per billing period. */
 function applyCounterColumns(
   row: Record<string, unknown>,
-  data: { isVolume?: boolean; volumeItemId?: string | null; overageUnitPrice?: number | null },
+  data: { isVolume?: boolean; volumeItemId?: string | null; overageUnitPrice?: number | null; creditUnderUse?: boolean },
 ) {
   if (data.isVolume === false) {
     row.volume_item_id = null;
     row.overage_unit_price = null;
+    row.credit_under_use = false;
     return;
   }
   if (data.volumeItemId !== undefined) row.volume_item_id = data.volumeItemId;
   if (data.overageUnitPrice !== undefined) row.overage_unit_price = data.overageUnitPrice;
+  // Credit under-use only exists for a volume line with a counter (DB check): forced
+  // off when the counter is cleared.
+  if (data.volumeItemId === null) row.credit_under_use = false;
+  else if (data.creditUnderUse !== undefined) row.credit_under_use = data.creditUnderUse;
 }
 
 function emptyToUndefined(value: unknown): unknown {
@@ -1144,7 +1274,7 @@ export async function listContractLineItems(
   const { data, error } = await supabase
     .from("contract_line_items")
     .select(
-      "id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume, volume_item_id, overage_unit_price, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)",
+      "id, article_id, article_number, description, quantity, unit_price, purchase_price, is_volume, volume_item_id, overage_unit_price, credit_under_use, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)",
     )
     .eq("contract_id", idResult.data)
     .order("sort_order", { ascending: true })
@@ -1282,6 +1412,7 @@ export async function createContractLineItem(
   if (parsed.data.purchasePrice !== undefined) row.purchase_price = parsed.data.purchasePrice;
   if (parsed.data.isVolume !== undefined) row.is_volume = parsed.data.isVolume;
   applyCounterColumns(row, parsed.data);
+  if (!parsed.data.volumeItemId || parsed.data.isVolume === false) row.credit_under_use = false;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
 
   const supabase = await createSupabaseServerClient();
