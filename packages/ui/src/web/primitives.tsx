@@ -268,6 +268,22 @@ export function WebCard({ title, meta, action, headExtra, size = "web", classNam
   );
 }
 
+export type WebCardSectionProps = HTMLAttributes<HTMLDivElement>;
+
+/** Padded block for free content inside a card: text, hints, notices, summaries.
+ * Rule: a card body is full-bleed (key/value rows, tables, link rows, edit
+ * `WebField` rows that pad themselves); anything else goes in a `WebCardSection`
+ * so it never touches the card edge. Same horizontal inset as `.web-card-text`,
+ * vertical flex column with an 8px gap. Place full-bleed tables and WebField
+ * rows beside it, not inside it. */
+export function WebCardSection({ className, children, ...rest }: WebCardSectionProps) {
+  return (
+    <div className={cx("web-card-section", className)} {...rest}>
+      {children}
+    </div>
+  );
+}
+
 /** Wraps a list of cards on the main column: vertical gap 16px, capped so a
  * key/value column never exceeds 560px (two columns + gap). */
 export function WebCardStack({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {

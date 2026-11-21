@@ -64,7 +64,8 @@ export function ContractRail({
 }: ContractRailProps) {
   const status = getContractStatus({ start_date: startDate, end_date: endDate }, now);
   const start = new Date(`${startDate}T00:00:00`).getTime();
-  const end = endDate ? new Date(`${endDate}T00:00:00`).getTime() : NaN;
+  // The end date is the last covered day, so the term runs until the end of that day.
+  const end = endDate ? new Date(`${endDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000 : NaN;
   const hasEnd = !Number.isNaN(end);
 
   let remaining: string;
@@ -73,8 +74,9 @@ export function ContractRail({
   else if (status.daysToEnd < 0) remaining = "Ended";
   else remaining = pluralDays(status.daysToEnd);
 
+  // Share of the term that has elapsed: start -> now, out of start -> end.
   const progress =
-    hasEnd && end > start ? Math.min(100, Math.max(0, ((end - now) / (end - start)) * 100)) : null;
+    hasEnd && end > start ? Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100)) : null;
   const endingSoon = status.phase === "active" && status.daysToEnd !== null && status.daysToEnd <= ENDING_SOON_DAYS;
   const isDue = nextInvoiceDate !== null && nextInvoiceDate <= todayIso(now);
 
@@ -92,7 +94,7 @@ export function ContractRail({
         {progress !== null && status.phase !== "upcoming" ? (
           <SidebarProgress
             value={progress}
-            label="Term remaining"
+            label="Term elapsed"
             tone={status.phase === "ended" ? "danger" : endingSoon && !autoRenew ? "warning" : "success"}
           />
         ) : null}

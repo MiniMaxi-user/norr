@@ -6,19 +6,20 @@ import { useRouter } from "next/navigation";
 import { toast } from "@yourorg/ui";
 import {
   WebBadge,
-  WebButton,
   WebCard,
+  WebCardSection,
   WebCardStack,
   WebDataTable,
   WebField,
   WebHint,
   SidebarRows,
+  type TimelineItem,
   SidebarSection,
   WebDetailLayout,
   WebPage,
   type WebBadgeVariant,
 } from "@yourorg/ui/web";
-import { PageHeader, WebConfirmDialog } from "@yourorg/ui/web-client";
+import { LivePanel, PageHeader, WebConfirmDialog, type LivePanelData } from "@yourorg/ui/web-client";
 import { formatDateWeb, formatMoneyWeb, formatNumberWeb } from "@/lib/format/web";
 import type { QuoteLineDraft } from "@/app/(app)/quotes/contract-balance";
 import {
@@ -55,6 +56,8 @@ export interface ContractEndScreenProps {
   /** Plain-language explanation of how invoicing works, built on the server. */
   explanation: string;
   canSeeQuotes: boolean;
+  /** The contract's timeline (start, line items, assets, quotes), built on the server. */
+  timeline: TimelineItem[];
 }
 
 /**
@@ -74,6 +77,7 @@ export function ContractEndScreen({
   currentEndDate,
   explanation,
   canSeeQuotes,
+  timeline,
 }: ContractEndScreenProps) {
   const router = useRouter();
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -190,16 +194,7 @@ export function ContractEndScreen({
         onEdit: () => {},
         onSave: () => {},
         onCancel: () => {},
-        primary:
-          balance === null || dateError ? null : isSchedule ? (
-            <WebButton variant="primary" loading={submitting} onClick={() => void handleSchedule()}>
-              Schedule ending
-            </WebButton>
-          ) : (
-            <WebButton variant="primary" disabled={!canComplete} onClick={() => setConfirmOpen(true)}>
-              Complete final balance
-            </WebButton>
-          ),
+        primary: null,
       }}
     />
   );
@@ -207,29 +202,61 @@ export function ContractEndScreen({
   const rows = balance?.readingRows ?? [];
   const missingReadings = balance?.missingReadings ?? 0;
 
+  // The action that must happen NOW lives in the rail's LivePanel, not the header.
+  const livePanel = useMemo<LivePanelData | null>(() => {
+    if (balance === null || dateError) return null;
+    if (isSchedule) {
+      return {
+        variant: "info",
+        title: "SCHEDULE ENDING",
+        value: `Ends on ${formatDateWeb(endDate)}`,
+        context: "The contract stays Active until then; you can cancel the ending until that date.",
+        actions: [{ label: "Schedule ending", loading: submitting, onClick: () => void handleSchedule() }],
+      };
+    }
+    const context = refreshing
+      ? "Updating the balance…"
+      : previewError
+        ? "The balance could not be calculated"
+        : missingReadings > 0
+          ? `${missingReadings} ${missingReadings === 1 ? "reading" : "readings"} missing`
+          : "Ready to complete (excl. VAT)";
+    return {
+      variant: canComplete ? "urgent" : "attention",
+      title: "FINAL BALANCE",
+      value: formatMoneyWeb(balance.totals.net),
+      context,
+      actions: [{ label: "Complete final balance", disabled: !canComplete, onClick: () => setConfirmOpen(true) }],
+    };
+  }, [balance, dateError, isSchedule, endDate, submitting, refreshing, previewError, missingReadings, canComplete, handleSchedule]);
+
   return (
     <WebPage>
       <WebDetailLayout
         header={header}
         rail={
-          <SidebarSection title="Contract">
-            <SidebarRows
-              rows={[
-                { label: "Contract", value: contractNumber },
-                { label: "Start date", value: formatDateWeb(startDate) },
-                { label: "Current end date", value: currentEndDate ? formatDateWeb(currentEndDate) : "Open-ended" },
-              ]}
-            />
-          </SidebarSection>
+          <>
+            <LivePanel panel={livePanel} />
+            <SidebarSection title="Contract">
+              <SidebarRows
+                rows={[
+                  { label: "Start date", value: formatDateWeb(startDate) },
+                  { label: "Current end date", value: currentEndDate ? formatDateWeb(currentEndDate) : "Open-ended" },
+                ]}
+              />
+            </SidebarSection>
+          </>
         }
-        timeline={{ items: [], emptyText: "Nothing yet. The contract timeline continues on its own page." }}
+        timeline={{ items: timeline, emptyText: "Nothing on this contract yet." }}
       >
         <WebCardStack>
           <WebCard title="1. End date">
-            <p className="web-dialog-text">
-              The day the contract stops. Today or earlier completes the final balance now; a later date keeps the
-              contract Active until then.
-            </p>
+            <WebCardSection>
+              <p className="web-dialog-text">
+                The day the contract stops. Today or earlier completes the final balance now; a later date keeps the
+                contract Active until then.
+              </p>
+            </WebCardSection>
             <WebField label="End date" htmlFor="contract-end-date" required error={dateError} messageId="contract-end-date-error">
               <input
                 id="contract-end-date"
@@ -241,22 +268,22 @@ export function ContractEndScreen({
                 onChange={(event) => setEndDate(event.target.value)}
               />
             </WebField>
-            <WebHint>{explanation}</WebHint>
-            {previewError || submitError ? (
-              <p className="web-hint-warning" role="alert">
-                {previewError ?? submitError}
-              </p>
-            ) : null}
-            {isSchedule && !dateError ? (
-              <>
+            <WebCardSection>
+              <WebHint>{explanation}</WebHint>
+              {previewError || submitError ? (
+                <p className="web-hint-warning" role="alert">
+                  {previewError ?? submitError}
+                </p>
+              ) : null}
+              {isSchedule && !dateError ? (
                 <div className="web-dialog-summary" data-tone="info" role="status">
                   <span className="web-dialog-summary-title">Scheduled ending</span>
                   This date is in the future, so <strong>{contractNumber}</strong> stays Active and shows &quot;Ends on{" "}
                   {formatDateWeb(endDate)}&quot;. Reopen this page after that date to complete the final balance. You
                   can cancel the ending until then.
                 </div>
-              </>
-            ) : null}
+              ) : null}
+            </WebCardSection>
           </WebCard>
 
           {isSchedule || balance === null ? null : (
@@ -269,13 +296,16 @@ export function ContractEndScreen({
                     : undefined
                 }
               >
-                <p className="web-dialog-text">
-                  Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
-                  readings when you complete the balance.
-                </p>
-                {rows.length === 0 ? (
-                  <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
-                ) : (
+                <WebCardSection>
+                  <p className="web-dialog-text">
+                    Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
+                    readings when you complete the balance.
+                  </p>
+                  {rows.length === 0 ? (
+                    <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
+                  ) : null}
+                </WebCardSection>
+                {rows.length === 0 ? null : (
                   <WebDataTable aria-busy={refreshing}>
                     <thead>
                       <tr>
@@ -350,24 +380,28 @@ export function ContractEndScreen({
                   </WebDataTable>
                 )}
                 {balance.missingReadings > 0 ? (
-                  <p className="web-hint-warning" role="status">
-                    {balance.missingReadings} {balance.missingReadings === 1 ? "reading is" : "readings are"} still missing.
-                    Enter it or choose Settle without reading; that asset is then excluded from settlement.
-                  </p>
+                  <WebCardSection>
+                    <p className="web-hint-warning" role="status">
+                      {balance.missingReadings} {balance.missingReadings === 1 ? "reading is" : "readings are"} still
+                      missing. Enter it or choose Settle without reading; that asset is then excluded from settlement.
+                    </p>
+                  </WebCardSection>
                 ) : null}
               </WebCard>
 
               <BalanceOverview balance={balance} refreshing={refreshing} canSeeQuotes={canSeeQuotes} />
 
               <WebCard title="4. Confirm">
-                <p className="web-dialog-text">
-                  Creates one draft Final settlement quote for review and invoicing, saves the closing readings and ends
-                  the contract on {formatDateWeb(endDate)}. This cannot be undone. Use Complete final balance at the top
-                  of the page when everything above is right.
-                </p>
-                {balance.missingReadings > 0 ? (
-                  <WebHint>Complete step 2 first: every row needs a reading or Settle without reading.</WebHint>
-                ) : null}
+                <WebCardSection>
+                  <p className="web-dialog-text">
+                    Creates one draft Final settlement quote for review and invoicing, saves the closing readings and
+                    ends the contract on {formatDateWeb(endDate)}. This cannot be undone. When everything above is
+                    right, use the button in the live panel on the right.
+                  </p>
+                  {balance.missingReadings > 0 ? (
+                    <WebHint>Complete step 2 first: every row needs a reading or Settle without reading.</WebHint>
+                  ) : null}
+                </WebCardSection>
               </WebCard>
             </>
           )}
@@ -403,15 +437,15 @@ function BalanceOverview({
 }) {
   return (
     <WebCard title="3. Balance overview" meta={refreshing ? "Updating…" : undefined} aria-busy={refreshing}>
-      <p className="web-dialog-text">
-        What will be invoiced, credited and settled up to the end date. Read-only; it updates as you change the date or
-        the readings.
-      </p>
-
-      <p className="web-dialog-section">Billing periods</p>
-      {balance.periods.length === 0 ? (
-        <p className="web-dialog-text">No billing periods up to the end date.</p>
-      ) : (
+      <WebCardSection>
+        <p className="web-dialog-text">
+          What will be invoiced, credited and settled up to the end date. Read-only; it updates as you change the date
+          or the readings.
+        </p>
+        <p className="web-dialog-section">Billing periods</p>
+        {balance.periods.length === 0 ? <p className="web-dialog-text">No billing periods up to the end date.</p> : null}
+      </WebCardSection>
+      {balance.periods.length === 0 ? null : (
         <WebDataTable>
           <thead>
             <tr>
@@ -450,27 +484,35 @@ function BalanceOverview({
         </WebDataTable>
       )}
       {balance.quotesToReplace.length > 0 ? (
-        <WebHint>
-          Replaced by the final quote (not invoiced yet):{" "}
-          {balance.quotesToReplace.map((quote) => quote.quoteNumber ?? quote.name).join(", ")}.
-        </WebHint>
+        <WebCardSection>
+          <WebHint>
+            Replaced by the final quote (not invoiced yet):{" "}
+            {balance.quotesToReplace.map((quote) => quote.quoteNumber ?? quote.name).join(", ")}.
+          </WebHint>
+        </WebCardSection>
       ) : null}
 
       {balance.creditLines.length > 0 ? (
         <>
-          <p className="web-dialog-section">Credit for prepaid time after the end date</p>
+          <WebCardSection>
+            <p className="web-dialog-section">Credit for prepaid time after the end date</p>
+          </WebCardSection>
           <LinesTable lines={balance.creditLines} />
         </>
       ) : null}
 
       {balance.counterWindows.length > 0 ? (
         <>
-          <p className="web-dialog-section">Counter settlement</p>
+          <WebCardSection>
+            <p className="web-dialog-section">Counter settlement</p>
+          </WebCardSection>
           {balance.counterWindows.map((entry) => (
             <div key={`${entry.window.start}-${entry.window.end}`}>
-              <p className="web-dialog-text">
-                <strong>{entry.label}</strong>
-              </p>
+              <WebCardSection>
+                <p className="web-dialog-text">
+                  <strong>{entry.label}</strong>
+                </p>
+              </WebCardSection>
               <WebDataTable>
                 <thead>
                   <tr>
@@ -516,14 +558,18 @@ function BalanceOverview({
       ) : null}
 
       {balance.warnings.length > 0 ? (
-        <ul className="web-hint-warning" role="status">
-          {balance.warnings.map((warning, index) => (
-            <li key={index}>{warning}</li>
-          ))}
-        </ul>
+        <WebCardSection>
+          <ul className="web-hint-warning" role="status">
+            {balance.warnings.map((warning, index) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </WebCardSection>
       ) : null}
 
-      <p className="web-dialog-section">Totals (excl. VAT)</p>
+      <WebCardSection>
+        <p className="web-dialog-section">Totals (excl. VAT)</p>
+      </WebCardSection>
       <WebDataTable>
         <tbody>
           <tr>

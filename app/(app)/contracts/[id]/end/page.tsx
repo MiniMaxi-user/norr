@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
-import { getContract, listContractLineItems } from "../../actions";
+import { getContract, listContractAssets, listContractLineItems } from "../../actions";
+import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions";
+import { buildContractTimeline } from "../../components/contract-timeline";
 import { getContractEndBalance } from "../../end-actions";
 import { ContractEndScreen } from "../../components/contract-end-screen";
 import { buildInvoicingExplanation } from "../../components/contract-invoicing-explanation";
@@ -49,9 +51,13 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
         ? contract.start_date
         : today;
 
-  const [balanceResult, lineItemsResult] = await Promise.all([
+  const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
+
+  const [balanceResult, lineItemsResult, contractAssetsResult, quotesResult] = await Promise.all([
     getContractEndBalance(id, { endDate: initialEndDate }),
     listContractLineItems(id),
+    listContractAssets(id),
+    canSeeQuotes ? listQuotesForContract(id) : Promise.resolve(null),
   ]);
 
   const lines = lineItemsResult.data?.lineItems ?? [];
@@ -64,7 +70,12 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
     hasCounterLines: lines.some((row) => row.is_volume && row.volume_item_id),
   });
 
-  const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
+  const timeline = buildContractTimeline({
+    contract,
+    lineItems: lines,
+    contractAssets: contractAssetsResult.data?.contractAssets ?? [],
+    quotes: canSeeQuotes ? (quotesResult?.data?.quotes ?? []) : null,
+  });
 
   return (
     <ContractEndScreen
@@ -77,6 +88,7 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
       initialError={balanceResult.data ? null : (balanceResult.error ?? "Could not calculate the balance.")}
       explanation={explanation}
       canSeeQuotes={canSeeQuotes}
+      timeline={timeline}
     />
   );
 }

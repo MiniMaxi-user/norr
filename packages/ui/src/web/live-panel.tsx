@@ -14,6 +14,10 @@ export interface LivePanelAction {
   label: string;
   href?: string;
   onClick?: () => void;
+  /** Not available right now (put the reason in `context`). */
+  disabled?: boolean;
+  /** Work in flight: the button is inert and marked busy. */
+  loading?: boolean;
 }
 
 export interface LivePanelData {
@@ -89,6 +93,8 @@ function LivePanelBody({ panel, onSwap }: { panel: LivePanelData; onSwap: (index
                   type="button"
                   className="web-live-button"
                   data-primary={index === 0 ? "true" : undefined}
+                  disabled={action.disabled || action.loading}
+                  aria-busy={action.loading ? true : undefined}
                   onClick={action.onClick}
                 >
                   {action.label}

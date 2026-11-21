@@ -1444,6 +1444,67 @@ html:has(.web-shell) body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* WebCardSection: padded block for free content inside a card body. */
+.web-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: calc(var(--space-row-y) + 4px) var(--space-card-x);
+}
+.web-card-section + .web-card-section {
+  padding-top: 0;
+}
+.web-card-section > :where(p, ul, ol) {
+  margin: 0;
+}
+/* Safety net: `.web-card-body` is full-bleed (tables, kv rows), so text-like
+   direct children that do not pad themselves get the card inset. Specificity
+   stays low (`:where`) so any component class wins. NOT included: `.web-field`
+   (an edit row that already pads itself), `.web-card-text`, tables, link rows.
+   Prefer WebCardSection for new code. */
+:where(
+    .web-card-body > .web-dialog-text:not(ul, ol),
+    .web-card-body > .web-dialog-section,
+    .web-card-body > .web-hint,
+    .web-card-body > .web-hint-warning,
+    .web-card-body > p:not([class])
+  ) {
+  padding: 6px var(--space-card-x);
+}
+:where(
+    .web-card-body > ul.web-dialog-text,
+    .web-card-body > ol.web-dialog-text,
+    .web-card-body > ul:not([class]),
+    .web-card-body > ol:not([class])
+  ) {
+  margin: 0;
+  padding: 6px var(--space-card-x) 6px calc(var(--space-card-x) + 20px);
+}
+.web-card-body > .web-dialog-summary {
+  margin: 6px var(--space-card-x);
+}
+:where(
+    .web-card-body > .web-dialog-text,
+    .web-card-body > .web-dialog-section,
+    .web-card-body > .web-hint,
+    .web-card-body > .web-hint-warning,
+    .web-card-body > p:not([class]),
+    .web-card-body > ul:not([class]),
+    .web-card-body > ol:not([class])
+  ):first-child {
+  padding-top: 13px;
+}
+:where(
+    .web-card-body > .web-dialog-text,
+    .web-card-body > .web-dialog-section,
+    .web-card-body > .web-hint,
+    .web-card-body > .web-hint-warning,
+    .web-card-body > p:not([class]),
+    .web-card-body > ul:not([class]),
+    .web-card-body > ol:not([class])
+  ):last-child {
+  padding-bottom: 13px;
+}
 .web-card-text[data-empty="true"] {
   color: var(--text-muted);
 }
@@ -2369,6 +2430,13 @@ a.web-tree-id:hover {
   border-color: var(--brand-gold-border);
   color: var(--brand-navy);
   font-weight: 600;
+}
+.web-live-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.web-live-button[aria-busy="true"] {
+  cursor: progress;
 }
 .web-live-others {
   display: block;
