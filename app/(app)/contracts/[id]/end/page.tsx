@@ -2,9 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
-import { getContract } from "../../actions";
+import { getContract, listContractLineItems } from "../../actions";
 import { getContractEndBalance } from "../../end-actions";
 import { ContractEndScreen } from "../../components/contract-end-screen";
+import { buildInvoicingExplanation } from "../../components/contract-invoicing-explanation";
 
 export const metadata = { title: "End contract" };
 
@@ -19,6 +20,7 @@ interface EndContractPageProps {
  * `can(actor, "contracts", "update")` (owner/finance), resolved before anything
  * renders. Draft contracts cannot be ended; an ended contract with a final
  * balance has nothing left to do and returns to its detail page.
+ * A balance error never 404s: the screen renders it and the end date stays editable.
  */
 export default async function EndContractPage({ params }: EndContractPageProps) {
   const { id } = await params;
@@ -38,12 +40,29 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
   if (contract.status === "ended" && contract.has_final_settlement !== false) redirect(`/contracts/${id}`);
 
   const today = new Date().toISOString().slice(0, 10);
-  // Reopened after the end date (or a legacy ended contract): its own end date.
-  // A scheduled ending shows its date; otherwise today.
+  // Scheduled or passed end date: keep it. Otherwise today, but never before the
+  // start date (contracts can start in the future).
   const initialEndDate =
-    contract.end_date && (contract.end_date <= today || contract.end_scheduled_at) ? contract.end_date : today;
-  const balanceResult = await getContractEndBalance(id, { endDate: initialEndDate });
-  if (!balanceResult.data) notFound();
+    contract.end_date && (contract.end_date <= today || contract.end_scheduled_at)
+      ? contract.end_date
+      : today < contract.start_date
+        ? contract.start_date
+        : today;
+
+  const [balanceResult, lineItemsResult] = await Promise.all([
+    getContractEndBalance(id, { endDate: initialEndDate }),
+    listContractLineItems(id),
+  ]);
+
+  const lines = lineItemsResult.data?.lineItems ?? [];
+  const explanation = buildInvoicingExplanation({
+    intervalMonths: contract.billing_terms?.interval_months ?? null,
+    timing: contract.invoicing_timing,
+    frequency: contract.counter_settlement_frequency,
+    settlementMonth: contract.counter_settlement_month,
+    creditsUnderUse: lines.some((row) => row.is_volume && row.volume_item_id && row.credit_under_use),
+    hasCounterLines: lines.some((row) => row.is_volume && row.volume_item_id),
+  });
 
   const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
 
@@ -52,8 +71,11 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
       contractId={id}
       contractNumber={contract.contract_number}
       startDate={contract.start_date}
+      currentEndDate={contract.end_date}
       initialEndDate={initialEndDate}
-      initialBalance={balanceResult.data}
+      initialBalance={balanceResult.data ?? null}
+      initialError={balanceResult.data ? null : (balanceResult.error ?? "Could not calculate the balance.")}
+      explanation={explanation}
       canSeeQuotes={canSeeQuotes}
     />
   );

@@ -12,6 +12,9 @@ import {
   WebDataTable,
   WebField,
   WebHint,
+  SidebarRows,
+  SidebarSection,
+  WebDetailLayout,
   WebPage,
   type WebBadgeVariant,
 } from "@yourorg/ui/web";
@@ -25,7 +28,6 @@ import {
   type ContractEndBalance,
   type ContractEndInput,
 } from "../end-actions";
-import { buildInvoicingExplanation } from "./contract-invoicing-explanation";
 
 const PREVIEW_DEBOUNCE_MS = 400;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,8 +46,14 @@ export interface ContractEndScreenProps {
   contractNumber: string;
   startDate: string;
   /** Balance computed on the server for `initialEndDate`. */
-  initialBalance: ContractEndBalance;
+  /** `null` when the server could not compute it (see `initialError`); the date stays editable to retry. */
+  initialBalance: ContractEndBalance | null;
+  initialError: string | null;
   initialEndDate: string;
+  /** Current end date of the contract (null = open-ended), for the rail. */
+  currentEndDate: string | null;
+  /** Plain-language explanation of how invoicing works, built on the server. */
+  explanation: string;
   canSeeQuotes: boolean;
 }
 
@@ -61,16 +69,19 @@ export function ContractEndScreen({
   contractNumber,
   startDate,
   initialBalance,
+  initialError,
   initialEndDate,
+  currentEndDate,
+  explanation,
   canSeeQuotes,
 }: ContractEndScreenProps) {
   const router = useRouter();
   const [endDate, setEndDate] = useState(initialEndDate);
   const [entered, setEntered] = useState<Record<string, string>>({});
   const [skipped, setSkipped] = useState<Record<string, boolean>>({});
-  const [balance, setBalance] = useState<ContractEndBalance>(initialBalance);
+  const [balance, setBalance] = useState<ContractEndBalance | null>(initialBalance);
   const [refreshing, setRefreshing] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(initialError);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -84,7 +95,7 @@ export function ContractEndScreen({
   const input = useMemo<ContractEndInput>(() => {
     const closingReadings: NonNullable<ContractEndInput["closingReadings"]> = [];
     const skippedRows: NonNullable<ContractEndInput["skipped"]> = [];
-    for (const row of balance.readingRows) {
+    for (const row of balance?.readingRows ?? []) {
       const key = rowKey(row.assetId, row.volumeItemId);
       if (skipped[key]) {
         skippedRows.push({ assetId: row.assetId, volumeItemId: row.volumeItemId });
@@ -96,7 +107,7 @@ export function ContractEndScreen({
       }
     }
     return { endDate, closingReadings, skipped: skippedRows };
-  }, [endDate, entered, skipped, balance.readingRows]);
+  }, [endDate, entered, skipped, balance]);
 
   // Debounced live preview. The first run (server-rendered balance) is skipped.
   const firstRun = useRef(true);
@@ -127,8 +138,9 @@ export function ContractEndScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputKey, contractId, dateError]);
 
-  const isSchedule = balance.mode === "schedule";
-  const canComplete = !isSchedule && !dateError && !refreshing && !previewError && balance.missingReadings === 0;
+  const isSchedule = balance?.mode === "schedule";
+  const canComplete =
+    balance !== null && !isSchedule && !dateError && !refreshing && !previewError && balance.missingReadings === 0;
 
   const handleSchedule = useCallback(async () => {
     setSubmitting(true);
@@ -173,24 +185,45 @@ export function ContractEndScreen({
       ]}
       title="End contract"
       mode="read"
-      actions={{ canEdit: false, onEdit: () => {}, onSave: () => {}, onCancel: () => {} }}
+      actions={{
+        canEdit: false,
+        onEdit: () => {},
+        onSave: () => {},
+        onCancel: () => {},
+        primary:
+          balance === null || dateError ? null : isSchedule ? (
+            <WebButton variant="primary" loading={submitting} onClick={() => void handleSchedule()}>
+              Schedule ending
+            </WebButton>
+          ) : (
+            <WebButton variant="primary" disabled={!canComplete} onClick={() => setConfirmOpen(true)}>
+              Complete final balance
+            </WebButton>
+          ),
+      }}
     />
   );
 
-  const summary = balance.contract;
-  const explanation = buildInvoicingExplanation({
-    intervalMonths: summary.intervalMonths,
-    timing: summary.invoicingTiming,
-    frequency: summary.counterSettlementFrequency,
-    settlementMonth: summary.counterSettlementMonth,
-    creditsUnderUse: summary.creditsUnderUse,
-    hasCounterLines: summary.hasCounterLines,
-  });
+  const rows = balance?.readingRows ?? [];
+  const missingReadings = balance?.missingReadings ?? 0;
 
   return (
     <WebPage>
-      {header}
-      <div className="web-tab-stack">
+      <WebDetailLayout
+        header={header}
+        rail={
+          <SidebarSection title="Contract">
+            <SidebarRows
+              rows={[
+                { label: "Contract", value: contractNumber },
+                { label: "Start date", value: formatDateWeb(startDate) },
+                { label: "Current end date", value: currentEndDate ? formatDateWeb(currentEndDate) : "Open-ended" },
+              ]}
+            />
+          </SidebarSection>
+        }
+        timeline={{ items: [], emptyText: "Nothing yet. The contract timeline continues on its own page." }}
+      >
         <WebCardStack>
           <WebCard title="1. End date">
             <p className="web-dialog-text">
@@ -209,6 +242,11 @@ export function ContractEndScreen({
               />
             </WebField>
             <WebHint>{explanation}</WebHint>
+            {previewError || submitError ? (
+              <p className="web-hint-warning" role="alert">
+                {previewError ?? submitError}
+              </p>
+            ) : null}
             {isSchedule && !dateError ? (
               <>
                 <div className="web-dialog-summary" data-tone="info" role="status">
@@ -217,25 +255,17 @@ export function ContractEndScreen({
                   {formatDateWeb(endDate)}&quot;. Reopen this page after that date to complete the final balance. You
                   can cancel the ending until then.
                 </div>
-                {submitError ? (
-                  <p className="web-hint-warning" role="alert">
-                    {submitError}
-                  </p>
-                ) : null}
-                <WebButton variant="primary" loading={submitting} onClick={() => void handleSchedule()}>
-                  Schedule ending
-                </WebButton>
               </>
             ) : null}
           </WebCard>
 
-          {isSchedule ? null : (
+          {isSchedule || balance === null ? null : (
             <>
               <WebCard
                 title="2. Closing readings"
                 meta={
-                  balance.readingRows.length > 0
-                    ? `${balance.readingRows.length - balance.missingReadings} / ${balance.readingRows.length} ready`
+                  rows.length > 0
+                    ? `${rows.length - missingReadings} / ${rows.length} ready`
                     : undefined
                 }
               >
@@ -243,7 +273,7 @@ export function ContractEndScreen({
                   Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
                   readings when you complete the balance.
                 </p>
-                {balance.readingRows.length === 0 ? (
+                {rows.length === 0 ? (
                   <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
                 ) : (
                   <WebDataTable aria-busy={refreshing}>
@@ -262,7 +292,7 @@ export function ContractEndScreen({
                       </tr>
                     </thead>
                     <tbody>
-                      {balance.readingRows.map((row) => {
+                      {rows.map((row) => {
                         const key = rowKey(row.assetId, row.volumeItemId);
                         const inputId = `closing-${row.assetId}-${row.volumeItemId}`;
                         const isSkipped = Boolean(skipped[key]);
@@ -327,24 +357,22 @@ export function ContractEndScreen({
                 ) : null}
               </WebCard>
 
-              <BalanceOverview balance={balance} refreshing={refreshing} error={previewError} canSeeQuotes={canSeeQuotes} />
+              <BalanceOverview balance={balance} refreshing={refreshing} canSeeQuotes={canSeeQuotes} />
 
               <WebCard title="4. Confirm">
                 <p className="web-dialog-text">
                   Creates one draft Final settlement quote for review and invoicing, saves the closing readings and ends
-                  the contract on {formatDateWeb(endDate)}. This cannot be undone.
+                  the contract on {formatDateWeb(endDate)}. This cannot be undone. Use Complete final balance at the top
+                  of the page when everything above is right.
                 </p>
-                {!canComplete && balance.missingReadings > 0 ? (
+                {balance.missingReadings > 0 ? (
                   <WebHint>Complete step 2 first: every row needs a reading or Settle without reading.</WebHint>
                 ) : null}
-                <WebButton variant="primary" disabled={!canComplete} onClick={() => setConfirmOpen(true)}>
-                  Complete final balance
-                </WebButton>
               </WebCard>
             </>
           )}
         </WebCardStack>
-      </div>
+      </WebDetailLayout>
 
       <WebConfirmDialog
         open={confirmOpen}
@@ -355,8 +383,10 @@ export function ContractEndScreen({
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void handleComplete()}
       >
-        {contractNumber} ends on {formatDateWeb(endDate)}. Total to invoice {formatMoneyWeb(balance.totals.toInvoice)}, to
-        credit {formatMoneyWeb(balance.totals.toCredit)}, net {formatMoneyWeb(balance.totals.net)} excl. VAT.
+        {contractNumber} ends on {formatDateWeb(endDate)}.
+        {balance
+          ? ` Total to invoice ${formatMoneyWeb(balance.totals.toInvoice)}, to credit ${formatMoneyWeb(balance.totals.toCredit)}, net ${formatMoneyWeb(balance.totals.net)} excl. VAT.`
+          : ""}
       </WebConfirmDialog>
     </WebPage>
   );
@@ -365,12 +395,10 @@ export function ContractEndScreen({
 function BalanceOverview({
   balance,
   refreshing,
-  error,
   canSeeQuotes,
 }: {
   balance: ContractEndBalance;
   refreshing: boolean;
-  error: string | null;
   canSeeQuotes: boolean;
 }) {
   return (
@@ -379,11 +407,6 @@ function BalanceOverview({
         What will be invoiced, credited and settled up to the end date. Read-only; it updates as you change the date or
         the readings.
       </p>
-      {error ? (
-        <p className="web-hint-warning" role="alert">
-          {error}
-        </p>
-      ) : null}
 
       <p className="web-dialog-section">Billing periods</p>
       {balance.periods.length === 0 ? (

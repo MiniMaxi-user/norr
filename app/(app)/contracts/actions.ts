@@ -712,7 +712,11 @@ export async function updateContract(
   }
 
   const row = toContractUpdateRow(parsed.data);
-  if (Object.keys(row).length === 0) {
+  // The counter settlement fields are resolved below (against the current row),
+  // so they count as changes even though toContractUpdateRow leaves them out.
+  const settlementChanged =
+    parsed.data.counterSettlementFrequency !== undefined || parsed.data.counterSettlementMonth !== undefined;
+  if (Object.keys(row).length === 0 && !settlementChanged) {
     return fail("No changes provided.");
   }
 
