@@ -37,6 +37,18 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const rowKey = (assetId: string, volumeItemId: string) => `${assetId}|${volumeItemId}`;
 const lineAmount = (line: QuoteLineDraft) => Math.round(line.quantity * line.unitPrice * 100) / 100;
 
+const TIMING_LABEL: Record<ContractEndBalance["contract"]["invoicingTiming"], string> = {
+  in_advance: "in advance",
+  in_arrears: "in arrears",
+};
+
+const FREQUENCY_LABEL: Record<ContractEndBalance["contract"]["counterSettlementFrequency"], string> = {
+  with_invoice: "with every invoice",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  annually: "annually",
+};
+
 const PERIOD_STATUS: Record<"invoiced" | "quoted" | "open", { label: string; variant: WebBadgeVariant }> = {
   invoiced: { label: "Invoiced", variant: "success" },
   quoted: { label: "Quoted, not invoiced", variant: "warning" },
@@ -59,8 +71,6 @@ export interface ContractEndScreenProps {
   initialEndDate: string;
   /** Current end date of the contract (null = open-ended), for the rail. */
   currentEndDate: string | null;
-  /** Plain-language explanation of how invoicing works, built on the server. */
-  explanation: string;
   canSeeQuotes: boolean;
   /** The contract's timeline (start, line items, assets, quotes), built on the server. */
   timeline: TimelineItem[];
@@ -84,14 +94,12 @@ export function ContractEndScreen({
   initialError,
   initialEndDate,
   currentEndDate,
-  explanation,
   canSeeQuotes,
   timeline,
 }: ContractEndScreenProps) {
   const router = useRouter();
   const [endDate, setEndDate] = useState(initialEndDate);
   const [entered, setEntered] = useState<Record<string, string>>({});
-  const [skipped, setSkipped] = useState<Record<string, boolean>>({});
   const [balance, setBalance] = useState<ContractEndBalance | null>(initialBalance);
   const [refreshing, setRefreshing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(initialError);
@@ -107,20 +115,15 @@ export function ContractEndScreen({
 
   const input = useMemo<ContractEndInput>(() => {
     const closingReadings: NonNullable<ContractEndInput["closingReadings"]> = [];
-    const skippedRows: NonNullable<ContractEndInput["skipped"]> = [];
     for (const row of balance?.readingRows ?? []) {
       const key = rowKey(row.assetId, row.volumeItemId);
-      if (skipped[key]) {
-        skippedRows.push({ assetId: row.assetId, volumeItemId: row.volumeItemId });
-        continue;
-      }
       const text = (entered[key] ?? "").trim().replace(",", ".");
       if (text !== "" && Number.isFinite(Number(text))) {
         closingReadings.push({ assetId: row.assetId, volumeItemId: row.volumeItemId, value: Number(text) });
       }
     }
-    return { endDate, closingReadings, skipped: skippedRows };
-  }, [endDate, entered, skipped, balance]);
+    return { endDate, closingReadings };
+  }, [endDate, entered, balance]);
 
   // Debounced live preview. The first run (server-rendered balance) is skipped.
   const firstRun = useRef(true);
@@ -273,12 +276,21 @@ export function ContractEndScreen({
       >
         <WebCardStack>
           <WebCard title="1. End date">
-            <WebCardSection>
-              <p className="web-dialog-text">
-                The day the contract stops. Today or earlier completes the final balance now; a later date keeps the
-                contract Active until then.
-              </p>
-            </WebCardSection>
+            {balance ? (
+              <WebCardSection>
+                <div className="web-dialog-summary" data-tone="info">
+                  <span className="web-dialog-summary-title">This contract</span>
+                  Invoiced <strong>{TIMING_LABEL[balance.contract.invoicingTiming]}</strong>
+                  {balance.contract.hasCounterLines ? (
+                    <>
+                      {" "}
+                      · Counters settled <strong>{FREQUENCY_LABEL[balance.contract.counterSettlementFrequency]}</strong> ·
+                      Under-use <strong>{balance.contract.creditsUnderUse ? "credited" : "not credited (minimum)"}</strong>
+                    </>
+                  ) : null}
+                </div>
+              </WebCardSection>
+            ) : null}
             <WebField label="End date" htmlFor="contract-end-date" required error={dateError} messageId="contract-end-date-error">
               <input
                 id="contract-end-date"
@@ -291,19 +303,20 @@ export function ContractEndScreen({
               />
             </WebField>
             <WebCardSection>
-              <WebHint>{explanation}</WebHint>
+              {dateError ? null : isSchedule ? (
+                <WebHint>
+                  <strong>Future date</strong>: stays Active until {formatDateWeb(endDate)}; the ending can be cancelled
+                  until then.
+                </WebHint>
+              ) : (
+                <WebHint>
+                  <strong>Today or earlier</strong>: completes the final balance now.
+                </WebHint>
+              )}
               {previewError || submitError ? (
                 <p className="web-hint-warning" role="alert">
                   {previewError ?? submitError}
                 </p>
-              ) : null}
-              {isSchedule && !dateError ? (
-                <div className="web-dialog-summary" data-tone="info" role="status">
-                  <span className="web-dialog-summary-title">Scheduled ending</span>
-                  This date is in the future, so <strong>{contractNumber}</strong> stays Active and shows &quot;Ends on{" "}
-                  {formatDateWeb(endDate)}&quot;. Reopen this page after that date to complete the final balance. You
-                  can cancel the ending until then.
-                </div>
               ) : null}
             </WebCardSection>
           </WebCard>
@@ -319,21 +332,13 @@ export function ContractEndScreen({
                 }
               >
                 <WebCardSection>
-                  <p className="web-dialog-text">
-                    Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
-                    readings when you complete the balance.
-                  </p>
-                  {rows.length > 0 ? (
-                    <WebHint>
-                      <strong>Settle without reading</strong>: use this when a counter cannot be read (meter broken,
-                      asset already removed). That asset is left out of the counter settlement for that counter: its
-                      usage since the last settled reading is not billed, and no under-use is credited for that counter.
-                      The final balance shows a warning so it stays traceable.
-                    </WebHint>
-                  ) : null}
                   {rows.length === 0 ? (
-                    <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
-                  ) : null}
+                    <WebHint>No counters on covered assets: no readings needed.</WebHint>
+                  ) : (
+                    <WebHint>
+                      Reading on <strong>{formatDateWeb(endDate)}</strong> per counter, saved as a normal reading.
+                    </WebHint>
+                  )}
                 </WebCardSection>
                 {rows.length === 0 ? null : (
                   <WebDataTable aria-busy={refreshing}>
@@ -346,16 +351,12 @@ export function ContractEndScreen({
                           Last reading
                         </th>
                         <th scope="col">Reading on {formatDateWeb(endDate)}</th>
-                        <th scope="col">
-                          <span className="web-sr-only">Settle without reading</span>
-                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((row) => {
                         const key = rowKey(row.assetId, row.volumeItemId);
                         const inputId = `closing-${row.assetId}-${row.volumeItemId}`;
-                        const isSkipped = Boolean(skipped[key]);
                         return (
                           <tr key={key}>
                             <td data-primary="true">
@@ -384,23 +385,9 @@ export function ContractEndScreen({
                                   inputMode="decimal"
                                   data-numeric="true"
                                   aria-label={`Closing reading ${row.assetName}, ${row.counterLabel}`}
-                                  disabled={isSkipped}
                                   value={entered[key] ?? ""}
                                   onChange={(event) => setEntered((current) => ({ ...current, [key]: event.target.value }))}
                                 />
-                              )}
-                            </td>
-                            <td>
-                              {row.closingReading ? null : (
-                                <span className="web-field-checkbox">
-                                  <input
-                                    type="checkbox"
-                                    aria-labelledby={`${inputId}-skip`}
-                                    checked={isSkipped}
-                                    onChange={(event) => setSkipped((current) => ({ ...current, [key]: event.target.checked }))}
-                                  />
-                                  <span id={`${inputId}-skip`}>Settle without reading</span>
-                                </span>
                               )}
                             </td>
                           </tr>
@@ -412,8 +399,7 @@ export function ContractEndScreen({
                 {balance.missingReadings > 0 ? (
                   <WebCardSection>
                     <p className="web-hint-warning" role="status">
-                      {balance.missingReadings} {balance.missingReadings === 1 ? "reading is" : "readings are"} still
-                      missing. Enter it or choose Settle without reading; that asset is then excluded from settlement.
+                      {balance.missingReadings} {balance.missingReadings === 1 ? "reading" : "readings"} missing.
                     </p>
                   </WebCardSection>
                 ) : null}
@@ -423,14 +409,10 @@ export function ContractEndScreen({
 
               <WebCard title="4. Confirm">
                 <WebCardSection>
-                  <p className="web-dialog-text">
-                    Creates one draft Final settlement quote for review and invoicing, saves the closing readings and
-                    ends the contract on {formatDateWeb(endDate)}. This cannot be undone. When everything above is
-                    right, use the button in the live panel on the right.
-                  </p>
-                  {balance.missingReadings > 0 ? (
-                    <WebHint>Complete step 2 first: every row needs a reading or Settle without reading.</WebHint>
-                  ) : null}
+                  <WebHint>
+                    Creates a draft <strong>Final settlement</strong> quote and ends the contract on{" "}
+                    <strong>{formatDateWeb(endDate)}</strong>. Cannot be undone. Use the button in the live panel.
+                  </WebHint>
                 </WebCardSection>
               </WebCard>
             </>
@@ -468,10 +450,6 @@ function BalanceOverview({
   return (
     <WebCard title="3. Balance overview" meta={refreshing ? "Updating…" : undefined} aria-busy={refreshing}>
       <WebCardSection>
-        <p className="web-dialog-text">
-          What will be invoiced, credited and settled up to the end date. Read-only; it updates as you change the date
-          or the readings.
-        </p>
         <p className="web-dialog-section">Billing periods</p>
         {balance.periods.length === 0 ? <p className="web-dialog-text">No billing periods up to the end date.</p> : null}
       </WebCardSection>
@@ -516,7 +494,7 @@ function BalanceOverview({
       {balance.quotesToReplace.length > 0 ? (
         <WebCardSection>
           <WebHint>
-            Replaced by the final quote (not invoiced yet):{" "}
+            Replaced by the final quote:{" "}
             {balance.quotesToReplace.map((quote) => quote.quoteNumber ?? quote.name).join(", ")}.
           </WebHint>
         </WebCardSection>
@@ -525,7 +503,7 @@ function BalanceOverview({
       {balance.creditLines.length > 0 ? (
         <>
           <WebCardSection>
-            <p className="web-dialog-section">Credit for prepaid time after the end date</p>
+            <p className="web-dialog-section">Credit for prepaid time</p>
           </WebCardSection>
           <LinesTable lines={balance.creditLines} />
         </>
@@ -536,10 +514,8 @@ function BalanceOverview({
           <WebCardSection>
             <p className="web-dialog-section">Counter settlement</p>
             <WebHint>
-              Usage above the included volume is billed at the line&apos;s overage price. Usage below it (under-use) is
-              only credited, at the line&apos;s sales price, when <strong>Credit under-use</strong> is on for that contract
-              line. When it is off, the line is a minimum contract: the included volume stays paid, whatever was used.
-              Under-use is never credited while readings are incomplete.
+              Overage at the <strong>overage price</strong>. Under-use credited at the <strong>sales price</strong>, only
+              when <strong>Credit under-use</strong> is on.
             </WebHint>
           </WebCardSection>
           {balance.counterWindows.map((entry) => (

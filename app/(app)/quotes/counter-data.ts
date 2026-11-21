@@ -159,26 +159,17 @@ export interface UsageProviderOptions {
    * They replace any reading on `closingDate` for that asset/counter. */
   closingReadings?: ReadonlyMap<string, number>;
   closingDate?: string;
-  /** `assetId|volumeItemId` rows settled without a reading: the asset is excluded for that counter. */
-  skipped?: ReadonlySet<string>;
 }
 
 /** Usage per window and counter line (computeCounterUsage over the covered assets);
- * applies entered closing readings and skipped rows when given. */
+ * applies entered closing readings when given. */
 export function makeUsageProvider(options: UsageProviderOptions): UsageProvider {
-  const { contractId, data, closingReadings, closingDate, skipped } = options;
+  const { contractId, data, closingReadings, closingDate } = options;
   const baselines = data.coveredByContract.get(contractId) ?? new Map<string, string>();
   return (window: DateRange, line: BalanceContractLine): WindowUsage => {
     const volumeItemId = line.volumeItemId;
     if (!volumeItemId) return { usage: 0, issues: [], reviewReadingsInPeriod: 0 };
-    const covered = coveredAssetsForCounter(data, contractId, volumeItemId).filter(
-      (a) => !skipped?.has(`${a.id}|${volumeItemId}`),
-    );
-    const skippedAssets = skipped
-      ? coveredAssetsForCounter(data, contractId, volumeItemId).filter(
-          (a) => skipped.has(`${a.id}|${volumeItemId}`) && a.baseline <= window.end,
-        ).length
-      : 0;
+    const covered = coveredAssetsForCounter(data, contractId, volumeItemId);
     const readings = covered.flatMap((a) => {
       const key = `${a.id}|${volumeItemId}`;
       const list = data.readings.get(key) ?? [];
@@ -189,15 +180,12 @@ export function makeUsageProvider(options: UsageProviderOptions): UsageProvider 
         { assetId: a.id, readAt: `${closingDate}T12:00:00.000Z`, value: entered, needsReview: false },
       ];
     });
-    return {
-      ...computeCounterUsage(
-        covered.map((a) => ({ id: a.id, name: a.name })),
-        readings,
-        window.start,
-        window.end,
-        baselines,
-      ),
-      skippedAssets,
-    };
+    return computeCounterUsage(
+      covered.map((a) => ({ id: a.id, name: a.name })),
+      readings,
+      window.start,
+      window.end,
+      baselines,
+    );
   };
 }

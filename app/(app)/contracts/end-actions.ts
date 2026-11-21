@@ -41,8 +41,8 @@ import { requiredIsoDateSchema } from "./schema";
  *  - getContractEndBalance: read-only preview. End date in the future = 'schedule'
  *    mode (summary only); otherwise 'complete' mode with closing-reading rows and the
  *    full balance (periods, credits, counter windows, totals). Entered closing readings
- *    override stored readings on the end date and skipped rows are excluded, without
- *    saving anything.
+ *    override stored readings on the end date, without saving anything. Every
+ *    covered asset × counter needs a closing reading.
  *  - scheduleContractEnd / cancelScheduledContractEnd: future end date, contract stays
  *    active.
  *  - completeContractEnd: recomputes everything server-side (never trusts client
@@ -69,8 +69,6 @@ const endInputSchema = z.object({
   endDate: endDateSchema,
   /** Closing readings entered on the page (value on the end date). */
   closingReadings: z.array(rowKeySchema.extend({ value: assetVolumeReadingValueSchema })).max(2000).default([]),
-  /** Rows explicitly settled without a reading (asset excluded for that counter). */
-  skipped: z.array(rowKeySchema).max(2000).default([]),
 });
 
 export type ContractEndInput = z.input<typeof endInputSchema>;
@@ -111,8 +109,7 @@ export interface EndReadingRow {
   closingReading: { value: number; readAt: string } | null;
   /** Value entered in this request (preview), not saved yet. */
   enteredValue: number | null;
-  skipped: boolean;
-  /** Has an existing closing reading, an entered value or is skipped. */
+  /** Has an existing closing reading or an entered value. Every row needs one. */
   resolved: boolean;
 }
 
@@ -373,7 +370,6 @@ async function buildEndBalance(
     const counterData = loaded.data;
 
     const entered = new Map(input.closingReadings.map((r) => [`${r.assetId}|${r.volumeItemId}`, r.value]));
-    const skippedKeys = new Set(input.skipped.map((r) => `${r.assetId}|${r.volumeItemId}`));
 
     const seenCounters = new Set<string>();
     for (const line of counterLines) {
@@ -387,20 +383,11 @@ async function buildEndBalance(
         const valid = readings.filter((r) => !r.needsReview);
         const closing = valid.find((r) => r.readAt.slice(0, 10) === E) ?? null;
         const last = valid.find((r) => r.readAt.slice(0, 10) < E) ?? null;
-        const skipped = skippedKeys.has(key);
-        const enteredValue = closing || skipped ? null : (entered.get(key) ?? null);
-        if (skipped && entered.has(key)) {
-          blockers.push(`${asset.name} – ${line.counterLabel}: enter a reading or settle without one, not both.`);
-        }
+        const enteredValue = closing ? null : (entered.get(key) ?? null);
         if (enteredValue !== null && last && enteredValue < last.value) {
           const message = `${asset.name} – ${line.counterLabel}: closing reading ${enteredValue} is lower than the previous reading ${last.value}.`;
           blockers.push(message);
           warnings.push(message);
-        }
-        if (skipped) {
-          warnings.push(
-            `${asset.name} – ${line.counterLabel}: settled without a closing reading; this asset is excluded from the counter settlement.`,
-          );
         }
         if (enteredValue !== null) toSend.push({ asset_id: asset.id, volume_item_id: volumeItemId, value: enteredValue });
         readingRows.push({
@@ -413,8 +400,7 @@ async function buildEndBalance(
           lastReading: last ? { value: last.value, readAt: last.readAt } : null,
           closingReading: closing ? { value: closing.value, readAt: closing.readAt } : null,
           enteredValue,
-          skipped,
-          resolved: Boolean(closing) || enteredValue !== null || skipped,
+          resolved: Boolean(closing) || enteredValue !== null,
         });
       }
     }
@@ -423,7 +409,7 @@ async function buildEndBalance(
     );
 
     const rowKeys = new Set(readingRows.map((r) => `${r.assetId}|${r.volumeItemId}`));
-    for (const key of [...entered.keys(), ...skippedKeys]) {
+    for (const key of entered.keys()) {
       if (!rowKeys.has(key)) blockers.push("A reading was supplied for an asset or counter that is not part of this contract.");
     }
 
@@ -432,7 +418,6 @@ async function buildEndBalance(
       data: counterData,
       closingReadings: new Map(toSend.map((r) => [`${r.asset_id}|${r.volume_item_id}`, r.value])),
       closingDate: E,
-      skipped: new Set(readingRows.filter((r) => r.skipped).map((r) => `${r.assetId}|${r.volumeItemId}`)),
     });
   }
 

@@ -532,12 +532,6 @@ describe("under-use credit on incomplete data", () => {
     expect(counter?.underUseCreditAmount).toBe(0);
   });
 
-  it("emits no under-use credit when an asset was skipped", () => {
-    const plan = mk({ skippedAssets: 1 });
-    expect(plan.quoteLines).toEqual([]);
-    expect(plan.warnings).toContain("B/W pages: under-use not credited because readings are incomplete");
-  });
-
   it("still bills overage with incomplete data and records creditedUnderUse 0", () => {
     const plan = mk({ usage: 1500, issues: ["counter went down for Printer B"] });
     expect(plan.quoteLines).toHaveLength(1);

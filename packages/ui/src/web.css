@@ -1593,10 +1593,12 @@ html:has(.web-shell) body {
 .web-kv-value[data-numeric="true"] {
   font-variant-numeric: tabular-nums;
 }
-.web-kv-value a {
+.web-kv-value a,
+.web-rail-row a {
   color: var(--text-link);
   text-decoration: none;
 }
+.web-rail-row a:hover,
 .web-kv-value a:hover {
   color: var(--text-ink);
   text-decoration: underline;

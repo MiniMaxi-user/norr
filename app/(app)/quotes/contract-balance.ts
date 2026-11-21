@@ -405,13 +405,11 @@ export interface WindowUsage {
   usage: number;
   issues: string[];
   reviewReadingsInPeriod: number;
-  /** Covered assets of this counter excluded from the window (settled without a reading).
-   * Together with `issues` this marks the usage as incomplete: no under-use credit then. */
-  skippedAssets?: number;
 }
 
 /** Usage of the counter of `line` over `window` (the server action wires this to
- * computeCounterUsage with the readings and closing readings; skipped assets excluded). */
+ * computeCounterUsage with the readings and closing readings). Any `issues` mark the
+ * usage as incomplete: no under-use credit then. */
 export type UsageProvider = (window: DateRange, line: BalanceContractLine) => WindowUsage;
 
 export interface FinalBalanceInput {
@@ -517,9 +515,9 @@ export function evaluateCounterWindow(input: EvaluateCounterWindowInput): {
         `${line.counterLabel}: usage exceeds the included quantity but the line has no overage price; no overage line added.`,
       );
     }
-    // Incomplete data (missing/declining readings, skipped assets): usage is understated, so
-    // crediting under-use would over-credit. Overage behaviour is unchanged.
-    const incomplete = used.issues.length > 0 || (used.skippedAssets ?? 0) > 0;
+    // Incomplete data (missing/declining readings): usage is understated, so crediting
+    // under-use would over-credit. Overage behaviour is unchanged.
+    const incomplete = used.issues.length > 0;
     let underUseLine = incomplete ? null : buildUnderUseCreditLine(line, used.usage, included, label);
     if (incomplete && line.creditUnderUse && computeUnderUse(used.usage, included) > 0) {
       own.push(`${line.counterLabel}: under-use not credited because readings are incomplete`);

@@ -8,7 +8,6 @@ import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions
 import { buildContractTimeline } from "../../components/contract-timeline";
 import { getContractEndBalance } from "../../end-actions";
 import { ContractEndScreen } from "../../components/contract-end-screen";
-import { buildInvoicingExplanation } from "../../components/contract-invoicing-explanation";
 
 export const metadata = { title: "End contract" };
 
@@ -64,14 +63,6 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
   const contractAssets = contractAssetsResult.data?.contractAssets ?? [];
 
   const lines = lineItemsResult.data?.lineItems ?? [];
-  const explanation = buildInvoicingExplanation({
-    intervalMonths: contract.billing_terms?.interval_months ?? null,
-    timing: contract.invoicing_timing,
-    frequency: contract.counter_settlement_frequency,
-    settlementMonth: contract.counter_settlement_month,
-    creditsUnderUse: lines.some((row) => row.is_volume && row.volume_item_id && row.credit_under_use),
-    hasCounterLines: lines.some((row) => row.is_volume && row.volume_item_id),
-  });
 
   const timeline = buildContractTimeline({
     contract,
@@ -92,7 +83,6 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
       initialEndDate={initialEndDate}
       initialBalance={balanceResult.data ?? null}
       initialError={balanceResult.data ? null : (balanceResult.error ?? "Could not calculate the balance.")}
-      explanation={explanation}
       canSeeQuotes={canSeeQuotes}
       timeline={timeline}
     />
