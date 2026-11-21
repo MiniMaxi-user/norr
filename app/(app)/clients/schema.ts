@@ -257,14 +257,13 @@ export type SiteCreateInput = z.infer<typeof siteCreateSchema>;
 /** Every field optional for update (partial edit); still validated the same
  * way when present. Built from `siteBaseSchema` (not from the refined
  * `siteCreateSchema` — refine + partial doesn't compose in zod). `clientId`
- * stays optional-but-allowed on update (moving a site to a different client
- * of the *same* organization is a legitimate edit; moving it across
- * organizations is blocked at the DB trigger layer regardless — see
- * `derive_site_organization_id` in the clients/sites/assets migration).
+ * is NOT part of the update input: a site can never be moved to another
+ * client (product owner decision; also enforced in the DB, see
+ * 20261125110000_sites_client_id_immutable.sql).
  * The "at least one purpose flag true" invariant can't be fully checked here
  * in isolation (a partial update may omit all three, meaning "leave
  * as-is") — `updateSite` re-checks it after merging with the existing row. */
-export const siteUpdateSchema = siteBaseSchema.partial();
+export const siteUpdateSchema = siteBaseSchema.omit({ clientId: true }).partial();
 
 export type SiteUpdateInput = z.infer<typeof siteUpdateSchema>;
 

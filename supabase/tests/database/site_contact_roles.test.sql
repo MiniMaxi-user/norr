@@ -13,7 +13,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(22);
 
 insert into auth.users (id, email) values
   ('e2111111-1111-1111-1111-111111111111', 'owner-a@test.local'),
@@ -199,13 +199,25 @@ select is(
   'updating other site columns keeps the matrix rows'
 ); -- 19
 
-update public.sites set client_id = 'e3000000-0000-0000-0000-0000000000a2' where id = 'e4000000-0000-0000-0000-00000000000a';
+select throws_ok(
+  $$ update public.sites set client_id = 'e3000000-0000-0000-0000-0000000000a2' where id = 'e4000000-0000-0000-0000-00000000000a' $$,
+  '42501', null,
+  'an authenticated owner cannot change sites.client_id (column grant revoked)'
+); -- 20
+
+reset role;
+
+select throws_ok(
+  $$ update public.sites set client_id = 'e3000000-0000-0000-0000-0000000000a2' where id = 'e4000000-0000-0000-0000-00000000000a' $$,
+  '23514', 'The client of a site cannot be changed',
+  'the trigger refuses a client change even without the grant'
+); -- 21
 
 select is(
   (select count(*)::int from public.site_contact_roles where site_id = 'e4000000-0000-0000-0000-00000000000a'),
-  0,
-  're-parenting a site clears its matrix rows'
-); -- 20
+  2,
+  'the matrix rows are still present after the refused client change'
+); -- 22
 
 select * from finish();
 rollback;

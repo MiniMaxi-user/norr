@@ -192,9 +192,9 @@ select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select throws_ok(
   $$ update public.sites set client_id = 'e0000000-0000-0000-0000-00000000000b' where id = 'f0000000-0000-0000-0000-00000000000a' $$,
-  '23514',
+  '42501',
   null,
-  'owner_a cannot re-parent org_a''s site onto org_b''s client (cross-organization move blocked by derive_site_organization_id trigger)'
+  'owner_a cannot re-parent org_a''s site onto org_b''s client (any client change is refused: column UPDATE grant on client_id revoked, #273)'
 ); -- 16
 
 select is(

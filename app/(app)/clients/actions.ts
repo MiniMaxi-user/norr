@@ -295,7 +295,6 @@ function toSiteInsertRow(
  * omits the argument and the columns are left out of `row` entirely. */
 function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; longitude: number }) {
   const row: Record<string, unknown> = {};
-  if (input.clientId !== undefined) row.client_id = input.clientId;
   if (input.addressLine1 !== undefined) row.address_line1 = input.addressLine1;
   if (input.addressLine2 !== undefined) row.address_line2 = input.addressLine2 ?? null;
   if (input.postalCode !== undefined) row.postal_code = input.postalCode;
@@ -1213,13 +1212,11 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
 /**
  * Updates a site and (when `contactRoles` is submitted) its contact matrix,
  * all-or-nothing as far as possible (no transaction across the two writes):
- *  - Normal edit: the matrix diff is written FIRST (insert new, delete removed).
- *    If that fails, or the site row update then fails, the previous matrix rows
- *    are restored (deleted rows re-inserted, inserted rows removed), so purpose
- *    flags are never saved without their contacts.
- *  - Reparent (`clientId` changes): the site row is updated first (a DB trigger
- *    clears the old client's roles), then the new roles are inserted. If that
- *    insert fails the error says "Site moved, but its contacts could not be saved".
+ * The matrix diff is written FIRST (insert new, delete removed). If that fails,
+ * or the site row update then fails, the previous matrix rows are restored
+ * (deleted rows re-inserted, inserted rows removed), so purpose flags are never
+ * saved without their contacts. A site's client can never change (not in the
+ * update input, and refused by the DB).
  */
 export async function updateSite(id: string, input: unknown): Promise<ActionResult<{ site: SiteRecord }>> {
   const idResult = uuidSchema.safeParse(id);
@@ -1264,46 +1261,22 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
   // Cross-row purpose coverage (app-layer invariant, not DB-enforced — see
   // uncoveredPurposesAfterDrop): if this update would drop a purpose this
   // site currently covers, another site for the same (origin) client must
-  // still cover it, or the write is rejected. Re-parenting to a different
-  // client (`clientId` changing) counts as dropping every purpose this site
-  // currently covers from the origin client, regardless of what the merged
-  // flags end up being on the row itself — the row leaves that client
-  // entirely, so it can no longer cover anything for it.
-  const isReparenting = parsed.data.clientId !== undefined && parsed.data.clientId !== existingSite.client_id;
-
-  // A site leaving its client is no longer that (former) client's designated
-  // primary. `enforce_single_primary_site` only fires `... OF is_primary
-  // ...`, so a `client_id`-only change wouldn't otherwise touch `is_primary`
-  // — and if the destination client already has its own primary site, both
-  // rows would end up `is_primary = true` for the new `client_id`, tripping
-  // `sites_one_primary_per_client_idx` (a raw, unmapped 23505). Force it off
-  // here, regardless of what the update input submitted for `isPrimary` (same
-  // "server enforces it regardless of submitted input" style as the
-  // first-site-forces-all-flags override in `createSite`). If the caller
-  // wants the site primary at its new client, that's a separate, explicit
-  // follow-up update.
-  if (isReparenting) {
-    parsed.data.isPrimary = false;
-  }
+  // still cover it, or the write is rejected.
 
   // Issue #273: same "merge with existing, then require if the merged purpose
   // flag is true" treatment as `mergedPurpose` above, against the contact
-  // matrix. Submitted `contactRoles` replace the site's rows; omitted keeps
-  // them — except on reparent, where the old client's contacts can't carry
-  // over, so the matrix is cleared unless resubmitted.
+  // matrix. Submitted `contactRoles` replace the site's rows; omitted keeps them.
   const { data: existingRoleRows, error: existingRolesError } = await supabase
     .from("site_contact_roles")
     .select("contact_id, role")
     .eq("site_id", idResult.data);
   if (existingRolesError) return fail(mapDbError(existingRolesError));
 
-  const rolesChange = parsed.data.contactRoles !== undefined || isReparenting;
+  const rolesChange = parsed.data.contactRoles !== undefined;
   const desiredRoles: SiteContactRoleInput[] =
     parsed.data.contactRoles !== undefined
       ? dedupeContactRoles(parsed.data.contactRoles)
-      : isReparenting
-        ? []
-        : ((existingRoleRows ?? []) as { contact_id: string; role: SiteContactRole }[]).map((r) => ({
+      : ((existingRoleRows ?? []) as { contact_id: string; role: SiteContactRole }[]).map((r) => ({
             contactId: r.contact_id,
             role: r.role,
           }));
@@ -1324,7 +1297,7 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
 
   const droppedPurposes = SITE_PURPOSE_KEYS.filter((key) => {
     if (existingSite[key] !== true) return false;
-    return isReparenting || mergedPurpose[key] === false;
+    return mergedPurpose[key] === false;
   });
   if (droppedPurposes.length > 0) {
     const { data: otherSites, error: otherSitesError } = await supabase
@@ -1385,34 +1358,23 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
     return ok({ site: data as SiteRecord });
   };
 
-  let updatedSite: SiteRecord;
-  if (isReparenting) {
-    // Reparent: the site row goes first (a DB trigger clears the old client's
-    // roles), then the new roles are inserted.
-    const siteResult = await updateSiteRow();
-    if (!siteResult.data) return siteResult;
-    updatedSite = siteResult.data.site;
-    const { error: roleError } = await replaceSiteContactRoles(supabase, idResult.data, desiredRoles);
-    if (roleError) return fail(`Site moved, but its contacts could not be saved: ${roleError}`);
-  } else {
-    // Matrix first, then the site row; if the site update fails the previous
-    // matrix rows are restored.
-    let undo: () => Promise<void> = async () => {};
-    if (rolesChange) {
-      const replaced = await replaceSiteContactRoles(supabase, idResult.data, desiredRoles);
-      if (replaced.error) {
-        await replaced.undo();
-        return fail(replaced.error);
-      }
-      undo = replaced.undo;
+  // Matrix first, then the site row; if the site update fails the previous
+  // matrix rows are restored.
+  let undo: () => Promise<void> = async () => {};
+  if (rolesChange) {
+    const replaced = await replaceSiteContactRoles(supabase, idResult.data, desiredRoles);
+    if (replaced.error) {
+      await replaced.undo();
+      return fail(replaced.error);
     }
-    const siteResult = await updateSiteRow();
-    if (!siteResult.data) {
-      await undo();
-      return siteResult;
-    }
-    updatedSite = siteResult.data.site;
+    undo = replaced.undo;
   }
+  const siteResult = await updateSiteRow();
+  if (!siteResult.data) {
+    await undo();
+    return siteResult;
+  }
+  const updatedSite: SiteRecord = siteResult.data.site;
   return ok({ site: { ...updatedSite, contact_roles: toRecordContactRoles(desiredRoles) } });
 }
 
