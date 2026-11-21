@@ -42,6 +42,9 @@ export interface ComboboxOption {
    * matching against `label` alone when omitted — every existing caller's
    * filtering behavior is unchanged. */
   keywords?: string;
+  /** Optional second, muted line under the label in the dropdown (e.g. an
+   * asset's model, serial number and site). Also matched during filtering. */
+  description?: string;
 }
 
 export interface ComboboxProps {
@@ -184,7 +187,7 @@ export function Combobox({
     const q = query.trim().toLowerCase();
     if (!open || !q) return options;
     return options.filter((option) =>
-      (option.keywords ? `${option.label} ${option.keywords}` : option.label).toLowerCase().includes(q),
+      [option.label, option.description, option.keywords].filter(Boolean).join(" ").toLowerCase().includes(q),
     );
   }, [options, query, open]);
 
@@ -395,7 +398,14 @@ export function Combobox({
                           onMouseEnter={() => setHighlightedIndex(index)}
                           onClick={() => selectOption(option)}
                         >
-                          <span>{option.label}</span>
+                          {option.description ? (
+                            <span className="ui-combobox-option-text">
+                              <span>{option.label}</span>
+                              <span className="ui-combobox-option-description">{option.description}</span>
+                            </span>
+                          ) : (
+                            <span>{option.label}</span>
+                          )}
                           {selected ? <Check className="ui-combobox-option-check" aria-hidden="true" /> : null}
                         </li>
                       );

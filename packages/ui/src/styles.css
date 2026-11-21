@@ -1876,6 +1876,17 @@ select.ui-client-card-status-select {
   font-size: var(--ui-text-base);
   cursor: pointer;
 }
+.ui-combobox-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.ui-combobox-option-description {
+  color: var(--ui-muted-subtle);
+  font-size: var(--ui-text-sm);
+  font-weight: 400;
+}
 .ui-combobox-option-highlighted {
   background: var(--ui-surface-hover);
 }

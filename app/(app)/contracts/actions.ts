@@ -195,6 +195,10 @@ export interface ContractAssetRecord {
     name: string;
     client_id: string;
     site_id: string;
+    serial_number: string | null;
+    external_reference: string | null;
+    asset_model: { name: string } | null;
+    asset_brand: { label: string } | null;
   } | null;
 }
 
@@ -206,7 +210,8 @@ const CONTRACT_SELECT =
   "*, contract_type:reference_list_items!contracts_type_id_fkey(value,label,color), sla_tier:reference_list_items!contracts_sla_tier_id_fkey(value,label,color), billing_terms:reference_list_items!contracts_billing_terms_id_fkey(value,label,color,interval_months), billing_period:reference_list_items!contracts_billing_period_id_fkey(value,label,color,interval_months)";
 
 /** Shared select shape for every query returning a `ContractAssetRecord`. */
-const CONTRACT_ASSET_SELECT = "*, asset:assets(id, name, client_id, site_id)";
+const CONTRACT_ASSET_SELECT =
+  "*, asset:assets(id, name, client_id, site_id, serial_number, external_reference, asset_model:asset_models!assets_model_id_fkey(name), asset_brand:reference_list_items!assets_brand_item_id_fkey(label))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 

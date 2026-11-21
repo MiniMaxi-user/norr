@@ -25,11 +25,20 @@ export interface ContractAssetsPanelProps {
 
 const RECENT_DAYS = 30;
 
+/** "Brand Model", either part optional; null when neither is set. */
+function modelLabel(brand: string | null | undefined, model: string | null | undefined): string | null {
+  const text = [brand, model].filter(Boolean).join(" ");
+  return text || null;
+}
+
 /**
  * Assets tab (design system, issue #222): the assets this contract covers, as
- * one card with a FilterBar and a table — Site dropdown and a Recent · Earlier
- * · All toggle on when the asset was linked. `+ Asset` opens the small link
- * dialog (a searchable list of the client's assets that are not linked yet);
+ * one card with a FilterBar and a table (asset ID, model, serial number,
+ * external reference, site) — Site dropdown and a Recent · Earlier · All
+ * toggle on when the asset was linked; the search matches asset ID, external
+ * reference and serial number. `+ Asset` opens the small link dialog (a
+ * searchable list of the client's assets that are not linked yet, each with
+ * its model, serial number, external reference and site);
  * Open and Unlink live in one ··· menu per row.
  */
 export function ContractAssetsPanel({
@@ -72,6 +81,25 @@ export function ContractAssetsPanel({
         mono: true,
         sortValue: (row) => row.asset?.name ?? "",
         render: (row) => row.asset?.name ?? "Unknown asset",
+      },
+      {
+        id: "model",
+        header: "Model",
+        sortValue: (row) => modelLabel(row.asset?.asset_brand?.label, row.asset?.asset_model?.name) ?? "",
+        render: (row) => modelLabel(row.asset?.asset_brand?.label, row.asset?.asset_model?.name) ?? "—",
+      },
+      {
+        id: "serial",
+        header: "Serial number",
+        mono: true,
+        sortValue: (row) => row.asset?.serial_number ?? "",
+        render: (row) => row.asset?.serial_number ?? "—",
+      },
+      {
+        id: "externalReference",
+        header: "External ref.",
+        sortValue: (row) => row.asset?.external_reference ?? "",
+        render: (row) => row.asset?.external_reference ?? "—",
       },
       {
         id: "site",
@@ -136,7 +164,9 @@ export function ContractAssetsPanel({
         rows={contractAssets}
         getRowKey={(row) => row.asset_id}
         columns={columns}
-        searchText={(row) => `${row.asset?.name ?? ""} ${siteOf(row) ?? ""}`}
+        searchText={(row) =>
+          [row.asset?.name, row.asset?.external_reference, row.asset?.serial_number, siteOf(row)].filter(Boolean).join(" ")
+        }
         noun="assets"
         dropdowns={dropdowns}
         segment={segment}
@@ -190,8 +220,18 @@ function LinkAssetDialog({
 
   const options: ComboboxOption[] = available.map((asset) => {
     const site = siteLabelById.get(asset.site_id);
-    return { value: asset.id, label: site ? `${asset.name} — ${site}` : asset.name };
+    const model = modelLabel(asset.asset_brand?.label, asset.asset_model?.name);
+    const description = [
+      model,
+      asset.serial_number ? `SN ${asset.serial_number}` : null,
+      asset.external_reference ? `Ext. ref. ${asset.external_reference}` : null,
+      site,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return { value: asset.id, label: asset.name, description: description || undefined };
   });
+  const selected = available.find((asset) => asset.id === assetId) ?? null;
 
   async function handleSave() {
     if (!assetId) {
@@ -234,10 +274,30 @@ function LinkAssetDialog({
             options={options}
             value={assetId}
             onChange={setAssetId}
-            placeholder="Search by asset ID or site…"
+            placeholder="Search by asset ID, external ref. or serial number…"
             emptyMessage="No matching assets"
           />
         </div>
+        {selected ? (
+          <div className="web-kv">
+            <div className="web-kv-col">
+              {[
+                ["Type", selected.asset_type?.label ?? null],
+                ["Model", modelLabel(selected.asset_brand?.label, selected.asset_model?.name)],
+                ["Serial number", selected.serial_number],
+                ["External ref.", selected.external_reference],
+                ["Site", siteLabelById.get(selected.site_id) ?? null],
+              ].map(([label, value]) => (
+                <div key={label} className="web-kv-row">
+                  <span className="web-kv-label">{label}</span>
+                  <span className="web-kv-value" data-empty={value ? undefined : "true"}>
+                    {value ?? "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </WebConfirmDialog>
   );
