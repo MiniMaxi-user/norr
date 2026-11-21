@@ -34,7 +34,7 @@ function optionalUuid(message: string) {
 /** `YYYY-MM-DD` date-only string, same shape as `assets.installedAt`/
  * `warrantyUntil` in `app/(app)/assets/schema.ts` — `contracts.start_date`/
  * `end_date` are both plain `date` columns, not `timestamptz`. */
-const requiredIsoDateSchema = z
+export const requiredIsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date in YYYY-MM-DD format.");
 

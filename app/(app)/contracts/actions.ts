@@ -8,6 +8,7 @@ import { can, canAny } from "@/lib/rbac/permissions";
 import {
   contractCreateSchema,
   contractStatusSchema,
+  requiredIsoDateSchema,
   contractUpdateSchema,
   type ContractInvoicingTiming,
   type ContractStatus,
@@ -526,10 +527,16 @@ export interface SetContractStatusResult {
  * mapped to a clean `changed: false` result with the structured list (re-read
  * through the RPC); any other refusal (e.g. reactivating after the end date)
  * is returned as an error with the DB's message.
+ *
+ * Ending a contract requires `options.endDate` (follow-up on #270, option A):
+ * it is saved as `end_date` together with status `ended`, so the final
+ * counter settlement (end_date before today) applies to a manually ended
+ * contract too. It must not be before the start date.
  */
 export async function setContractStatus(
   contractId: string,
   status: unknown,
+  options: { endDate?: unknown } = {},
 ): Promise<ActionResult<SetContractStatusResult>> {
   const idResult = uuidSchema.safeParse(contractId);
   if (!idResult.success) return fail("Invalid contract id.");
@@ -548,9 +555,9 @@ export async function setContractStatus(
   const supabase = await createSupabaseServerClient();
   const { data: current, error: currentError } = await supabase
     .from("contracts")
-    .select("status")
+    .select("status, start_date")
     .eq("id", idResult.data)
-    .maybeSingle<{ status: ContractStatus }>();
+    .maybeSingle<{ status: ContractStatus; start_date: string }>();
   if (currentError) return fail(mapDbError(currentError));
   if (!current) return fail("Contract not found.");
   if (current.status === target) return fail(`The contract is already ${target}.`);
@@ -558,9 +565,19 @@ export async function setContractStatus(
     return fail(`A ${current.status} contract cannot be set to ${target}.`);
   }
 
+  const patch: { status: ContractStatus; end_date?: string } = { status: target };
+  if (target === "ended") {
+    const endDateResult = requiredIsoDateSchema.safeParse(options.endDate);
+    if (!endDateResult.success) return fail("Enter the end date of the contract.");
+    if (endDateResult.data < current.start_date) {
+      return fail("The end date cannot be before the start date of the contract.");
+    }
+    patch.end_date = endDateResult.data;
+  }
+
   const { data, error } = await supabase
     .from("contracts")
-    .update({ status: target })
+    .update(patch)
     .eq("id", idResult.data)
     .eq("status", current.status)
     .select(CONTRACT_SELECT)
