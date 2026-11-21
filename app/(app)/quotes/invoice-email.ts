@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import type { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { kickEmailOutbox, queueEmail } from "@/lib/email/outbox";
+import { hasEmail, loadSiteRoleContacts, uniqueEmails } from "../clients/site-contact-roles";
 import { ensureInvoiceUbl } from "../invoices/invoice-ubl";
 import { formatInvoiceTotal, getInvoicePdfById } from "./invoice-render";
 import {
@@ -46,8 +47,8 @@ interface InvoiceEmailSettingsRow {
 }
 
 /**
- * Best-effort invoice / credit note e-mail. Never throws. Recipient = the
- * invoice contact of the client's `is_invoice_address` site (the same flow for
+ * Best-effort invoice / credit note e-mail. Never throws. Recipients = all
+ * contacts ticked for Invoice (site contact matrix, #273) on the client's `is_invoice_address` site(s) (the same flow for
  * a credit note as for the invoice).
  *
  * Recording policy on `invoices` (emailed_to / emailed_at / email_error):
@@ -104,14 +105,19 @@ export async function sendInvoiceEmailById(
 
     const { data: invoiceSites, error: siteError } = await supabase
       .from("sites")
-      .select("invoice_contact_id")
+      .select("id")
       .eq("client_id", quoteRow.client_id)
-      .eq("is_invoice_address", true)
-      .not("invoice_contact_id", "is", null);
+      .eq("is_invoice_address", true);
     if (siteError) return { status: "failed", to: null, error: siteError.message };
 
-    const contactId = (invoiceSites ?? []).map((s) => s.invoice_contact_id as string | null).find(Boolean);
-    if (!contactId) return { status: "skipped", reason: "No invoice address or invoice contact" };
+    // Issue #273: every contact ticked for Invoice on the invoice site(s), in one e-mail.
+    const { contacts: invoiceContacts, error: contactError } = await loadSiteRoleContacts(
+      supabase,
+      (invoiceSites ?? []).map((site) => site.id as string),
+      "invoice",
+    );
+    if (contactError) return { status: "failed", to: null, error: contactError };
+    if (invoiceContacts.length === 0) return { status: "skipped", reason: "No invoice address or invoice contact" };
 
     const record = async (patch: {
       emailed_to?: string | null;
@@ -121,25 +127,22 @@ export async function sendInvoiceEmailById(
       await supabase.from("invoices").update(patch).eq("id", invoiceRow.id);
     };
 
-    const { data: contact, error: contactError } = await supabase
-      .from("contacts")
-      .select("email")
-      .eq("id", contactId)
-      .maybeSingle<{ email: string | null }>();
-    if (contactError) return { status: "failed", to: null, error: contactError.message };
-
-    const rawEmail = contact?.email?.trim() || null;
-    if (!rawEmail) {
+    // Skip contacts whose e-mail was cleared (or is invalid) since they were ticked.
+    const withEmail = invoiceContacts.filter(hasEmail);
+    if (withEmail.length === 0) {
       const error = "Invoice contact has no e-mail address";
       await record({ email_error: error });
       return { status: "failed", to: null, error };
     }
-    if (!z.string().email().safeParse(rawEmail).success) {
+    const recipients = uniqueEmails(
+      withEmail.map((c) => c.email as string).filter((email) => z.string().email().safeParse(email.trim()).success),
+    );
+    if (recipients.length === 0) {
       const error = "Invoice contact has an invalid e-mail address";
       await record({ email_error: error });
       return { status: "failed", to: null, error };
     }
-    const to = rawEmail;
+    const to = recipients.join(", ");
 
     if (!settings?.from_email) {
       const error = "Invoice email sender not configured";
@@ -232,7 +235,7 @@ export async function sendInvoiceEmailById(
       kind: invoiceRow.kind,
       invoiceId: invoiceRow.id,
       from: formatMailbox(settings.from_name, settings.from_email),
-      to: [to],
+      to: recipients,
       cc: settings.cc_email ? [settings.cc_email] : undefined,
       subject,
       text,

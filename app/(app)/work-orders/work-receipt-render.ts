@@ -1,5 +1,6 @@
 import "server-only";
 
+import { loadSiteRoleContacts } from "../clients/site-contact-roles";
 import { createElement, type ReactElement } from "react";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 import { computeRoundedMinutes } from "@yourorg/time-rounding";
@@ -64,7 +65,6 @@ interface SiteRow {
   postal_code: string | null;
   city: string | null;
   country: string | null;
-  visit_contact_id: string | null;
 }
 
 interface AssetRow {
@@ -205,7 +205,7 @@ export async function renderWorkReceiptPdf(
             .from("sites")
             // No `name`: sites are identified by their address only
             // (20260825120000_sites_drop_name.sql).
-            .select("address_line1, address_line2, postal_code, city, country, visit_contact_id")
+            .select("address_line1, address_line2, postal_code, city, country")
             .eq("id", wo.site_id)
             .maybeSingle<SiteRow>()
         : Promise.resolve({ data: null, error: null }),
@@ -267,15 +267,12 @@ export async function renderWorkReceiptPdf(
     }
     const nameOf = (id: string | null) => (id ? (nameById.get(id) ?? null) : null);
 
-    // Visit contact of the site.
+    // Visit contact of the site: the first visit-role contact of the site contact
+    // matrix (#273); primary contact first, then name.
     let visitContact: string | null = null;
-    if (site?.visit_contact_id) {
-      const { data: contact } = await supabase
-        .from("contacts")
-        .select("name")
-        .eq("id", site.visit_contact_id)
-        .maybeSingle<{ name: string }>();
-      visitContact = contact?.name ?? null;
+    if (wo.site_id) {
+      const { contacts: visitContacts } = await loadSiteRoleContacts(supabase, [wo.site_id], "visit");
+      visitContact = visitContacts[0]?.name ?? null;
     }
 
     // Counter labels for the volume readings.

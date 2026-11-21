@@ -10,6 +10,7 @@ import { approvalBlockers } from "./approval-readiness";
 import { isWorkOrderCheckedOutInField } from "./checkout-lock";
 import { missingVolumeCounters } from "./volume-readiness";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
+import { autoSendWorkReceiptOnCompleted, type WorkReceiptAutoSendOutcome } from "./work-receipt-auto-send";
 
 /**
  * Server Actions for the Work Orders module (issue #13 backend half, second
@@ -638,7 +639,7 @@ export async function deleteWorkOrder(id: string): Promise<ActionResult<{ delete
  */
 export async function approveWorkOrderReview(
   id: string,
-): Promise<ActionResult<{ workOrder: WorkOrderRecord }>> {
+): Promise<ActionResult<{ workOrder: WorkOrderRecord; autoSend: WorkReceiptAutoSendOutcome }>> {
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid work order id.");
 
@@ -724,10 +725,23 @@ export async function approveWorkOrderReview(
     .from("work_orders")
     .update({ status_id: completedItem.id, approved_at: new Date().toISOString() })
     .eq("id", idResult.data)
+    // Conditional on the status validated above: a concurrent approve/reopen
+    // must not complete (or auto-send) twice.
+    .eq("status_id", currentStatusItem.id)
     .select(WORK_ORDER_SELECT)
     .maybeSingle();
 
   if (error) return fail(mapDbError(error));
-  if (!data) return fail("Work order not found, or you do not have permission to approve it.");
-  return ok({ workOrder: data as WorkOrderRecord });
+  if (!data) return fail("This work order is no longer awaiting review.");
+
+  // Issue #273: automatic work receipt e-mail on Completed. Never fails the
+  // approval: every problem comes back as an `autoSend` outcome.
+  const autoSend = await autoSendWorkReceiptOnCompleted(supabase, {
+    actor: ctx.context.actor,
+    organizationId: ctx.context.organizationId,
+    organizationName: ctx.context.session.organization?.name ?? "",
+    workOrderId: target.id,
+    siteId: target.site_id,
+  });
+  return ok({ workOrder: data as WorkOrderRecord, autoSend });
 }

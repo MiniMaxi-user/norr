@@ -385,11 +385,11 @@ select throws_ok(
 ); -- 37
 
 -- ---------------------------------------------------------------------------
--- sites: visit_contact_id / delivery_contact_id / invoice_contact_id (issue
--- #52, supabase/migrations/20260826150000_sites_contact_persons.sql).
+-- site_contact_roles (issue #273, supabase/migrations/20261125090000_site_contact_roles.sql;
+-- replaced the sites.*_contact_id columns of issue #52).
 -- Requires a second client under org_a (so we can distinguish "same
 -- organization, different client" from "different organization" when
--- exercising validate_site_contact_persons) and a contacts fixture per
+-- exercising validate_site_contact_role) and a contacts fixture per
 -- client.
 -- ---------------------------------------------------------------------------
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
@@ -423,33 +423,32 @@ select lives_ok(
 select pg_temp.act_as('b1111111-1111-1111-1111-111111111111');
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, is_visit_address, is_delivery_address, is_invoice_address,
-       visit_contact_id, delivery_contact_id, invoice_contact_id)
-     values ('f0000000-0000-0000-0000-00000000000d', 'e0000000-0000-0000-0000-00000000000a', true, true, true,
-       'c1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001') $$,
-  'owner_a can insert a Client A site with visit/delivery/invoice_contact_id all set to Contact A1 (same client)'
+  $$ insert into public.sites (id, client_id, is_visit_address, is_delivery_address, is_invoice_address)
+     values ('f0000000-0000-0000-0000-00000000000d', 'e0000000-0000-0000-0000-00000000000a', true, true, true) $$,
+  'owner_a can insert a Client A site'
 ); -- 42
 
-select is(
-  (select visit_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
-  'c1000000-0000-0000-0000-000000000001'::uuid,
-  'the new site''s visit_contact_id was persisted as Contact A1'
+select lives_ok(
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000d', 'c1000000-0000-0000-0000-000000000001', 'visit'),
+            ('f0000000-0000-0000-0000-00000000000d', 'c1000000-0000-0000-0000-000000000001', 'delivery') $$,
+  'owner_a can tick Contact A1 (same client, no e-mail) for visit and delivery on the Client A site (site_contact_roles)'
 ); -- 43
 
 select throws_ok(
-  $$ insert into public.sites (client_id, is_visit_address, visit_contact_id)
-     values ('e0000000-0000-0000-0000-00000000000a', true, 'c1000000-0000-0000-0000-000000000002') $$,
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000d', 'c1000000-0000-0000-0000-000000000002', 'visit') $$,
   '23514',
   null,
-  'a Client A site cannot use Contact A2 (Client A2''s contact — same organization, different client) as visit_contact_id (validate_site_contact_persons)'
+  'a Client A site cannot use Contact A2 (Client A2''s contact — same organization, different client) for a role (validate_site_contact_role)'
 ); -- 44
 
 select throws_ok(
-  $$ insert into public.sites (client_id, is_delivery_address, delivery_contact_id)
-     values ('e0000000-0000-0000-0000-00000000000a', true, 'c1000000-0000-0000-0000-000000000003') $$,
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000d', 'c1000000-0000-0000-0000-000000000003', 'delivery') $$,
   '23514',
   null,
-  'a Client A site cannot use Contact B1 (a different organization''s contact) as delivery_contact_id (validate_site_contact_persons)'
+  'a Client A site cannot use Contact B1 (a different organization''s contact) for a role (validate_site_contact_role)'
 ); -- 45
 
 select lives_ok(
@@ -458,34 +457,37 @@ select lives_ok(
 ); -- 46
 
 select is(
-  (select visit_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
-  null::uuid,
-  'deleting Contact A1 cleared (not blocked, not cascade-deleted) the site''s visit_contact_id (on delete set null)'
+  (select count(*)::int from public.site_contact_roles where site_id = 'f0000000-0000-0000-0000-00000000000d'),
+  0,
+  'deleting Contact A1 cascaded away its site_contact_roles rows (not blocked)'
 ); -- 47
 
-select is(
-  (select delivery_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
-  null::uuid,
-  'deleting Contact A1 also cleared the site''s delivery_contact_id'
+select lives_ok(
+  $$ insert into public.sites (id, client_id, is_invoice_address)
+     values ('f0000000-0000-0000-0000-00000000000e', 'e0000000-0000-0000-0000-00000000000c', true) $$,
+  'owner_a can insert a Client A2 site'
 ); -- 48
 
-select is(
-  (select invoice_contact_id from public.sites where id = 'f0000000-0000-0000-0000-00000000000d'),
-  null::uuid,
-  'deleting Contact A1 also cleared the site''s invoice_contact_id'
+select throws_ok(
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000e', 'c1000000-0000-0000-0000-000000000002', 'invoice') $$,
+  '23514',
+  null,
+  'Contact A2 has no e-mail address, so it cannot be ticked for the invoice role (validate_site_contact_role)'
 ); -- 49
 
 select lives_ok(
-  $$ insert into public.sites (id, client_id, is_invoice_address, invoice_contact_id)
-     values ('f0000000-0000-0000-0000-00000000000e', 'e0000000-0000-0000-0000-00000000000c', true, 'c1000000-0000-0000-0000-000000000002') $$,
-  'owner_a can insert a Client A2 site with invoice_contact_id = Contact A2 (same client)'
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000e', 'c1000000-0000-0000-0000-000000000002', 'visit') $$,
+  'owner_a can tick Contact A2 for visit on the Client A2 site (same client)'
 ); -- 50
 
 select throws_ok(
-  $$ update public.sites set client_id = 'e0000000-0000-0000-0000-00000000000a' where id = 'f0000000-0000-0000-0000-00000000000e' $$,
-  '23514',
+  $$ insert into public.site_contact_roles (site_id, contact_id, role)
+     values ('f0000000-0000-0000-0000-00000000000e', 'c1000000-0000-0000-0000-000000000002', 'visit') $$,
+  '23505',
   null,
-  're-parenting the site from Client A2 to Client A is rejected because its invoice_contact_id (Contact A2) would no longer belong to the new client_id (validate_site_contact_persons re-checked on UPDATE OF client_id)'
+  'the same (site, contact, role) cannot be ticked twice (unique)'
 ); -- 51
 
 -- ---------------------------------------------------------------------------

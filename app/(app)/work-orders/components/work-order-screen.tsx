@@ -133,6 +133,10 @@ export interface WorkOrderScreenProps {
   createdQuote?: { id: string; name: string | null } | null;
   /** The invoiced quote, once the work order is Invoiced (issue #233). */
   invoice?: WorkOrderInvoiceInfo | null;
+  /** Org setting: e-mail the work receipt automatically on Completed (issue #273). */
+  autoSendWorkReceipts?: boolean;
+  /** Work receipt contacts with an e-mail on this work order's site. */
+  workReceiptRecipientCount?: number;
   canApproveReview?: boolean;
   hours?: WorkOrderHoursData | null;
   material?: WorkOrderMaterialData | null;
@@ -218,6 +222,8 @@ export function WorkOrderScreen({
   canCreateQuote,
   createdQuote = null,
   invoice = null,
+  autoSendWorkReceipts = false,
+  workReceiptRecipientCount = 1,
   canApproveReview,
   hours = null,
   material = null,
@@ -422,7 +428,21 @@ export function WorkOrderScreen({
                     toast({ title: "Not approved", description: result.error ?? "Could not approve this work order.", tone: "danger", duration: 6000 });
                     return;
                   }
-                  toast({ title: "Work order approved", tone: "success", duration: 3000 });
+                  const autoSend = result.data.autoSend;
+                  const autoSendNote =
+                    autoSend?.status === "queued"
+                      ? `Work receipt e-mailed to ${autoSend.to.join(", ")}`
+                      : autoSend?.status === "no_recipients"
+                        ? "No work receipt recipient for this site"
+                        : autoSend?.status === "failed"
+                          ? `Work receipt not e-mailed: ${autoSend.error}`
+                          : undefined;
+                  toast({
+                    title: "Work order approved",
+                    description: autoSendNote,
+                    tone: autoSend?.status === "failed" || autoSend?.status === "no_recipients" ? "warning" : "success",
+                    duration: autoSendNote ? 6000 : 3000,
+                  });
                   refresh();
                 });
               },
@@ -571,7 +591,14 @@ export function WorkOrderScreen({
       Hours, material and the checklist open on the work order&apos;s own page once it is created.
     </p>
   ) : (
-    <WorkOrderRail livePanel={livePanel} assetRecord={asset?.id === saved.assetId ? asset : null} invoice={invoice} />
+    <WorkOrderRail
+      livePanel={livePanel}
+      assetRecord={asset?.id === saved.assetId ? asset : null}
+      invoice={invoice}
+      missingReceiptRecipient={
+        autoSendWorkReceipts && workReceiptRecipientCount === 0 ? { clientId: saved.clientId } : null
+      }
+    />
   );
 
   const ids = webTabIds(tab);

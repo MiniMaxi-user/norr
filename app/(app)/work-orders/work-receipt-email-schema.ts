@@ -57,6 +57,8 @@ export const workReceiptEmailSettingsSchema = z.object({
   bodyTemplate: z.preprocess(emptyToUndefined, z.string().max(5000, "Body is too long.").optional()),
   /** E-mail work receipts at all. Omitted = unchanged / default true. */
   emailWorkReceipts: z.boolean({ invalid_type_error: "Invalid value." }).optional(),
+  /** E-mail the latest work receipt automatically when a work order is completed (#273). Omitted = unchanged / default false. */
+  autoSendOnCompleted: z.boolean({ invalid_type_error: "Invalid value." }).optional(),
 });
 
 export type WorkReceiptEmailSettingsInput = z.infer<typeof workReceiptEmailSettingsSchema>;

@@ -29,10 +29,25 @@ export interface WorkOrderReceiptsPanelProps {
 // Same shape check the settings forms use for a typical address.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const MAX_RECIPIENTS = 10;
+
+/** Splits on commas, semicolons and whitespace; drops empties and duplicates. */
+function parseAddresses(value: string): string[] {
+  const seen = new Set<string>();
+  return value
+    .split(/[,;\s]+/)
+    .map((part) => part.trim())
+    .filter((part) => {
+      if (!part || seen.has(part.toLowerCase())) return false;
+      seen.add(part.toLowerCase());
+      return true;
+    });
+}
+
 /**
  * Work receipts tab (issue #226): every generated version of the work receipt
  * (werkbon) for this work order, newest first, each with "Open" (the PDF in a
- * new tab) and "Send…" (one-recipient dialog). Generating is the header's
+ * new tab) and "Send…" (dialog with one or more recipients). Generating is the header's
  * primary action in `WorkOrderScreen`; before the work order is approved the
  * tab only explains when a receipt becomes available.
  */
@@ -159,24 +174,38 @@ function SendWorkReceiptDialog({
       if (cancelled) return;
       setLoading(false);
       if (!result.data) return;
-      const { suggested, options: fetched } = result.data;
+      const { suggestedRecipients, options: fetched } = result.data;
       setOptions(fetched);
-      if (suggested) setTo((current) => current || suggested);
+      if (suggestedRecipients.length > 0) setTo((current) => current || suggestedRecipients.join(", "));
     });
     return () => {
       cancelled = true;
     };
   }, [workOrderId]);
 
-  const address = to.trim();
-  const invalid = touched && !EMAIL_PATTERN.test(address) ? "Enter a valid email address, like name@company.com" : null;
+  const addresses = parseAddresses(to);
+  const badAddresses = addresses.filter((address) => !EMAIL_PATTERN.test(address));
+  const countError =
+    addresses.length === 0 ? "Enter at least one email address" : addresses.length > MAX_RECIPIENTS ? `At most ${MAX_RECIPIENTS} addresses` : null;
+  const invalid = !touched
+    ? null
+    : badAddresses.length > 0
+      ? `Not a valid email address: ${badAddresses.join(", ")}`
+      : countError;
+  const canSubmit = badAddresses.length === 0 && !countError;
+
+  function toggleOption(email: string) {
+    const current = parseAddresses(to);
+    const exists = current.some((a) => a.toLowerCase() === email.toLowerCase());
+    setTo((exists ? current.filter((a) => a.toLowerCase() !== email.toLowerCase()) : [...current, email]).join(", "));
+  }
 
   function submit() {
     setTouched(true);
-    if (!EMAIL_PATTERN.test(address)) return;
+    if (!canSubmit) return;
     setError(null);
     startSend(async () => {
-      const result = await sendWorkReceipt(receipt.id, address);
+      const result = await sendWorkReceipt(receipt.id, addresses);
       if (!result.data) {
         setError(result.error ?? "Could not send the work receipt.");
         return;
@@ -186,7 +215,7 @@ function SendWorkReceiptDialog({
         router.refresh();
         return;
       }
-      toast({ title: "Work receipt email queued", description: `${receipt.receiptNumber} to ${result.data.to}`, tone: "success", duration: 4000 });
+      toast({ title: "Work receipt email queued", description: `${receipt.receiptNumber} to ${([] as string[]).concat(result.data.to).join(", ")}`, tone: "success", duration: 4000 });
       router.refresh();
       onClose();
     });
@@ -207,14 +236,15 @@ function SendWorkReceiptDialog({
               {error}
             </p>
           ) : null}
-          <WebField label="Send to" htmlFor="work-receipt-to" required error={invalid} messageId="work-receipt-to-error">
+          <WebField label="Send to (separate with commas)" htmlFor="work-receipt-to" required error={invalid} messageId="work-receipt-to-error">
             <WebInput
               id="work-receipt-to"
-              type="email"
+              type="text"
+              inputMode="email"
               autoComplete="off"
               autoFocus
               value={to}
-              placeholder={loading ? "Loading suggestions…" : "name@company.com"}
+              placeholder={loading ? "Loading suggestions…" : "name@company.com, other@company.com"}
               aria-describedby={invalid ? "work-receipt-to-error" : undefined}
               onChange={(event) => setTo(event.target.value)}
               onBlur={() => setTouched(true)}
@@ -229,7 +259,7 @@ function SendWorkReceiptDialog({
           {options.length > 0 ? (
             <div role="group" aria-label="Known contacts">
               {options.map((option) => (
-                <WebButton key={option.email} size="sm" onClick={() => setTo(option.email)}>
+                <WebButton key={option.email} size="sm" onClick={() => toggleOption(option.email)}>
                   {option.label}
                 </WebButton>
               ))}
@@ -242,7 +272,7 @@ function SendWorkReceiptDialog({
           Cancel
         </WebButton>
         <WebButton variant="primary" loading={pending} onClick={submit}>
-          {address ? `Send to ${address}` : "Send"}
+          {addresses.length > 1 ? `Send to ${addresses.length} recipients` : addresses.length === 1 ? `Send to ${addresses[0]}` : "Send"}
         </WebButton>
       </Dialog.Footer>
     </Dialog>

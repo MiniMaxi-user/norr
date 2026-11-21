@@ -24,6 +24,7 @@ type WorkReceiptEmailDraft = {
   subjectTemplate: string;
   bodyTemplate: string;
   emailWorkReceipts: boolean;
+  autoSendOnCompleted: boolean;
 };
 
 type WorkReceiptEmailKey = keyof WorkReceiptEmailDraft & string;
@@ -51,6 +52,7 @@ function draftFrom(settings: WorkReceiptEmailSettings): WorkReceiptEmailDraft {
     subjectTemplate: settings.subjectTemplate ?? "",
     bodyTemplate: settings.bodyTemplate ?? "",
     emailWorkReceipts: settings.emailWorkReceipts ?? true,
+    autoSendOnCompleted: settings.autoSendOnCompleted ?? false,
   };
 }
 
@@ -81,6 +83,7 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
           value.length > 5000 ? `Body is ${value.length} characters, the maximum is 5000. Remove ${value.length - 5000}` : null,
       },
       emailWorkReceipts: { label: "Work receipts", format: (value) => (value ? "on" : "off") },
+      autoSendOnCompleted: { label: "Automatic e-mail", format: (value) => (value ? "on" : "off") },
     }),
     [],
   );
@@ -99,6 +102,7 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
         subjectTemplate: draft.subjectTemplate,
         bodyTemplate: draft.bodyTemplate,
         emailWorkReceipts: draft.emailWorkReceipts,
+        autoSendOnCompleted: draft.autoSendOnCompleted,
       });
       if (!result.data) {
         return {
@@ -130,6 +134,14 @@ export function WorkReceiptEmailSettingsForm({ initial, canWrite }: WorkReceiptE
             checkboxLabel: "E-mail work receipts",
             read: saved.emailWorkReceipts ? "On" : "Off",
             note: "Off: work receipts cannot be e-mailed.",
+          },
+          {
+            key: "autoSendOnCompleted",
+            label: "Automatic e-mail",
+            kind: "checkbox",
+            checkboxLabel: "Automatic e-mail on Completed",
+            read: saved.autoSendOnCompleted ? "On" : "Off",
+            note: "On: the latest work receipt goes to the site's Work receipt contacts after review.",
           },
         ]}
       />

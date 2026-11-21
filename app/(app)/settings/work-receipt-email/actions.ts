@@ -25,6 +25,8 @@ export interface WorkReceiptEmailSettings {
   bodyTemplate: string | null;
   /** E-mail work receipts at all (default true). */
   emailWorkReceipts: boolean;
+  /** E-mail the latest work receipt automatically when a work order is completed (default false). */
+  autoSendOnCompleted: boolean;
 }
 
 interface SettingsRow {
@@ -34,9 +36,10 @@ interface SettingsRow {
   subject_template: string | null;
   body_template: string | null;
   email_work_receipts: boolean | null;
+  auto_send_on_completed: boolean | null;
 }
 
-const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, email_work_receipts";
+const SETTINGS_COLUMNS = "from_email, from_name, cc_email, subject_template, body_template, email_work_receipts, auto_send_on_completed";
 
 function toSettings(row: SettingsRow | null): WorkReceiptEmailSettings {
   return {
@@ -46,6 +49,7 @@ function toSettings(row: SettingsRow | null): WorkReceiptEmailSettings {
     subjectTemplate: row?.subject_template ?? null,
     bodyTemplate: row?.body_template ?? null,
     emailWorkReceipts: row?.email_work_receipts ?? true,
+    autoSendOnCompleted: row?.auto_send_on_completed ?? false,
   };
 }
 
@@ -93,6 +97,7 @@ export async function updateWorkReceiptEmailSettings(
     subject_template: v.subjectTemplate ?? null,
     body_template: v.bodyTemplate ?? null,
     ...(v.emailWorkReceipts !== undefined ? { email_work_receipts: v.emailWorkReceipts } : {}),
+    ...(v.autoSendOnCompleted !== undefined ? { auto_send_on_completed: v.autoSendOnCompleted } : {}),
   };
 
   const supabase = await createSupabaseServerClient();

@@ -13,6 +13,9 @@ import {
   siteUpdateSchema,
   SITE_PURPOSE_REQUIRED_MESSAGE,
   siteContactRequiredMessage,
+  hasContactRole,
+  type SiteContactRole,
+  type SiteContactRoleInput,
   type SiteCreateInput,
   type SiteUpdateInput,
 } from "./schema";
@@ -144,13 +147,11 @@ export interface SiteRecord {
   is_visit_address: boolean;
   is_invoice_address: boolean;
   is_delivery_address: boolean;
-  /** The visit/invoice/delivery contact person (issue #52) — a
-   * `public.contacts.id` belonging to this same site's `client_id`
-   * (`validate_site_contact_persons` trigger), or `null` when the matching
-   * `is_*_address` flag above is false. */
-  visit_contact_id: string | null;
-  invoice_contact_id: string | null;
-  delivery_contact_id: string | null;
+  /** The site contact matrix (issue #273): one entry per (contact, role).
+   * Only populated by `getClient`, `createSite` and `updateSite` — the
+   * other projections in this file don't load it (reads back `undefined`
+   * there, same loose-typing tradeoff as `region_id` below). */
+  contact_roles: { contact_id: string; role: SiteContactRole }[];
   is_primary: boolean;
   /** This site's own contact number — phone lives on the site, not the
    * client (a client can have multiple sites, each with its own number). See
@@ -276,15 +277,6 @@ function toSiteInsertRow(
     is_visit_address: purpose.isVisitAddress,
     is_invoice_address: purpose.isInvoiceAddress,
     is_delivery_address: purpose.isDeliveryAddress,
-    // Not part of `purpose` (unlike the flags above): the first-site
-    // override forces every purpose flag true but does NOT require these —
-    // see `createSite`'s contact-requiredness check below, which only runs
-    // for the normal (non-first-site) path. A forced-true first site simply
-    // gets whatever contact (if any) was submitted, same as any other
-    // optional field.
-    visit_contact_id: input.visitContactId ?? null,
-    invoice_contact_id: input.invoiceContactId ?? null,
-    delivery_contact_id: input.deliveryContactId ?? null,
     is_primary: purpose.isPrimary,
     phone: input.phone ?? null,
     latitude: geocoded?.latitude ?? null,
@@ -313,9 +305,6 @@ function toSiteUpdateRow(input: SiteUpdateInput, geocoded?: { latitude: number; 
   if (input.isVisitAddress !== undefined) row.is_visit_address = input.isVisitAddress;
   if (input.isInvoiceAddress !== undefined) row.is_invoice_address = input.isInvoiceAddress;
   if (input.isDeliveryAddress !== undefined) row.is_delivery_address = input.isDeliveryAddress;
-  if (input.visitContactId !== undefined) row.visit_contact_id = input.visitContactId ?? null;
-  if (input.invoiceContactId !== undefined) row.invoice_contact_id = input.invoiceContactId ?? null;
-  if (input.deliveryContactId !== undefined) row.delivery_contact_id = input.deliveryContactId ?? null;
   if (input.isPrimary !== undefined) row.is_primary = input.isPrimary;
   if (input.phone !== undefined) row.phone = input.phone ?? null;
   if (geocoded) {
@@ -565,7 +554,11 @@ export async function getClient(
     // `sites.name` no longer exists (issue #42) — ordered by address line 1
     // instead, the closest equivalent to an alphabetical "name" ordering now
     // that a site is identified purely by its address.
-    supabase.from("sites").select("*").eq("client_id", idResult.data).order("address_line1", { ascending: true }),
+    supabase
+      .from("sites")
+      .select("*, site_contact_roles(contact_id, role)")
+      .eq("client_id", idResult.data)
+      .order("address_line1", { ascending: true }),
   ]);
 
   if (clientResult.error) return fail(mapDbError(clientResult.error));
@@ -582,7 +575,12 @@ export async function getClient(
 
   return ok({
     client: { ...clientRow, organization_is_active: linkedOrganization?.is_active ?? null } as ClientRecord,
-    sites: (sitesResult.data ?? []) as SiteRecord[],
+    sites: ((sitesResult.data ?? []) as unknown as (Omit<SiteRecord, "contact_roles"> & {
+      site_contact_roles: SiteRecord["contact_roles"] | null;
+    })[]).map(({ site_contact_roles: roles, ...site }) => ({
+      ...site,
+      contact_roles: (roles ?? []).map((r) => ({ contact_id: r.contact_id, role: r.role })),
+    })) as SiteRecord[],
   });
 }
 
@@ -885,7 +883,7 @@ export async function listSites(clientId: string): Promise<ActionResult<{ sites:
   // `phone`/`is_visit_address`/`is_invoice_address`/`is_delivery_address`/
   // `is_primary` plus the full address via `formatSiteAddress`). Excludes
   // `client_id` (already scoped by the `clientId` argument, never read back),
-  // `visit_contact_id`/`invoice_contact_id`/`delivery_contact_id`/`notes`/
+  // `notes`/
   // `geocoded_at`/`created_by`/`created_at`/`updated_at` (none of this
   // function's consumers read those).
   const { data, error } = await supabase
@@ -1026,6 +1024,91 @@ function uncoveredPurposesError(uncovered: SitePurposeKey[]): string {
   return `This client would be left with no site covering: ${names}. Assign that ${noun} to another site first.`;
 }
 
+function dedupeContactRoles(roles: readonly SiteContactRoleInput[] | undefined): SiteContactRoleInput[] {
+  const seen = new Set<string>();
+  const out: SiteContactRoleInput[] = [];
+  for (const entry of roles ?? []) {
+    const key = `${entry.contactId}:${entry.role}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
+}
+
+function mapSiteContactRoleDbError(error: { code?: string; message: string }): string {
+  if (error.code === "23514") {
+    return "A contact must belong to this site's client, and a contact needs an e-mail address to be used for invoices or work receipts.";
+  }
+  return mapDbError(error);
+}
+
+
+/**
+ * Replaces a site's contact matrix rows with `desired` without ever leaving
+ * the site contact-less on failure: computes the diff against the current
+ * rows, inserts the new rows first, then deletes the removed ones. Returns an
+ * error message, or `null` on success. RLS (owner-only write) and the
+ * `validate_site_contact_role` trigger (same client, e-mail for
+ * invoice/work_receipt) are the backstops.
+ */
+async function replaceSiteContactRoles(
+  supabase: SupabaseServerClient,
+  siteId: string,
+  desired: SiteContactRoleInput[],
+): Promise<{ error: string | null; undo: () => Promise<void> }> {
+  const noUndo = async () => {};
+  const { data: current, error: currentError } = await supabase
+    .from("site_contact_roles")
+    .select("id, contact_id, role")
+    .eq("site_id", siteId);
+  if (currentError) return { error: mapDbError(currentError), undo: noUndo };
+
+  const currentRows = (current ?? []) as { id: string; contact_id: string; role: SiteContactRole }[];
+  const currentKeys = new Set(currentRows.map((r) => `${r.contact_id}:${r.role}`));
+  const desiredKeys = new Set(desired.map((r) => `${r.contactId}:${r.role}`));
+
+  const toInsert = desired.filter((r) => !currentKeys.has(`${r.contactId}:${r.role}`));
+  const toDeleteIds = currentRows.filter((r) => !desiredKeys.has(`${r.contact_id}:${r.role}`)).map((r) => r.id);
+
+  // Best-effort compensation for the caller: put the previous state back.
+  const undo = async () => {
+    const deletedRows = currentRows.filter((r) => toDeleteIds.includes(r.id));
+    if (deletedRows.length > 0) {
+      await supabase
+        .from("site_contact_roles")
+        .upsert(
+          deletedRows.map((r) => ({ site_id: siteId, contact_id: r.contact_id, role: r.role })),
+          { onConflict: "site_id,contact_id,role", ignoreDuplicates: true },
+        );
+    }
+    for (const r of toInsert) {
+      await supabase
+        .from("site_contact_roles")
+        .delete()
+        .eq("site_id", siteId)
+        .eq("contact_id", r.contactId)
+        .eq("role", r.role);
+    }
+  };
+
+  if (toInsert.length > 0) {
+    const { error: insertError } = await supabase
+      .from("site_contact_roles")
+      .insert(toInsert.map((r) => ({ site_id: siteId, contact_id: r.contactId, role: r.role })));
+    if (insertError) return { error: mapSiteContactRoleDbError(insertError), undo: noUndo };
+  }
+  if (toDeleteIds.length > 0) {
+    const { error: deleteError } = await supabase.from("site_contact_roles").delete().in("id", toDeleteIds);
+    if (deleteError) return { error: mapDbError(deleteError), undo };
+  }
+  return { error: null, undo };
+}
+
+function toRecordContactRoles(roles: SiteContactRoleInput[]): SiteRecord["contact_roles"] {
+  return roles.map((r) => ({ contact_id: r.contactId, role: r.role }));
+}
+
 export async function createSite(input: unknown): Promise<ActionResult<{ site: SiteRecord }>> {
   const ctx = await requireModuleContext("clients");
   if (!ctx.ok) return fail(ctx.error);
@@ -1075,18 +1158,19 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
     // required for the forced-first-site branch above — see
     // `toSiteInsertRow`'s comment on why contacts stay independent of the
     // `purpose` override there.
-    if (purpose.isVisitAddress && !parsed.data.visitContactId) {
-      return fail("Please fix the highlighted fields.", { visitContactId: [siteContactRequiredMessage("visit")] });
+    const submittedRoles = parsed.data.contactRoles;
+    const roleErrors: Record<string, string[]> = {};
+    if (purpose.isVisitAddress && !hasContactRole(submittedRoles, "visit")) {
+      roleErrors["contactRoles.visit"] = [siteContactRequiredMessage("visit")];
     }
-    if (purpose.isInvoiceAddress && !parsed.data.invoiceContactId) {
-      return fail("Please fix the highlighted fields.", {
-        invoiceContactId: [siteContactRequiredMessage("invoice")],
-      });
+    if (purpose.isInvoiceAddress && !hasContactRole(submittedRoles, "invoice")) {
+      roleErrors["contactRoles.invoice"] = [siteContactRequiredMessage("invoice")];
     }
-    if (purpose.isDeliveryAddress && !parsed.data.deliveryContactId) {
-      return fail("Please fix the highlighted fields.", {
-        deliveryContactId: [siteContactRequiredMessage("delivery")],
-      });
+    if (purpose.isDeliveryAddress && !hasContactRole(submittedRoles, "delivery")) {
+      roleErrors["contactRoles.delivery"] = [siteContactRequiredMessage("delivery")];
+    }
+    if (Object.keys(roleErrors).length > 0) {
+      return fail("Please fix the highlighted fields.", roleErrors);
     }
   }
 
@@ -1111,9 +1195,32 @@ export async function createSite(input: unknown): Promise<ActionResult<{ site: S
     .single();
 
   if (error) return fail(mapSiteDbError(error));
-  return ok({ site: data as SiteRecord });
+
+  const createdSite = data as SiteRecord;
+  const desiredRoles = dedupeContactRoles(parsed.data.contactRoles);
+  if (desiredRoles.length > 0) {
+    const { error: roleError } = await replaceSiteContactRoles(supabase, createdSite.id, desiredRoles);
+    if (roleError) {
+      // Don't leave a site behind that the caller thinks failed: the contact
+      // rows are part of creating it.
+      await supabase.from("sites").delete().eq("id", createdSite.id);
+      return fail(roleError);
+    }
+  }
+  return ok({ site: { ...createdSite, contact_roles: toRecordContactRoles(desiredRoles) } });
 }
 
+/**
+ * Updates a site and (when `contactRoles` is submitted) its contact matrix,
+ * all-or-nothing as far as possible (no transaction across the two writes):
+ *  - Normal edit: the matrix diff is written FIRST (insert new, delete removed).
+ *    If that fails, or the site row update then fails, the previous matrix rows
+ *    are restored (deleted rows re-inserted, inserted rows removed), so purpose
+ *    flags are never saved without their contacts.
+ *  - Reparent (`clientId` changes): the site row is updated first (a DB trigger
+ *    clears the old client's roles), then the new roles are inserted. If that
+ *    insert fails the error says "Site moved, but its contacts could not be saved".
+ */
 export async function updateSite(id: string, input: unknown): Promise<ActionResult<{ site: SiteRecord }>> {
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid site id.");
@@ -1179,44 +1286,40 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
     parsed.data.isPrimary = false;
   }
 
-  // Issue #52: same "merge with existing row, then require if the merged
-  // purpose flag is true" treatment as `mergedPurpose` above. On reparent,
-  // an existing contact reference isn't carried over — it belongs to the
-  // OLD client, and `validate_site_contact_persons` would reject the write
-  // outright if it stayed pointed at a contact from a different client than
-  // this site is about to have. A contact resubmitted in this same update is
-  // still honored (and gets freshly validated, against the *new* client, by
-  // that same trigger); only a non-resubmitted one is cleared.
-  const mergedContacts = {
-    visit_contact_id:
-      parsed.data.visitContactId !== undefined
-        ? parsed.data.visitContactId
-        : isReparenting
-          ? null
-          : existingSite.visit_contact_id,
-    invoice_contact_id:
-      parsed.data.invoiceContactId !== undefined
-        ? parsed.data.invoiceContactId
-        : isReparenting
-          ? null
-          : existingSite.invoice_contact_id,
-    delivery_contact_id:
-      parsed.data.deliveryContactId !== undefined
-        ? parsed.data.deliveryContactId
-        : isReparenting
-          ? null
-          : existingSite.delivery_contact_id,
-  };
-  if (mergedPurpose.is_visit_address && !mergedContacts.visit_contact_id) {
-    return fail("Please fix the highlighted fields.", { visitContactId: [siteContactRequiredMessage("visit")] });
+  // Issue #273: same "merge with existing, then require if the merged purpose
+  // flag is true" treatment as `mergedPurpose` above, against the contact
+  // matrix. Submitted `contactRoles` replace the site's rows; omitted keeps
+  // them — except on reparent, where the old client's contacts can't carry
+  // over, so the matrix is cleared unless resubmitted.
+  const { data: existingRoleRows, error: existingRolesError } = await supabase
+    .from("site_contact_roles")
+    .select("contact_id, role")
+    .eq("site_id", idResult.data);
+  if (existingRolesError) return fail(mapDbError(existingRolesError));
+
+  const rolesChange = parsed.data.contactRoles !== undefined || isReparenting;
+  const desiredRoles: SiteContactRoleInput[] =
+    parsed.data.contactRoles !== undefined
+      ? dedupeContactRoles(parsed.data.contactRoles)
+      : isReparenting
+        ? []
+        : ((existingRoleRows ?? []) as { contact_id: string; role: SiteContactRole }[]).map((r) => ({
+            contactId: r.contact_id,
+            role: r.role,
+          }));
+
+  const roleErrors: Record<string, string[]> = {};
+  if (mergedPurpose.is_visit_address && !hasContactRole(desiredRoles, "visit")) {
+    roleErrors["contactRoles.visit"] = [siteContactRequiredMessage("visit")];
   }
-  if (mergedPurpose.is_invoice_address && !mergedContacts.invoice_contact_id) {
-    return fail("Please fix the highlighted fields.", { invoiceContactId: [siteContactRequiredMessage("invoice")] });
+  if (mergedPurpose.is_invoice_address && !hasContactRole(desiredRoles, "invoice")) {
+    roleErrors["contactRoles.invoice"] = [siteContactRequiredMessage("invoice")];
   }
-  if (mergedPurpose.is_delivery_address && !mergedContacts.delivery_contact_id) {
-    return fail("Please fix the highlighted fields.", {
-      deliveryContactId: [siteContactRequiredMessage("delivery")],
-    });
+  if (mergedPurpose.is_delivery_address && !hasContactRole(desiredRoles, "delivery")) {
+    roleErrors["contactRoles.delivery"] = [siteContactRequiredMessage("delivery")];
+  }
+  if (Object.keys(roleErrors).length > 0) {
+    return fail("Please fix the highlighted fields.", roleErrors);
   }
 
   const droppedPurposes = SITE_PURPOSE_KEYS.filter((key) => {
@@ -1265,31 +1368,52 @@ export async function updateSite(id: string, input: unknown): Promise<ActionResu
   }
 
   const row = toSiteUpdateRow(parsed.data, geocoded);
-  // See `mergedContacts` above: a reparent clears any contact id this update
-  // didn't itself resubmit, so `row` (built purely from what was submitted)
-  // needs the same explicit clearing — otherwise a non-resubmitted old-client
-  // contact reference would simply be left out of `row` entirely and survive
-  // in the DB untouched, tripping `validate_site_contact_persons` against
-  // the new `client_id`.
-  if (isReparenting) {
-    if (parsed.data.visitContactId === undefined) row.visit_contact_id = null;
-    if (parsed.data.invoiceContactId === undefined) row.invoice_contact_id = null;
-    if (parsed.data.deliveryContactId === undefined) row.delivery_contact_id = null;
-  }
-  if (Object.keys(row).length === 0) {
+  if (Object.keys(row).length === 0 && !rolesChange) {
     return fail("No changes provided.");
   }
 
-  const { data, error } = await supabase
-    .from("sites")
-    .update(row)
-    .eq("id", idResult.data)
-    .select("*")
-    .maybeSingle();
+  const updateSiteRow = async (): Promise<ActionResult<{ site: SiteRecord }>> => {
+    if (Object.keys(row).length === 0) return ok({ site: existingSite });
+    const { data, error } = await supabase
+      .from("sites")
+      .update(row)
+      .eq("id", idResult.data)
+      .select("*")
+      .maybeSingle();
+    if (error) return fail(mapSiteDbError(error));
+    if (!data) return fail("Site not found, or you do not have permission to update it.");
+    return ok({ site: data as SiteRecord });
+  };
 
-  if (error) return fail(mapSiteDbError(error));
-  if (!data) return fail("Site not found, or you do not have permission to update it.");
-  return ok({ site: data as SiteRecord });
+  let updatedSite: SiteRecord;
+  if (isReparenting) {
+    // Reparent: the site row goes first (a DB trigger clears the old client's
+    // roles), then the new roles are inserted.
+    const siteResult = await updateSiteRow();
+    if (!siteResult.data) return siteResult;
+    updatedSite = siteResult.data.site;
+    const { error: roleError } = await replaceSiteContactRoles(supabase, idResult.data, desiredRoles);
+    if (roleError) return fail(`Site moved, but its contacts could not be saved: ${roleError}`);
+  } else {
+    // Matrix first, then the site row; if the site update fails the previous
+    // matrix rows are restored.
+    let undo: () => Promise<void> = async () => {};
+    if (rolesChange) {
+      const replaced = await replaceSiteContactRoles(supabase, idResult.data, desiredRoles);
+      if (replaced.error) {
+        await replaced.undo();
+        return fail(replaced.error);
+      }
+      undo = replaced.undo;
+    }
+    const siteResult = await updateSiteRow();
+    if (!siteResult.data) {
+      await undo();
+      return siteResult;
+    }
+    updatedSite = siteResult.data.site;
+  }
+  return ok({ site: { ...updatedSite, contact_roles: toRecordContactRoles(desiredRoles) } });
 }
 
 /**

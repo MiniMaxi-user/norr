@@ -5,14 +5,11 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
-import { kickEmailOutbox, queueEmail } from "@/lib/email/outbox";
 import { getLatestWorkReceiptOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
-import { renderWorkReceiptPdf, getWorkReceiptEmailValues } from "./work-receipt-render";
-import {
-  DEFAULT_WORK_RECEIPT_EMAIL_BODY,
-  DEFAULT_WORK_RECEIPT_EMAIL_SUBJECT,
-  renderWorkReceiptEmailTemplate,
-} from "./work-receipt-email-schema";
+import { hasEmail, loadSiteRoleContacts, uniqueEmails, type SiteRoleContact } from "../clients/site-contact-roles";
+import type { SiteContactRole } from "../clients/schema";
+import { renderWorkReceiptPdf } from "./work-receipt-render";
+import { queueWorkReceiptEmail } from "./work-receipt-send";
 
 /**
  * Server Actions for work receipts ("werkbon", issue #226).
@@ -117,24 +114,28 @@ async function toRecords(
   }));
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function formatMailbox(name: string | null, email: string): string {
-  const cleanName = (name ?? "").replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
-  return cleanName ? `${cleanName} <${email}>` : email;
-}
-
 // ---------------------------------------------------------------------------
 // listWorkReceipts
 // ---------------------------------------------------------------------------
 
 /** Receipts of one work order, newest first. A caller without `work_receipts`
- * read access (engineer) gets an empty list with every flag false. */
-export async function listWorkReceipts(
-  workOrderId: string,
-): Promise<ActionResult<{ receipts: WorkReceiptRecord[]; canGenerate: boolean; canSend: boolean; isApproved: boolean }>> {
+ * read access (engineer) gets an empty list with every flag false.
+ *
+ * Issue #273: also `autoSendWorkReceipts` (the organization sends the latest
+ * receipt automatically on Completed: auto-send on AND e-mailing work receipts
+ * not switched off) and `workReceiptRecipientCount` (the site's Work receipt
+ * contacts that have an e-mail address), so the UI can show a "no recipient"
+ * notice. */
+export async function listWorkReceipts(workOrderId: string): Promise<
+  ActionResult<{
+    receipts: WorkReceiptRecord[];
+    canGenerate: boolean;
+    canSend: boolean;
+    isApproved: boolean;
+    autoSendWorkReceipts: boolean;
+    workReceiptRecipientCount: number;
+  }>
+> {
   const idResult = uuidSchema.safeParse(workOrderId);
   if (!idResult.success) return fail("Invalid work order id.");
 
@@ -142,22 +143,34 @@ export async function listWorkReceipts(
   if (!ctx.ok) return fail(ctx.error);
   const { actor } = ctx.context;
   if (!can(actor, "work_receipts", "read")) {
-    return ok({ receipts: [], canGenerate: false, canSend: false, isApproved: false });
+    return ok({
+      receipts: [],
+      canGenerate: false,
+      canSend: false,
+      isApproved: false,
+      autoSendWorkReceipts: false,
+      workReceiptRecipientCount: 0,
+    });
   }
 
   const supabase = await createSupabaseServerClient();
-  const [statusResult, receiptsResult] = await Promise.all([
+  const [statusResult, receiptsResult, settingsResult] = await Promise.all([
     supabase
       .from("work_orders")
-      .select("work_order_status:reference_list_items!work_orders_status_id_fkey(value)")
+      .select("site_id, work_order_status:reference_list_items!work_orders_status_id_fkey(value)")
       .eq("id", idResult.data)
-      .maybeSingle<{ work_order_status: { value: string } | null }>(),
+      .maybeSingle<{ site_id: string | null; work_order_status: { value: string } | null }>(),
     supabase
       .from("work_receipts")
       .select(RECEIPT_COLUMNS)
       .eq("work_order_id", idResult.data)
       .order("version", { ascending: false })
       .returns<ReceiptRow[]>(),
+    supabase
+      .from("work_receipt_email_settings")
+      .select("auto_send_on_completed, email_work_receipts")
+      .eq("organization_id", ctx.context.organizationId)
+      .maybeSingle<{ auto_send_on_completed: boolean | null; email_work_receipts: boolean | null }>(),
   ]);
   if (statusResult.error) return fail(mapDbError(statusResult.error));
   if (!statusResult.data) return fail("Work order not found, or you do not have permission to view it.");
@@ -165,11 +178,22 @@ export async function listWorkReceipts(
 
   const isApproved = CLOSED_STATUSES.includes(statusResult.data.work_order_status?.value ?? "");
   const receipts = await toRecords(supabase, receiptsResult.data ?? [], can(actor, "work_receipts", "update"));
+
+  // A settings read the caller may not have (RLS) simply reads as "off".
+  const autoSendWorkReceipts =
+    settingsResult.data?.auto_send_on_completed === true && settingsResult.data.email_work_receipts !== false;
+  let workReceiptRecipientCount = 0;
+  if (autoSendWorkReceipts && statusResult.data.site_id) {
+    const { contacts } = await loadSiteRoleContacts(supabase, [statusResult.data.site_id], "work_receipt");
+    workReceiptRecipientCount = contacts.filter(hasEmail).length;
+  }
   return ok({
     receipts,
     canGenerate: can(actor, "work_receipts", "create") && isApproved,
     canSend: can(actor, "work_receipts", "update"),
     isApproved,
+    autoSendWorkReceipts,
+    workReceiptRecipientCount,
   });
 }
 
@@ -241,12 +265,6 @@ export async function generateWorkReceipt(workOrderId: string): Promise<ActionRe
 // getWorkReceiptRecipientOptions
 // ---------------------------------------------------------------------------
 
-interface SiteContactIds {
-  visit_contact_id: string | null;
-  delivery_contact_id: string | null;
-  invoice_contact_id: string | null;
-}
-
 interface ContactRow {
   id: string;
   name: string;
@@ -254,9 +272,26 @@ interface ContactRow {
   is_primary: boolean;
 }
 
+const MAX_RECEIPT_RECIPIENTS = 10;
+
+const ROLE_OPTION_LABELS: Record<SiteContactRole, string> = {
+  work_receipt: "site work receipt contact",
+  visit: "site visit contact",
+  delivery: "site delivery contact",
+  invoice: "site invoice contact",
+};
+
+const ROLE_OPTION_ORDER: SiteContactRole[] = ["work_receipt", "visit", "delivery", "invoice"];
+
+/**
+ * `suggestedRecipients`: the e-mail addresses of the site's Work receipt
+ * contacts (site contact matrix, #273; contacts whose e-mail was cleared since
+ * are skipped), primary contact first, then name. `options`: every address
+ * that can be picked (site contacts per role, then the client's contacts).
+ */
 export async function getWorkReceiptRecipientOptions(
   workOrderId: string,
-): Promise<ActionResult<{ suggested: string | null; options: { email: string; label: string }[] }>> {
+): Promise<ActionResult<{ suggestedRecipients: string[]; options: { email: string; label: string }[] }>> {
   const idResult = uuidSchema.safeParse(workOrderId);
   if (!idResult.success) return fail("Invalid work order id.");
 
@@ -275,29 +310,13 @@ export async function getWorkReceiptRecipientOptions(
   if (woError) return fail(mapDbError(woError));
   if (!wo) return fail("Work order not found, or you do not have permission to view it.");
 
-  let site = null as SiteContactIds | null;
+  const siteContacts: { role: SiteContactRole; contact: SiteRoleContact }[] = [];
   if (wo.site_id) {
-    const { data, error } = await supabase
-      .from("sites")
-      .select("visit_contact_id, delivery_contact_id, invoice_contact_id")
-      .eq("id", wo.site_id)
-      .maybeSingle<SiteContactIds>();
-    if (error) return fail(mapDbError(error));
-    site = data;
-  }
-
-  const siteContactIds = [site?.visit_contact_id, site?.delivery_contact_id, site?.invoice_contact_id].filter(
-    (id): id is string => Boolean(id),
-  );
-  const siteContactsById = new Map<string, ContactRow>();
-  if (siteContactIds.length > 0) {
-    const { data, error } = await supabase
-      .from("contacts")
-      .select("id, name, email, is_primary")
-      .in("id", siteContactIds)
-      .returns<ContactRow[]>();
-    if (error) return fail(mapDbError(error));
-    for (const contact of data ?? []) siteContactsById.set(contact.id, contact);
+    for (const role of ROLE_OPTION_ORDER) {
+      const { contacts, error } = await loadSiteRoleContacts(supabase, [wo.site_id], role);
+      if (error) return fail(error);
+      for (const contact of contacts) siteContacts.push({ role, contact });
+    }
   }
 
   const { data: clientContacts, error: clientContactsError } = await supabase
@@ -320,39 +339,33 @@ export async function getWorkReceiptRecipientOptions(
     options.push({ email: clean, label });
   };
 
-  const visit = site?.visit_contact_id ? siteContactsById.get(site.visit_contact_id) : undefined;
-  add(visit?.email, `${visit?.name ?? ""} — site visit contact`);
-  const delivery = site?.delivery_contact_id ? siteContactsById.get(site.delivery_contact_id) : undefined;
-  add(delivery?.email, `${delivery?.name ?? ""} — site delivery contact`);
-  const invoice = site?.invoice_contact_id ? siteContactsById.get(site.invoice_contact_id) : undefined;
-  add(invoice?.email, `${invoice?.name ?? ""} — site invoice contact`);
+  for (const { role, contact } of siteContacts) add(contact.email, `${contact.name} — ${ROLE_OPTION_LABELS[role]}`);
   for (const contact of clientContacts ?? []) add(contact.email, `${contact.name} — client contact`);
 
-  const suggested =
-    visit?.email?.trim() || (clientContacts ?? []).find((contact) => contact.email?.trim())?.email?.trim() || null;
-  return ok({ suggested, options });
+  const suggestedRecipients = uniqueEmails(
+    siteContacts.filter((entry) => entry.role === "work_receipt").map((entry) => entry.contact.email),
+  );
+  return ok({ suggestedRecipients, options });
 }
 
 // ---------------------------------------------------------------------------
 // sendWorkReceipt
 // ---------------------------------------------------------------------------
 
-interface EmailSettingsRow {
-  from_email: string | null;
-  from_name: string | null;
-  cc_email: string | null;
-  subject_template: string | null;
-  body_template: string | null;
-  email_work_receipts: boolean | null;
-}
+const recipientsSchema = z
+  .array(emailSchema)
+  .min(1, "Enter at least one e-mail address.")
+  .max(MAX_RECEIPT_RECIPIENTS, `You can send to at most ${MAX_RECEIPT_RECIPIENTS} addresses.`);
 
 /**
- * Queues the e-mail of the stored PDF of one receipt to `to` in the e-mail outbox
- * (issue #268); the outbox processor sends it and then records the outcome in
- * the receipt's emailed_* columns. Returns `{ status: "queued" }` on success and
+ * Queues the e-mail of the stored PDF of one receipt to `to` (1 to 10 addresses,
+ * one mail) in the e-mail outbox (issue #268); the outbox processor sends it and
+ * then records the outcome in the receipt's emailed_* columns (`emailed_to` holds
+ * the addresses joined with ", "). Returns `{ status: "queued" }` on success and
  * `{ status: "failed" }` (an ok result) for sender/queue problems, recorded on the
  * receipt, so the UI can show the error; invalid input or a missing PDF is a
- * plain `fail`.
+ * plain `fail`. The queueing itself is the shared `queueWorkReceiptEmail`
+ * (`./work-receipt-send.ts`), also used by the automatic send on Completed.
  *
  * Note: `work_receipt_email_settings` is readable by owner/planner/
  * administratie (20261119150000_work_receipt_email_settings_planner_read.sql)
@@ -361,13 +374,16 @@ interface EmailSettingsRow {
  */
 export async function sendWorkReceipt(
   receiptId: string,
-  to: string,
-): Promise<ActionResult<{ status: "queued" | "failed"; to: string; error?: string }>> {
+  to: string[],
+): Promise<ActionResult<{ status: "queued" | "failed"; to: string[]; error?: string }>> {
   const idResult = uuidSchema.safeParse(receiptId);
   if (!idResult.success) return fail("Invalid work receipt id.");
-  const emailResult = emailSchema.safeParse(to);
-  if (!emailResult.success) return fail("Enter a valid e-mail address.", { to: ["Enter a valid e-mail address."] });
-  const recipient = emailResult.data;
+  const recipientsResult = recipientsSchema.safeParse(to);
+  if (!recipientsResult.success) {
+    const message = recipientsResult.error.issues[0]?.message ?? "Enter a valid e-mail address.";
+    return fail(message, { to: [message] });
+  }
+  const recipients = uniqueEmails(recipientsResult.data);
 
   const ctx = await requireModuleContext("planning");
   if (!ctx.ok) return fail(ctx.error);
@@ -377,60 +393,16 @@ export async function sendWorkReceipt(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: receipt, error: receiptError } = await supabase
-    .from("work_receipts")
-    .select("id, work_order_id, receipt_number, pdf_path")
-    .eq("id", idResult.data)
-    .maybeSingle<{ id: string; work_order_id: string; receipt_number: string; pdf_path: string | null }>();
-  if (receiptError) return fail(mapDbError(receiptError));
-  if (!receipt) return fail("Work receipt not found, or you do not have permission to view it.");
-  if (!receipt.pdf_path) return fail("This work receipt has no PDF yet. Generate a new version first.");
-
-  const record = async (patch: { emailed_to: string; emailed_at: string | null; email_error: string | null }) => {
-    const { error } = await supabase.from("work_receipts").update(patch).eq("id", receipt.id);
-    return error;
-  };
-  const failed = async (error: string): Promise<ActionResult<{ status: "queued" | "failed"; to: string; error?: string }>> => {
-    await record({ emailed_to: recipient, emailed_at: null, email_error: error });
-    return ok({ status: "failed" as const, to: recipient, error });
-  };
-
-  const { data: settings, error: settingsError } = await supabase
-    .from("work_receipt_email_settings")
-    .select("from_email, from_name, cc_email, subject_template, body_template, email_work_receipts")
-    .eq("organization_id", organizationId)
-    .maybeSingle<EmailSettingsRow>();
-  if (settingsError) return failed(settingsError.message);
-  // Organization switch (Settings -> Work receipt email): nothing is queued or recorded.
-  if (settings?.email_work_receipts === false) return fail("E-mailing work receipts is switched off in Settings.");
-  if (!settings?.from_email) return failed("Work receipt e-mail sender not configured");
-
-  const tokenValues = await getWorkReceiptEmailValues(supabase, receipt.work_order_id, receipt.receipt_number);
-  if (!tokenValues) return failed("Work order not found");
-  const values = { ...tokenValues, organization_name: session.organization?.name ?? "" };
-
-  const subject = renderWorkReceiptEmailTemplate(settings.subject_template || DEFAULT_WORK_RECEIPT_EMAIL_SUBJECT, values)
-    .replace(/[\r\n]+/g, " ")
-    .trim();
-  const text = renderWorkReceiptEmailTemplate(settings.body_template || DEFAULT_WORK_RECEIPT_EMAIL_BODY, values);
-  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`;
-
-  const queued = await queueEmail(supabase, {
-    kind: "work_receipt",
-    workReceiptId: receipt.id,
-    from: formatMailbox(settings.from_name, settings.from_email),
-    to: [recipient],
-    cc: settings.cc_email ? [settings.cc_email] : undefined,
-    subject,
-    text,
-    html,
-    attachmentPath: receipt.pdf_path,
-    attachmentFilename: `${receipt.receipt_number}.pdf`,
+  const result = await queueWorkReceiptEmail(supabase, {
+    organizationId,
+    organizationName: session.organization?.name ?? "",
+    receiptId: idResult.data,
+    recipients,
   });
-  if (!queued.ok) return failed(queued.error);
-
-  kickEmailOutbox();
-  return ok({ status: "queued" as const, to: recipient });
+  if (result.status === "off") return fail("E-mailing work receipts is switched off in Settings.");
+  if (result.status === "rejected") return fail(result.error);
+  if (result.status === "failed") return ok({ status: "failed" as const, to: result.to, error: result.error });
+  return ok({ status: "queued" as const, to: result.to });
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,9 @@ export interface WorkOrderRailProps {
   assetRecord: AssetRecord | null;
   /** Set once the work order is Invoiced (issue #233). */
   invoice?: WorkOrderInvoiceInfo | null;
+  /** Set when automatic work receipt e-mail is on but the site has no Work receipt
+   * contact with an e-mail (issue #273): a calm notice linking to the client's Sites tab. */
+  missingReceiptRecipient?: { clientId: string } | null;
 }
 
 /**
@@ -35,7 +38,7 @@ export interface WorkOrderRailProps {
  * must not repeat what the centre shows (DS 01 §4). There is no documents
  * concept on a work order yet, so no Documents section either.
  */
-export function WorkOrderRail({ livePanel, assetRecord, invoice = null }: WorkOrderRailProps) {
+export function WorkOrderRail({ livePanel, assetRecord, invoice = null, missingReceiptRecipient = null }: WorkOrderRailProps) {
   const typeText = assetRecord
     ? [assetRecord.asset_type?.label, assetRecord.asset_subtype?.label].filter(Boolean).join(" / ")
     : "";
@@ -54,6 +57,12 @@ export function WorkOrderRail({ livePanel, assetRecord, invoice = null }: WorkOr
   return (
     <>
       <LivePanel panel={livePanel} />
+
+      {missingReceiptRecipient ? (
+        <SidebarSection title="Work receipt" link={{ label: "Open sites", href: `/clients/${missingReceiptRecipient.clientId}?tab=sites` }}>
+          <p className="web-rail-empty">No work receipt recipient set for this site</p>
+        </SidebarSection>
+      ) : null}
 
       {assetRecord ? (
         <SidebarSection title="Object" link={{ label: "Open asset", href: `/assets/${assetRecord.id}` }}>

@@ -9,6 +9,7 @@ import type { ContactRecord } from "../contacts-actions";
 import { DeleteSiteDialog } from "../components/delete-site-dialog";
 import { formatSiteAddressShort } from "../format-site-address";
 import { SiteFormDialog } from "../components/site-form-dialog";
+import type { SiteContactRole } from "../schema";
 
 export interface SitesPanelProps {
   clientId: string;
@@ -40,8 +41,26 @@ const PURPOSES: {
   { key: "is_delivery_address", value: "delivery", label: "Delivery" },
 ];
 
+const CONTACT_COLUMNS: { role: SiteContactRole; header: string }[] = [
+  { role: "visit", header: "Visit contact" },
+  { role: "delivery", header: "Delivery contact" },
+  { role: "invoice", header: "Invoice contact" },
+  { role: "work_receipt", header: "Work receipt" },
+];
+
 function purposesOf(site: SiteRecord) {
   return PURPOSES.filter((purpose) => site[purpose.key]);
+}
+
+/** Ticked contact names for one role, primary contact first then by name. */
+function contactNames(site: SiteRecord, role: SiteContactRole, contactById: Map<string, ContactRecord>): string {
+  return (site.contact_roles ?? [])
+    .filter((entry) => entry.role === role)
+    .map((entry) => contactById.get(entry.contact_id))
+    .filter((contact): contact is ContactRecord => Boolean(contact))
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.name.localeCompare(b.name))
+    .map((contact) => contact.name)
+    .join(", ");
 }
 
 /**
@@ -68,6 +87,8 @@ export function SitesPanel({
     setSiteForm({ open: true, site: null });
   }
 
+  const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
+
   const columns = useMemo<WebColumn<SiteRecord>[]>(
     () => [
       {
@@ -91,6 +112,13 @@ export function SitesPanel({
             .map((purpose) => purpose.label)
             .join(" · ") || "—",
       },
+      ...CONTACT_COLUMNS.map(
+        ({ role, header }): WebColumn<SiteRecord> => ({
+          id: `contact-${role}`,
+          header,
+          render: (site) => contactNames(site, role, contactById) || "—",
+        }),
+      ),
       {
         id: "assets",
         header: "Assets",
@@ -108,7 +136,7 @@ export function SitesPanel({
         },
       },
     ],
-    [assetCountBySiteId, assetsEnabled, onViewAssets],
+    [assetCountBySiteId, assetsEnabled, onViewAssets, contactById],
   );
 
   const dropdowns = useMemo(

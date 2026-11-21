@@ -21,16 +21,7 @@ function optionalText(max: number) {
   return z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
 }
 
-/** Same empty-string-to-undefined treatment as `optionalText`, for a
- * `<select>`-sourced uuid field (visit/delivery/invoice contact) whose
- * "nothing selected" option submits `""`, not simply absent — without this,
- * `z.string().uuid()` would reject that empty string outright instead of
- * treating it as "not provided". */
-function optionalUuid() {
-  return z.preprocess(emptyToUndefined, z.string().uuid("Invalid contact.").optional());
-}
-
-/** Same empty-string-to-undefined treatment as `optionalUuid`, for the
+/** Same empty-string-to-undefined treatment as `optionalText`, for the
  * kanban's Account Manager `<select>` (issue #58) — "nothing selected"
  * submits `""`, not simply absent. */
 function optionalAccountManagerId() {
@@ -160,6 +151,25 @@ export function siteContactRequiredMessage(purpose: "visit" | "invoice" | "deliv
   return `Select a ${purpose} contact, or uncheck ${purpose} address.`;
 }
 
+/** Roles in the site contact matrix (issue #273). Matches the DB check on
+ * `site_contact_roles.role`. */
+export const SITE_CONTACT_ROLES = ["visit", "delivery", "invoice", "work_receipt"] as const;
+export type SiteContactRole = (typeof SITE_CONTACT_ROLES)[number];
+
+export const siteContactRoleEntrySchema = z.object({
+  contactId: z.string().uuid("Invalid contact."),
+  role: z.enum(SITE_CONTACT_ROLES),
+});
+
+export type SiteContactRoleInput = z.infer<typeof siteContactRoleEntrySchema>;
+
+export function hasContactRole(
+  contactRoles: readonly { role: SiteContactRole }[] | undefined,
+  role: SiteContactRole,
+): boolean {
+  return (contactRoles ?? []).some((entry) => entry.role === role);
+}
+
 /**
  * Un-refined base shape shared by `siteCreateSchema` (refined, below) and
  * `siteUpdateSchema` (`.partial()`, below) — a `.refine()`-wrapped schema
@@ -196,17 +206,14 @@ export const siteBaseSchema = z.object({
   isVisitAddress: z.boolean().optional(),
   isInvoiceAddress: z.boolean().optional(),
   isDeliveryAddress: z.boolean().optional(),
-  /** The visit/invoice/delivery contact person (issue #52) — each required
-   * only when its matching purpose flag above is true (see
-   * `siteContactRequiredMessage`; enforced by hand in `createSite`/
-   * `updateSite`, not by a `.refine()` alone, same reasoning as the purpose
-   * flags themselves). Must be a contact belonging to this SAME site's
-   * `clientId` — the DB's `validate_site_contact_persons` trigger
-   * (`supabase/migrations/20260826150000_sites_contact_persons.sql`) is the
-   * actual backstop for that, not this schema. */
-  visitContactId: optionalUuid(),
-  invoiceContactId: optionalUuid(),
-  deliveryContactId: optionalUuid(),
+  /** The site contact matrix (issue #273): which contact of this site's
+   * client has which role. Replaces the old single visit/invoice/delivery
+   * contact ids. Omitted on update = leave the site's rows as they are;
+   * submitted = replace them. A checked purpose flag needs at least one
+   * contact with the matching role (enforced by hand in `createSite`/
+   * `updateSite`). The same-client and e-mail rules are backstopped by the
+   * `validate_site_contact_role` trigger. */
+  contactRoles: z.array(siteContactRoleEntrySchema).max(400, "Too many contact assignments.").optional(),
   /** At most one `true` per client — enforced by the DB
    * (`enforce_single_primary_site` + `sites_one_primary_per_client_idx`),
    * not re-validated here, mirroring `contactCreateSchema.isPrimary` above. */
@@ -232,17 +239,17 @@ export const siteCreateSchema = siteBaseSchema
     message: SITE_PURPOSE_REQUIRED_MESSAGE,
     path: ["isVisitAddress"],
   })
-  .refine((data) => !data.isVisitAddress || Boolean(data.visitContactId), {
+  .refine((data) => !data.isVisitAddress || hasContactRole(data.contactRoles, "visit"), {
     message: siteContactRequiredMessage("visit"),
-    path: ["visitContactId"],
+    path: ["contactRoles", "visit"],
   })
-  .refine((data) => !data.isInvoiceAddress || Boolean(data.invoiceContactId), {
+  .refine((data) => !data.isInvoiceAddress || hasContactRole(data.contactRoles, "invoice"), {
     message: siteContactRequiredMessage("invoice"),
-    path: ["invoiceContactId"],
+    path: ["contactRoles", "invoice"],
   })
-  .refine((data) => !data.isDeliveryAddress || Boolean(data.deliveryContactId), {
+  .refine((data) => !data.isDeliveryAddress || hasContactRole(data.contactRoles, "delivery"), {
     message: siteContactRequiredMessage("delivery"),
-    path: ["deliveryContactId"],
+    path: ["contactRoles", "delivery"],
   });
 
 export type SiteCreateInput = z.infer<typeof siteCreateSchema>;

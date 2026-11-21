@@ -368,6 +368,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       canCreateQuote={quoteReady}
       createdQuote={createdQuote}
       invoice={invoice}
+      autoSendWorkReceipts={receiptsResult.data?.autoSendWorkReceipts ?? false}
+      workReceiptRecipientCount={receiptsResult.data?.workReceiptRecipientCount ?? 0}
       canApproveReview={canApproveReview}
       defaultTab={available(requestedTab) ?? available(lastUsedTab) ?? "overview"}
       hours={{

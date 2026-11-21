@@ -15,15 +15,16 @@ import {
   Heading,
   Inline,
   Label,
-  Select,
   Stack,
+  Table,
   Text,
   Textarea,
   useEscapeToClose,
 } from "@yourorg/ui";
-import { Building2, FileText, Plus } from "@yourorg/ui/icons";
+import { Building2, FileText, Plus, Users } from "@yourorg/ui/icons";
 import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { createSite, updateSite, type SiteRecord } from "../actions";
+import { SITE_CONTACT_ROLES, type SiteContactRole } from "../schema";
 import { ContactFormDialog } from "./contact-form-dialog";
 import type { ContactRecord } from "../contacts-actions";
 
@@ -56,32 +57,36 @@ function purposeChecked(
 
 type PurposeKey = "visit" | "invoice" | "delivery";
 
-/** Issue #55: a brand-new site's visit/invoice/delivery contact pickers all
- * default to this same client contact — its primary contact if one is set,
- * else the most recently added contact, else left blank (no contacts at
- * all). Only consulted for a pristine CREATE (see `contactIdByPurpose`'s
- * lazy initializer in `SiteFormBody`) — an edit always shows the site's own
- * already-saved contact per purpose, `null` included, and a failed-submit
- * re-render echoes back exactly what the user had picked, not this default. */
-function defaultContactId(contacts: ContactRecord[]): string {
-  const primary = contacts.find((contact) => contact.is_primary);
-  if (primary) return primary.id;
-  const mostRecent = contacts.reduce<ContactRecord | null>((latest, contact) => {
-    if (!latest || contact.created_at > latest.created_at) return contact;
-    return latest;
-  }, null);
-  return mostRecent?.id ?? "";
+/** Matrix columns: label per role, and whether the role needs an e-mail address. */
+const MATRIX_COLUMNS: { role: SiteContactRole; label: string; needsEmail: boolean }[] = [
+  { role: "visit", label: "Visit", needsEmail: false },
+  { role: "delivery", label: "Delivery", needsEmail: false },
+  { role: "invoice", label: "Invoice", needsEmail: true },
+  { role: "work_receipt", label: "Work receipt", needsEmail: true },
+];
+
+/** Cell key of one matrix checkbox (also its submitted value). */
+function tickKey(contactId: string, role: SiteContactRole): string {
+  return `${contactId}:${role}`;
 }
 
-/** `${name} — ${role or email}`, falling back to just the name — same
- * "short useful label" idea `ContactsPanel`'s own role badge affords, kept
- * to plain text here since a `<select>`'s `<option>` can't render a real
- * `Badge`. */
-function contactOptionLabel(contact: ContactRecord, roleById: Map<string, ReferenceListItemRecord>): string {
-  const role = contact.role_item_id ? roleById.get(contact.role_item_id) : undefined;
-  if (role) return `${contact.name} — ${role.label}`;
-  if (contact.email) return `${contact.name} — ${contact.email}`;
-  return contact.name;
+/** Issue #55 (kept for the matrix): a brand-new site starts with its primary
+ * contact (else the most recently added one) ticked for Visit, Delivery and
+ * Invoice. Invoice only when that contact has an e-mail address. Only used
+ * for a pristine CREATE; an edit shows the site's own saved ticks. */
+function defaultTicks(contacts: ContactRecord[]): string[] {
+  const contact =
+    contacts.find((item) => item.is_primary) ??
+    contacts.reduce<ContactRecord | null>((latest, item) => (!latest || item.created_at > latest.created_at ? item : latest), null);
+  if (!contact) return [];
+  const ticks = [tickKey(contact.id, "visit"), tickKey(contact.id, "delivery")];
+  if (contact.email?.trim()) ticks.push(tickKey(contact.id, "invoice"));
+  return ticks;
+}
+
+/** Primary contact first, then by name (same order the server uses to pick "the" contact). */
+function sortContacts(contacts: ContactRecord[]): ContactRecord[] {
+  return [...contacts].sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.name.localeCompare(b.name));
 }
 
 /** Whatever the user actually typed/checked on the last (failed) submit —
@@ -116,9 +121,7 @@ interface SiteFormValues {
    * local `useState` already survives a failed submit unaided. Kept here
    * anyway for the same defensive "remount safety net" reason as every other
    * field. */
-  visitContactId?: string;
-  invoiceContactId?: string;
-  deliveryContactId?: string;
+  contactTicks?: string[];
   isPrimary?: boolean;
 }
 
@@ -212,6 +215,16 @@ export function SiteFormDialog({
 
   async function action(_prevState: SiteFormState, formData: FormData): Promise<SiteFormState> {
     const input: Record<string, unknown> = Object.fromEntries(formData.entries());
+    // Matrix cells arrive as repeated "contactId:role" values (only ticked,
+    // enabled boxes are submitted).
+    const contactTicks = formData.getAll("contactTicks").map(String);
+    delete input.contactTicks;
+    input.contactRoles = contactTicks.flatMap((tick) => {
+      const [contactId, role] = tick.split(":");
+      return contactId && (SITE_CONTACT_ROLES as readonly string[]).includes(role ?? "")
+        ? [{ contactId, role: role as SiteContactRole }]
+        : [];
+    });
     // A `<Checkbox>` only appears in `FormData` at all when checked, and a
     // *disabled* one never appears regardless of its `defaultChecked` —
     // `Object.fromEntries` alone would silently omit an unchecked/disabled
@@ -246,12 +259,7 @@ export function SiteFormDialog({
       isVisitAddress: forcePurpose ? undefined : (input.isVisitAddress as boolean),
       isInvoiceAddress: forcePurpose ? undefined : (input.isInvoiceAddress as boolean),
       isDeliveryAddress: forcePurpose ? undefined : (input.isDeliveryAddress as boolean),
-      // Not rendered at all in the forced-first-site case (see
-      // `SiteFormBody`), so nothing to echo there either — same
-      // `forcePurpose ? undefined : ...` guard as the purpose flags above.
-      visitContactId: forcePurpose ? undefined : String(formData.get("visitContactId") ?? ""),
-      invoiceContactId: forcePurpose ? undefined : String(formData.get("invoiceContactId") ?? ""),
-      deliveryContactId: forcePurpose ? undefined : String(formData.get("deliveryContactId") ?? ""),
+      contactTicks,
       isPrimary: primaryLocked ? undefined : (input.isPrimary as boolean),
     };
     const result = isEdit ? await updateSite(site!.id, input) : await createSite(input);
@@ -328,34 +336,10 @@ function SubmitButton({ isEdit }: { isEdit: boolean }) {
   );
 }
 
-const PURPOSE_ROWS: {
-  key: PurposeKey;
-  name: "isVisitAddress" | "isInvoiceAddress" | "isDeliveryAddress";
-  label: string;
-  contactName: "visitContactId" | "invoiceContactId" | "deliveryContactId";
-  contactLabel: string;
-}[] = [
-  {
-    key: "visit",
-    name: "isVisitAddress",
-    label: "Visit address",
-    contactName: "visitContactId",
-    contactLabel: "Visit contact person",
-  },
-  {
-    key: "invoice",
-    name: "isInvoiceAddress",
-    label: "Invoice address",
-    contactName: "invoiceContactId",
-    contactLabel: "Invoice contact person",
-  },
-  {
-    key: "delivery",
-    name: "isDeliveryAddress",
-    label: "Delivery address",
-    contactName: "deliveryContactId",
-    contactLabel: "Delivery contact person",
-  },
+const PURPOSE_ROWS: { key: PurposeKey; name: "isVisitAddress" | "isInvoiceAddress" | "isDeliveryAddress"; label: string }[] = [
+  { key: "visit", name: "isVisitAddress", label: "Visit address" },
+  { key: "invoice", name: "isInvoiceAddress", label: "Invoice address" },
+  { key: "delivery", name: "isDeliveryAddress", label: "Delivery address" },
 ];
 
 /**
@@ -418,18 +402,11 @@ function SiteFormBody({
     invoice: purposeChecked(forcePurpose, isEdit, values?.isInvoiceAddress, site?.is_invoice_address),
     delivery: purposeChecked(forcePurpose, isEdit, values?.isDeliveryAddress, site?.is_delivery_address),
   }));
-  const [contactIdByPurpose, setContactIdByPurpose] = useState<Record<PurposeKey, string>>(() => {
-    // Pristine create (never submitted yet) is the only case issue #55's
-    // default applies to — see `defaultContactId`'s doc comment.
-    if (!isEdit && !values) {
-      const fallback = defaultContactId(contacts);
-      return { visit: fallback, invoice: fallback, delivery: fallback };
-    }
-    return {
-      visit: textDefault(values?.visitContactId, site?.visit_contact_id),
-      invoice: textDefault(values?.invoiceContactId, site?.invoice_contact_id),
-      delivery: textDefault(values?.deliveryContactId, site?.delivery_contact_id),
-    };
+  const [ticks, setTicks] = useState<Set<string>>(() => {
+    // Pristine create (never submitted yet) gets the issue #55 default.
+    if (!isEdit && !values) return new Set(defaultTicks(contacts));
+    if (values?.contactTicks) return new Set(values.contactTicks);
+    return new Set((site?.contact_roles ?? []).map((entry) => tickKey(entry.contact_id, entry.role)));
   });
   // Contacts created THIS dialog session via "+ New contact" — merged into
   // `contacts` for every purpose's `<select>`, not just the one it was
@@ -439,7 +416,7 @@ function SiteFormBody({
   // without a `router.refresh()` — which this flow deliberately avoids
   // mid-form; see `ContactFormDialog`'s `onCreated` doc comment.
   const [addedContacts, setAddedContacts] = useState<ContactRecord[]>([]);
-  const [newContactPurpose, setNewContactPurpose] = useState<PurposeKey | null>(null);
+  const [newContactOpen, setNewContactOpen] = useState(false);
   // Controlled (not `defaultChecked`) so the prominent "Primary address" card
   // below can show a live `Badge` preview as the checkbox is toggled — same
   // "Primary" badge language `sites-panel.tsx`'s table and the client hero
@@ -450,17 +427,23 @@ function SiteFormBody({
     const byId = new Map<string, ContactRecord>();
     for (const contact of contacts) byId.set(contact.id, contact);
     for (const contact of addedContacts) byId.set(contact.id, contact);
-    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return sortContacts(Array.from(byId.values()));
   }, [contacts, addedContacts]);
 
   const roleById = useMemo(() => new Map(contactRoles.map((item) => [item.id, item])), [contactRoles]);
 
   function handleContactCreated(contact: ContactRecord) {
-    const purpose = newContactPurpose;
-    setNewContactPurpose(null);
-    if (!purpose) return;
+    setNewContactOpen(false);
     setAddedContacts((prev) => [...prev, contact]);
-    setContactIdByPurpose((prev) => ({ ...prev, [purpose]: contact.id }));
+  }
+
+  function toggleTick(key: string, checked: boolean) {
+    setTicks((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   }
 
   return (
@@ -572,12 +555,6 @@ function SiteFormBody({
               <Stack gap="sm">
                 <Text tone="muted">Address is suitable for</Text>
                 {forcePurpose ? (
-                  // Client's very first site: purpose is forced true and
-                  // locked, and per issue #52's own brief this deliberately
-                  // does NOT show or require a contact select here — the row
-                  // is created with null contact ids, fillable later via
-                  // edit once the client has other sites/contacts to choose
-                  // from.
                   <Stack gap="xs">
                     {PURPOSE_ROWS.map((row) => (
                       <Inline key={row.key} gap="sm" align="center">
@@ -587,28 +564,19 @@ function SiteFormBody({
                     ))}
                   </Stack>
                 ) : (
-                  <Stack gap="sm">
+                  <Stack gap="xs">
                     {PURPOSE_ROWS.map((row) => (
-                      <PurposeField
-                        key={row.key}
-                        id={`site-is-${row.key}-address`}
-                        label={row.label}
-                        name={row.name}
-                        contactLabel={row.contactLabel}
-                        contactName={row.contactName}
-                        checked={checkedByPurpose[row.key]}
-                        onCheckedChange={(checked) =>
-                          setCheckedByPurpose((prev) => ({ ...prev, [row.key]: checked }))
-                        }
-                        contactId={contactIdByPurpose[row.key]}
-                        onContactChange={(contactId) =>
-                          setContactIdByPurpose((prev) => ({ ...prev, [row.key]: contactId }))
-                        }
-                        contacts={allContacts}
-                        roleById={roleById}
-                        contactErrors={state.fieldErrors?.[row.contactName]}
-                        onAddContact={() => setNewContactPurpose(row.key)}
-                      />
+                      <Inline key={row.key} gap="sm" align="center">
+                        <Checkbox
+                          id={`site-is-${row.key}-address`}
+                          name={row.name}
+                          checked={checkedByPurpose[row.key]}
+                          onChange={(event) =>
+                            setCheckedByPurpose((prev) => ({ ...prev, [row.key]: event.target.checked }))
+                          }
+                        />
+                        <Label htmlFor={`site-is-${row.key}-address`}>{row.label}</Label>
+                      </Inline>
                     ))}
                   </Stack>
                 )}
@@ -618,6 +586,17 @@ function SiteFormBody({
                   </Text>
                 ))}
               </Stack>
+            </FormSection>
+
+            <FormSection title="Contacts" icon={<Users />}>
+              <ContactMatrix
+                contacts={allContacts}
+                roleById={roleById}
+                ticks={ticks}
+                onToggle={toggleTick}
+                fieldErrors={state.fieldErrors}
+                onAddContact={() => setNewContactOpen(true)}
+              />
             </FormSection>
 
             <FormSection title="Notes" icon={<FileText />}>
@@ -643,10 +622,8 @@ function SiteFormBody({
 
       {!forcePurpose && (
         <ContactFormDialog
-          open={newContactPurpose !== null}
-          onOpenChange={(open) => {
-            if (!open) setNewContactPurpose(null);
-          }}
+          open={newContactOpen}
+          onOpenChange={setNewContactOpen}
           clientId={clientId}
           contactRoles={contactRoles}
           onCreated={handleContactCreated}
@@ -656,77 +633,94 @@ function SiteFormBody({
   );
 }
 
-/** One purpose's row: checkbox in the left column, and (only while checked)
- * its own contact `<select>` + "+ New contact" trigger in the right column —
- * a `FormGrid columns={2}` per row, not one grid around the whole list, so
- * an unchecked row's empty right cell doesn't leave a visible gap next to
- * the checkbox once a later row's contact picker appears (each row sizes
- * independently). */
-function PurposeField({
-  id,
-  label,
-  name,
-  contactLabel,
-  contactName,
-  checked,
-  onCheckedChange,
-  contactId,
-  onContactChange,
+/** Contact matrix (issue #273): rows = the client's contacts, columns = Visit /
+ * Delivery / Invoice / Work receipt. Invoice and Work receipt need an e-mail
+ * address, so those cells are disabled (reason in title + aria-label) for a
+ * contact without one. Ticked cells submit as repeated "contactTicks" values. */
+function ContactMatrix({
   contacts,
   roleById,
-  contactErrors,
+  ticks,
+  onToggle,
+  fieldErrors,
   onAddContact,
 }: {
-  id: string;
-  label: string;
-  name: string;
-  contactLabel: string;
-  contactName: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  contactId: string;
-  onContactChange: (contactId: string) => void;
   contacts: ContactRecord[];
   roleById: Map<string, ReferenceListItemRecord>;
-  contactErrors: string[] | undefined;
+  ticks: Set<string>;
+  onToggle: (key: string, checked: boolean) => void;
+  fieldErrors: Record<string, string[] | undefined> | undefined;
   onAddContact: () => void;
 }) {
+  const errors = MATRIX_COLUMNS.flatMap((column) =>
+    (fieldErrors?.[`contactRoles.${column.role}`] ?? []).map((message) => ({ key: `${column.role}-${message}`, message })),
+  );
   return (
-    <FormGrid columns={2}>
-      <Inline gap="sm" align="center">
-        <Checkbox id={id} name={name} checked={checked} onChange={(event) => onCheckedChange(event.target.checked)} />
-        <Label htmlFor={id}>{label}</Label>
-      </Inline>
-
-      {checked && (
-        <Stack gap="xs">
-          <Label htmlFor={`${id}-contact`}>{contactLabel}</Label>
-          <Select
-            id={`${id}-contact`}
-            name={contactName}
-            value={contactId}
-            onChange={(event) => onContactChange(event.target.value)}
-          >
-            <option value="">Select a contact…</option>
-            {contacts.map((contact) => (
-              <option key={contact.id} value={contact.id}>
-                {contactOptionLabel(contact, roleById)}
-              </option>
-            ))}
-          </Select>
-          {contactErrors?.map((message) => (
-            <Text key={message} tone="danger">
-              {message}
-            </Text>
-          ))}
-          <Button variant="link" size="sm" onClick={onAddContact}>
-            <Inline gap="xs" align="center">
-              <Plus width={14} height={14} />
-              New contact
-            </Inline>
-          </Button>
-        </Stack>
+    <Stack gap="sm">
+      {contacts.length === 0 ? (
+        <Text tone="muted">No contacts yet. Add one in the Contacts tab, or here.</Text>
+      ) : (
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.HeaderCell>Contact</Table.HeaderCell>
+              {MATRIX_COLUMNS.map((column) => (
+                <Table.HeaderCell key={column.role} align="center">
+                  {column.label}
+                </Table.HeaderCell>
+              ))}
+            </Table.Row>
+          </Table.Head>
+          <Table.Body>
+            {contacts.map((contact) => {
+              const role = contact.role_item_id ? roleById.get(contact.role_item_id)?.label : undefined;
+              const hasEmail = Boolean(contact.email?.trim());
+              return (
+                <Table.Row key={contact.id}>
+                  <Table.Cell>
+                    <Stack gap="xs">
+                      <Text>
+                        {contact.name}
+                        {role ? ` · ${role}` : ""}
+                      </Text>
+                      <Text tone="muted">{contact.email || "No e-mail"}</Text>
+                    </Stack>
+                  </Table.Cell>
+                  {MATRIX_COLUMNS.map((column) => {
+                    const key = tickKey(contact.id, column.role);
+                    const blocked = column.needsEmail && !hasEmail;
+                    const reason = `${contact.name} has no e-mail address, so ${column.label} is not available`;
+                    return (
+                      <Table.Cell key={column.role} align="center">
+                        <Checkbox
+                          name="contactTicks"
+                          value={key}
+                          checked={!blocked && ticks.has(key)}
+                          disabled={blocked}
+                          title={blocked ? reason : undefined}
+                          aria-label={blocked ? reason : `${column.label}: ${contact.name}`}
+                          onChange={(event) => onToggle(key, event.target.checked)}
+                        />
+                      </Table.Cell>
+                    );
+                  })}
+                </Table.Row>
+              );
+            })}
+          </Table.Body>
+        </Table>
       )}
-    </FormGrid>
+      {errors.map((error) => (
+        <Text key={error.key} tone="danger">
+          {error.message}
+        </Text>
+      ))}
+      <Button variant="link" size="sm" onClick={onAddContact}>
+        <Inline gap="xs" align="center">
+          <Plus width={14} height={14} />
+          New contact
+        </Inline>
+      </Button>
+    </Stack>
   );
 }
