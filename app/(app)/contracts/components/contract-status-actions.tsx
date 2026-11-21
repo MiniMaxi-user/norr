@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@yourorg/ui";
-import { WebButton } from "@yourorg/ui/web";
-import { WebConfirmDialog } from "@yourorg/ui/web-client";
+import { WebConfirmDialog, type WebMenuItem } from "@yourorg/ui/web-client";
 import { setContractStatus, type ContractRecord, type MissingBaselineReading } from "../actions";
 import { DialogField } from "../../settings/components/settings-dialog-kit";
 import { todayIso } from "./contract-draft";
@@ -30,15 +29,17 @@ export interface UseContractStatusActionsOptions {
 }
 
 /**
- * Header action of the Contract page (issue #270): Draft -> "Activate" (navy),
- * Active -> "End contract" (confirm dialog asking the end date, default
- * today), Ended -> "Reactivate". Returns
- * the button for `PageHeader`'s `primary` slot plus the dialogs to render once.
+ * Status actions of the Contract page (issue #270). Draft -> "Activate" is
+ * returned as `activate` for the LivePanel (the action the user has to take
+ * now); Active -> "End contract" (confirm dialog asking the end date, default
+ * today) and Ended -> "Reactivate" are `overflow` items for the header's ···
+ * menu, next to Delete. Also returns the dialogs to render once.
  * A refused activation (missing baseline readings) opens a dialog listing each
  * missing asset / counter; any other refusal is a toast with the server's text.
  */
 export function useContractStatusActions({ contract, canUpdate }: UseContractStatusActionsOptions): {
-  button: ReactNode;
+  activate: () => void;
+  overflow: WebMenuItem[];
   dialogs: ReactNode;
 } {
   const router = useRouter();
@@ -70,32 +71,25 @@ export function useContractStatusActions({ contract, canUpdate }: UseContractSta
     router.refresh();
   }
 
-  let button: ReactNode = null;
+  const activate = useCallback(() => {
+    if (!pending) void change("active");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, contract.id]);
+
+  const overflow: WebMenuItem[] = [];
   if (canUpdate) {
-    if (contract.status === "draft") {
-      button = (
-        <WebButton variant="primary" loading={pending} onClick={() => void change("active")}>
-          Activate
-        </WebButton>
-      );
-    } else if (contract.status === "active") {
-      button = (
-        <WebButton
-          onClick={() => {
-            setEndError(null);
-            setEndDate(todayIso());
-            setEndOpen(true);
-          }}
-        >
-          End contract
-        </WebButton>
-      );
-    } else {
-      button = (
-        <WebButton loading={pending} onClick={() => void change("active")}>
-          Reactivate
-        </WebButton>
-      );
+    if (contract.status === "active") {
+      overflow.push({
+        key: "end",
+        label: "End contract",
+        onSelect: () => {
+          setEndError(null);
+          setEndDate(todayIso());
+          setEndOpen(true);
+        },
+      });
+    } else if (contract.status === "ended") {
+      overflow.push({ key: "reactivate", label: "Reactivate contract", onSelect: () => void change("active") });
     }
   }
 
@@ -148,5 +142,5 @@ export function useContractStatusActions({ contract, canUpdate }: UseContractSta
     </>
   );
 
-  return { button, dialogs };
+  return { activate, overflow, dialogs };
 }

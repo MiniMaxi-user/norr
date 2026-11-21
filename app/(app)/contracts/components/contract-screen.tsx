@@ -143,8 +143,17 @@ export function ContractScreen({
 
   // ---- Edit mode ------------------------------------------------------------
   const defaultTypeId = lists.contractTypes.find((item) => item.is_default)?.id;
+  // New contracts start on Monthly (the list item with value "monthly", else
+  // the list's default) for both billing terms and billing period.
+  const monthlyOrDefault = (items: { id: string; value: string; is_default: boolean }[]) =>
+    (items.find((item) => item.value === "monthly") ?? items.find((item) => item.is_default))?.id;
+  const defaultBillingTermsId = monthlyOrDefault(lists.billingTerms);
+  const defaultBillingPeriodId = monthlyOrDefault(lists.billingPeriods);
   const record = useMemo<ContractDraft>(
-    () => (contract ? draftFromContract(contract) : emptyDraft({ lockedClientId, defaultTypeId })),
+    () =>
+      contract
+        ? draftFromContract(contract)
+        : emptyDraft({ lockedClientId, defaultTypeId, defaultBillingTermsId, defaultBillingPeriodId }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [contract],
   );
@@ -268,6 +277,8 @@ export function ContractScreen({
               },
               canUpdate: !readOnly,
               canSeeQuotes: showQuotes,
+              missingBaselineCount: missingBaseline.length,
+              onActivate: statusActions.activate,
               onExtend: () => {
                 selectTab("overview");
                 edit.startEdit();
@@ -278,7 +289,17 @@ export function ContractScreen({
           )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [contract, saved.endDate, saved.startDate, saved.autoRenew, readOnly, showQuotes, edit.startEdit],
+    [
+      contract,
+      saved.endDate,
+      saved.startDate,
+      saved.autoRenew,
+      readOnly,
+      showQuotes,
+      edit.startEdit,
+      missingBaseline.length,
+      statusActions.activate,
+    ],
   );
 
   // ---- Header ---------------------------------------------------------------
@@ -305,8 +326,9 @@ export function ContractScreen({
     if (saved.autoRenew) badges.push({ label: "Auto-renews" });
   }
 
-  const overflow: WebMenuItem[] = [];
+  const overflow: WebMenuItem[] = [...statusActions.overflow];
   if (canDelete && contract) {
+    if (overflow.length > 0) overflow.push({ type: "separator", key: "sep-delete" });
     overflow.push({ key: "delete", label: "Delete contract", danger: true, onSelect: () => setDeleteOpen(true) });
   }
 
@@ -326,7 +348,6 @@ export function ContractScreen({
         canEdit: !isCreate && !readOnly && tab === "overview",
         onEdit: edit.startEdit,
         overflow,
-        primary: isCreate ? undefined : statusActions.button,
         onSave: () => void edit.save(),
         onCancel: edit.requestCancel,
         saving: edit.saving,

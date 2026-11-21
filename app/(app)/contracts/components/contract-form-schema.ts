@@ -47,8 +47,18 @@ export function buildContractSchema(options: {
       validate: (value) => (value ? null : "Choose a contract type"),
     },
     slaTierId: { label: "SLA tier", format: labelled("slaTierId") },
-    billingPeriodId: { label: "Billing period", format: labelled("billingPeriodId") },
-    billingTermsId: { label: "Billing terms", format: labelled("billingTermsId") },
+    billingPeriodId: {
+      label: "Billing period",
+      required: true,
+      format: labelled("billingPeriodId"),
+      validate: (value) => (value ? null : "Choose a billing period"),
+    },
+    billingTermsId: {
+      label: "Billing terms",
+      required: true,
+      format: labelled("billingTermsId"),
+      validate: (value) => (value ? null : "Choose billing terms"),
+    },
     invoicingTiming: {
       label: "Invoicing",
       required: true,

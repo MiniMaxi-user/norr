@@ -14,6 +14,10 @@ export interface ContractLivePanelRecord {
   canUpdate: boolean;
   /** The Quotes tab is visible to the viewer. */
   canSeeQuotes: boolean;
+  /** Covered asset/counter pairs without a baseline reading (draft only). */
+  missingBaselineCount?: number;
+  /** Activates a draft contract (Draft -> Active). */
+  onActivate: () => void;
   onExtend: () => void;
   onShowQuotes: () => void;
   now?: number;
@@ -25,9 +29,10 @@ export const ENDING_SOON_DAYS = 30;
 export const RECENTLY_ENDED_DAYS = 14;
 
 /**
- * LivePanel of the Contract page — a panel only when a hard deadline is close
- * or has just passed AND nothing renews it by itself:
+ * LivePanel of the Contract page — a panel only when the user has to act now:
  *
+ *  - the contract is a draft: "Activate" is the one action that makes it
+ *    count (invoicing + coverage), so it lives here, not in the header;
  *  - the contract ends within 30 days and does not auto-renew ("attention");
  *  - it ended within the last 14 days and did not auto-renew ("urgent").
  *
@@ -41,6 +46,21 @@ export const RECENTLY_ENDED_DAYS = 14;
 export function getLivePanel(record: ContractLivePanelRecord, _viewer: LivePanelViewer | null): LivePanelData | null {
   void _viewer;
   const { contract } = record;
+  if (contract.status === "draft") {
+    if (!record.canUpdate) return null;
+    const missing = record.missingBaselineCount ?? 0;
+    return {
+      variant: "attention",
+      title: "DRAFT CONTRACT",
+      value: "Not active yet",
+      context:
+        missing > 0
+          ? `${missing} ${missing === 1 ? "counter still needs" : "counters still need"} a baseline reading before activation`
+          : "Activate it to start invoicing and coverage on work orders",
+      actions: [{ label: "Activate", onClick: record.onActivate }],
+    };
+  }
+  if (contract.status !== "active") return null;
   if (contract.auto_renew || !contract.end_date) return null;
   const status = getContractStatus(contract, record.now);
   if (status.daysToEnd === null || status.phase === "upcoming") return null;

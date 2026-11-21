@@ -2443,6 +2443,22 @@ a.web-tree-id:hover {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
+/* Fixed 3-column variant, so fields in consecutive rows line up (e.g. an
+   overage price straight under the sale price); a field can span 2 columns. */
+.web-dialog-row[data-columns="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.web-dialog-row[data-columns="3"] > .web-dialog-field[data-span="2"] {
+  grid-column: span 2;
+}
+@media (max-width: 599px) {
+  .web-dialog-row[data-columns="3"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .web-dialog-row[data-columns="3"] > .web-dialog-field[data-span="2"] {
+    grid-column: auto;
+  }
+}
 /* Read-only context / effect summary inside a dialog form.
    data-tone="info": context the values depend on; data-tone="success": the
    computed effect of what was entered. */

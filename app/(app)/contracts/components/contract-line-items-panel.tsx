@@ -290,6 +290,8 @@ function LineItemDialog({
     if (picked) {
       setSalePrice(picked.sale_price === null ? "" : String(picked.sale_price));
       setPurchasePrice(picked.purchase_price === null ? "" : String(picked.purchase_price));
+      // The overage price starts at the article's sale price (editable).
+      setOveragePrice(picked.sale_price === null ? "" : String(picked.sale_price));
     }
   }
 
@@ -419,7 +421,7 @@ function LineItemDialog({
         </div>
 
         <p className="web-dialog-section">Price{perPeriod ? ` per ${perPeriod}` : ""}</p>
-        <div className="web-dialog-row">
+        <div className="web-dialog-row" data-columns="3">
           <div className="web-dialog-field">
             <label className="web-field-label" htmlFor="contract-line-quantity">
               {settlesCounter ? "Quantity (included)" : "Quantity"}
@@ -458,6 +460,7 @@ function LineItemDialog({
                 value={purchasePrice}
                 onChange={(event) => setPurchasePrice(event.target.value)}
               />
+              <span className="web-input-affix-text">/ {unit}</span>
             </div>
           </div>
           <div className="web-dialog-field">
@@ -479,6 +482,7 @@ function LineItemDialog({
                 value={salePrice}
                 onChange={(event) => setSalePrice(event.target.value)}
               />
+              <span className="web-input-affix-text">/ {unit}</span>
             </div>
           </div>
         </div>
@@ -488,7 +492,10 @@ function LineItemDialog({
             type="checkbox"
             aria-labelledby="contract-line-volume-text"
             checked={isVolume}
-            onChange={(event) => setIsVolume(event.target.checked)}
+            onChange={(event) => {
+              setIsVolume(event.target.checked);
+              if (event.target.checked && !overagePrice.trim()) setOveragePrice(salePrice);
+            }}
           />
           <span id="contract-line-volume-text">Volume: the quantity is a pre-agreed allowance, settled against a counter</span>
         </span>
@@ -496,8 +503,8 @@ function LineItemDialog({
         {isVolume ? (
           <>
             <p className="web-dialog-section">Counter settlement</p>
-            <div className="web-dialog-row">
-              <div className="web-dialog-field">
+            <div className="web-dialog-row" data-columns="3">
+              <div className="web-dialog-field" data-span="2">
                 <label className="web-field-label" htmlFor="contract-line-counter">
                   Counter
                 </label>

@@ -211,7 +211,7 @@ export function ContractOverviewCards({
       kind: "select",
       read: savedPeriod || null,
       options: periodOptions,
-      emptyLabel: "No billing period",
+      emptyLabel: "Select a billing period…",
     },
     {
       key: "billingTermsId",
@@ -219,7 +219,7 @@ export function ContractOverviewCards({
       kind: "select",
       read: savedTerms || null,
       options: termsOptions,
-      emptyLabel: "No billing terms",
+      emptyLabel: "Select billing terms…",
     },
     {
       key: "invoicingTiming",

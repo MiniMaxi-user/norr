@@ -93,17 +93,17 @@ export const contractCreateSchema = z.object({
    * pre-check `assets.subtypeId` gets (see `actions.ts`'s module comment for
    * why this module doesn't duplicate that pre-check). */
   slaTierId: clearable(z.string().uuid("Invalid SLA tier.")),
-  /** FK into this org's `billing_terms` reference list. Nullable, standalone
+  /** FK into this org's `billing_terms` reference list. Required, standalone
    * (not a dependent list). Validated by `validate_contract_reference_items`. */
-  billingTermsId: clearable(z.string().uuid("Invalid billing terms.")),
+  billingTermsId: z.string().uuid("Choose billing terms."),
   /** FK into this org's `billing_period` reference list (issue #122).
    * Nullable, standalone (not a dependent list) — an independent SIBLING of
    * `billingTermsId`: `billingTermsId` is "how often this contract is
    * invoiced", `billingPeriodId` is "how the contract's own value accrues/
-   * recurs" (e.g. a monthly value invoiced annually). No default-fill on
-   * omission, matching `billingTermsId`'s own no-default-fill treatment.
-   * Validated by `validate_contract_reference_items`. */
-  billingPeriodId: clearable(z.string().uuid("Invalid billing period.")),
+   * recurs" (e.g. a monthly value invoiced annually). Both are required
+   * (the new-contract page pre-fills Monthly). Validated by
+   * `validate_contract_reference_items`. */
+  billingPeriodId: z.string().uuid("Choose a billing period."),
   startDate: requiredIsoDateSchema,
   /** Nullable — open-ended contracts are real. When set, must be >=
    * `startDate` (DB check constraint `contracts_end_date_after_start_date`;

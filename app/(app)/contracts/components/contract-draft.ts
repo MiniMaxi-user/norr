@@ -55,14 +55,21 @@ export function todayIso(): string {
 
 /** Empty draft of the new page: start date today, client pre-scoped when the
  * user came from a client's Contracts tab. */
-export function emptyDraft(options: { lockedClientId?: string; defaultTypeId?: string } = {}): ContractDraft {
+export function emptyDraft(
+  options: {
+    lockedClientId?: string;
+    defaultTypeId?: string;
+    defaultBillingTermsId?: string;
+    defaultBillingPeriodId?: string;
+  } = {},
+): ContractDraft {
   return {
     clientId: options.lockedClientId ?? "",
     externalReference: "",
     typeId: options.defaultTypeId ?? "",
     slaTierId: "",
-    billingTermsId: "",
-    billingPeriodId: "",
+    billingTermsId: options.defaultBillingTermsId ?? "",
+    billingPeriodId: options.defaultBillingPeriodId ?? "",
     invoicingTiming: "in_advance",
     startDate: todayIso(),
     endDate: "",
@@ -75,15 +82,15 @@ export function emptyDraft(options: { lockedClientId?: string; defaultTypeId?: s
 /** Converts a draft (or a partial patch of one) into the shape
  * `createContract`/`updateContract` (`../actions.ts`) expect. An emptied
  * optional field is sent as an empty string, which the schema turns into
- * `null` (clears the column); `typeId`/`startDate` are required, so an empty
- * value there is simply not sent. */
+ * `null` (clears the column); `typeId`/`startDate`/billing terms/billing
+ * period are required, so an empty value there is simply not sent. */
 export function draftToInput(patch: Partial<ContractDraft>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference;
   if (patch.typeId) input.typeId = patch.typeId;
   if (patch.slaTierId !== undefined) input.slaTierId = patch.slaTierId;
-  if (patch.billingTermsId !== undefined) input.billingTermsId = patch.billingTermsId;
-  if (patch.billingPeriodId !== undefined) input.billingPeriodId = patch.billingPeriodId;
+  if (patch.billingTermsId) input.billingTermsId = patch.billingTermsId;
+  if (patch.billingPeriodId) input.billingPeriodId = patch.billingPeriodId;
   if (patch.invoicingTiming) input.invoicingTiming = patch.invoicingTiming;
   if (patch.startDate) input.startDate = patch.startDate;
   if (patch.endDate !== undefined) input.endDate = patch.endDate;
