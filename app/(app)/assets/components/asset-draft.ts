@@ -24,6 +24,8 @@ export type AssetDraft = {
   modelId: string;
   serialNumber: string;
   statusId: string;
+  /** Inactive asset this one succeeds (issue #274); "" = none. */
+  previousAssetId: string;
   externalReference: string;
   installedAt: string;
   warrantyUntil: string;
@@ -41,6 +43,7 @@ export function draftFromAsset(asset: AssetRecord): AssetDraft {
     modelId: asset.model_id ?? "",
     serialNumber: asset.serial_number ?? "",
     statusId: asset.status_id,
+    previousAssetId: asset.previous_asset_id ?? "",
     externalReference: asset.external_reference ?? "",
     installedAt: asset.installed_at ?? "",
     warrantyUntil: asset.warranty_until ?? "",
@@ -66,6 +69,7 @@ export function emptyDraft(options: {
     modelId: "",
     serialNumber: "",
     statusId: "",
+    previousAssetId: "",
     externalReference: "",
     installedAt: "",
     warrantyUntil: "",
@@ -91,6 +95,8 @@ export function draftToInput(patch: Partial<AssetDraft>): Record<string, unknown
   if (patch.modelId !== undefined) input.modelId = patch.modelId;
   if (patch.serialNumber !== undefined) input.serialNumber = patch.serialNumber;
   if (patch.statusId !== undefined) input.statusId = patch.statusId;
+  // null clears the link on update; `createAssetFromDraft` drops it again for a new asset.
+  if (patch.previousAssetId !== undefined) input.previousAssetId = patch.previousAssetId || null;
   if (patch.externalReference !== undefined) input.externalReference = patch.externalReference || undefined;
   if (patch.installedAt !== undefined) input.installedAt = patch.installedAt;
   if (patch.warrantyUntil !== undefined) input.warrantyUntil = patch.warrantyUntil || undefined;

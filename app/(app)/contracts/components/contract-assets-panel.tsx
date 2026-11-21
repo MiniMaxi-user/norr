@@ -5,13 +5,17 @@ import { useRouter } from "next/navigation";
 import { Combobox, toast, type ComboboxOption } from "@yourorg/ui";
 import { WebButton } from "@yourorg/ui/web";
 import { WebConfirmDialog, WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
-import { linkContractAsset, unlinkContractAsset, type ContractAssetRecord } from "../actions";
+import { linkContractAsset, type ContractAssetRecord } from "../actions";
+import type { ContractStatus } from "../schema";
+import { RemoveContractAssetDialog } from "./remove-contract-asset-dialog";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import { formatDateWeb } from "@/lib/format/web";
 
 export interface ContractAssetsPanelProps {
   contractId: string;
-  /** Assets currently linked to this contract. */
+  /** Ended contracts offer no remove action; Draft = plain unlink, Active = removal dialog (issue #274). */
+  contractStatus: ContractStatus;
+  /** Every link of this contract: open ones and, after a removal, the removed ones (`removed_on` set). */
   contractAssets: ContractAssetRecord[];
   /** Every asset of the contract's own client — the link dialog offers the
    * ones not linked yet. */
@@ -19,11 +23,13 @@ export interface ContractAssetsPanelProps {
   siteLabelById: Map<string, string | null>;
   /** `can(actor, "contracts", "create")` — matches `linkContractAsset`. */
   canLink: boolean;
-  /** `can(actor, "contracts", "delete")` — matches `unlinkContractAsset`. */
+  /** `can(actor, "contracts", "delete")` — matches `removeContractAsset`. */
   canUnlink: boolean;
 }
 
 const RECENT_DAYS = 30;
+
+
 
 /** "Brand Model", either part optional; null when neither is set. */
 function modelLabel(brand: string | null | undefined, model: string | null | undefined): string | null {
@@ -43,6 +49,7 @@ function modelLabel(brand: string | null | undefined, model: string | null | und
  */
 export function ContractAssetsPanel({
   contractId,
+  contractStatus,
   contractAssets,
   clientAssets,
   siteLabelById,
@@ -51,26 +58,15 @@ export function ContractAssetsPanel({
 }: ContractAssetsPanelProps) {
   const router = useRouter();
   const [linking, setLinking] = useState(false);
+  const [removing, setRemoving] = useState<ContractAssetRecord | null>(null);
 
-  const linkedIds = useMemo(() => new Set(contractAssets.map((row) => row.asset_id)), [contractAssets]);
+  // Open links are the current coverage; removed ones are history (and can be linked again).
+  const openAssets = useMemo(() => contractAssets.filter((row) => !row.removed_on), [contractAssets]);
+  const removedAssets = useMemo(() => contractAssets.filter((row) => row.removed_on), [contractAssets]);
+  const linkedIds = useMemo(() => new Set(openAssets.map((row) => row.asset_id)), [openAssets]);
   const available = useMemo(() => clientAssets.filter((asset) => !linkedIds.has(asset.id)), [clientAssets, linkedIds]);
 
   const siteOf = (row: ContractAssetRecord) => (row.asset ? (siteLabelById.get(row.asset.site_id) ?? null) : null);
-
-  async function unlink(row: ContractAssetRecord) {
-    const result = await unlinkContractAsset(contractId, row.asset_id);
-    if (!result.data) {
-      toast({
-        title: "Asset not unlinked",
-        description: result.error ?? "Could not unlink this asset. Try again.",
-        tone: "danger",
-        duration: 6000,
-      });
-      return;
-    }
-    toast({ title: "Asset unlinked", duration: 3000 });
-    router.refresh();
-  }
 
   const columns = useMemo<WebColumn<ContractAssetRecord>[]>(
     () => [
@@ -118,6 +114,59 @@ export function ContractAssetsPanel({
     [siteLabelById],
   );
 
+  const removedSegment = useMemo(() => {
+    const cutoff = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const isRecent = (row: ContractAssetRecord) => (row.removed_on ?? "") >= cutoff;
+    return {
+      label: "Show removed assets",
+      defaultValue: "all",
+      options: [
+        { value: "recent", label: "Recent", match: isRecent },
+        { value: "earlier", label: "Earlier", match: (row: ContractAssetRecord) => !isRecent(row) },
+        { value: "all", label: "All" },
+      ] as const,
+    };
+  }, []);
+
+  const removedColumns = useMemo<WebColumn<ContractAssetRecord>[]>(
+    () => [
+      {
+        id: "asset",
+        header: "Asset",
+        primary: true,
+        mono: true,
+        sortValue: (row) => row.asset?.name ?? "",
+        render: (row) => row.asset?.name ?? "Unknown asset",
+      },
+      {
+        id: "serial",
+        header: "Serial number",
+        mono: true,
+        sortValue: (row) => row.asset?.serial_number ?? "",
+        render: (row) => row.asset?.serial_number ?? "—",
+      },
+      {
+        id: "linked",
+        header: "Linked on",
+        sortValue: (row) => row.created_at,
+        render: (row) => formatDateWeb(row.created_at),
+      },
+      {
+        id: "removedOn",
+        header: "Removed on",
+        sortValue: (row) => row.removed_on ?? "",
+        render: (row) => (row.removed_on ? formatDateWeb(row.removed_on) : "—"),
+      },
+      {
+        id: "removedBy",
+        header: "Removed by",
+        sortValue: (row) => row.removed_by_user?.full_name ?? row.removed_by_user?.email ?? "",
+        render: (row) => row.removed_by_user?.full_name ?? row.removed_by_user?.email ?? "—",
+      },
+    ],
+    [],
+  );
+
   const dropdowns = useMemo(
     () => [
       {
@@ -149,9 +198,14 @@ export function ContractAssetsPanel({
   const rowActions = (row: ContractAssetRecord): WebMenuItem[] => {
     const items: WebMenuItem[] = [];
     if (row.asset) items.push({ key: "open", label: "Open asset", href: `/assets/${row.asset.id}` });
-    if (canUnlink) {
+    if (canUnlink && contractStatus !== "ended" && !row.removed_on) {
       if (items.length > 0) items.push({ type: "separator", key: "sep" });
-      items.push({ key: "unlink", label: "Unlink asset", danger: true, onSelect: () => void unlink(row) });
+      items.push({
+        key: "remove",
+        label: contractStatus === "draft" ? "Unlink asset" : "Remove from contract…",
+        danger: true,
+        onSelect: () => setRemoving(row),
+      });
     }
     return items;
   };
@@ -160,9 +214,9 @@ export function ContractAssetsPanel({
     <div className="web-tab-stack">
       <WebDataTableCard
         title="Covered assets"
-        meta={String(contractAssets.length)}
-        rows={contractAssets}
-        getRowKey={(row) => row.asset_id}
+        meta={String(openAssets.length)}
+        rows={openAssets}
+        getRowKey={(row) => row.id}
         columns={columns}
         searchText={(row) =>
           [row.asset?.name, row.asset?.external_reference, row.asset?.serial_number, siteOf(row)].filter(Boolean).join(" ")
@@ -189,6 +243,34 @@ export function ContractAssetsPanel({
         }
         emptyAction={canLink ? "Use + Asset to link the assets this contract covers." : undefined}
       />
+
+      {removedAssets.length > 0 ? (
+        <WebDataTableCard
+          title="Removed"
+          meta={String(removedAssets.length)}
+          rows={removedAssets}
+          getRowKey={(row) => row.id}
+          columns={removedColumns}
+          searchText={(row) => [row.asset?.name, row.asset?.serial_number].filter(Boolean).join(" ")}
+          noun="removed assets"
+          dropdowns={[]}
+          segment={removedSegment}
+          urlPrefix="removed"
+          defaultSort={{ columnId: "removedOn", direction: "desc" }}
+          rowHref={(row) => (row.asset ? `/assets/${row.asset.id}` : "")}
+          rowLabel={(row) => row.asset?.name ?? "asset"}
+        />
+      ) : null}
+
+      {removing ? (
+        <RemoveContractAssetDialog
+          contractId={contractId}
+          assetId={removing.asset_id}
+          assetName={removing.asset?.name ?? "this asset"}
+          onClose={() => setRemoving(null)}
+          onRemoved={() => router.refresh()}
+        />
+      ) : null}
 
       {linking ? (
         <LinkAssetDialog

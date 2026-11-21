@@ -78,7 +78,7 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
       startDate={contract.start_date}
       clientId={contract.client_id}
       clientName={clientResult.data?.client.name ?? null}
-      linkedAssetCount={contractAssets.length}
+      linkedAssetCount={contractAssets.filter((row) => !row.removed_on).length}
       currentEndDate={contract.end_date}
       initialEndDate={initialEndDate}
       initialBalance={balanceResult.data ?? null}

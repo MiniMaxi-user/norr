@@ -16,7 +16,7 @@ import type { WorkOrderVolumesResponse } from "@/lib/asset-volumes/types";
  * block and the Sign tab's completeness checklist (owned by the detail screen).
  * `data` stays `null` when nothing was ever fetched (offline, no cache).
  */
-export function useWorkOrderVolumes(workOrderId: string, currentUserId: string) {
+export function useWorkOrderVolumes(workOrderId: string, currentUserId: string, enabled = true) {
   const [data, setData] = useState<WorkOrderVolumesResponse | null>(null);
   const [localReadings, setLocalReadings] = useState<LocalVolumeReading[]>([]);
 
@@ -25,6 +25,8 @@ export function useWorkOrderVolumes(workOrderId: string, currentUserId: string) 
   }, [workOrderId, currentUserId]);
 
   const reload = useCallback(async () => {
+    // Issue #248: Meters module off — nothing to fetch (the route would 404).
+    if (!enabled) return;
     try {
       const response = await fetch(`/api/work-orders/${workOrderId}/volumes`);
       if (response.ok) {
@@ -38,7 +40,7 @@ export function useWorkOrderVolumes(workOrderId: string, currentUserId: string) 
     }
     const cached = await getCachedWorkOrderVolumes(workOrderId, currentUserId);
     if (cached) setData((current) => current ?? cached.data);
-  }, [workOrderId, currentUserId]);
+  }, [workOrderId, currentUserId, enabled]);
 
   useEffect(() => {
     void reload();

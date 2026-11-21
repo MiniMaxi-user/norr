@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { WebBadge } from "@yourorg/ui/web";
 import {
   StatusText,
   WebDataTableCard,
@@ -62,7 +63,20 @@ export function AssetsTable({
 
   const columns = useMemo<WebColumn<AssetRecord>[]>(
     () => [
-      { id: "name", header: "Name", primary: true, sortable: true, render: (asset) => asset.name },
+      {
+        id: "name",
+        header: "Name",
+        primary: true,
+        sortable: true,
+        render: (asset) =>
+          asset.is_inactive ? (
+            <>
+              {asset.name} <WebBadge>Inactive</WebBadge>
+            </>
+          ) : (
+            asset.name
+          ),
+      },
       { id: "type", header: "Type", render: (asset) => asset.asset_type?.label ?? null },
       { id: "client", header: "Client", render: (asset) => clientLink(asset.client_id, clientNameById.get(asset.client_id)) },
       { id: "serial", header: "Serial number", mono: true, sortable: true, render: (asset) => asset.serial_number },
@@ -108,6 +122,7 @@ export function AssetsTable({
         noun="assets"
         dropdowns={dropdowns}
         segment={ASSETS_WARRANTY_SEGMENT}
+        toggle={{ id: "inactive", label: "Show inactive" }}
         server={{ total, unfilteredTotal, page, pageSize: ASSETS_PAGE_SIZE }}
         defaultSort={{ columnId: "name", direction: "asc" }}
         rowHref={(asset) => `/assets/${asset.id}`}

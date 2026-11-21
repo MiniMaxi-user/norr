@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderCreateSchema, workOrderUpdateSchema } from "./schema";
 import { approvalBlockers } from "./approval-readiness";
@@ -678,7 +679,13 @@ export async function approveWorkOrderReview(
     return fail("This work item is not awaiting review.");
   }
 
-  // Wrap-up gate (issue #222): see `./approval-readiness.ts`.
+  // Wrap-up gate (issue #222): see `./approval-readiness.ts`. Checklists / volumes
+  // are only required when those modules are on for the tenant (#247).
+  const organization = ctx.context.session.organization;
+  const [checklistsOn, metersOn] = await Promise.all([
+    hasFeature(organization, "checklists"),
+    hasFeature(organization, "meters"),
+  ]);
   const [runningResult, checklistResult] = await Promise.all([
     supabase
       .from("time_entries")
@@ -686,19 +693,23 @@ export async function approveWorkOrderReview(
       .eq("work_order_id", target.id)
       .is("ended_at", null),
     // Required items still open across ALL of the work order's checklists.
-    supabase
-      .from("work_order_checklist_items")
-      .select("id, checklist:work_order_checklists!inner(work_order_id)", { count: "exact", head: true })
-      .eq("checklist.work_order_id", target.id)
-      .eq("is_checked", false)
-      .eq("is_required", true),
+    checklistsOn
+      ? supabase
+          .from("work_order_checklist_items")
+          .select("id, checklist:work_order_checklists!inner(work_order_id)", { count: "exact", head: true })
+          .eq("checklist.work_order_id", target.id)
+          .eq("is_checked", false)
+          .eq("is_required", true)
+      : Promise.resolve({ count: 0, error: null }),
   ]);
   if (runningResult.error) return fail(mapDbError(runningResult.error));
   if (checklistResult.error) return fail(mapDbError(checklistResult.error));
 
   const openChecklistItems = checklistResult.count ?? 0;
 
-  const volumesResult = await missingVolumeCounters(supabase, target.id, target.asset_id);
+  const volumesResult = metersOn
+    ? await missingVolumeCounters(supabase, target.id, target.asset_id)
+    : { labels: [] as string[], error: null };
   if (volumesResult.error) return fail("Failed to check the volumes.");
 
   const blockers = approvalBlockers({

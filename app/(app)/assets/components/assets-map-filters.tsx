@@ -28,6 +28,7 @@ export function AssetsMapFilters({
     <WebListFilterBar
       noun="assets"
       segment={ASSETS_WARRANTY_SEGMENT}
+      toggle={{ id: "inactive", label: "Show inactive" }}
       total={total}
       unfilteredTotal={unfilteredTotal}
       dropdowns={[

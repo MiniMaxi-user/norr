@@ -4,6 +4,7 @@ import { Label, Select, Stack } from "@yourorg/ui";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { contractLabel } from "@/lib/format/contract-label";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 
@@ -64,6 +65,7 @@ export function WorkOrderRelationFields({
   onContractChange,
   requireSiteAndAsset,
 }: WorkOrderRelationFieldsProps) {
+  const contractsEnabled = useModuleEnabled("contracts");
   const filteredAssets = siteId
     ? clientScoped.assets.filter((candidate) => candidate.site_id === siteId)
     : clientScoped.assets;
@@ -136,6 +138,7 @@ export function WorkOrderRelationFields({
         </Select>
       </Stack>
 
+      {contractsEnabled ? (
       <Stack gap="sm">
         <Label htmlFor="wo-rel-contract">Contract</Label>
         <Select
@@ -158,6 +161,7 @@ export function WorkOrderRelationFields({
           ))}
         </Select>
       </Stack>
+      ) : null}
     </Stack>
   );
 }

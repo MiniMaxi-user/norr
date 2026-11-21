@@ -62,6 +62,7 @@ export type Module =
   | "dashboard"
   | "billing"
   | "settings"
+  | "subscription"
   | "contract_numbering"
   | "work_order_numbering"
   | "activity_numbering"
@@ -382,6 +383,16 @@ const TENANT_PERMISSIONS: Record<Module, Record<TenantRole, readonly Action[]>> 
     finance: READ_ONLY,
     administratie: READ_ONLY,
   },
+  // Subscription section in Settings (issue #249): which modules the tenant has
+  // and the active users per role. Owner-only; read-only (modules are switched
+  // by the platform admin, never by the tenant).
+  subscription: {
+    owner: READ_ONLY,
+    planner: NONE,
+    engineer: NONE,
+    finance: NONE,
+    administratie: NONE,
+  },
   // Contract numbering settings (issue #216): prefix + next number for the
   // per-tenant contract number sequence. Own key (not `settings`, where
   // administratie is read-only, and not `contracts`, where finance has CRUD)
@@ -491,6 +502,8 @@ const PLATFORM_ADMIN_PERMISSIONS: Record<Module, readonly Action[]> = {
   // cross-tenant Platform Admin concern (no "Read (support only)" carve-out
   // documented for it the way Clients has) — NONE, same shape as `planning`.
   settings: NONE,
+  // Subscription (issue #249): tenant owner only.
+  subscription: NONE,
   // Contract numbering (issue #216): tenant-only admin setting, same NONE shape as `settings`.
   contract_numbering: NONE,
   // Work order numbering (issue #218): tenant-only admin setting.

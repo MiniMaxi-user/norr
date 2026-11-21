@@ -330,7 +330,7 @@ export function WorkOrderScreen({
 
   // Sites/assets/contracts of the draft's client — only fetched while editing
   // (read mode renders from the records the server already resolved).
-  const clientScoped = useClientScopedLists(edit.draft.clientId, editing);
+  const clientScoped = useClientScopedLists(edit.draft.clientId, editing, workOrder?.asset_id ? [workOrder.asset_id] : []);
   scopedRef.current = clientScoped;
 
   // ---- Derived data ---------------------------------------------------------

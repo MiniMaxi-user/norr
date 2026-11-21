@@ -24,7 +24,14 @@ import { findSettingsNavItem, SETTINGS_NAV_GROUPS } from "./settings-nav-items";
  * `components/shell/active-nav-item.tsx` gives for why that check can't live in
  * a Server Component.
  */
-export function SettingsShell({ children }: { children: React.ReactNode }) {
+export function SettingsShell({
+  children,
+  hiddenKeys = [],
+}: {
+  children: React.ReactNode;
+  /** Section keys not shown in the nav (not permitted for this role, e.g. `subscription`). */
+  hiddenKeys?: string[];
+}) {
   const pathname = usePathname();
   const isLanding = pathname === "/settings";
   const current = findSettingsNavItem(pathname);
@@ -39,8 +46,13 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
       ?.scrollIntoView({ block: "nearest" });
   }, [activeHref]);
 
+  const visibleGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !hiddenKeys.includes(item.key)),
+  })).filter((group) => group.items.length > 0);
+
   // The nav is always shown, also on the landing, so every section is one click away.
-  const nav = <WebSettingsNav groups={SETTINGS_NAV_GROUPS} activeHref={activeHref} />;
+  const nav = <WebSettingsNav groups={visibleGroups} activeHref={activeHref} />;
 
   if (current?.item.ownHeader) {
     return <WebSettingsPage nav={nav}>{children}</WebSettingsPage>;

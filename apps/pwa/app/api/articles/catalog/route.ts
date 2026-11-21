@@ -3,6 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { hasFeature } from "@/lib/features/server";
 import type { CatalogArticle } from "@/lib/work-orders/types";
 
 /**
@@ -41,6 +42,24 @@ export async function GET() {
   }
 
   const supabase = await createClient();
+
+  // Issue #248: with Inventory off there is no per-engineer stock to scope by,
+  // so the catalog is simply every active article of the org.
+  if (!(await hasFeature(session.organization?.id, "inventory"))) {
+    const all = await supabase
+      .from("articles")
+      .select("id, article_number, description")
+      .eq("is_active", true)
+      .order("article_number", { ascending: true });
+    if (all.error) {
+      console.error("GET /api/articles/catalog: failed to load articles", all.error);
+      return NextResponse.json({ error: "Failed to load the article catalog." }, { status: 500 });
+    }
+    const allRows = (all.data ?? []) as unknown as { id: string; article_number: string; description: string }[];
+    return NextResponse.json({
+      articles: allRows.map((row) => ({ id: row.id, articleNumber: row.article_number, description: row.description })),
+    });
+  }
 
   const stockResult = await supabase
     .from("warehouse_stock")

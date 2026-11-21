@@ -9,7 +9,12 @@ import type { createClient as createSupabaseServerClient } from "@/lib/supabase/
 import { mapDbError } from "@/lib/actions/result";
 import type { BalanceContractLine, DateRange, UsageProvider, WindowUsage } from "./contract-balance";
 import { addDaysIso } from "./contract-quote-helpers";
-import { computeCounterUsage, type CounterAsset, type CounterReading } from "./counter-settlement";
+import {
+  computeWindowedCounterUsage,
+  type CounterAsset,
+  type CounterReading,
+  type CoverageWindowInput,
+} from "./counter-settlement";
 
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -29,10 +34,21 @@ export interface CounterContractInput {
   volumeItemIds: readonly string[];
 }
 
+/** One coverage window of an asset on a contract (a row of `contract_covered_assets`). */
+export interface CoverageWindow {
+  assetId: string;
+  rootAssetId: string;
+  /** ISO date: contract start or the date the root asset was added. */
+  start: string;
+  /** ISO date: last covered day (the removal date); null = still covered (open). */
+  end: string | null;
+  contractAssetId: string;
+}
+
 export interface CounterData {
-  /** contract id -> covered asset id -> coverage start (ISO date; direct + all
-   * component descendants, from the `contract_covered_assets` SQL function). */
-  coveredByContract: Map<string, Map<string, string>>;
+  /** contract id -> coverage windows (direct + all component descendants, open AND removed,
+   * one per coverage window; from the `contract_covered_assets` SQL function, issue #274). */
+  coveredByContract: Map<string, CoverageWindow[]>;
   assets: Map<string, CounterAsset & { modelId: string | null; serialNumber: string | null }>;
   /** model id -> configured counter (volume item) ids. */
   countersByModel: Map<string, Set<string>>;
@@ -51,14 +67,26 @@ export async function loadCounterData(
   contracts: readonly CounterContractInput[],
   latestPeriodEnd: string,
 ): Promise<{ data: CounterData } | { error: string }> {
-  const coveredByContract = new Map<string, Map<string, string>>();
+  const coveredByContract = new Map<string, CoverageWindow[]>();
   const allAssetIdSet = new Set<string>();
   for (const contract of contracts) {
     const { data, error } = await supabase.rpc("contract_covered_assets", { p_contract_id: contract.id });
     if (error) return { error: mapDbError(error) };
-    const covered = new Map<string, string>();
-    for (const row of (data ?? []) as { asset_id: string; coverage_start: string | null }[]) {
-      covered.set(row.asset_id, row.coverage_start ?? contract.startDate);
+    const covered: CoverageWindow[] = [];
+    for (const row of (data ?? []) as {
+      asset_id: string;
+      root_asset_id: string;
+      coverage_start: string | null;
+      coverage_end: string | null;
+      contract_asset_id: string;
+    }[]) {
+      covered.push({
+        assetId: row.asset_id,
+        rootAssetId: row.root_asset_id,
+        start: row.coverage_start ?? contract.startDate,
+        end: row.coverage_end ?? null,
+        contractAssetId: row.contract_asset_id,
+      });
       allAssetIdSet.add(row.asset_id);
     }
     coveredByContract.set(contract.id, covered);
@@ -135,19 +163,42 @@ export async function loadCounterData(
   return { data: { coveredByContract, assets, countersByModel, readings } };
 }
 
-/** Covered assets of a contract whose model has `volumeItemId` as a counter. */
+/** One coverage window of a covered asset (one entry per window) that has `volumeItemId` as a counter. */
+export interface CoveredAssetWindow {
+  id: string;
+  name: string;
+  serialNumber: string | null;
+  /** Coverage start (baseline). */
+  baseline: string;
+  /** Last covered day (removal date); null = still covered. */
+  end: string | null;
+  contractAssetId: string;
+  rootAssetId: string;
+}
+
+/** Coverage windows of a contract whose asset's model has `volumeItemId` as a counter.
+ * `openOnly` keeps only windows that are still covered (no removal date). */
 export function coveredAssetsForCounter(
   data: CounterData,
   contractId: string,
   volumeItemId: string,
-): { id: string; name: string; serialNumber: string | null; baseline: string }[] {
-  const baselines = data.coveredByContract.get(contractId) ?? new Map<string, string>();
-  const out: { id: string; name: string; serialNumber: string | null; baseline: string }[] = [];
-  for (const [assetId, baseline] of baselines) {
-    const asset = data.assets.get(assetId);
+  options: { openOnly?: boolean } = {},
+): CoveredAssetWindow[] {
+  const out: CoveredAssetWindow[] = [];
+  for (const window of data.coveredByContract.get(contractId) ?? []) {
+    if (options.openOnly && window.end !== null) continue;
+    const asset = data.assets.get(window.assetId);
     if (!asset?.modelId) continue;
     if (!data.countersByModel.get(asset.modelId)?.has(volumeItemId)) continue;
-    out.push({ id: asset.id, name: asset.name, serialNumber: asset.serialNumber, baseline });
+    out.push({
+      id: asset.id,
+      name: asset.name,
+      serialNumber: asset.serialNumber,
+      baseline: window.start,
+      end: window.end,
+      contractAssetId: window.contractAssetId,
+      rootAssetId: window.rootAssetId,
+    });
   }
   return out;
 }
@@ -161,31 +212,33 @@ export interface UsageProviderOptions {
   closingDate?: string;
 }
 
-/** Usage per window and counter line (computeCounterUsage over the covered assets);
- * applies entered closing readings when given. */
+/** Usage per window and counter line (computeWindowedCounterUsage over the coverage
+ * windows, so removed assets count up to their removal date and re-added assets count
+ * per window); applies entered closing readings when given. */
 export function makeUsageProvider(options: UsageProviderOptions): UsageProvider {
   const { contractId, data, closingReadings, closingDate } = options;
-  const baselines = data.coveredByContract.get(contractId) ?? new Map<string, string>();
   return (window: DateRange, line: BalanceContractLine): WindowUsage => {
     const volumeItemId = line.volumeItemId;
     if (!volumeItemId) return { usage: 0, issues: [], reviewReadingsInPeriod: 0 };
     const covered = coveredAssetsForCounter(data, contractId, volumeItemId);
-    const readings = covered.flatMap((a) => {
-      const key = `${a.id}|${volumeItemId}`;
+    const assetIds = [...new Set(covered.map((a) => a.id))];
+    const readings = assetIds.flatMap((assetId) => {
+      const key = `${assetId}|${volumeItemId}`;
       const list = data.readings.get(key) ?? [];
       const entered = closingReadings?.get(key);
       if (entered === undefined || !closingDate) return list;
       return [
         ...list.filter((r) => r.readAt.slice(0, 10) !== closingDate),
-        { assetId: a.id, readAt: `${closingDate}T12:00:00.000Z`, value: entered, needsReview: false },
+        { assetId, readAt: `${closingDate}T12:00:00.000Z`, value: entered, needsReview: false },
       ];
     });
-    return computeCounterUsage(
-      covered.map((a) => ({ id: a.id, name: a.name })),
+    const windows: CoverageWindowInput[] = covered.map((a) => ({ assetId: a.id, start: a.baseline, end: a.end }));
+    return computeWindowedCounterUsage(
+      assetIds.map((id) => ({ id, name: data.assets.get(id)?.name ?? id })),
+      windows,
       readings,
       window.start,
       window.end,
-      baselines,
     );
   };
 }

@@ -10,6 +10,8 @@ export interface SettingsLandingViewProps {
    * default rates has no natural "count") renders no count at all, rather
    * than a misleading `0`. */
   counts: Record<string, number>;
+  /** Section keys not shown (not permitted for this role). */
+  hiddenKeys?: string[];
 }
 
 /**
@@ -18,17 +20,28 @@ export interface SettingsLandingViewProps {
  * rows with the live item count as a mono number. No hero band, no KPI tiles,
  * no icons in the card titles. Owns just the search-filter `query` state.
  */
-export function SettingsLandingView({ counts }: SettingsLandingViewProps) {
+const NO_HIDDEN_KEYS: string[] = [];
+
+export function SettingsLandingView({ counts, hiddenKeys = NO_HIDDEN_KEYS }: SettingsLandingViewProps) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
 
+  const visibleGroups = useMemo(
+    () =>
+      SETTINGS_NAV_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => !hiddenKeys.includes(item.key)),
+      })).filter((group) => group.items.length > 0),
+    [hiddenKeys],
+  );
+
   const filteredGroups = useMemo(() => {
-    if (!normalizedQuery) return SETTINGS_NAV_GROUPS;
-    return SETTINGS_NAV_GROUPS.map((group) => ({
+    if (!normalizedQuery) return visibleGroups;
+    return visibleGroups.map((group) => ({
       ...group,
       items: group.items.filter((item) => item.label.toLowerCase().includes(normalizedQuery)),
     })).filter((group) => group.items.length > 0);
-  }, [normalizedQuery]);
+  }, [normalizedQuery, visibleGroups]);
 
   return (
     <div className="web-tab-stack">

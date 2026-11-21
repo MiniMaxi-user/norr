@@ -2,6 +2,7 @@
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
+import { hasFeature } from "@/lib/rbac/features";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/rbac/permissions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
@@ -236,6 +237,8 @@ export async function listAssetModels(
  * counter stays visible. Any org member with settings read.
  */
 export async function listVolumeCounterOptions(): Promise<ActionResult<{ items: VolumeCounterOption[] }>> {
+  const gate = await requireModuleContext("settings", "meters");
+  if (!gate.ok) return fail(gate.error);
   const [volumes, units] = await Promise.all([listReferenceItems("volume"), listReferenceItems("article_unit")]);
   if (volumes.error || !volumes.data) return fail(volumes.error ?? "Could not load counters.");
   const unitLabels = new Map((units.data?.items ?? []).map((u) => [u.id, u.label]));
@@ -336,7 +339,9 @@ export async function createAssetModel(input: unknown): Promise<ActionResult<{ m
     return fail(refCheck.error, { [refCheck.field]: [refCheck.error] });
   }
 
-  const volumeItemIds = parsed.data.volumeItemIds ?? [];
+  // Meters off: counters are never touched from the model form (#247).
+  const metersOn = await hasFeature(ctx.context.session.organization, "meters");
+  const volumeItemIds = metersOn ? (parsed.data.volumeItemIds ?? []) : [];
   const volumeCheck = await validateVolumeItemIds(supabase, volumeItemIds);
   if (!volumeCheck.ok) return fail(volumeCheck.error, { volumeItemIds: [volumeCheck.error] });
 
@@ -402,7 +407,8 @@ export async function updateAssetModel(
     return fail(refCheck.error, { [refCheck.field]: [refCheck.error] });
   }
 
-  const volumeItemIds = parsed.data.volumeItemIds;
+  const metersOn = await hasFeature(ctx.context.session.organization, "meters");
+  const volumeItemIds = metersOn ? parsed.data.volumeItemIds : undefined;
   if (volumeItemIds !== undefined) {
     const volumeCheck = await validateVolumeItemIds(supabase, volumeItemIds);
     if (!volumeCheck.ok) return fail(volumeCheck.error, { volumeItemIds: [volumeCheck.error] });

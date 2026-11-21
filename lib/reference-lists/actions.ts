@@ -99,6 +99,8 @@ export interface ReferenceListItemRecord {
   /** Generic per-item flag (issue #222): checked by default in the Planning
    * filter for its list. Only surfaced in the UI for `activity_type`. */
   planning_default: boolean;
+  /** Issue #274: only meaningful for the asset_status list; assets with this status are inactive. */
+  is_inactive: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -325,7 +327,7 @@ export async function listReferenceItems(
         const { data, error } = await supabase
           .from("reference_list_items")
           .select(
-            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes, interval_months, planning_default",
+            "id, value, label, color, icon, sort_order, is_default, parent_item_id, description, is_active, default_duration_minutes, interval_months, planning_default, is_inactive",
           )
           .eq("reference_list_id", listResult.id)
           .order("sort_order", { ascending: true });
@@ -442,6 +444,7 @@ export async function createReferenceItem(
     interval_months: parsed.data.intervalMonths ?? null,
   };
   if (parsed.data.planningDefault !== undefined) row.planning_default = parsed.data.planningDefault;
+  if (parsed.data.isInactive !== undefined) row.is_inactive = parsed.data.isInactive;
   if (parsed.data.sortOrder !== undefined) row.sort_order = parsed.data.sortOrder;
   if (parsed.data.isActive !== undefined) row.is_active = parsed.data.isActive;
 
@@ -490,6 +493,7 @@ export async function updateReferenceItem(
     row.default_duration_minutes = parsed.data.defaultDurationMinutes ?? null;
   }
   if (parsed.data.planningDefault !== undefined) row.planning_default = parsed.data.planningDefault;
+  if (parsed.data.isInactive !== undefined) row.is_inactive = parsed.data.isInactive;
   if (parsed.data.intervalMonths !== undefined) {
     row.interval_months = parsed.data.intervalMonths ?? null;
   }
@@ -530,7 +534,15 @@ export async function updateReferenceItem(
     .select("*, reference_list:reference_lists(list_key)")
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  // Issue #274: switching a status to inactive can be refused while assets are on an open contract (23514, "Remove
+  // the asset from contract ... first"), switching it back can hit the unique serial index (23505, "This status
+  // cannot be put back in use: ..."). Both messages are readable: pass them through.
+  if (error) {
+    const passthrough =
+      (error.code === "23514" && error.message.startsWith("Remove the asset from contract")) ||
+      (error.code === "23505" && error.message.startsWith("This status cannot be put back in use"));
+    return fail(passthrough ? error.message : mapDbError(error));
+  }
   if (!data) return fail("Picklist value not found, or you do not have permission to edit it.");
 
   const { reference_list, ...itemRow } = data as ReferenceListItemRecord & {

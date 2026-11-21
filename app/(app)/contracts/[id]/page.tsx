@@ -63,6 +63,8 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
 
   // Quotes tab (issue #211) - only for callers who can see the Quotes module.
   const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
+  // Counters, baseline readings and the counter-based final balance belong to `meters` (#247).
+  const metersEnabled = await hasFeature(session.organization, "meters");
 
   const [
     clientResult,
@@ -87,7 +89,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     listContractAssets(contract.id),
     listAssets({ clientId: contract.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
     listContractLineItems(contract.id),
-    listContractCounterOptions(contract.id),
+    metersEnabled ? listContractCounterOptions(contract.id) : Promise.resolve(null),
     listContractArticleGroupRules(contract.id),
     listContractArticleRules(contract.id),
     listArticleGroups(),
@@ -97,7 +99,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
     listReferenceItems("billing_terms"),
     listReferenceItems("billing_period"),
     canSeeQuotes ? listQuotesForContract(contract.id) : Promise.resolve(null),
-    contract.status === "draft" ? getContractBaselineStatus(contract.id) : Promise.resolve(null),
+    metersEnabled && contract.status === "draft" ? getContractBaselineStatus(contract.id) : Promise.resolve(null),
     contract.status === "ended" ? getContractFinalBalanceSummary(contract.id) : Promise.resolve(null),
     preferencesStore.getLastUsedView(session.userId, CONTRACT_DETAIL_VIEW_KEY),
   ]);
@@ -131,7 +133,7 @@ export default async function ContractDetailPage({ params, searchParams }: Contr
       canUpdate={can(actor, "contracts", "update")}
       canDelete={can(actor, "contracts", "delete")}
       lineItems={lineItemsResult.data?.lineItems ?? []}
-      counterOptions={counterOptionsResult.data?.counters ?? []}
+      counterOptions={counterOptionsResult?.data?.counters ?? []}
       articles={articlesResult.data?.articles ?? []}
       articleGroups={articleGroupsResult.data?.groups ?? []}
       groupRules={groupRulesResult.data?.rules ?? []}

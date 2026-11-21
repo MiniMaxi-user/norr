@@ -3,7 +3,7 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
-import { canAny, type TenantRole } from "@/lib/rbac/permissions";
+import { canAny, type Module, type TenantRole } from "@/lib/rbac/permissions";
 import type { FeatureKey } from "@/lib/rbac/features";
 
 /**
@@ -49,7 +49,7 @@ interface MembershipWithUserRow {
 }
 
 export async function listOrgMembers(
-  moduleKey: FeatureKey = "planning",
+  moduleKey: Extract<FeatureKey, Module> = "planning",
 ): Promise<ActionResult<{ members: OrgMemberRecord[] }>> {
   const ctx = await requireModuleContext(moduleKey);
   if (!ctx.ok) return fail(ctx.error);

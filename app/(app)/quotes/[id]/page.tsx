@@ -81,7 +81,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
     getClient(quote.client_id),
     listClients({ limit: 200 }),
     listQuoteLineItems(quote.id),
-    listAssets({ clientId: quote.client_id, limit: ALL_CLIENT_ASSETS_LIMIT }),
+    listAssets({ clientId: quote.client_id, limit: ALL_CLIENT_ASSETS_LIMIT, includeInactive: true }),
     listOrgMembers(),
     listArticlesForSelect(),
     quote.work_order_id ? getWorkOrder(quote.work_order_id) : Promise.resolve(null),
@@ -90,6 +90,12 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
     listReferenceItems("quote_status"),
     preferencesStore.getLastUsedView(session.userId, QUOTE_DETAIL_VIEW_KEY),
   ]);
+
+  // Issue #274: inactive assets are no longer offered, except those a line item already points to.
+  const usedAssetIds = new Set((lineItemsResult.data?.lineItems ?? []).map((item) => item.asset_id).filter(Boolean));
+  const clientAssets = (clientAssetsResult.data?.assets ?? []).filter(
+    (asset) => !asset.is_inactive || usedAssetIds.has(asset.id),
+  );
 
   const available = (raw: string | null | undefined): QuoteDetailTab | null =>
     raw && TAB_IDS.includes(raw as QuoteDetailTab) ? (raw as QuoteDetailTab) : null;
@@ -105,7 +111,7 @@ export default async function QuoteDetailPage({ params, searchParams }: QuoteDet
       canUpdate={can(actor, "quotes", "update")}
       canDelete={can(actor, "quotes", "delete")}
       lineItems={lineItemsResult.data?.lineItems ?? []}
-      clientAssets={clientAssetsResult.data?.assets ?? []}
+      clientAssets={clientAssets}
       articles={articlesResult.data?.articles ?? []}
       members={membersResult.data?.members ?? []}
       sourceWorkOrder={workOrderResult?.data?.workOrder ?? null}

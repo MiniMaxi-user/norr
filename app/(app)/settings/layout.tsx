@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
-import { hasFeature } from "@/lib/rbac/features";
-import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { getEnabledFeatures } from "@/lib/rbac/features";
+import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { settingsKeysHiddenByModules } from "./components/settings-nav-items";
 import { SettingsShell } from "./components/settings-shell";
 
 /**
@@ -15,10 +16,18 @@ import { SettingsShell } from "./components/settings-shell";
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentSession();
   if (!session?.organization) notFound();
-  if (!(await hasFeature(session.organization, "settings"))) notFound();
+  const enabledFeatures = await getEnabledFeatures(session.organization);
+  if (!enabledFeatures.includes("settings")) notFound();
 
   const actor: PermissionActor = { role: session.role, isPlatformAdmin: session.isPlatformAdmin };
   if (!canAccessModule(actor, "settings")) notFound();
 
-  return <SettingsShell>{children}</SettingsShell>;
+  // Owner-only section: not rendered in the nav for anyone else (#249).
+  const hiddenKeys = [
+    ...(can(actor, "subscription", "read") ? [] : ["subscription"]),
+    // Sections of modules that are off for this tenant (#247).
+    ...settingsKeysHiddenByModules(enabledFeatures),
+  ];
+
+  return <SettingsShell hiddenKeys={hiddenKeys}>{children}</SettingsShell>;
 }

@@ -35,8 +35,9 @@ import {
   type LocalPhoto,
   type LocalSignOff,
 } from "@/lib/offline/db";
+import { useFeatures } from "@/lib/features/use-features";
 import { useWorkOrderVolumes } from "@/lib/asset-volumes/use-work-order-volumes";
-import { computeVolumeProgress } from "@/lib/asset-volumes/progress";
+import { computeVolumeProgress, type VolumeProgress } from "@/lib/asset-volumes/progress";
 import { useWorkOrderChecklist } from "@/lib/checklists/use-work-order-checklist";
 import { computeClockSummary, finishWorkOrderClock, toggleClock, type ClockKind } from "@/lib/time/clocks";
 import type { TimeRoundingSettings, WorkOrderDetailResponse } from "@/lib/work-orders/types";
@@ -100,7 +101,14 @@ export function WorkOrderDetailScreen({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const section: WorkOrderSection = isSection(searchParams.get("section")) ? (searchParams.get("section") as WorkOrderSection) : "home";
+  const requestedSection: WorkOrderSection = isSection(searchParams.get("section")) ? (searchParams.get("section") as WorkOrderSection) : "home";
+  // Issue #248: modules that are off don't render. The Checklist tab holds
+  // checklists + volumes, so it only exists while at least one of them is on.
+  const features = useFeatures();
+  const checklistsOn = features.has("checklists");
+  const metersOn = features.has("meters");
+  const section: WorkOrderSection =
+    requestedSection === "checklist" && features.ready && !checklistsOn && !metersOn ? "home" : requestedSection;
 
   const [detail, setDetail] = useState<WorkOrderDetailResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -125,10 +133,14 @@ export function WorkOrderDetailScreen({
     localReadings: localVolumeReadings,
     reload: reloadVolumes,
     refreshLocal: refreshLocalVolumes,
-  } = useWorkOrderVolumes(workOrderId, currentUserId);
-  const volumeProgress = useMemo(
-    () => computeVolumeProgress(volumes, localVolumeReadings, workOrderId),
-    [volumes, localVolumeReadings, workOrderId],
+  } = useWorkOrderVolumes(workOrderId, currentUserId, metersOn);
+  // Meters off: no counters, so volumes never block finishing.
+  const volumeProgress = useMemo<VolumeProgress>(
+    () =>
+      metersOn
+        ? computeVolumeProgress(volumes, localVolumeReadings, workOrderId)
+        : { known: true, total: 0, done: 0, missing: [], complete: true },
+    [metersOn, volumes, localVolumeReadings, workOrderId],
   );
   // Issue #230: the standard tick-off checklist (from the detail, live or
   // cached) with offline toggles overlaid.
@@ -136,7 +148,7 @@ export function WorkOrderDetailScreen({
     groups: checklistGroups,
     progress: checklistProgress,
     toggle: toggleChecklistItem,
-  } = useWorkOrderChecklist(workOrderId, currentUserId, detail);
+  } = useWorkOrderChecklist(workOrderId, currentUserId, checklistsOn ? detail : null);
   // Lifted out of `SignOffSection` (product feedback, 2026-09-13 — "Solution"
   // now lives on the Work tab, under Description) so it survives switching
   // between sections instead of being local state a Sign-tab-only component
@@ -312,6 +324,7 @@ export function WorkOrderDetailScreen({
       // Issue #225/#230: the Sign tab gates the button on these (plus the
       // checklist and volumes), re-checked here so nothing partial is ever
       // written. The server validates the checklist/volumes again.
+      if (!features.ready) throw new Error("Still loading your modules. Try again in a moment.");
       if (!trimmedSolution) throw new Error("A solution is required.");
       if (!signatureDataUrl) throw new Error("A signature is required.");
       await finishWorkOrderClock(workOrderId, currentUserId, timestamp);
@@ -348,14 +361,14 @@ export function WorkOrderDetailScreen({
           solution: trimmedSolution,
           signatureDataUrl,
           signedAt: timestamp,
-          volumeReadings: finalVolumeReadings.map((reading) => ({
+          volumeReadings: (metersOn ? finalVolumeReadings : []).map((reading) => ({
             id: reading.id,
             volumeItemId: reading.volumeItemId,
             value: reading.value,
             readAt: reading.readAt,
             notes: reading.notes,
           })),
-          checklistToggles: finalChecklistToggles.map((toggle) => ({
+          checklistToggles: (checklistsOn ? finalChecklistToggles : []).map((toggle) => ({
             itemId: toggle.itemId,
             isChecked: toggle.isChecked,
           })),
@@ -383,7 +396,7 @@ export function WorkOrderDetailScreen({
       await markSignOffSynced(workOrderId);
       router.push("/today");
     },
-    [workOrderId, currentUserId, router, solution],
+    [workOrderId, currentUserId, router, solution, features.ready, metersOn, checklistsOn],
   );
 
   if (loading) {
@@ -492,6 +505,8 @@ export function WorkOrderDetailScreen({
             localVolumeReadings={localVolumeReadings}
             onVolumesChanged={reloadVolumes}
             onLocalVolumesChanged={refreshLocalVolumes}
+            showChecklists={checklistsOn}
+            showVolumes={metersOn}
           />
         )}
         {section === "sign" && (

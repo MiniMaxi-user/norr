@@ -71,7 +71,9 @@ export async function loadAssetScreenProps(
 
   // Volumes tab (issue #221): part of the `assets` feature (checked above);
   // only rendered when the actor can read asset_volumes.
-  const canSeeVolumes = canAny(actor, "asset_volumes", ["read", "read_own"]);
+  // The `meters` module must also be enabled (#247).
+  const canSeeVolumes =
+    (await hasFeature(session.organization, "meters")) && canAny(actor, "asset_volumes", ["read", "read_own"]);
 
   const [workOrdersResult, coverageResult, activitiesResult, volumesResult, treeResult, lastUsedTab] = await Promise.all([
     canSeeWorkOrders ? listWorkOrders({ assetId: asset.id, limit: ALL_ASSET_ROWS_LIMIT }) : Promise.resolve(null),

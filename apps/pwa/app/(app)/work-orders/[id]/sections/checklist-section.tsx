@@ -65,6 +65,8 @@ export function ChecklistSection({
   localVolumeReadings,
   onVolumesChanged,
   onLocalVolumesChanged,
+  showChecklists,
+  showVolumes,
 }: {
   workOrderId: string;
   currentUserId: string;
@@ -74,10 +76,13 @@ export function ChecklistSection({
   localVolumeReadings: LocalVolumeReading[];
   onVolumesChanged: () => Promise<void>;
   onLocalVolumesChanged: () => Promise<void>;
+  /** Issue #248: the Checklists / Meters modules are on for this tenant. */
+  showChecklists: boolean;
+  showVolumes: boolean;
 }) {
-  const visibleChecklists = checklists.filter((checklist) => checklist.items.length > 0);
+  const visibleChecklists = showChecklists ? checklists.filter((checklist) => checklist.items.length > 0) : [];
   const hasItems = visibleChecklists.length > 0;
-  const hasCounters = Boolean(volumes && volumes.counters.length > 0);
+  const hasCounters = showVolumes && Boolean(volumes && volumes.counters.length > 0);
 
   return (
     <PwaStack>
@@ -130,11 +135,11 @@ export function ChecklistSection({
         </WebCard>
       )}
 
-      {!volumes && (
+      {showVolumes && !volumes && (
         <Callout icon={AlertTriangle}>Open this work order once while online to load its volume counters.</Callout>
       )}
 
-      {!hasItems && !hasCounters && volumes && (
+      {!hasItems && !hasCounters && (volumes || !showVolumes) && (
         <WebCard size="touch" title="Checklist">
           <PwaCardText empty>No checklist for this work order.</PwaCardText>
         </WebCard>

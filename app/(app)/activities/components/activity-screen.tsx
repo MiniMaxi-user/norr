@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { toast } from "@yourorg/ui";
 import {
   SidebarSection,
@@ -151,6 +152,7 @@ export function ActivityScreen({
   defaultTab = "overview",
 }: ActivityScreenProps) {
   const router = useRouter();
+  const quotesEnabled = useModuleEnabled("quotes");
   const isCreate = mode === "create";
   const [tab, setTab] = useState<ActivityDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -231,7 +233,7 @@ export function ActivityScreen({
   const editing = edit.isEditing;
 
   // Assets/contacts/contracts of the draft's client.
-  const clientScoped = useClientScopedActivityLists(edit.draft.clientId, editing);
+  const clientScoped = useClientScopedActivityLists(edit.draft.clientId, editing, activity?.asset_id ? [activity.asset_id] : []);
   scopedRef.current = clientScoped;
 
   // ---- Derived data ---------------------------------------------------------
@@ -247,7 +249,9 @@ export function ActivityScreen({
   const holder = saved.actionHolderId ? members.find((item) => item.id === saved.actionHolderId) : undefined;
   const isDone = status?.value === "completed";
 
-  const timeline = useMemo(() => (activity ? buildActivityTimeline({ events, notes }) : []), [activity, events, notes]);
+  const timeline = useMemo(() => (activity ? buildActivityTimeline({ events, notes, quotesEnabled }) : []),
+    [activity, events, notes, quotesEnabled],
+  );
 
   // ---- Tabs -----------------------------------------------------------------
   function selectTab(next: ActivityDetailTab) {

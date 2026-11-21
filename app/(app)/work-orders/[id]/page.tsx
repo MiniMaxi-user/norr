@@ -158,8 +158,12 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
   // Volumes (issues #221/#225): rides on the `assets` entitlement + `asset_volumes` read.
   const canReadVolumes =
     (await hasFeature(session.organization, "assets")) &&
+    (await hasFeature(session.organization, "meters")) &&
     canAccessModule(actor, "assets") &&
     can(actor, "asset_volumes", "read");
+
+  // Contracts module off: no contract link/coverage anywhere on this page (#247).
+  const contractsEnabled = await hasFeature(session.organization, "contracts");
 
   // Everything the page needs, in one parallel round (timed as one stage,
   // issue #150). Lists the actor cannot render are never requested.
@@ -192,7 +196,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
       workOrder.asset_id ? getAsset(workOrder.asset_id) : Promise.resolve(null),
       // Full contract record (issue #100) — the work order's own `contract`
       // embed is deliberately thin (id/number only).
-      workOrder.contract_id ? getContract(workOrder.contract_id) : Promise.resolve(null),
+      workOrder.contract_id && contractsEnabled ? getContract(workOrder.contract_id) : Promise.resolve(null),
       listOrgMembers(),
       // Pickers of the edit form — skipped for a read-only viewer.
       canEdit ? listClients({ limit: 200 }) : Promise.resolve(null),
@@ -309,7 +313,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: Work
     if (statusValue === "completed") {
       if (existingQuote) createdQuote = { id: existingQuote.id, name: existingQuote.name };
       quoteReady = canCreateQuote && !existingQuote;
-    } else if (existingQuote) {
+    } else if (existingQuote && (await hasFeature(session.organization, "invoicing"))) {
+      // The invoice block of the rail/timeline only exists with the Invoicing module (#247).
       invoice = { quoteId: existingQuote.id, quoteName: existingQuote.name, invoiceNumber: null, invoicedAt: null };
       const canReadInvoices =
         (await hasFeature(session.organization, "invoicing")) &&

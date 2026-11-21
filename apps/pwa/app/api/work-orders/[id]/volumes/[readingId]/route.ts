@@ -3,6 +3,7 @@ import { can } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { requireFeature } from "@/lib/features/server";
 
 /**
  * DELETE /api/work-orders/[id]/volumes/[readingId] — removes one of the
@@ -30,6 +31,8 @@ export async function DELETE(
   if (!session || session.role !== "engineer") {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const metersOff = await requireFeature(session.organization?.id, "meters");
+  if (metersOff) return metersOff;
   if (!can({ role: session.role }, "asset_volumes", "delete_own")) {
     return NextResponse.json({ error: "You do not have permission to delete readings." }, { status: 403 });
   }

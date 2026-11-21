@@ -44,6 +44,8 @@ import { CLIENT_DETAIL_VIEW_KEY } from "./constants";
 import { ContactsPanel } from "./contacts-panel";
 import { ContractsPanel } from "./contracts-panel";
 import { ModulesPanel } from "./modules-panel";
+import type { ModuleRow } from "@/lib/modules/module-rows";
+import { MODULE_CATALOG } from "@/lib/rbac/module-catalog";
 import { QuotesPanel } from "./quotes-panel";
 import { InvoicesPanel } from "./invoices-panel";
 import { ClientRail } from "./client-rail";
@@ -106,6 +108,8 @@ export interface ClientDetailProps {
    * Modules tabs and the rail's Platform section (issues #45/#47/#113). */
   tenantAccessVisible: boolean;
   accessStatusByEmail: Record<string, TenantAccessStatus> | null;
+  /** The tenant's real module rows (#245); `null` when the Modules tab is not visible. */
+  tenantModules: ModuleRow[] | null;
   defaultTab: ClientDetailTab;
   accountManagers: AccountManagerRecord[];
   articles: ArticleSelectOption[];
@@ -167,6 +171,7 @@ export function ClientDetail({
   isPlatformAdmin,
   tenantAccessVisible,
   accessStatusByEmail,
+  tenantModules,
   defaultTab,
   accountManagers,
   articles,
@@ -298,14 +303,10 @@ export function ClientDetail({
   const isDeactivatedTenant = isActivatedTenant && client.organization_is_active === false;
   const showActivateTenant = isPlatformAdmin && !isActivatedTenant;
 
-  // Modules line of the rail's Platform section — same `*Enabled` flags that
-  // gate the tabs (there is no persisted per-tenant module entitlement yet).
-  const activeModuleLabels = [
-    assetsEnabled && "Assets",
-    workOrdersEnabled && "Work Orders",
-    contractsEnabled && "Contracts",
-    quotesEnabled && "Quotes",
-  ].filter((label): label is string => Boolean(label));
+  // Modules line of the rail's Platform section: the tenant's own enabled add-ons (#245).
+  const activeModuleLabels = (tenantModules ?? [])
+    .filter((row) => row.enabled && MODULE_CATALOG[row.key].tier === "addon")
+    .map((row) => MODULE_CATALOG[row.key].label);
 
   // --- Tabs -----------------------------------------------------------------
   function selectTab(next: ClientDetailTab) {
@@ -468,7 +469,7 @@ export function ClientDetail({
       onManageSites={() => selectTab("sites")}
       platform={
         tenantAccessVisible
-          ? { isActive: isActiveTenant, modules: activeModuleLabels, onManage: () => selectTab("access") }
+          ? { isActive: isActiveTenant, modules: activeModuleLabels, onManage: () => selectTab("modules") }
           : null
       }
     />
@@ -550,7 +551,7 @@ export function ClientDetail({
           <AccessPanel clientId={client.id} contacts={contacts} statusByEmail={accessStatusByEmail ?? {}} />
         )}
 
-        {tab === "modules" && tenantAccessVisible && <ModulesPanel />}
+        {tab === "modules" && tenantAccessVisible && <ModulesPanel clientId={client.id} rows={tenantModules ?? []} />}
       </WebDetailLayout>
 
       <EditDiscardDialog confirm={edit.confirm} />

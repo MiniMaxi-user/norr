@@ -4,6 +4,10 @@ import { listArticleGroups } from "@/app/(app)/articles/groups-actions";
 import { listChecklistTemplates } from "@/lib/checklist-templates/actions";
 import { listTeamMembers } from "@/lib/team/actions";
 import { listAccountManagers } from "@/lib/account-managers/actions";
+import { getCurrentSession } from "@/lib/auth/session";
+import { getEnabledFeatures } from "@/lib/rbac/features";
+import { can } from "@/lib/rbac/permissions";
+import { settingsKeysHiddenByModules } from "./settings-nav-items";
 import { SettingsLandingView } from "./settings-landing-view";
 
 /**
@@ -28,12 +32,15 @@ import { SettingsLandingView } from "./settings-landing-view";
  * `Promise.all` resolves, never a misleading `0`.
  */
 export async function SettingsLandingScreen() {
+  const session = await getCurrentSession();
+  const enabledFeatures = await getEnabledFeatures(session?.organization);
+  const checklistsEnabled = enabledFeatures.includes("checklists");
   const [referenceCountsResult, assetModelsResult, articleGroupsResult, checklistTemplatesResult, teamResult, accountManagersResult] =
     await Promise.all([
       countReferenceListItemsByKey(),
       listAssetModels(),
       listArticleGroups(),
-      listChecklistTemplates(),
+      checklistsEnabled ? listChecklistTemplates() : Promise.resolve(null),
       listTeamMembers(),
       listAccountManagers(),
     ]);
@@ -41,11 +48,18 @@ export async function SettingsLandingScreen() {
   const counts: Record<string, number> = { ...(referenceCountsResult.data?.counts ?? {}) };
   if (assetModelsResult.data) counts.asset_models = assetModelsResult.data.models.length;
   if (articleGroupsResult.data) counts.article_groups = articleGroupsResult.data.groups.length;
-  if (checklistTemplatesResult.data) counts.checklist_templates = checklistTemplatesResult.data.templates.length;
+  if (checklistTemplatesResult?.data) counts.checklist_templates = checklistTemplatesResult.data.templates.length;
   // Active members only — the safe default for what "Team" means here (see
   // this story's own brief); pending invites aren't part of this count.
   if (teamResult.data) counts.team = teamResult.data.members.length;
   if (accountManagersResult.data) counts.account_managers = accountManagersResult.data.accountManagers.length;
 
-  return <SettingsLandingView counts={counts} />;
+  const canSeeSubscription = can(
+    { role: session?.role ?? null, isPlatformAdmin: session?.isPlatformAdmin ?? false },
+    "subscription",
+    "read",
+  );
+
+  const hiddenKeys = [...(canSeeSubscription ? [] : ["subscription"]), ...settingsKeysHiddenByModules(enabledFeatures)];
+  return <SettingsLandingView counts={counts} hiddenKeys={hiddenKeys} />;
 }

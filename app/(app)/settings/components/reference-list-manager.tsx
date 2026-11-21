@@ -46,6 +46,8 @@ export interface ReferenceListManagerProps {
   /** Opts this list into the "Default in planning" column/field (issue #222) —
    * `activity_type` only (the Planning page pre-selects these types). */
   showPlanningDefault?: boolean;
+  /** Opts this list into the "Inactive" column/switch (issue #274) — `asset_status` only. */
+  showInactive?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export function ReferenceListManager({
   showDefaultDuration = false,
   showInvoiceInterval = false,
   showPlanningDefault = listKey === "activity_type",
+  showInactive = listKey === "asset_status",
 }: ReferenceListManagerProps) {
   const router = useRouter();
   const sorted = useMemo(() => [...items].sort((a, b) => a.sort_order - b.sort_order), [items]);
@@ -179,6 +182,14 @@ export function ReferenceListManager({
         render: (row) => (row.planning_default ? "Yes" : "—"),
       });
     }
+    if (showInactive) {
+      result.push({
+        id: "assets-inactive",
+        header: "Inactive",
+        sortValue: (row) => (row.is_inactive ? 0 : 1),
+        render: (row) => (row.is_inactive ? "Yes" : "—"),
+      });
+    }
     result.push({
       id: "color",
       header: "Color",
@@ -200,7 +211,7 @@ export function ReferenceListManager({
       ),
     });
     return result;
-  }, [canWrite, sorted, isDependent, parentListTitle, parentById, showDefaultDuration, showInvoiceInterval, showPlanningDefault]);
+  }, [canWrite, sorted, isDependent, parentListTitle, parentById, showDefaultDuration, showInvoiceInterval, showPlanningDefault, showInactive]);
 
   const dropdowns = useMemo(() => {
     const result: {
@@ -308,6 +319,7 @@ export function ReferenceListManager({
               showDefaultDuration={showDefaultDuration}
               showInvoiceInterval={showInvoiceInterval}
               showPlanningDefault={showPlanningDefault}
+              showInactive={showInactive}
             />
           ) : null}
           <DeleteReferenceItemDialog

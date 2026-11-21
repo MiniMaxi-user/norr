@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { Combobox, type ComboboxOption } from "@yourorg/ui";
 import { WebButton } from "@yourorg/ui/web";
 import { WebConfirmDialog, WebDataTableCard, type WebColumn, type WebMenuItem } from "@yourorg/ui/web-client";
@@ -51,6 +52,8 @@ export function WorkOrderMaterialsPanel({
   locked = false,
 }: WorkOrderMaterialsPanelProps) {
   const router = useRouter();
+  // Contract coverage only exists with the Contracts module (#247).
+  const contractsEnabled = useModuleEnabled("contracts");
   const [dialog, setDialog] = useState<{ row: WorkOrderArticleRecord | null } | null>(null);
   const [deleting, setDeleting] = useState<WorkOrderArticleRecord | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -87,12 +90,16 @@ export function WorkOrderMaterialsPanel({
         sortValue: (row) => row.article?.description ?? "",
         render: (row) => row.article?.description ?? "—",
       },
-      {
-        id: "billing",
-        header: "Billing",
-        sortValue: (row) => (row.covered_by_contract ? "Covered by contract" : "Billable"),
-        render: (row) => (row.covered_by_contract ? "Covered by contract" : "Billable"),
-      },
+      ...(contractsEnabled
+        ? [
+            {
+              id: "billing",
+              header: "Billing",
+              sortValue: (row: WorkOrderArticleRecord) => (row.covered_by_contract ? "Covered by contract" : "Billable"),
+              render: (row: WorkOrderArticleRecord) => (row.covered_by_contract ? "Covered by contract" : "Billable"),
+            },
+          ]
+        : []),
       {
         id: "quantity",
         header: "Quantity",
@@ -115,11 +122,11 @@ export function WorkOrderMaterialsPanel({
         render: (row) => formatMoneyWeb(lineTotal(row)),
       },
     ],
-    [],
+    [contractsEnabled],
   );
 
   const dropdowns = useMemo(
-    () => [
+    () => !contractsEnabled ? [] : [
       {
         id: "billing",
         label: "Billing",
@@ -130,11 +137,11 @@ export function WorkOrderMaterialsPanel({
         ],
       },
     ],
-    [],
+    [contractsEnabled],
   );
 
   const segment = useMemo(
-    () => ({
+    () => !contractsEnabled ? undefined : ({
       label: "Show material",
       defaultValue: "all",
       options: [
@@ -143,7 +150,7 @@ export function WorkOrderMaterialsPanel({
         { value: "all", label: "All" },
       ] as const,
     }),
-    [],
+    [contractsEnabled],
   );
 
   const rowActions = (row: WorkOrderArticleRecord): WebMenuItem[] => {

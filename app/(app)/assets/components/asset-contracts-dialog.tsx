@@ -6,7 +6,6 @@ import { Badge, Button, Combobox, Dialog, IconButton, Inline, Spinner, Stack, Te
 import { X } from "@yourorg/ui/icons";
 import {
   linkContractAsset,
-  unlinkContractAsset,
   type AssetContractCoverage,
   type ContractRecord,
 } from "@/app/(app)/contracts/actions";
@@ -31,6 +30,9 @@ export interface AssetContractsDialogProps {
    * (so the hero's "Work orders" KPI tile's "N contract" figure stays in
    * sync) — called after every link/unlink. */
   onChange: () => void;
+  /** Removing a direct link goes through the removal dialog of the screen (Draft: confirm; Active: date and
+   * closing readings, issue #274). */
+  onRemove: (contractId: string) => void;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface AssetContractsDialogProps {
  * column on `assets` for a plain picker to write to): lists every contract
  * that COVERS this asset, direct or inherited, plus a combobox to link one of
  * the asset's own client's contracts directly (`linkContractAsset`). Only a
- * `source: "direct"` row is removable (`unlinkContractAsset`) — an
+ * `source: "direct"` row is removable (`removeContractAsset`) — an
  * `"inherited"` row has no `contract_assets` row of its own on THIS asset to
  * remove; it instead links through to the ancestor asset it's inherited
  * from, where the direct link (or the composition itself) actually lives.
@@ -56,6 +58,7 @@ export function AssetContractsDialog({
   loading,
   clientContracts,
   onChange,
+  onRemove,
 }: AssetContractsDialogProps) {
   const [linkContractId, setLinkContractId] = useState("");
   const [pending, setPending] = useState(false);
@@ -88,18 +91,6 @@ export function AssetContractsDialog({
       toast({ title: "Asset linked, baseline reading missing", description: result.data.warning, tone: "warning", duration: 10000 });
     }
     setLinkContractId("");
-    onChange();
-  }
-
-  async function handleUnlink(contractId: string) {
-    setError(null);
-    setPending(true);
-    const result = await unlinkContractAsset(contractId, assetId);
-    setPending(false);
-    if (!result.data) {
-      setError(result.error ?? "Could not unlink this contract.");
-      return;
-    }
     onChange();
   }
 
@@ -137,11 +128,11 @@ export function AssetContractsDialog({
                       </Text>
                     )}
                   </Stack>
-                  {source.type === "direct" ? (
+                  {source.type === "direct" && contract.status !== "ended" ? (
                     <IconButton
                       variant="ghost"
                       aria-label={`Unlink ${contract.contract_number}`}
-                      onClick={() => handleUnlink(contract.id)}
+                      onClick={() => onRemove(contract.id)}
                       disabled={pending}
                     >
                       <X />

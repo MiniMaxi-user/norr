@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { WebButton, WebLinkButton, WebStatusBadge } from "@yourorg/ui/web";
 import { WebFloatingCard } from "@yourorg/ui/web-client";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
@@ -43,6 +44,7 @@ export function PlanningDetailCard({
   onClose,
   onUnschedule,
 }: PlanningDetailCardProps) {
+  const contractsEnabled = useModuleEnabled("contracts");
   const scheduledAt = workOrder.scheduled_at;
   const duration = workOrder.duration_minutes;
   const siteLabel = formatSiteAddressShort(site);
@@ -117,7 +119,7 @@ export function PlanningDetailCard({
             </dd>
           </div>
         ) : null}
-        {workOrder.contract ? (
+        {workOrder.contract && contractsEnabled ? (
           <div className="web-plan-float-row">
             <dt>Contract</dt>
             <dd>

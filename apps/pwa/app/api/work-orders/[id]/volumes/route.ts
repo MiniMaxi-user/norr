@@ -3,6 +3,7 @@ import { can } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { requireFeature } from "@/lib/features/server";
 import { mapVolumeReadingError } from "@/lib/asset-volumes/errors";
 import type {
   CreateWorkOrderVolumeReadingResponse,
@@ -79,6 +80,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!session || session.role !== "engineer") {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const metersOff = await requireFeature(session.organization?.id, "meters");
+  if (metersOff) return metersOff;
   if (!can({ role: session.role }, "asset_volumes", "read")) {
     return NextResponse.json({ error: "You do not have permission to view asset volumes." }, { status: 403 });
   }
@@ -203,6 +206,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session || session.role !== "engineer") {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const metersOff = await requireFeature(session.organization?.id, "meters");
+  if (metersOff) return metersOff;
   if (!can({ role: session.role }, "asset_volumes", "create_own")) {
     return NextResponse.json({ error: "You do not have permission to add readings." }, { status: 403 });
   }

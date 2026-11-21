@@ -197,7 +197,7 @@ interface ReadingRow {
 export async function getAssetVolumes(assetId: string): Promise<ActionResult<AssetVolumesData>> {
   if (!uuidSchema.safeParse(assetId).success) return fail("Invalid asset id.");
 
-  const ctx = await requireModuleContext("assets");
+  const ctx = await requireModuleContext("assets", "meters");
   if (!ctx.ok) return fail(ctx.error);
   const { actor, session } = ctx.context;
 
@@ -318,7 +318,7 @@ export async function getAssetVolumes(assetId: string): Promise<ActionResult<Ass
 export async function getClientVolumeTotals(clientId: string): Promise<ActionResult<ClientVolumeTotalsData>> {
   if (!uuidSchema.safeParse(clientId).success) return fail("Invalid client id.");
 
-  const ctx = await requireModuleContext("assets");
+  const ctx = await requireModuleContext("assets", "meters");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!canAny(ctx.context.actor, "asset_volumes", ["read", "read_own"])) {
@@ -415,7 +415,7 @@ export async function getClientVolumeTotals(clientId: string): Promise<ActionRes
 export async function createAssetVolumeReading(
   input: unknown,
 ): Promise<ActionResult<{ reading: { id: string; assetId: string; volumeItemId: string; value: number; readAt: string } }>> {
-  const ctx = await requireModuleContext("assets");
+  const ctx = await requireModuleContext("assets", "meters");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!canAny(ctx.context.actor, "asset_volumes", ["create", "create_own"])) {
@@ -470,7 +470,7 @@ export async function createAssetVolumeReading(
 export async function deleteAssetVolumeReading(
   input: unknown,
 ): Promise<ActionResult<{ deletedId: string; assetId: string }>> {
-  const ctx = await requireModuleContext("assets");
+  const ctx = await requireModuleContext("assets", "meters");
   if (!ctx.ok) return fail(ctx.error);
   const { actor, session } = ctx.context;
 

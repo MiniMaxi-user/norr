@@ -3,6 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { getEnabledFeatureKeys } from "@/lib/features/server";
 import { mapVolumeReadingError } from "@/lib/asset-volumes/errors";
 import type { FinishVolumeReadingInput } from "@/lib/asset-volumes/types";
 
@@ -252,6 +253,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const supabase = await createClient();
 
+  // Issue #248: only what the org's active modules need is validated/stored.
+  const enabledFeatures = session.organization ? await getEnabledFeatureKeys(session.organization.id) : new Set<string>();
+  const metersEnabled = enabledFeatures.has("meters");
+  const checklistsEnabled = enabledFeatures.has("checklists");
+
   // organization_id, to resolve the CALLER'S OWN org's "completed"
   // work_order_status item and (if needed) time_entry_type items below —
   // reference_list_items are tenant-scoped, not a shared global lookup.
@@ -276,7 +282,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // needs_review), then require >= 1 reading per configured counter on THIS
   // work order. Runs before periods/articles/status so a 400 here leaves
   // nothing half-written (the readings inserted above are idempotent on id).
-  if (workOrder.asset_id) {
+  if (metersEnabled && workOrder.asset_id) {
     // Issue #230: one reading per counter per work order — if several are queued
     // for the same counter, only the last one is kept.
     const lastPerCounter = new Map<string, FinishVolumeReadingInput>();
@@ -345,7 +351,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // Issue #230: checklist. Apply the offline toggles to this work order's
   // checklist, then require every is_required item to be checked. Idempotent
   // (sets absolute values), so it sits before the non-idempotent inserts.
-  {
+  if (checklistsEnabled) {
     const { data: checklistItems, error: checklistError } = await supabase
       .from("work_order_checklist_items")
       .select("id, label, is_required, is_checked, sort_order, checklist:work_order_checklists!inner(work_order_id)")

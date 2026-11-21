@@ -3,6 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { requireFeature } from "@/lib/features/server";
 
 /**
  * PATCH /api/work-orders/[id]/checklist/items/[itemId] — ticks/unticks one
@@ -32,6 +33,8 @@ export async function PATCH(
   if (!session || session.role !== "engineer") {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const checklistsOff = await requireFeature(session.organization?.id, "checklists");
+  if (checklistsOff) return checklistsOff;
   if (!canAny({ role: session.role }, "checklists", ["update", "update_own"])) {
     return NextResponse.json({ error: "You do not have permission to update checklists." }, { status: 403 });
   }

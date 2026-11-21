@@ -6,6 +6,16 @@ import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { assetCreateSchema, assetUpdateSchema } from "./schema";
+import {
+  ASSET_CLIENT_MOVE_MESSAGE,
+  describeAssetOnContract,
+  describeSerialInUse,
+  type AssetActionResult,
+  type AssetErrorInfo,
+  type AssetRef,
+  type AssetRelation,
+  type InactiveAssetOption,
+} from "./asset-errors";
 
 /**
  * Server Actions for the Assets module, issue #9 backend half. Same shape
@@ -127,6 +137,15 @@ export interface AssetRecord {
    * without a second round trip.
    */
   asset_model: { id: string; name: string; default_warranty_months: number } | null;
+  /** Derived from the status (`reference_list_items.is_inactive`), read-only (issue #274). Inactive assets
+   * are hidden from lists by default and cannot be linked to new work orders/contracts/activities. */
+  is_inactive: boolean;
+  /** The inactive asset this one succeeds (e.g. at the previous client). */
+  previous_asset_id: string | null;
+  /** Resolved `previous_asset_id`; null when there is none. Filled by every action in this file. */
+  previous_asset: AssetRelation | null;
+  /** The asset that succeeds this one (at most one); null when there is none. */
+  successor: AssetRelation | null;
 }
 
 /**
@@ -166,6 +185,199 @@ const ASSET_SELECT =
 const uuidSchema = z.string().uuid("Invalid id.");
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+type ContractLink = Extract<AssetErrorInfo, { code: "asset_on_contract" }>["contracts"][number];
+
+function toRelation(row: Record<string, unknown>): AssetRelation {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    client_id: row.client_id as string,
+    client_name: (row.client as { name: string } | null)?.name ?? null,
+  };
+}
+
+/** Fills `previous_asset` and `successor` on the given records: two bulk queries, not per row. */
+async function attachAssetRelations(supabase: SupabaseServerClient, assets: AssetRecord[]): Promise<void> {
+  const previousIds = [...new Set(assets.map((a) => a.previous_asset_id).filter((id): id is string => Boolean(id)))];
+  const ids = assets.map((a) => a.id);
+  const [previous, successors] = await Promise.all([
+    previousIds.length > 0
+      ? supabase.from("assets").select("id, name, client_id, client:clients(name)").in("id", previousIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ids.length > 0
+      ? supabase
+          .from("assets")
+          .select("id, name, client_id, previous_asset_id, client:clients(name)")
+          .in("previous_asset_id", ids)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
+  const previousById = new Map(
+    (previous.data ?? []).map((row) => [(row as Record<string, unknown>).id as string, toRelation(row as Record<string, unknown>)]),
+  );
+  const successorByPrevious = new Map(
+    (successors.data ?? []).map((row) => [
+      (row as Record<string, unknown>).previous_asset_id as string,
+      toRelation(row as Record<string, unknown>),
+    ]),
+  );
+  for (const asset of assets) {
+    asset.previous_asset = asset.previous_asset_id ? (previousById.get(asset.previous_asset_id) ?? null) : null;
+    asset.successor = successorByPrevious.get(asset.id) ?? null;
+  }
+}
+
+/** An ACTIVE asset (RLS: same organization) with the same model and serial number, compared
+ * case/whitespace-insensitively like the unique index. */
+async function findSerialConflict(
+  supabase: SupabaseServerClient,
+  modelId: string,
+  serialNumber: string,
+  excludeAssetId: string | null,
+): Promise<{ asset: AssetRef; client: AssetRef | null } | null> {
+  const trimmed = serialNumber.trim();
+  if (!trimmed) return null;
+  const escaped = trimmed.replace(/[\\%_]/g, (c) => `\\${c}`);
+  let query = supabase
+    .from("assets")
+    .select("id, name, serial_number, client:clients(id, name)")
+    .eq("model_id", modelId)
+    .eq("is_inactive", false)
+    // Contains-match so stored leading/trailing whitespace still matches; the exact comparison happens below.
+    .ilike("serial_number", `%${escaped}%`)
+    .limit(200);
+  if (excludeAssetId) query = query.neq("id", excludeAssetId);
+  const { data } = await query;
+  const wanted = trimmed.toLowerCase();
+  const row = ((data ?? []) as unknown as {
+    id: string;
+    name: string;
+    serial_number: string | null;
+    client: { id: string; name: string } | null;
+  }[]).find((candidate) => (candidate.serial_number ?? "").trim().toLowerCase() === wanted);
+  if (!row) return null;
+  return { asset: { id: row.id, name: row.name }, client: row.client ? { id: row.client.id, name: row.client.name } : null };
+}
+
+/** Open (not removed) links of the given assets and all their component descendants to Draft/Active
+ * contracts, one entry per contract. Used to refuse an inactive status with a per-contract message. */
+async function findOpenContractLinks(supabase: SupabaseServerClient, rootIds: string[]): Promise<ContractLink[]> {
+  const all = new Set<string>(rootIds);
+  let frontier = [...rootIds];
+  for (let depth = 0; depth < 100 && frontier.length > 0; depth++) {
+    const { data } = await supabase.from("asset_components").select("component_asset_id").in("parent_asset_id", frontier);
+    frontier = [];
+    for (const row of data ?? []) {
+      const id = row.component_asset_id as string;
+      if (!all.has(id)) {
+        all.add(id);
+        frontier.push(id);
+      }
+    }
+  }
+  const { data } = await supabase
+    .from("contract_assets")
+    .select("asset_id, asset:assets(name), contract:contracts!inner(id, contract_number, status)")
+    .in("asset_id", [...all])
+    .is("removed_on", null)
+    .in("contract.status", ["draft", "active"]);
+  const out: ContractLink[] = [];
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as unknown as {
+    asset_id: string;
+    asset: { name: string } | null;
+    contract: { id: string; contract_number: string; status: "draft" | "active" };
+  }[]) {
+    if (seen.has(row.contract.id)) continue;
+    seen.add(row.contract.id);
+    out.push({
+      id: row.contract.id,
+      number: row.contract.contract_number,
+      status: row.contract.status,
+      assetId: row.asset_id,
+      assetName: row.asset?.name ?? "",
+    });
+  }
+  return out.sort((a, b) => a.number.localeCompare(b.number));
+}
+
+/** Maps a DB error of an asset write to a result, with structured info where the UI needs it. */
+async function failAssetDbError<T>(
+  supabase: SupabaseServerClient,
+  error: { code?: string; message: string },
+  context: { modelId: string | null; serialNumber: string | null; assetId: string | null },
+): Promise<AssetActionResult<T>> {
+  const message = error.message ?? "";
+  if (error.code === "23505" && message.includes("assets_unique_serial_per_model_idx")) {
+    const conflict =
+      context.modelId && context.serialNumber
+        ? await findSerialConflict(supabase, context.modelId, context.serialNumber, context.assetId)
+        : null;
+    if (conflict) {
+      const info: AssetErrorInfo = { code: "serial_in_use", serialNumber: context.serialNumber ?? "", ...conflict };
+      const text = describeSerialInUse(info);
+      return { error: text, fieldErrors: { serialNumber: [text] }, errorInfo: info };
+    }
+    return {
+      error: "Another active asset of this model already has this serial number.",
+      fieldErrors: { serialNumber: ["Already in use."] },
+    };
+  }
+  if (error.code === "23505" && message.includes("assets_previous_asset_id_unique_idx")) {
+    return { error: "That asset already has a successor.", fieldErrors: { previousAssetId: ["Already has a successor."] } };
+  }
+  if (error.code === "23514") {
+    if (message.startsWith("An asset can't move to another client")) {
+      return {
+        error: ASSET_CLIENT_MOVE_MESSAGE,
+        fieldErrors: { siteId: [ASSET_CLIENT_MOVE_MESSAGE] },
+        errorInfo: { code: "asset_client_immutable" },
+      };
+    }
+    if (message.startsWith("Remove the asset from contract")) return { error: message };
+    if (/previous asset/i.test(message)) return { error: message, fieldErrors: { previousAssetId: [message] } };
+  }
+  return { error: mapDbError(error) };
+}
+
+/** `previousAssetId` must exist in this org, be inactive, not be the asset itself and have no other successor. */
+async function validatePreviousAsset(
+  supabase: SupabaseServerClient,
+  previousAssetId: string,
+  selfId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string; info?: AssetErrorInfo }> {
+  if (selfId && previousAssetId === selfId) return { ok: false, error: "An asset cannot be its own previous asset." };
+  const { data, error } = await supabase
+    .from("assets")
+    .select("id, is_inactive")
+    .eq("id", previousAssetId)
+    .maybeSingle<{ id: string; is_inactive: boolean }>();
+  if (error) return { ok: false, error: mapDbError(error) };
+  if (!data) return { ok: false, error: "The previous asset does not exist, or you do not have access to it." };
+  if (!data.is_inactive) return { ok: false, error: "The previous asset must be inactive." };
+  let successor = supabase.from("assets").select("id, name").eq("previous_asset_id", previousAssetId).limit(1);
+  if (selfId) successor = successor.neq("id", selfId);
+  const { data: taken } = await successor;
+  const other = (taken ?? [])[0] as AssetRef | undefined;
+  if (other) {
+    return {
+      ok: false,
+      error: `That asset already has a successor (${other.name}).`,
+      info: { code: "previous_asset_has_successor", asset: other },
+    };
+  }
+  return { ok: true };
+}
+
+/** Whether a status item is marked inactive (RLS scopes it to the caller's organization). */
+async function statusIsInactive(supabase: SupabaseServerClient, statusId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("reference_list_items")
+    .select("is_inactive")
+    .eq("id", statusId)
+    .maybeSingle<{ is_inactive: boolean }>();
+  return Boolean(data?.is_inactive);
+}
 
 /**
  * Defense-in-depth shape check for `subtypeId`, mirrored from the same
@@ -267,6 +479,7 @@ function toAssetInsertRow(input: ReturnType<typeof assetCreateSchema.parse>) {
     installed_at: input.installedAt ?? null,
     warranty_until: input.warrantyUntil ?? null,
     notes: input.notes ?? null,
+    previous_asset_id: input.previousAssetId ?? null,
   };
   // status_id is intentionally omitted (not even sent as null) when not
   // provided — the `derive_asset_org_and_client` DB trigger fills in the
@@ -293,6 +506,7 @@ function toAssetUpdateRow(input: ReturnType<typeof assetUpdateSchema.parse>) {
   if (input.installedAt !== undefined) row.installed_at = input.installedAt ?? null;
   if (input.warrantyUntil !== undefined) row.warranty_until = input.warrantyUntil ?? null;
   if (input.notes !== undefined) row.notes = input.notes ?? null;
+  if (input.previousAssetId !== undefined) row.previous_asset_id = input.previousAssetId;
   return row;
 }
 
@@ -315,6 +529,12 @@ export interface ListAssetsOptions {
   /** Sort column; unknown values fall back to `name`. */
   sort?: "name" | "serial_number" | "installed_at" | "warranty_until";
   direction?: "asc" | "desc";
+  /** Issue #274: inactive assets (status marked inactive) are hidden unless true. Not applied when a
+   * `statusId` filter is given (explicitly asking for a status shows its assets). Pickers keep the default. */
+  includeInactive?: boolean;
+  /** Assets that stay in the result even when inactive, e.g. the asset an existing work order/contract/quote/
+   * activity already points to, so the record can still show it. */
+  includeAssetIds?: string[];
 }
 
 const ASSET_SORT_COLUMNS = new Set(["name", "serial_number", "installed_at", "warranty_until"]);
@@ -375,6 +595,18 @@ export async function listAssets(
   let countScoped = supabase.from("assets").select("id", { count: "exact", head: true });
   if (options.clientId) countScoped = countScoped.eq("client_id", options.clientId);
   if (options.siteId) countScoped = countScoped.eq("site_id", options.siteId);
+  // Issue #274: hide inactive assets unless asked for (or a status filter is explicit).
+  if (!options.includeInactive && !options.statusId) {
+    const keepIds = (options.includeAssetIds ?? []).filter((id) => uuidSchema.safeParse(id).success);
+    const hide = keepIds.length > 0 ? `is_inactive.eq.false,id.in.(${keepIds.join(",")})` : null;
+    if (hide) {
+      query = query.or(hide);
+      countScoped = countScoped.or(hide);
+    } else {
+      query = query.eq("is_inactive", false);
+      countScoped = countScoped.eq("is_inactive", false);
+    }
+  }
 
   const term = sanitizeSearchTerm(options.search ?? "");
   const filtered = Boolean(term || options.typeId || options.statusId || options.warranty);
@@ -419,8 +651,10 @@ export async function listAssets(
     filtered ? countScoped : Promise.resolve(null),
   ]);
   if (error) return fail(mapDbError(error));
+  const assets = (data ?? []) as AssetRecord[];
+  await attachAssetRelations(supabase, assets);
   return ok({
-    assets: (data ?? []) as AssetRecord[],
+    assets,
     count: count ?? 0,
     ...(unfiltered ? { unfilteredCount: unfiltered.count ?? 0 } : {}),
   });
@@ -442,11 +676,13 @@ export async function getAsset(id: string): Promise<ActionResult<{ asset: AssetR
 
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Asset not found.");
-  return ok({ asset: data as AssetRecord });
+  const asset = data as AssetRecord;
+  await attachAssetRelations(supabase, [asset]);
+  return ok({ asset });
 }
 
 /** Owner only (per RBAC matrix + RLS, both agree here — no gap). */
-export async function createAsset(input: unknown): Promise<ActionResult<{ asset: AssetRecord }>> {
+export async function createAsset(input: unknown): Promise<AssetActionResult<{ asset: AssetRecord }>> {
   const ctx = await requireModuleContext("assets");
   if (!ctx.ok) return fail(ctx.error);
 
@@ -482,14 +718,39 @@ export async function createAsset(input: unknown): Promise<ActionResult<{ asset:
     }
   }
 
+  if (parsed.data.previousAssetId !== undefined) {
+    const previousCheck = await validatePreviousAsset(supabase, parsed.data.previousAssetId, null);
+    if (!previousCheck.ok) {
+      return { error: previousCheck.error, fieldErrors: { previousAssetId: [previousCheck.error] }, errorInfo: previousCheck.info };
+    }
+  }
+
+  // Serial numbers are unique per model among active assets (issue #274).
+  if (parsed.data.modelId && parsed.data.serialNumber && !(await statusIsInactive(supabase, parsed.data.statusId))) {
+    const conflict = await findSerialConflict(supabase, parsed.data.modelId, parsed.data.serialNumber, null);
+    if (conflict) {
+      const info: AssetErrorInfo = { code: "serial_in_use", serialNumber: parsed.data.serialNumber, ...conflict };
+      const text = describeSerialInUse(info);
+      return { error: text, fieldErrors: { serialNumber: [text] }, errorInfo: info };
+    }
+  }
+
   const { data, error } = await supabase
     .from("assets")
     .insert(toAssetInsertRow(parsed.data))
     .select(ASSET_SELECT)
     .single();
 
-  if (error) return fail(mapDbError(error));
-  return ok({ asset: data as AssetRecord });
+  if (error) {
+    return failAssetDbError(supabase, error, {
+      modelId: parsed.data.modelId ?? null,
+      serialNumber: parsed.data.serialNumber ?? null,
+      assetId: null,
+    });
+  }
+  const asset = data as AssetRecord;
+  await attachAssetRelations(supabase, [asset]);
+  return ok({ asset });
 }
 
 /**
@@ -500,7 +761,7 @@ export async function createAsset(input: unknown): Promise<ActionResult<{ asset:
  * `42501`), which surfaces here as the existing "not found, or you do not
  * have permission" message via the `if (!data)` check.
  */
-export async function updateAsset(id: string, input: unknown): Promise<ActionResult<{ asset: AssetRecord }>> {
+export async function updateAsset(id: string, input: unknown): Promise<AssetActionResult<{ asset: AssetRecord }>> {
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid asset id.");
 
@@ -544,6 +805,63 @@ export async function updateAsset(id: string, input: unknown): Promise<ActionRes
     }
   }
 
+  // Current values: needed for the client-immutability, inactive-status and serial pre-checks.
+  const { data: current } = await supabase
+    .from("assets")
+    .select("id, client_id, model_id, serial_number, is_inactive")
+    .eq("id", idResult.data)
+    .maybeSingle<{ id: string; client_id: string; model_id: string | null; serial_number: string | null; is_inactive: boolean }>();
+  if (!current) return fail("Asset not found, or you do not have permission to update it.");
+
+  // An asset never moves to another client (DB-enforced too): only sites of its own client.
+  if (parsed.data.siteId !== undefined) {
+    const { data: site } = await supabase
+      .from("sites")
+      .select("client_id")
+      .eq("id", parsed.data.siteId)
+      .maybeSingle<{ client_id: string }>();
+    if (site && site.client_id !== current.client_id) {
+      return {
+        error: ASSET_CLIENT_MOVE_MESSAGE,
+        fieldErrors: { siteId: [ASSET_CLIENT_MOVE_MESSAGE] },
+        errorInfo: { code: "asset_client_immutable" },
+      };
+    }
+  }
+
+  // Becoming inactive: refused while the asset (or a component) is on an open Draft/Active contract.
+  const willBeInactive =
+    parsed.data.statusId !== undefined ? await statusIsInactive(supabase, parsed.data.statusId) : current.is_inactive;
+  if (willBeInactive && !current.is_inactive) {
+    const contracts = await findOpenContractLinks(supabase, [current.id]);
+    if (contracts.length > 0) {
+      const info: AssetErrorInfo = { code: "asset_on_contract", contracts };
+      const text = describeAssetOnContract(info);
+      return { error: text, fieldErrors: { statusId: [text] }, errorInfo: info };
+    }
+  }
+
+  if (parsed.data.previousAssetId) {
+    const previousCheck = await validatePreviousAsset(supabase, parsed.data.previousAssetId, current.id);
+    if (!previousCheck.ok) {
+      return { error: previousCheck.error, fieldErrors: { previousAssetId: [previousCheck.error] }, errorInfo: previousCheck.info };
+    }
+  }
+
+  // Serial numbers are unique per model among active assets (issue #274); only checked when the asset ends up active.
+  const nextModelId = parsed.data.modelId ?? current.model_id;
+  const nextSerial = parsed.data.serialNumber ?? current.serial_number;
+  const serialTouched =
+    parsed.data.modelId !== undefined || parsed.data.serialNumber !== undefined || (current.is_inactive && !willBeInactive);
+  if (serialTouched && !willBeInactive && nextModelId && nextSerial) {
+    const conflict = await findSerialConflict(supabase, nextModelId, nextSerial, current.id);
+    if (conflict) {
+      const info: AssetErrorInfo = { code: "serial_in_use", serialNumber: nextSerial, ...conflict };
+      const text = describeSerialInUse(info);
+      return { error: text, fieldErrors: { serialNumber: [text] }, errorInfo: info };
+    }
+  }
+
   const { data, error } = await supabase
     .from("assets")
     .update(row)
@@ -551,9 +869,13 @@ export async function updateAsset(id: string, input: unknown): Promise<ActionRes
     .select(ASSET_SELECT)
     .maybeSingle();
 
-  if (error) return fail(mapDbError(error));
+  if (error) {
+    return failAssetDbError(supabase, error, { modelId: nextModelId, serialNumber: nextSerial, assetId: current.id });
+  }
   if (!data) return fail("Asset not found, or you do not have permission to update it.");
-  return ok({ asset: data as AssetRecord });
+  const asset = data as AssetRecord;
+  await attachAssetRelations(supabase, [asset]);
+  return ok({ asset });
 }
 
 /** Owner only (per RBAC matrix + RLS, both agree — Planner has no `delete`
@@ -581,4 +903,105 @@ export async function deleteAsset(id: string): Promise<ActionResult<{ deletedId:
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Asset not found, or you do not have permission to delete it.");
   return ok({ deletedId: data.id as string });
+}
+
+const INACTIVE_OPTION_SELECT =
+  "id, name, serial_number, model:asset_models!assets_model_id_fkey(id, name), client:clients(id, name)";
+
+/** Drops options that already have a successor (an asset can have only one), except `keepId`. */
+async function withoutSuccessors(
+  supabase: SupabaseServerClient,
+  rows: InactiveAssetOption[],
+  keepId: string | null,
+): Promise<InactiveAssetOption[]> {
+  if (rows.length === 0) return rows;
+  const { data } = await supabase
+    .from("assets")
+    .select("previous_asset_id")
+    .in(
+      "previous_asset_id",
+      rows.map((r) => r.id),
+    );
+  const taken = new Set((data ?? []).map((r) => r.previous_asset_id as string));
+  return rows.filter((r) => r.id === keepId || !taken.has(r.id));
+}
+
+/**
+ * Inactive assets (org-wide, any client) for the "Previous asset" picker (issue #274). Assets that already have
+ * a successor are left out, except `currentPreviousId` (the value currently selected on the form). `excludeAssetId`
+ * leaves out the asset being edited. At most 50 rows, ordered by name.
+ */
+export async function listInactiveAssetOptions(
+  search?: string,
+  options: { excludeAssetId?: string; currentPreviousId?: string } = {},
+): Promise<ActionResult<{ options: InactiveAssetOption[] }>> {
+  for (const value of [options.excludeAssetId, options.currentPreviousId]) {
+    if (value !== undefined && !uuidSchema.safeParse(value).success) return fail("Invalid asset id.");
+  }
+  const ctx = await requireModuleContext("assets");
+  if (!ctx.ok) return fail(ctx.error);
+  if (!canAny(ctx.context.actor, "assets", ["read", "read_own"])) {
+    return fail("You do not have permission to view assets.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  let query = supabase.from("assets").select(INACTIVE_OPTION_SELECT).eq("is_inactive", true);
+  if (options.excludeAssetId) query = query.neq("id", options.excludeAssetId);
+  const term = sanitizeSearchTerm(search ?? "");
+  if (term) {
+    const { data: clientMatches } = await supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(100);
+    const clientIds = (clientMatches ?? []).map((row) => row.id as string);
+    query = query.or(
+      [
+        `name.ilike.%${term}%`,
+        `serial_number.ilike.%${term}%`,
+        ...(clientIds.length > 0 ? [`client_id.in.(${clientIds.join(",")})`] : []),
+      ].join(","),
+    );
+  }
+  const { data, error } = await query.order("name", { ascending: true }).limit(100);
+  if (error) return fail(mapDbError(error));
+  const rows = await withoutSuccessors(
+    supabase,
+    (data ?? []) as unknown as InactiveAssetOption[],
+    options.currentPreviousId ?? null,
+  );
+  return ok({ options: rows.slice(0, 50) });
+}
+
+/**
+ * The inactive asset of the same model and serial number (case/whitespace-insensitive) that has no successor
+ * yet, for the inline suggestion "This serial number belongs to inactive asset <x> (<client>). Link it as
+ * previous asset?" (issue #274). `null` when there is none or the input is incomplete.
+ */
+export async function findInactiveAssetMatch(
+  modelId: string,
+  serialNumber: string,
+  excludeAssetId?: string,
+): Promise<ActionResult<{ match: InactiveAssetOption | null }>> {
+  if (!uuidSchema.safeParse(modelId).success) return fail("Invalid model id.");
+  if (excludeAssetId !== undefined && !uuidSchema.safeParse(excludeAssetId).success) return fail("Invalid asset id.");
+  const trimmed = serialNumber.trim();
+  if (!trimmed) return ok({ match: null });
+
+  const ctx = await requireModuleContext("assets");
+  if (!ctx.ok) return fail(ctx.error);
+  if (!canAny(ctx.context.actor, "assets", ["read", "read_own"])) {
+    return fail("You do not have permission to view assets.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const escaped = trimmed.replace(/[\\%_]/g, (c) => `\\${c}`);
+  let query = supabase
+    .from("assets")
+    .select(INACTIVE_OPTION_SELECT)
+    .eq("is_inactive", true)
+    .eq("model_id", modelId)
+    .ilike("serial_number", escaped)
+    .limit(10);
+  if (excludeAssetId) query = query.neq("id", excludeAssetId);
+  const { data, error } = await query;
+  if (error) return fail(mapDbError(error));
+  const rows = await withoutSuccessors(supabase, (data ?? []) as unknown as InactiveAssetOption[], null);
+  return ok({ match: rows[0] ?? null });
 }

@@ -99,10 +99,10 @@ export function AssetContractsPanel({ coverage, canManage, onLink, onUnlink }: A
 
   function rowActions(entry: AssetContractCoverage): WebMenuItem[] {
     const items: WebMenuItem[] = [{ key: "open", label: "Open contract", href: `/contracts/${entry.contract.id}` }];
-    if (canManage && entry.source.type === "direct") {
+    if (canManage && entry.source.type === "direct" && entry.contract.status !== "ended") {
       items.push({
         key: "unlink",
-        label: "Unlink contract",
+        label: entry.contract.status === "draft" ? "Unlink contract" : "Remove from contract…",
         danger: true,
         onSelect: () => onUnlink(entry.contract.id),
       });

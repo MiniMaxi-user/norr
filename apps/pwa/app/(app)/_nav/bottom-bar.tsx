@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useFeatures } from "@/lib/features/use-features";
 import { Boxes, Camera, CalendarDays, Check, ClipboardList, Clock, Home, Signature, type Icon } from "@yourorg/ui/icons";
 
 /**
@@ -46,13 +47,18 @@ const WORK_ORDER_SECTIONS: { value: string; label: string; icon: Icon }[] = [
 export function BottomBar() {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
+  // Issue #248: the Checklist tab holds checklists and volumes — it only exists
+  // when at least one of those modules is on.
+  const features = useFeatures();
+  const showChecklistTab = features.has("checklists") || features.has("meters");
+  const sections = showChecklistTab ? WORK_ORDER_SECTIONS : WORK_ORDER_SECTIONS.filter((section) => section.value !== "checklist");
 
   // `/work-orders/new` (issue #223) is the create screen, not an open work order.
   const workOrderMatch = /^\/work-orders\/(?!new(?:\/|$))([^/]+)/.exec(pathname);
   const workOrderId = workOrderMatch?.[1] ?? null;
   const activeSection = searchParams.get("section") ?? "home";
   const isToday = pathname === "/today";
-  const activeIndex = WORK_ORDER_SECTIONS.findIndex((section) => section.value === activeSection);
+  const activeIndex = sections.findIndex((section) => section.value === activeSection);
   const doneCount = Math.max(activeIndex, 0);
 
   // Presentation only: which side of the step strip has more steps to scroll
@@ -113,7 +119,7 @@ export function BottomBar() {
             >
               <span className="pwa-nav-line" aria-hidden />
               <span className="pwa-nav-line-done" aria-hidden />
-              {WORK_ORDER_SECTIONS.map((section, index) => {
+              {sections.map((section, index) => {
                 const Icon = section.icon;
                 const active = index === activeIndex;
                 const done = !active && index < activeIndex;

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { getLatestWorkReceiptOutboxStatus, type OutboxMailStatus } from "@/lib/email/outbox-status";
 import { hasEmail, loadSiteRoleContacts, uniqueEmails, type SiteRoleContact } from "../clients/site-contact-roles";
@@ -231,10 +232,13 @@ export async function generateWorkReceipt(workOrderId: string): Promise<ActionRe
     .single<ReceiptRow>();
   if (rowError || !row) return fail(rowError ? mapDbError(rowError) : "Could not read the generated work receipt.");
 
-  const render = await renderWorkReceiptPdf(supabase, idResult.data, {
-    receiptNumber: row.receipt_number,
-    generatedAt: row.generated_at,
-  });
+  const render = await renderWorkReceiptPdf(
+    supabase,
+    idResult.data,
+    { receiptNumber: row.receipt_number, generatedAt: row.generated_at },
+    // Meters off: no volume readings section on the receipt (#247). The receipt has no checklist section.
+    { includeVolumes: await hasFeature(ctx.context.session.organization, "meters") },
+  );
   if (!render.rendered) {
     return fail(`Work receipt ${row.receipt_number} could not be generated: ${render.error}`);
   }

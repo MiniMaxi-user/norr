@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeCounterUsage,
+  computeWindowedCounterUsage,
   computeOverage,
   contractPeriodByIndex,
   describeOverage,
@@ -227,5 +228,76 @@ describe("settlement period planning", () => {
     expect(isPeriodQuoteDue("in_advance", period, "2027-01-01")).toBe(true);
     expect(isPeriodQuoteDue("in_arrears", period, "2027-03-31")).toBe(false);
     expect(isPeriodQuoteDue("in_arrears", period, "2027-04-01")).toBe(true);
+  });
+});
+
+describe("computeWindowedCounterUsage (issue #274)", () => {
+  const period = ["2027-01-01", "2027-03-31"] as const;
+
+  it("counts a removed asset up to its removal date and nothing after", () => {
+    const result = computeWindowedCounterUsage(
+      [A],
+      [{ assetId: "a", start: "2026-06-01", end: "2027-02-15" }],
+      [
+        reading("a", "2026-12-31T10:00:00Z", 100), // start of period
+        reading("a", "2027-02-15T12:00:00Z", 160), // closing reading on the removal date
+        reading("a", "2027-03-20T10:00:00Z", 900), // after removal: must not count
+      ],
+      ...period,
+    );
+    expect(result.usage).toBe(60);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("reports a missing closing reading as a removal-date issue", () => {
+    const result = computeWindowedCounterUsage(
+      [A],
+      [{ assetId: "a", start: "2026-06-01", end: "2027-02-15" }],
+      [reading("a", "2026-12-31T10:00:00Z", 100)],
+      ...period,
+    );
+    // the latest reading at/before the removal date is the start reading itself: usage 0, no issue
+    expect(result.usage).toBe(0);
+    expect(result.issues).toEqual([]);
+    const none = computeWindowedCounterUsage([A], [{ assetId: "a", start: "2027-01-10", end: "2027-02-15" }], [], ...period);
+    expect(none.issues).toContain("no reading at removal date for Printer A");
+  });
+
+  it("skips a window that ended before the period started", () => {
+    const result = computeWindowedCounterUsage(
+      [A],
+      [{ assetId: "a", start: "2026-06-01", end: "2026-12-31" }],
+      [reading("a", "2026-12-31T12:00:00Z", 100), reading("a", "2027-03-31T12:00:00Z", 500)],
+      ...period,
+    );
+    expect(result.usage).toBe(0);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("counts a re-added asset per window (gap in between does not count)", () => {
+    const result = computeWindowedCounterUsage(
+      [A],
+      [
+        { assetId: "a", start: "2026-06-01", end: "2027-01-31" },
+        { assetId: "a", start: "2027-03-01", end: null },
+      ],
+      [
+        reading("a", "2026-12-31T10:00:00Z", 100),
+        reading("a", "2027-01-31T12:00:00Z", 130), // closing of window 1: +30
+        reading("a", "2027-02-20T10:00:00Z", 400), // gap: not covered
+        reading("a", "2027-03-01T08:00:00Z", 410), // baseline of window 2 (end of day boundary below)
+        reading("a", "2027-03-31T12:00:00Z", 450),
+      ],
+      ...period,
+    );
+    // window 1: 130 - 100 = 30; window 2: start boundary = end of 2027-03-01 -> 410, end 450 -> 40
+    expect(result.usage).toBe(70);
+  });
+
+  it("behaves like computeCounterUsage for open windows", () => {
+    const readings = [reading("a", "2026-12-31T10:00:00Z", 100), reading("a", "2027-03-31T10:00:00Z", 250)];
+    const legacy = computeCounterUsage([A], readings, ...period);
+    const windowed = computeWindowedCounterUsage([A], [{ assetId: "a", start: null, end: null }], readings, ...period);
+    expect(windowed).toEqual(legacy);
   });
 });

@@ -15,6 +15,7 @@ import {
 } from "@yourorg/ui/web-client";
 import type { AssetRecord } from "@/app/(app)/assets/actions";
 import type { ClientRecord, SiteRecord } from "@/app/(app)/clients/actions";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import type { ContractRecord } from "@/app/(app)/contracts/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { contractLabel } from "@/lib/format/contract-label";
@@ -86,6 +87,7 @@ export function WorkOrderOverviewCards({
   sourceActivityId,
   signature = null,
 }: WorkOrderOverviewCardsProps) {
+  const contractsEnabled = useModuleEnabled("contracts");
   const saved = edit.record;
   const draft = edit.draft;
 
@@ -185,7 +187,7 @@ export function WorkOrderOverviewCards({
 
   const activityId = workOrder?.source_activity_id ?? sourceActivityId ?? null;
 
-  const fields: KvField[] = [
+  const allFields: KvField[] = [
     {
       key: "statusId",
       label: "Status",
@@ -290,6 +292,9 @@ export function WorkOrderOverviewCards({
       read: workOrder?.scheduled_at ? formatDateTimeWeb(workOrder.scheduled_at) : null,
     },
   ];
+
+  // Contracts module off: the Contract field does not exist (#247).
+  const fields = contractsEnabled ? allFields : allFields.filter((field) => field.key !== "contractId");
 
   return (
     <WebCardStack>

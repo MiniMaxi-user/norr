@@ -72,7 +72,7 @@ const uuidSchema = z.string().uuid("Invalid id.");
 export async function listChecklistTemplates(): Promise<
   ActionResult<{ templates: ChecklistTemplateRecord[] }>
 > {
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "read")) {
@@ -104,7 +104,7 @@ export async function getChecklistTemplate(
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid checklist template id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "read")) {
@@ -147,7 +147,7 @@ export async function getChecklistTemplate(
 export async function listChecklistTemplateItemsForTemplates(
   templateIds: string[],
 ): Promise<ActionResult<{ itemsByTemplateId: Record<string, ChecklistTemplateItemRecord[]> }>> {
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "read")) {
@@ -180,7 +180,7 @@ export async function listChecklistTemplateItemsForTemplates(
 export async function createChecklistTemplate(
   input: unknown,
 ): Promise<ActionResult<{ template: ChecklistTemplateRecord }>> {
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "create")) {
@@ -211,7 +211,7 @@ export async function updateChecklistTemplate(
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid checklist template id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "update")) {
@@ -254,7 +254,7 @@ export async function deleteChecklistTemplate(id: string): Promise<ActionResult<
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid checklist template id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "delete")) {
@@ -282,7 +282,7 @@ export async function createChecklistTemplateItem(
   const idResult = uuidSchema.safeParse(templateId);
   if (!idResult.success) return fail("Invalid checklist template id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "create")) {
@@ -324,7 +324,7 @@ export async function updateChecklistTemplateItem(
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid checklist template item id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "update")) {
@@ -363,7 +363,7 @@ export async function deleteChecklistTemplateItem(id: string): Promise<ActionRes
   const idResult = uuidSchema.safeParse(id);
   if (!idResult.success) return fail("Invalid checklist template item id.");
 
-  const ctx = await requireModuleContext("settings");
+  const ctx = await requireModuleContext("settings", "checklists");
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "settings", "delete")) {

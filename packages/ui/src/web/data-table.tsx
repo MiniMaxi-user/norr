@@ -99,6 +99,13 @@ export interface FilterBarSegment {
   onChange: (value: string) => void;
 }
 
+/** An on/off switch of the FilterBar ("Show inactive"), after the segmented control. */
+export interface FilterBarToggle {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
 export interface FilterBarProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
@@ -117,6 +124,9 @@ export interface FilterBarProps {
   /** True when anything differs from the defaults. */
   filtersActive: boolean;
   onClear: () => void;
+  /** Optional on/off switch (e.g. "Show inactive"); it changes what is listed, so it is not part of
+   * `filtersActive`/"Clear filters". */
+  toggle?: FilterBarToggle;
   /** The add button (tabs of a detail page): last element, secondary 30px. */
   add?: ReactNode;
 }
@@ -280,6 +290,7 @@ export function FilterBar({
   totalCount,
   filtersActive,
   onClear,
+  toggle,
   add,
 }: FilterBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -348,6 +359,12 @@ export function FilterBar({
         />
       ) : null}
       {segment ? <Segmented segment={segment} /> : null}
+      {toggle ? (
+        <label className="web-filter-toggle" data-checked={toggle.checked ? "true" : undefined}>
+          <input type="checkbox" checked={toggle.checked} onChange={(event) => toggle.onChange(event.target.checked)} />
+          {toggle.label}
+        </label>
+      ) : null}
       <span className="web-filterbar-count" aria-live="polite">
         {filtersActive ? `${shownCount} of ${totalCount}` : String(shownCount)}
       </span>
@@ -512,7 +529,8 @@ export interface WebDataTableCardProps<T> {
   /** Plural noun for placeholders and empty states: "sites". */
   noun: string;
   dropdowns: WebDropdownDef<T>[];
-  segment: WebSegmentDef<T>;
+  /** Optional: omitted when the segmented control does not apply (e.g. its module is off). */
+  segment?: WebSegmentDef<T> | undefined;
   /** Namespaces the URL params so tabs/tables don't collide ("sites").
    * Required in client mode; ignored in server mode (plain `q`, `seg`,
    * `sort`, `dir`, `page` params). */
@@ -527,6 +545,10 @@ export interface WebDataTableCardProps<T> {
   /** The add button for this tab (secondary 30px, "+ Site"); omit when the
    * user may not create or the table has no add action. */
   add?: ReactNode;
+  /** Optional on/off switch in the FilterBar ("Show inactive"), stored in the URL as `<id>=1` (server mode) or
+   * `<urlPrefix>_<id>=1` (client mode). The card only writes the param: the caller decides which `rows` it
+   * passes (the Server Component reads the param; in client mode read it with `useSearchParams`). */
+  toggle?: { id: string; label: string };
   /** Opens the record: a link target, or a callback (dialogs). */
   rowHref?: (row: T) => string;
   onRowClick?: (row: T) => void;
@@ -587,6 +609,7 @@ export function WebDataTableCard<T>({
   urlPrefix = "t",
   server,
   add,
+  toggle,
   rowHref,
   onRowClick,
   rowActions,
@@ -608,7 +631,7 @@ export function WebDataTableCard<T>({
   const url = server ? serverUrl : clientUrl;
   const pending = server ? serverUrl.pending : false;
   const q = url.get("q");
-  const segValue = url.get("seg") || segment.defaultValue;
+  const segValue = url.get("seg") || segment?.defaultValue || "";
   const sortId = url.get("sort") || defaultSort?.columnId || "";
   const sortDir = (url.get("dir") || defaultSort?.direction || "asc") as "asc" | "desc";
   const page = Math.max(1, Number.parseInt(url.get("page") || "1", 10) || 1);
@@ -625,6 +648,7 @@ export function WebDataTableCard<T>({
   }, [searchInput]);
 
   const dropdownValues = Object.fromEntries(dropdowns.map((dropdown) => [dropdown.id, url.get(dropdown.id)]));
+  const toggleOn = toggle ? url.get(toggle.id) === "1" : false;
 
   const dropdownOptions = useMemo(() => {
     const result: Record<string, FilterOption[]> = {};
@@ -647,7 +671,7 @@ export function WebDataTableCard<T>({
   const filtered = useMemo(() => {
     if (server) return rows;
     const needle = q.trim().toLowerCase();
-    const activeSegment = segment.options.find((option) => option.value === segValue);
+    const activeSegment = segment?.options.find((option) => option.value === segValue);
     let result = rows.filter((row) => {
       if (activeSegment?.match && !activeSegment.match(row)) return false;
       for (const dropdown of dropdowns) {
@@ -668,7 +692,7 @@ export function WebDataTableCard<T>({
   }, [rows, q, segValue, JSON.stringify(dropdownValues), sortId, sortDir, columns, dropdowns, segment, searchText, server]);
 
   const filtersActive =
-    Boolean(q) || segValue !== segment.defaultValue || Object.values(dropdownValues).some((value) => Boolean(value));
+    Boolean(q) || segValue !== (segment?.defaultValue ?? "") || Object.values(dropdownValues).some((value) => Boolean(value));
 
   const matchCount = server ? server.total : filtered.length;
   const pageCount = Math.max(1, Math.ceil(matchCount / pageSize));
@@ -769,16 +793,25 @@ export function WebDataTableCard<T>({
               page: "",
             }),
         }))}
-        segment={{
-          label: segment.label,
-          options: segment.options,
-          value: segValue,
-          onChange: (value) => url.set({ seg: value === segment.defaultValue ? "" : value, page: "" }),
-        }}
+        segment={
+          segment
+            ? {
+                label: segment.label,
+                options: segment.options,
+                value: segValue,
+                onChange: (value) => url.set({ seg: value === segment.defaultValue ? "" : value, page: "" }),
+              }
+            : undefined
+        }
         shownCount={matchCount}
         totalCount={server ? (server.unfilteredTotal ?? server.total) : rows.length}
         filtersActive={filtersActive}
         onClear={clearFilters}
+        toggle={
+          toggle
+            ? { label: toggle.label, checked: toggleOn, onChange: (checked) => url.set({ [toggle.id]: checked ? "1" : "", page: "" }) }
+            : undefined
+        }
         add={add}
       />
 

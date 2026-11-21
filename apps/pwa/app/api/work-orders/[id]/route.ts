@@ -3,6 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { hasFeature } from "@/lib/features/server";
 import type {
   WorkOrderArticleEntry,
   WorkOrderChecklist,
@@ -190,6 +191,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     console.error("GET /api/work-orders/[id]: checkout_work_order_if_scheduled RPC failed", checkoutError);
   }
 
+  // Issue #248: checklists off = no checklist data in the detail at all.
+  const checklistsEnabled = await hasFeature(session.organization?.id, "checklists");
+
   const [workOrderResult, timeEntriesResult, articlesResult, timeRoundingResult, checklistResult] = await Promise.all([
     supabase.from("work_orders").select(WORK_ORDER_DETAIL_SELECT).eq("id", id).maybeSingle(),
     supabase
@@ -212,14 +216,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // Issues #230/#231: the work order's standard checklists (several per work
     // order) + their items, under the caller's RLS (engineer: own assigned work
     // orders). Oldest first.
-    supabase
-      .from("work_order_checklists")
-      .select(
-        "id, template:checklist_templates(name), items:work_order_checklist_items(id, label, is_required, is_checked, sort_order)",
-      )
-      .eq("work_order_id", id)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true }),
+    checklistsEnabled
+      ? supabase
+          .from("work_order_checklists")
+          .select(
+            "id, template:checklist_templates(name), items:work_order_checklist_items(id, label, is_required, is_checked, sort_order)",
+          )
+          .eq("work_order_id", id)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (workOrderResult.error) {

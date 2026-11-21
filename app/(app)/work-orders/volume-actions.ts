@@ -63,7 +63,7 @@ export async function getWorkOrderVolumeChecklist(
 ): Promise<ActionResult<WorkOrderVolumeChecklist | null>> {
   if (!uuidSchema.safeParse(workOrderId).success) return fail("Invalid work order id.");
 
-  const ctx = await requireModuleContext("planning");
+  const ctx = await requireModuleContext("planning", "meters");
   if (!ctx.ok) return fail(ctx.error);
   const { actor, session } = ctx.context;
   if (!session.organization || !(await hasFeature(session.organization, "assets"))) {
@@ -205,7 +205,7 @@ export async function saveWorkOrderVolumeValue(input: unknown): Promise<ActionRe
   }
   const { workOrderId, volumeItemId, value } = parsed.data;
 
-  const ctx = await requireModuleContext("planning");
+  const ctx = await requireModuleContext("planning", "meters");
   if (!ctx.ok) return fail(ctx.error);
   const { actor, session } = ctx.context;
   if (!session.organization || !(await hasFeature(session.organization, "assets"))) {

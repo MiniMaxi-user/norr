@@ -134,6 +134,8 @@ export const referenceItemCreateSchema = z.object({
   defaultDurationMinutes: referenceItemDefaultDurationMinutesSchema,
   intervalMonths: referenceItemIntervalMonthsSchema,
   planningDefault: z.boolean().optional(),
+  /** Issue #274: marks an asset_status as "out of use" (inactive assets). Only meaningful for that list. */
+  isInactive: z.boolean().optional(),
 });
 
 export type ReferenceItemCreateInput = z.infer<typeof referenceItemCreateSchema>;

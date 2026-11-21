@@ -2004,6 +2004,31 @@ html:has(.web-shell) body {
   cursor: pointer;
   font: inherit;
 }
+.web-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font: 400 13px/18px var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.web-filter-toggle[data-checked="true"] {
+  border-color: var(--text-ink);
+  color: var(--text-ink);
+}
+.web-filter-toggle:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+.web-filter-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
 .web-filter-more {
   height: 30px;
   padding: 0 10px;
@@ -2545,6 +2570,11 @@ a.web-tree-id:hover {
   border-color: var(--info-border);
   background: var(--info-bg);
   color: var(--info-text);
+}
+.web-dialog-summary[data-tone="warning"] {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 .web-dialog-summary[data-tone="success"] {
   border-color: var(--success-border);

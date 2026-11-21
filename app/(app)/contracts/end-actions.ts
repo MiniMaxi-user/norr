@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { assetVolumeReadingValueSchema } from "@/lib/asset-volumes/schema";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
@@ -186,6 +187,7 @@ async function buildEndBalance(
   contractId: string,
   input: z.output<typeof endInputSchema>,
   today: string,
+  metersOn: boolean,
 ): Promise<{ error: string } | BuiltBalance> {
   const { data, error } = await supabase.from("contracts").select(CONTRACT_SELECT).eq("id", contractId).maybeSingle();
   if (error) return { error: mapDbError(error) };
@@ -200,7 +202,7 @@ async function buildEndBalance(
   const E = input.endDate;
   if (E < contract.start_date) return { error: "The end date cannot be before the start date of the contract." };
 
-  const lines: BalanceContractLine[] = toBalanceLines(contract);
+  const lines: BalanceContractLine[] = toBalanceLines(contract, metersOn);
   const counterLines = lines.filter((l) => l.isVolume && l.volumeItemId);
   const intervalMonths = contract.billing_terms?.interval_months ?? null;
   const multiplier = billingMultiplier(intervalMonths, billingPeriodMonths(contract.billing_period));
@@ -376,7 +378,7 @@ async function buildEndBalance(
       const volumeItemId = line.volumeItemId as string;
       if (seenCounters.has(volumeItemId)) continue;
       seenCounters.add(volumeItemId);
-      for (const asset of coveredAssetsForCounter(counterData, contract.id, volumeItemId)) {
+      for (const asset of coveredAssetsForCounter(counterData, contract.id, volumeItemId, { openOnly: true })) {
         if (asset.baseline > E) continue; // not covered yet on the end date
         const key = `${asset.id}|${volumeItemId}`;
         const readings = counterData.readings.get(key) ?? [];
@@ -451,6 +453,7 @@ async function buildEndBalance(
 
   // --- RPC arguments (complete only) ---------------------------------------------
   const assets = contract.contract_assets
+    .filter((link) => link.removed_on === null)
     .map((link) => link.asset)
     .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset))
     .map((asset) => ({
@@ -515,13 +518,14 @@ async function buildEndBalance(
 }
 
 /** Module + permission gate shared by the end actions; `error` is set when refused. */
-async function endContext(): Promise<{ error: string }  | { error?: undefined }> {
+async function endContext(): Promise<{ error: string; metersOn?: undefined } | { error?: undefined; metersOn: boolean }> {
   const ctx = await requireModuleContext("contracts");
   if (!ctx.ok) return { error: ctx.error ?? "Contracts are not available." };
   if (!can(ctx.context.actor, "contracts", "update")) {
     return { error: "Only an owner or finance user can end a contract." };
   }
-  return {};
+  // Meters off: no counter settlement and no closing readings asked (#247).
+  return { metersOn: await hasFeature(ctx.context.session.organization, "meters") };
 }
 
 /**
@@ -535,12 +539,12 @@ export async function getContractEndBalance(
   const idResult = uuidSchema.safeParse(contractId);
   if (!idResult.success) return fail("Invalid contract id.");
   const gate = await endContext();
-  if (gate.error) return fail(gate.error);
+  if (gate.metersOn === undefined) return fail(gate.error);
   const parsed = endInputSchema.safeParse(input);
   if (!parsed.success) return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
 
   const supabase = await createSupabaseServerClient();
-  const built = await buildEndBalance(supabase, idResult.data, parsed.data, todayUtc());
+  const built = await buildEndBalance(supabase, idResult.data, parsed.data, todayUtc(), gate.metersOn);
   if ("error" in built) return fail(built.error);
   return ok(built.balance);
 }
@@ -657,7 +661,7 @@ export async function completeContractEnd(
   const idResult = uuidSchema.safeParse(contractId);
   if (!idResult.success) return fail("Invalid contract id.");
   const gate = await endContext();
-  if (gate.error) return fail(gate.error);
+  if (gate.metersOn === undefined) return fail(gate.error);
   const parsed = endInputSchema.safeParse(input);
   if (!parsed.success) return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
 
@@ -667,7 +671,7 @@ export async function completeContractEnd(
   }
 
   const supabase = await createSupabaseServerClient();
-  const built = await buildEndBalance(supabase, idResult.data, parsed.data, today);
+  const built = await buildEndBalance(supabase, idResult.data, parsed.data, today, gate.metersOn);
   if ("error" in built) return fail(built.error);
   if (!built.rpc || built.balance.mode !== "complete") return fail("Nothing to complete for this end date.");
   if (built.blockers.length > 0) return fail(built.blockers[0] as string);

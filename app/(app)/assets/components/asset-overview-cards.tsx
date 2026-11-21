@@ -17,6 +17,7 @@ import type { ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import { formatDateWeb } from "@/lib/format/web";
 import type { AssetRecord } from "../actions";
+import type { InactiveAssetOption } from "../asset-errors";
 import type { AssetDraft } from "./asset-draft";
 
 export interface AssetReferenceLists {
@@ -37,8 +38,16 @@ export interface AssetOverviewCardsProps {
   /** Sites of the draft's client (fetched client-side, follows `clientId`). */
   sites: SiteRecord[];
   loadingOptions: boolean;
+  /** Inactive assets (any client) the "Previous asset" select offers (issue #274). */
+  previousAssetOptions: InactiveAssetOption[];
   lockedClientId?: string;
   isNew: boolean;
+}
+
+/** "Asset name · Client" with model and serial number when known. */
+export function previousAssetLabel(option: InactiveAssetOption): string {
+  const detail = [option.model?.name, option.serial_number ? `SN ${option.serial_number}` : null].filter(Boolean).join(", ");
+  return `${option.name} · ${option.client.name}${detail ? ` (${detail})` : ""}`;
 }
 
 function modelName(model: AssetModelRecord) {
@@ -75,6 +84,7 @@ export function AssetOverviewCards({
   lists,
   sites,
   loadingOptions,
+  previousAssetOptions,
   lockedClientId,
   isNew,
 }: AssetOverviewCardsProps) {
@@ -192,9 +202,25 @@ export function AssetOverviewCards({
     site?.id === draft.siteId ? (formatSiteAddressShort(site) ?? "") : "",
   );
   const statusOptions = lists.statuses.map((item) => ({ value: item.id, label: item.label }));
+  const currentPrevious = asset?.previous_asset ?? null;
+  const previousOptions = withCurrent(
+    previousAssetOptions.map((option) => ({ value: option.id, label: previousAssetLabel(option) })),
+    draft.previousAssetId,
+    currentPrevious && currentPrevious.id === draft.previousAssetId
+      ? `${currentPrevious.name}${currentPrevious.client_name ? ` · ${currentPrevious.client_name}` : ""}`
+      : "",
+  );
+  const savedPrevious =
+    currentPrevious && currentPrevious.id === saved.previousAssetId
+      ? currentPrevious
+      : (() => {
+          const option = previousAssetOptions.find((item) => item.id === saved.previousAssetId);
+          return option ? { id: option.id, name: option.name, client_name: option.client.name } : null;
+        })();
 
   const hasModel = Boolean(draft.modelId);
-  const clientLocked = Boolean(lockedClientId);
+  // An asset never moves to another client (#274): the client is only chosen when creating.
+  const clientLocked = Boolean(lockedClientId) || !isNew;
 
   const fields: KvField[] = [
     {
@@ -261,7 +287,11 @@ export function AssetOverviewCards({
       options: clientOptions,
       emptyLabel: "Select a client…",
       disabled: loadingOptions || clientLocked,
-      disabledNote: clientLocked ? "Set by the client you came from" : undefined,
+      disabledNote: lockedClientId
+        ? "Set by the client you came from"
+        : !isNew
+          ? "An asset can't move to another client. Make it inactive and create a new asset at the new client."
+          : undefined,
     },
     {
       key: "siteId",
@@ -281,6 +311,21 @@ export function AssetOverviewCards({
       options: statusOptions,
       emptyLabel: "Select a status…",
       disabled: loadingOptions,
+    },
+    {
+      key: "previousAssetId",
+      label: "Previous asset",
+      kind: "select",
+      read: savedPrevious ? (
+        <Link href={`/assets/${savedPrevious.id}`}>
+          {savedPrevious.name}
+          {savedPrevious.client_name ? ` · ${savedPrevious.client_name}` : ""}
+        </Link>
+      ) : null,
+      options: previousOptions,
+      emptyLabel: "No previous asset",
+      disabled: loadingOptions,
+      note: "An inactive asset this one replaces, possibly at another client",
     },
     { key: "installedAt", label: "Installed on", kind: "date", read: saved.installedAt ? formatDateWeb(saved.installedAt) : null },
     {

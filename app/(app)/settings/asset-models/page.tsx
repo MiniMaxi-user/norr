@@ -1,4 +1,5 @@
 import { getCurrentSession } from "@/lib/auth/session";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listAssetModels, listVolumeCounterOptions } from "@/lib/asset-models/actions";
 import { listReferenceItems } from "@/lib/reference-lists/actions";
@@ -20,12 +21,14 @@ export default async function AssetModelsPage() {
   const actor: PermissionActor = { role: session?.role ?? null, isPlatformAdmin: session?.isPlatformAdmin ?? false };
   const canWrite = can(actor, "settings", "create");
 
+  const metersEnabled = await hasFeature(session?.organization, "meters");
+
   const [modelsResult, brandResult, typeResult, subtypeResult, volumeResult] = await Promise.all([
     listAssetModels(),
     listReferenceItems("asset_brand"),
     listReferenceItems("asset_type"),
     listReferenceItems("asset_subtype"),
-    listVolumeCounterOptions(),
+    metersEnabled ? listVolumeCounterOptions() : Promise.resolve(null),
   ]);
 
   return (
@@ -36,7 +39,8 @@ export default async function AssetModelsPage() {
         brandItems={brandResult.data?.items ?? []}
         typeItems={typeResult.data?.items ?? []}
         subtypeItems={subtypeResult.data?.items ?? []}
-        volumeOptions={volumeResult.data?.items ?? []}
+        volumeOptions={volumeResult?.data?.items ?? []}
+        metersEnabled={metersEnabled}
       />
   );
 }

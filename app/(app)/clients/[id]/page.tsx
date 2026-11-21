@@ -10,6 +10,7 @@ import { listArticlesForSelect } from "@/app/(app)/articles/actions";
 import { getClient } from "../actions";
 import { listContacts } from "../contacts-actions";
 import { getTenantAccessStatus } from "../platform-access-actions";
+import { listTenantModules } from "../module-actions";
 import { listActivities } from "@/app/(app)/activities/actions";
 import { getClientVolumeTotals } from "@/lib/asset-volumes/actions";
 import { listAssets } from "@/app/(app)/assets/actions";
@@ -110,7 +111,11 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
     (await hasFeature(session.organization, "assets")) &&
     canAccessModule(actor, "assets");
 
-  const volumesTabVisible = assetsModuleVisible && canAny(actor, "asset_volumes", ["read", "read_own"]);
+  // Volumes tab belongs to the `meters` module (#247).
+  const volumesTabVisible =
+    assetsModuleVisible &&
+    (await hasFeature(session.organization, "meters")) &&
+    canAny(actor, "asset_volumes", ["read", "read_own"]);
 
   // The Work Orders tab is likewise a view onto a separately-entitled module
   // (issue #13) — gated server-side the same way as Assets above, before any
@@ -237,6 +242,8 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       )
     : null;
 
+  const tenantModulesResult = tenantAccessVisible ? await listTenantModules(id) : null;
+
   // Issue #106 — `?tab=...` (e.g. a Work Order's Site relation card deep-
   // linking here) wins over the last-used-view cookie when it names a real,
   // currently-visible tab; an unrecognized/not-entitled value falls through
@@ -310,6 +317,7 @@ async function ClientDetailContent({ id, requestedTabParam }: { id: string; requ
       isPlatformAdmin={session.isPlatformAdmin}
       tenantAccessVisible={tenantAccessVisible}
       accessStatusByEmail={accessStatusResult?.data?.statusByEmail ?? null}
+      tenantModules={tenantModulesResult?.data?.rows ?? null}
       defaultTab={defaultTab}
       accountManagers={accountManagersResult.data?.accountManagers ?? []}
       articles={articlesResult.data?.articles ?? []}

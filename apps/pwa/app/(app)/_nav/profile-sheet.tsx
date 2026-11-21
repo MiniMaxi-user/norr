@@ -7,6 +7,7 @@ import { ChevronRight, LogOut } from "@yourorg/ui/icons";
 import { getOpenClockPeriods } from "@/lib/offline/db";
 import { logOutAction } from "@/lib/auth/actions";
 import { StockSheet } from "./stock-sheet";
+import { useFeatures } from "@/lib/features/use-features";
 import { ProfilePhoto } from "./profile-photo";
 
 export interface ProfileSheetProps {
@@ -71,6 +72,8 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, c
   // `size="sheet"` dialogs at once, since no existing Profile sub-view in
   // this app does that.
   const [stockOpen, setStockOpen] = useState(false);
+  // Issue #248: no Stock row/sheet when the Inventory module is off.
+  const showStock = useFeatures().has("inventory");
 
   useEffect(() => {
     if (!open) return;
@@ -134,13 +137,15 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, c
 
             <WebCard size="touch" title="Account">
               <SheetRow label="This week" value={weekMinutes === null ? "…" : formatWeekMinutes(weekMinutes)} />
-              <SheetNavRow
-                label="Stock"
-                onClick={() => {
-                  onOpenChange(false);
-                  setStockOpen(true);
-                }}
-              />
+              {showStock && (
+                <SheetNavRow
+                  label="Stock"
+                  onClick={() => {
+                    onOpenChange(false);
+                    setStockOpen(true);
+                  }}
+                />
+              )}
               <SheetRow
                 label="Offline data"
                 value={isOnline ? "Synced" : "Not synced"}
@@ -157,7 +162,7 @@ export function ProfileSheet({ open, onOpenChange, fullName, email, avatarUrl, c
         </Dialog.Body>
       </Dialog>
 
-      <StockSheet open={stockOpen} onOpenChange={setStockOpen} currentUserId={currentUserId} />
+      {showStock && <StockSheet open={stockOpen} onOpenChange={setStockOpen} currentUserId={currentUserId} />}
     </>
   );
 }

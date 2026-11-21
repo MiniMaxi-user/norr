@@ -87,7 +87,7 @@ Implemented, RLS-backed tables:
 - `activity_number_sequences` / `quote_number_sequences` — same model as work order numbering (issue #228; `supabase/migrations/20261119160000_activity_numbering.sql`, `20261119160100_quote_numbering.sql`): defaults prefix `ACT` / `Q`, `next_number` 100; `activities.activity_number` (e.g. `ACT100`) and `quotes.quote_number` (e.g. `Q100`) are `text not null`, unique per organization, assigned by BEFORE INSERT trigger, read-only. Settings RPCs `get_/update_activity_numbering_settings` and `get_/update_quote_numbering_settings` (owner/administratie only); web settings live under Settings > Numbering (RBAC modules `activity_numbering` / `quote_numbering`).
 - **Work receipts (werkbon, issue #226).** The client-facing PDF of a finished job; entitlement `planning`, permission module `work_receipts` (matrix above). Rows live in `work_receipts` (one per generated version: `version`, `receiptNumber` = `<work_order_number>-<version>`, PDF in a private storage bucket served via signed URL, generated-by/at, and the email trail `emailed_to/at/by` + `email_error`); the client signature captured in the PWA sign-off is stored separately (see `work_order_signatures`) and rendered on the PDF and as a read-only "Signature" card on the web work order Overview. Versioning: a receipt is never overwritten - generating again on an approved (completed/invoiced) work order adds version n+1 and older versions stay openable; generation is only offered once approved. Web UI: a "Work receipts" tab on `/work-orders/[id]` (tab only renders when `listWorkReceipts` succeeds, i.e. the role may read) listing the versions with Open (PDF, new tab) and Send...; the header primary action is "Generate work receipt" / "Generate new version" (confirm dialog). Send flow: the Send dialog takes one to ten recipients (prefilled with the site's Work receipt contacts that have an e-mail, `suggestedRecipients`; free-text addresses, other contacts as quick picks), `sendWorkReceipt(receiptId, to[])` emails the PDF in ONE mail to all of them (`emailed_to` = addresses joined with ", ") with the tenant template from Settings > Work Orders > "Work receipt e-mail" (`work_receipt_email` settings: from, CC, subject, body with placeholders, mirroring invoice email) and records the outcome on the version row (sent to/at/by, or the error shown as a Failed badge) so a failed send can simply be retried. **Automatic send on Completed (issue #273):** an organization setting (`work_receipt_email_settings.auto_send_on_completed`, default off, Settings > Work receipt e-mail; ignored when `email_work_receipts` is off). It runs ONLY from `approveWorkOrderReview` (the single `to_review` -> `completed` path), after the status update succeeded (that update is conditional on the status still being `to_review`), through the same `queueWorkReceiptEmail` helper as the manual send (`work-receipt-send.ts`; `work-receipt-auto-send.ts` orchestrates). It mails the latest receipt version to the site's Work receipt contacts (generating a version first if none exists), and never queues a version that was already e-mailed (queued, sending or sent; a failed mail may be retried). It never fails the approval: the result carries `autoSend` = `queued` / `no_recipients` / `off` / `failed` / `already_sent`. With no recipient nothing is generated or sent and the work order shows a notice (`listWorkReceipts` returns `autoSendWorkReceipts` + `workReceiptRecipientCount`). **Invoice e-mails** (`quotes/invoice-email.ts`) go in ONE mail to ALL contacts ticked for Invoice on the client's invoice-address site(s), de-duplicated case-insensitively; contacts whose e-mail was cleared since are skipped.
 
-Not yet implemented (named here so a future migration has an obvious place to slot in — see `docs/ROADMAP.md` for phasing): `reports` (work_order_id, pdf_url, generated_at), `organization_features` (organization_id, feature_key, enabled), `subscriptions` (organization_id, stripe_customer_id, stripe_subscription_id, plan), `audit_log` (organization_id, actor_id, action, entity, at).
+Not yet implemented (named here so a future migration has an obvious place to slot in — see `docs/ROADMAP.md` for phasing): `reports` (work_order_id, pdf_url, generated_at), `subscriptions` (organization_id, stripe_customer_id, stripe_subscription_id, plan), `audit_log` (organization_id, actor_id, action, entity, at).
 
 ### Tenant-configurable reference data (picklists)
 **Implemented** in `supabase/migrations/20260822200000_reference_lists.sql`, tested in `supabase/tests/database/reference_lists_rls.test.sql`. Generalizes "Asset Type" / "Asset Status" (and every tenant-configurable dropdown since) into one reusable pattern instead of a hardcoded enum (can't gain a per-tenant value without a migration) or free text (no governance):
@@ -126,6 +126,7 @@ For exactly which tables/migrations exercise this pattern, and the full column-b
 | Reporting | Read | Read | Create (own work orders) | Read | Read | Cross-tenant |
 | Dashboarding | Configure | View | View (own) | View | View | Cross-tenant |
 | Billing/Facturatie | Read | — | — | CRUD | CRUD | Platform billing only |
+| Subscription (Settings, #249) | Read | — | — | — | — | — |
 | Contract numbering (Settings) | Read/Update | — | — | — | Read/Update | — |
 | Work order numbering (Settings) | Read/Update | — | — | — | Read/Update | — |
 | Platform | — | — | — | — | — | Read |
@@ -141,12 +142,30 @@ Encode this as a single config object (`lib/rbac/permissions.ts`), not scattered
 Which migration made which matrix row real RLS (not just `can()`-only), and why each shape was chosen, is logged in `docs/SCHEMA-HISTORY.md`'s "RBAC matrix rollout, by migration" section — check there before assuming a row is still `can()`-only.
 
 ## Feature flags
-- `organization_features` drives UI + API gating
-- Stripe webhook (`customer.subscription.updated`) syncs entitlements → `organization_features`
-- Platform Admin UI can override per tenant (trials, custom deals) — logged in `audit_log`
+- `organization_features (organization_id, feature_key, enabled, source, updated_by, updated_at)` drives UI + API gating. `source` is `manual` (platform admin), `stripe` (future webhook sync, `customer.subscription.updated`) or `default` (seeded from the default bundle).
+- Platform Admin switches modules per tenant (Modules tab on the tenant client) via RPC only — tenants never write the table. Changes are logged in `audit_log`.
 - Every module route/component checks entitlement via one helper — `hasFeature(organization, featureKey)` — never hardcode module availability
 
-**Implemented (Phase 0 stub, issue #4):** `lib/rbac/features.ts` exports `hasFeature(organization, featureKey)` with the real call signature (`organization: { id }`, async) already wired everywhere a module gate is needed (`components/shell/nav-items.ts` → `resolveNavItems`, threaded down to the sidebar and command palette). Since `organization_features` doesn't exist until Phase 3, the current implementation ignores `organization` and returns `true` only for feature keys with a shipped implementation (today: `dashboard`). Swapping in the real `organization_features` query (documented inline as a TODO in that file) is the only change needed once Phase 3 lands — no call site should need to change.
+**Implemented (#243–#249):** `lib/rbac/features.ts` exports `hasFeature(organization, key)` = key is in `SHIPPED_FEATURES` AND an enabled `organization_features` row exists (fails closed on no org / query error). All enabled keys of an org are read with ONE query, memoized per request via React `cache()` (`getOrganizationFeatureKeys(orgId)`, same pattern as `getCurrentSession`), so repeated `hasFeature` calls in one render cost one round trip. `getEnabledFeatures(organization)` returns the whole effective set (nav, Subscription page, PWA `GET /api/features`). `platform` is never resolved through `hasFeature` (platform-admin flag).
+
+**Module catalog.** `lib/rbac/module-catalog.ts` (pure, client-safe; UI source) and the DB table `feature_catalog` (enforcement source) describe every module: `tier` (`core`/`addon`), `requires`, `shipped`. They must stay in sync (a vitest test pins the TS list, a pgTAP test the DB seed). Rules, enforced in the DB RPCs and mirrored in the UI (`cascadeForToggle`): core can't be disabled; an add-on can only be enabled when everything it requires is enabled after the change set; a key an enabled add-on requires can't be disabled unless that add-on is disabled in the same change set; non-shipped keys can't be enabled. The UI builds the cascade (confirm popup) and sends one change set.
+
+| Tier | Module (key) | Requires | Notes |
+|---|---|---|---|
+| Core | `dashboard`, `clients`, `assets`, `articles`, `activities`, `planning` (work orders, planning, PWA, work receipt), `settings` | — | Always on |
+| Add-on | `contracts` | — | Off: work order pricing falls back to standard prices |
+| Add-on | `quotes` | — | |
+| Add-on | `invoicing` | `quotes` | |
+| Add-on | `checklists` | — | Off: not required on completion, omitted from work receipt |
+| Add-on | `inventory` | — | Off: no stock deduction |
+| Add-on | `meters` | — | Counters/readings; off: no counter settlement, no readings asked |
+| Add-on | `preventive_maintenance` | `contracts`, `planning` | Not shipped ("Coming soon"), can't be enabled |
+
+Not in the catalog UI: `reporting`, `billing` (not built), `platform` (platform-admin special case).
+
+**Default bundle.** `platform_default_features` holds the platform-wide default for new tenants (starts as all shipped modules incl. `meters`). A new organization gets one `organization_features` row per catalog key (core always on, add-ons from the default bundle, `source = 'default'`). Changing the default never touches existing tenants.
+
+**Subscription section (Settings, #249)** is owner-only: permission module `subscription` (owner `read`, everyone else none) in `packages/rbac`, checked via `can()`.
 
 ## Premium UX requirements
 - Collapsible sidebar (persisted per user), command palette, optimistic mutations

@@ -17,6 +17,8 @@ export interface WebListFilterBarProps {
   /** Rows matching the current filters / rows before the filters. */
   total: number;
   unfilteredTotal?: number;
+  /** Optional on/off switch ("Show inactive"), stored as `<id>=1` in the URL. */
+  toggle?: { id: string; label: string };
 }
 
 /**
@@ -25,7 +27,7 @@ export interface WebListFilterBarProps {
  * plain `q` / `seg` / `<dropdown id>` URL params (`router.replace` in a
  * transition, page reset) that the Server Component reads.
  */
-export function WebListFilterBar({ noun, dropdowns, segment, total, unfilteredTotal }: WebListFilterBarProps) {
+export function WebListFilterBar({ noun, dropdowns, segment, total, unfilteredTotal, toggle }: WebListFilterBarProps) {
   const url = useServerParams(true);
   const q = url.get("q");
   const segValue = url.get("seg") || segment.defaultValue;
@@ -78,6 +80,15 @@ export function WebListFilterBar({ noun, dropdowns, segment, total, unfilteredTo
           ...Object.fromEntries(dropdowns.map((dropdown) => [dropdown.id, ""])),
         });
       }}
+      toggle={
+        toggle
+          ? {
+              label: toggle.label,
+              checked: url.get(toggle.id) === "1",
+              onChange: (checked) => url.set({ [toggle.id]: checked ? "1" : "", page: "" }),
+            }
+          : undefined
+      }
     />
   );
 }

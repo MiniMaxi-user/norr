@@ -3,6 +3,7 @@ import { canAny } from "@yourorg/rbac";
 
 import { getCurrentEngineerSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { requireFeature } from "@/lib/features/server";
 import type { MyStockItem, MyStockResponse } from "@/lib/inventory/types";
 
 /**
@@ -54,6 +55,8 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
+  const inventoryOff = await requireFeature(session.organization?.id, "inventory");
+  if (inventoryOff) return inventoryOff;
   if (!canAny({ role: session.role }, "inventory", ["read_own"])) {
     return NextResponse.json({ error: "You do not have permission to view stock." }, { status: 403 });
   }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { findAutoDraftQuoteId, computeUnresolvedTimeEntryIds } from "@/lib/quotes/auto-draft";
 import { getContractCoveredArticleIds } from "@/lib/contracts/coverage";
@@ -90,6 +91,9 @@ interface SourceWorkOrder {
   client_id: string;
   contract_id: string | null;
   work_order_number: string;
+  asset_id?: string | null;
+  scheduled_at?: string | null;
+  created_at?: string | null;
 }
 
 /** Minimal shape read off `time_entries` for the fallback path, with its
@@ -551,7 +555,7 @@ export async function createQuoteFromWorkOrder(
 
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select("id, client_id, contract_id, work_order_number")
+    .select("id, client_id, contract_id, work_order_number, asset_id, scheduled_at, created_at")
     .eq("id", idResult.data)
     .maybeSingle<SourceWorkOrder>();
   if (workOrderError) return fail(mapDbError(workOrderError));
@@ -564,5 +568,21 @@ export async function createQuoteFromWorkOrder(
     return promoteAutoDraftQuote(supabase, workOrder.id, autoDraftQuoteId);
   }
 
-  return createBrandNewQuoteFromWorkOrder(supabase, organizationId, workOrder);
+  // Contracts module off: no contract coverage, every line at its standard price (#247).
+  const contractsOn = await hasFeature(ctx.context.session.organization, "contracts");
+  let coveringContractId = contractsOn ? workOrder.contract_id : null;
+  // Issue #274: an asset removed from the contract only stays covered up to its removal date. The work order's date
+  // is its scheduled date when set, else its created date (UTC). No asset: unchanged.
+  const workOrderTimestamp = workOrder.scheduled_at ?? workOrder.created_at;
+  const workOrderDate = workOrderTimestamp ? new Date(workOrderTimestamp).toISOString().slice(0, 10) : "";
+  if (coveringContractId && workOrder.asset_id && workOrderDate) {
+    const { data: covered, error: coveredError } = await supabase.rpc("asset_covered_by_contract_on", {
+      p_contract_id: coveringContractId,
+      p_asset_id: workOrder.asset_id,
+      p_date: workOrderDate,
+    });
+    if (coveredError) return fail(mapDbError(coveredError));
+    if (covered !== true) coveringContractId = null;
+  }
+  return createBrandNewQuoteFromWorkOrder(supabase, organizationId, { ...workOrder, contract_id: coveringContractId });
 }

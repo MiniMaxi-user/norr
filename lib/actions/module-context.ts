@@ -34,11 +34,14 @@ export type ModuleContextResult =
   | { ok: true; context: ModuleContext }
   | { ok: false; error: string };
 
-export async function requireModuleContext(featureKey: FeatureKey): Promise<ModuleContextResult> {
-  return withTiming(`auth:requireModuleContext:${featureKey}`, () => resolveModuleContext(featureKey));
+export async function requireModuleContext(
+  featureKey: FeatureKey,
+  ...alsoRequire: FeatureKey[]
+): Promise<ModuleContextResult> {
+  return withTiming(`auth:requireModuleContext:${featureKey}`, () => resolveModuleContext(featureKey, alsoRequire));
 }
 
-async function resolveModuleContext(featureKey: FeatureKey): Promise<ModuleContextResult> {
+async function resolveModuleContext(featureKey: FeatureKey, alsoRequire: FeatureKey[]): Promise<ModuleContextResult> {
   const session = await requireSession();
 
   if (!session.organization) {
@@ -52,6 +55,13 @@ async function resolveModuleContext(featureKey: FeatureKey): Promise<ModuleConte
 
   if (!(await hasFeature(session.organization, featureKey))) {
     return { ok: false, error: "This module is not enabled for your organization." };
+  }
+  // Cross-module gates (#247): e.g. volume actions live under `assets` but
+  // also need `meters`.
+  for (const extra of alsoRequire) {
+    if (!(await hasFeature(session.organization, extra))) {
+      return { ok: false, error: "This module is not enabled for your organization." };
+    }
   }
 
   return {

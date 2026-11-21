@@ -20,6 +20,8 @@ export interface AssetModelManagerProps {
   subtypeItems: ReferenceListItemRecord[];
   /** Counters (Volume list items) selectable per model. */
   volumeOptions: VolumeCounterOption[];
+  /** `meters` module on: show the counters column/filter/picker (#247). */
+  metersEnabled: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AssetModelManager({
   typeItems,
   subtypeItems,
   volumeOptions,
+  metersEnabled,
 }: AssetModelManagerProps) {
   const [formState, setFormState] = useState<{ open: boolean; model: AssetModelRecord | null }>({
     open: false,
@@ -70,11 +73,15 @@ export function AssetModelManager({
         sortValue: (row) => row.subtype?.label ?? "",
         render: (row) => row.subtype?.label ?? "—",
       },
-      {
-        id: "volumes",
-        header: "Volumes",
-        render: (row) => (row.volumeItemIds.length === 0 ? "—" : volumeText(row)),
-      },
+      ...(metersEnabled
+        ? [
+            {
+              id: "volumes",
+              header: "Volumes",
+              render: (row: AssetModelRecord) => (row.volumeItemIds.length === 0 ? "—" : volumeText(row)),
+            },
+          ]
+        : []),
       {
         id: "warranty",
         header: "Default warranty",
@@ -84,7 +91,7 @@ export function AssetModelManager({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [volumeLabels],
+    [volumeLabels, metersEnabled],
   );
 
   const dropdowns = useMemo(
@@ -112,7 +119,10 @@ export function AssetModelManager({
   );
 
   const segment = useMemo(
-    () => ({
+    () =>
+      !metersEnabled
+        ? undefined
+        : {
       label: "Show asset models",
       defaultValue: "all",
       options: [
@@ -120,8 +130,8 @@ export function AssetModelManager({
         { value: "without", label: "Without volumes", match: (row: AssetModelRecord) => row.volumeItemIds.length === 0 },
         { value: "all", label: "All" },
       ] as const,
-    }),
-    [],
+    },
+    [metersEnabled],
   );
 
   const rowActions = (row: AssetModelRecord): WebMenuItem[] =>
@@ -147,7 +157,7 @@ export function AssetModelManager({
         getRowKey={(row) => row.id}
         columns={columns}
         searchText={(row) =>
-          `${row.name} ${row.brand?.label ?? ""} ${row.type?.label ?? ""} ${row.subtype?.label ?? ""} ${volumeText(row)}`
+          `${row.name} ${row.brand?.label ?? ""} ${row.type?.label ?? ""} ${row.subtype?.label ?? ""} ${metersEnabled ? volumeText(row) : ""}`
         }
         noun="asset models"
         dropdowns={dropdowns}
@@ -177,6 +187,7 @@ export function AssetModelManager({
               typeItems={typeItems}
               subtypeItems={subtypeItems}
               volumeOptions={volumeOptions}
+              metersEnabled={metersEnabled}
             />
           ) : null}
           <DeleteAssetModelDialog

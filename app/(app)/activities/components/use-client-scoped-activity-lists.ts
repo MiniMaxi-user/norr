@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { listContacts, type ContactRecord } from "@/app/(app)/clients/contacts-actions";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { listContracts, type ContractRecord } from "@/app/(app)/contracts/actions";
 
 /** High enough for "every asset/contact/contract of this client" in one
@@ -20,7 +21,10 @@ const ALL_CLIENT_SCOPED_LIMIT = 500;
  * `contracts` feeds the passive derived Contract row, which a read-only viewer
  * also sees, so it is fetched whenever `clientId` is set.
  */
-export function useClientScopedActivityLists(clientId: string, enabled: boolean) {
+export function useClientScopedActivityLists(clientId: string, enabled: boolean, includeAssetIds: string[] = []) {
+  const contractsEnabled = useModuleEnabled("contracts");
+  // Issue #274: inactive assets are not offered, except the one the record already points to.
+  const keepAssetKey = includeAssetIds.join(",");
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
@@ -35,7 +39,11 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
     }
     let cancelled = false;
     setLoadingAssets(true);
-    listAssets({ clientId, limit: ALL_CLIENT_SCOPED_LIMIT })
+    listAssets({
+      clientId,
+      limit: ALL_CLIENT_SCOPED_LIMIT,
+      includeAssetIds: keepAssetKey ? keepAssetKey.split(",") : undefined,
+    })
       .then((result) => {
         if (!cancelled) setAssets(result.data?.assets ?? []);
       })
@@ -45,7 +53,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
     return () => {
       cancelled = true;
     };
-  }, [enabled, clientId]);
+  }, [enabled, clientId, keepAssetKey]);
 
   useEffect(() => {
     if (!enabled || !clientId) {
@@ -67,7 +75,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
   }, [enabled, clientId]);
 
   useEffect(() => {
-    if (!clientId) {
+    if (!clientId || !contractsEnabled) {
       setContracts([]);
       return;
     }
@@ -83,7 +91,7 @@ export function useClientScopedActivityLists(clientId: string, enabled: boolean)
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, contractsEnabled]);
 
   return { assets, contacts, contracts, loadingAssets, loadingContacts, loadingContracts };
 }

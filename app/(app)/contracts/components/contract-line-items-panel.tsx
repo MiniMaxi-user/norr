@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Combobox, type ComboboxOption } from "@yourorg/ui";
@@ -70,6 +71,10 @@ export function ContractLineItemsPanel({
   canDelete,
 }: ContractLineItemsPanelProps) {
   const router = useRouter();
+  // Volume lines (counter settlement) belong to the `meters` module (#247): with it off the
+  // Kind column/filters disappear, unless volume lines already exist on this contract.
+  const metersEnabled = useModuleEnabled("meters");
+  const showKinds = metersEnabled || lineItems.some((row) => row.is_volume);
   const [dialog, setDialog] = useState<{ row: ContractLineItemRecord | null } | null>(null);
   const [deleting, setDeleting] = useState<ContractLineItemRecord | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -106,19 +111,23 @@ export function ContractLineItemsPanel({
         sortValue: (row) => row.description ?? "",
         render: (row) => row.description ?? "—",
       },
-      {
-        id: "kind",
-        header: "Kind",
-        sortValue: (row) => kindOf(row),
-        render: (row) => {
-          if (!row.is_volume) return kindOf(row);
-          const details = [
-            row.volume_item?.label ?? null,
-            row.overage_unit_price !== null ? `${formatMoneyWeb(row.overage_unit_price)} overage` : null,
-          ].filter(Boolean);
-          return details.length > 0 ? `Volume · ${details.join(" · ")}` : "Volume";
-        },
-      },
+      ...(showKinds
+        ? [
+            {
+              id: "kind",
+              header: "Kind",
+              sortValue: (row: ContractLineItemRecord) => kindOf(row),
+              render: (row: ContractLineItemRecord) => {
+                if (!row.is_volume) return kindOf(row);
+                const details = [
+                  row.volume_item?.label ?? null,
+                  row.overage_unit_price !== null ? `${formatMoneyWeb(row.overage_unit_price)} overage` : null,
+                ].filter(Boolean);
+                return details.length > 0 ? `Volume · ${details.join(" · ")}` : "Volume";
+              },
+            },
+          ]
+        : []),
       {
         id: "quantity",
         header: "Quantity",
@@ -148,11 +157,11 @@ export function ContractLineItemsPanel({
         render: (row) => formatMoneyWeb(lineTotal(row)),
       },
     ],
-    [],
+    [showKinds],
   );
 
   const dropdowns = useMemo(
-    () => [
+    () => !showKinds ? [] : [
       {
         id: "kind",
         label: "Kind",
@@ -161,11 +170,11 @@ export function ContractLineItemsPanel({
         ],
       },
     ],
-    [],
+    [showKinds],
   );
 
   const segment = useMemo(
-    () => ({
+    () => !showKinds ? undefined : ({
       label: "Show line items",
       defaultValue: "all",
       options: [
@@ -174,7 +183,7 @@ export function ContractLineItemsPanel({
         { value: "all", label: "All" },
       ] as const,
     }),
-    [],
+    [showKinds],
   );
 
   const rowActions = (row: ContractLineItemRecord): WebMenuItem[] => {
@@ -228,6 +237,7 @@ export function ContractLineItemsPanel({
           row={dialog.row}
           articles={articles}
           counterOptions={counterOptions}
+          showVolumeOption={showKinds}
           billing={billing}
           onClose={() => setDialog(null)}
         />
@@ -254,9 +264,11 @@ function LineItemDialog({
   row,
   articles,
   counterOptions,
+  showVolumeOption,
   billing,
   onClose,
 }: {
+  showVolumeOption: boolean;
   contractId: string;
   row: ContractLineItemRecord | null;
   articles: ArticleSelectOption[];
@@ -489,6 +501,7 @@ function LineItemDialog({
           </div>
         </div>
 
+        {showVolumeOption ? (
         <span className="web-field-checkbox">
           <input
             type="checkbox"
@@ -501,6 +514,7 @@ function LineItemDialog({
           />
           <span id="contract-line-volume-text">Volume: the quantity is a pre-agreed allowance, settled against a counter</span>
         </span>
+        ) : null}
 
         {isVolume ? (
           <>

@@ -16,6 +16,11 @@ export interface AssetRailProps {
   warranty: { until: string | null; termMonths: number | null; installedAt: string | null };
   /** Only when the asset is part of a composite structure (else `null`). */
   structure: { ancestors: { id: string; name: string }[]; componentCount: number; onShow: () => void } | null;
+  /** Predecessor/successor link (issue #274), shown in Context when present. */
+  previousAsset?: { id: string; name: string; client_name: string | null } | null;
+  successor?: { id: string; name: string; client_name: string | null } | null;
+  /** Inactive assets are not expected to have a contract: the "no contract" notice is left out. */
+  inactive?: boolean;
   /** From `getLivePanel`; `null` almost always. Always the first section. */
   livePanel: LivePanelData | null;
 }
@@ -40,6 +45,9 @@ export function AssetRail({
   onManageContracts,
   warranty,
   structure,
+  previousAsset = null,
+  successor = null,
+  inactive = false,
   livePanel,
 }: AssetRailProps) {
   const now = Date.now();
@@ -57,12 +65,20 @@ export function AssetRail({
           : 100
         : null;
   const expiresSoon = hasUntil && !expired && daysLeft !== null && daysLeft <= EXPIRES_SOON_DAYS;
-  const noContract = contracts !== null && contracts.first === null;
+  const noContract = contracts !== null && contracts.first === null && !inactive;
+  const relationLink = (asset: { id: string; name: string; client_name: string | null }) => (
+    <Link href={`/assets/${asset.id}`}>
+      {asset.name}
+      {asset.client_name ? ` · ${asset.client_name}` : ""}
+    </Link>
+  );
 
   const contextRows = [
     { label: "Client", value: client ? <Link href={`/clients/${client.id}`}>{client.name}</Link> : "—" },
     { label: "Site", value: siteLabel ?? "—" },
     { label: "Model", value: modelLabel ?? "—" },
+    ...(previousAsset ? [{ label: "Previous asset", value: relationLink(previousAsset) }] : []),
+    ...(successor ? [{ label: "Successor", value: relationLink(successor) }] : []),
     ...(contracts
       ? [
           {

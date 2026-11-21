@@ -170,7 +170,9 @@ export async function renderWorkReceiptPdf(
   supabase: SupabaseServerClient,
   workOrderId: string,
   receipt: { receiptNumber: string; generatedAt: string },
+  options: { includeVolumes?: boolean } = {},
 ): Promise<WorkReceiptRenderResult> {
+  const includeVolumes = options.includeVolumes ?? true;
   try {
     const { data: wo, error: woError } = await supabase
       .from("work_orders")
@@ -226,12 +228,14 @@ export async function renderWorkReceiptPdf(
         .eq("work_order_id", wo.id)
         .order("created_at", { ascending: true })
         .returns<{ quantity: number | string; article: { article_number: string; description: string } | null }[]>(),
-      supabase
-        .from("asset_volume_readings")
-        .select("volume_item_id, value, read_at")
-        .eq("work_order_id", wo.id)
-        .order("read_at", { ascending: true })
-        .returns<{ volume_item_id: string; value: number | string; read_at: string }[]>(),
+      includeVolumes
+        ? supabase
+            .from("asset_volume_readings")
+            .select("volume_item_id, value, read_at")
+            .eq("work_order_id", wo.id)
+            .order("read_at", { ascending: true })
+            .returns<{ volume_item_id: string; value: number | string; read_at: string }[]>()
+        : Promise.resolve({ data: [] as { volume_item_id: string; value: number | string; read_at: string }[], error: null }),
       supabase.from("work_order_photos").select("id", { count: "exact", head: true }).eq("work_order_id", wo.id),
       supabase
         .from("work_order_signatures")

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { WebBadge } from "@yourorg/ui/web";
 import {
   StatusText,
   WebDataTableCard,
@@ -8,7 +10,7 @@ import {
   type WebColumn,
   type WebMenuItem,
 } from "@yourorg/ui/web-client";
-import type { AssetRecord } from "@/app/(app)/assets/actions";
+import { listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { CreateAssetButton } from "@/app/(app)/assets/components/create-asset-button";
 import { DeleteAssetDialog } from "@/app/(app)/assets/components/delete-asset-dialog";
 import type { SiteRecord } from "../actions";
@@ -48,6 +50,22 @@ export function AssetsPanel({
 }: AssetsPanelProps) {
   const [deleting, setDeleting] = useState<AssetRecord | null>(null);
 
+  // Issue #274: inactive assets are hidden by default. "Show inactive" (URL param `assets_inactive=1`) loads
+  // the client's assets again including the inactive ones; the page itself only fetched the active ones.
+  const showInactive = useSearchParams().get("assets_inactive") === "1";
+  const [withInactive, setWithInactive] = useState<AssetRecord[] | null>(null);
+  useEffect(() => {
+    if (!showInactive) return;
+    let cancelled = false;
+    void listAssets({ clientId, includeInactive: true, limit: 500 }).then((result) => {
+      if (!cancelled && result.data) setWithInactive(result.data.assets);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showInactive, clientId, assets]);
+  const rows = showInactive && withInactive ? withInactive : assets;
+
   const siteLabelById = useMemo(
     () => new Map(sites.map((site) => [site.id, formatSiteAddressShort(site) ?? "Unnamed site"] as const)),
     [sites],
@@ -67,7 +85,20 @@ export function AssetsPanel({
 
   const columns = useMemo<WebColumn<AssetRecord>[]>(
     () => [
-      { id: "name", header: "Name", primary: true, sortValue: (asset) => asset.name, render: (asset) => asset.name },
+      {
+        id: "name",
+        header: "Name",
+        primary: true,
+        sortValue: (asset) => asset.name,
+        render: (asset) =>
+          asset.is_inactive ? (
+            <>
+              {asset.name} <WebBadge>Inactive</WebBadge>
+            </>
+          ) : (
+            asset.name
+          ),
+      },
       {
         id: "site",
         header: "Site",
@@ -153,8 +184,8 @@ export function AssetsPanel({
     <>
       <WebDataTableCard
         title="Assets"
-        meta={String(assets.length)}
-        rows={assets}
+        meta={String(rows.length)}
+        rows={rows}
         getRowKey={(asset) => asset.id}
         columns={columns}
         searchText={(asset) =>
@@ -166,6 +197,7 @@ export function AssetsPanel({
         dropdowns={dropdowns}
         segment={segment}
         urlPrefix="assets"
+        toggle={{ id: "inactive", label: "Show inactive" }}
         defaultSort={{ columnId: "name", direction: "asc" }}
         rowHref={assetHref}
         rowActions={rowActions}

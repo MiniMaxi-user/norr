@@ -2,7 +2,9 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { MainSkeleton } from "@/components/shell/main-skeleton";
 import { PageHeaderProvider } from "@/components/shell/page-header-context";
+import { ModuleFeaturesProvider } from "@/components/shell/module-features";
 import { requireSession } from "@/lib/auth/session";
+import { getEnabledFeatures } from "@/lib/rbac/features";
 
 // This route group is the authenticated app shell: everything rendered
 // through here gets the topbar chrome (web design system, issue #222 — the
@@ -23,9 +25,12 @@ export default async function AppRouteLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession();
+  // Enabled modules, once per request (memoized) — for client leaves (#247).
+  const enabledFeatures = await getEnabledFeatures(session.organization);
 
   return (
     <PageHeaderProvider>
+      <ModuleFeaturesProvider features={enabledFeatures}>
       <AppShell
         organization={session.organization}
         user={{
@@ -39,6 +44,7 @@ export default async function AppRouteLayout({
       >
         <Suspense fallback={<MainSkeleton />}>{children}</Suspense>
       </AppShell>
+      </ModuleFeaturesProvider>
     </PageHeaderProvider>
   );
 }

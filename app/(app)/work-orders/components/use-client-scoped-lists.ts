@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { listAssets, type AssetRecord } from "@/app/(app)/assets/actions";
 import { listSites, type SiteRecord } from "@/app/(app)/clients/actions";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { listContracts, type ContractRecord } from "@/app/(app)/contracts/actions";
 
 /** High enough for "every asset/contract across this client's sites" in one
@@ -25,7 +26,11 @@ const ALL_CLIENT_SCOPED_LIMIT = 500;
  * "don't fetch what can't render" convention `[id]/page.tsx` already
  * documents for its own server-side fetches.
  */
-export function useClientScopedLists(clientId: string, enabled: boolean) {
+export function useClientScopedLists(clientId: string, enabled: boolean, includeAssetIds: string[] = []) {
+  // Issue #274: inactive assets are not offered, except the one the record already points to.
+  // Contracts module off: no contract lookups at all (#247).
+  const contractsEnabled = useModuleEnabled("contracts");
+  const keepAssetKey = includeAssetIds.join(",");
   const [sites, setSites] = useState<SiteRecord[]>([]);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
@@ -59,7 +64,11 @@ export function useClientScopedLists(clientId: string, enabled: boolean) {
     }
     let cancelled = false;
     setLoadingAssets(true);
-    listAssets({ clientId, limit: ALL_CLIENT_SCOPED_LIMIT })
+    listAssets({
+      clientId,
+      limit: ALL_CLIENT_SCOPED_LIMIT,
+      includeAssetIds: keepAssetKey ? keepAssetKey.split(",") : undefined,
+    })
       .then((result) => {
         if (!cancelled) setAssets(result.data?.assets ?? []);
       })
@@ -69,10 +78,10 @@ export function useClientScopedLists(clientId: string, enabled: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, clientId]);
+  }, [enabled, clientId, keepAssetKey]);
 
   useEffect(() => {
-    if (!enabled || !clientId) {
+    if (!enabled || !clientId || !contractsEnabled) {
       setContracts([]);
       return;
     }
@@ -88,7 +97,7 @@ export function useClientScopedLists(clientId: string, enabled: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, clientId]);
+  }, [enabled, clientId, contractsEnabled]);
 
   return { sites, assets, contracts, loadingSites, loadingAssets, loadingContracts };
 }

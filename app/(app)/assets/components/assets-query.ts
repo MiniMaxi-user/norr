@@ -15,6 +15,8 @@ export interface AssetsSearchParams {
   seg?: string;
   sort?: string;
   dir?: string;
+  /** `1` = "Show inactive" (issue #274): assets with an inactive status are listed too. */
+  inactive?: string;
 }
 
 /** Column id (URL `?sort=`) -> `listAssets` sort column. */
@@ -43,6 +45,7 @@ export function parseAssetsQuery(params: AssetsSearchParams): {
       warranty: params.seg === "active" || params.seg === "expired" ? params.seg : undefined,
       sort: params.sort ? SORT_BY_COLUMN[params.sort] : undefined,
       direction: params.dir === "desc" ? "desc" : "asc",
+      includeInactive: params.inactive === "1",
       limit: ASSETS_PAGE_SIZE,
       offset: (page - 1) * ASSETS_PAGE_SIZE,
     },

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { requireEngineerSession } from "@/lib/auth/session";
 import { BottomBar } from "./_nav/bottom-bar";
 import { Topbar } from "./_nav/topbar";
+import { FeaturesProvider } from "@/lib/features/use-features";
 
 /**
  * Protected route group for the monteur-app (issue #168). Gates every route
@@ -29,6 +30,7 @@ import { Topbar } from "./_nav/topbar";
 export default async function AppRouteLayout({ children }: { children: ReactNode }) {
   const session = await requireEngineerSession();
   return (
+    <FeaturesProvider currentUserId={session.userId}>
     <div className="pwa-shell">
       <Topbar
         fullName={session.fullName}
@@ -39,5 +41,6 @@ export default async function AppRouteLayout({ children }: { children: ReactNode
       <div className="pwa-scroll">{children}</div>
       <BottomBar />
     </div>
+    </FeaturesProvider>
   );
 }

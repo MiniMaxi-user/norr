@@ -93,6 +93,9 @@ export const assetCreateSchema = z.object({
    * `validate_asset_reference_items` DB trigger, which raises a `23514`
    * mapped to a clean message by `mapDbError` when it's inconsistent. */
   subtypeId: z.string().uuid("Invalid asset sub-type.").optional(),
+  /** Predecessor (inactive asset, possibly at another client) without a successor yet (issue #274;
+   * the DB checks organization/inactive/cycle). */
+  previousAssetId: z.string().uuid("Invalid previous asset.").optional(),
   installedAt: z.preprocess(
     emptyToUndefined,
     z
@@ -113,6 +116,8 @@ export const assetUpdateSchema = assetCreateSchema.partial().extend({
   // blank it: here an empty string is NOT turned into "omitted", it is
   // rejected with the same field-mapped message as on create.
   modelId: z.string().trim().uuid("Choose a model").optional(),
+  /** null clears the link. */
+  previousAssetId: z.string().uuid("Invalid previous asset.").nullable().optional(),
   statusId: z.string().trim().uuid("Choose a status").optional(),
   typeId: z.string().trim().uuid("Choose a type").optional(),
   serialNumber: z

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { toast } from "@yourorg/ui";
 import { WebButton, WebCard, WebCardPair, WebCardStack, WebLinkButton } from "@yourorg/ui/web";
 import {
@@ -52,6 +53,8 @@ export interface TeamMemberDetailProps {
  */
 export function TeamMemberDetail({ member, articles, regions, canWrite, currentUserId }: TeamMemberDetailProps) {
   const router = useRouter();
+  // The warehouse page only exists with the Inventory module (#247).
+  const inventoryEnabled = useModuleEnabled("inventory");
   const isEngineer = member.role === "engineer";
   const isSelf = member.userId === currentUserId;
 
@@ -108,7 +111,7 @@ export function TeamMemberDetail({ member, articles, regions, canWrite, currentU
 
   const actions = (
     <>
-      {!edit.isEditing && isEngineer && member.warehouseId ? (
+      {!edit.isEditing && isEngineer && member.warehouseId && inventoryEnabled ? (
         <WebLinkButton size="sm" href={`/inventory/${member.warehouseId}`}>
           View warehouse
         </WebLinkButton>

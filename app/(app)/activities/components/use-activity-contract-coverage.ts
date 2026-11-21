@@ -23,7 +23,7 @@ import { listAssetContractCoverage, type AssetContractCoverage } from "@/app/(ap
  * fetching regardless of `readOnly`, since a read-only viewer still needs to
  * see the card.
  */
-export function useActivityContractCoverage(assetId: string | undefined) {
+export function useActivityContractCoverage(assetId: string | undefined, onDate?: string) {
   const [coverage, setCoverage] = useState<AssetContractCoverage[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +34,7 @@ export function useActivityContractCoverage(assetId: string | undefined) {
     }
     let cancelled = false;
     setLoading(true);
-    listAssetContractCoverage(assetId)
+    listAssetContractCoverage(assetId, onDate)
       .then((result) => {
         if (!cancelled) setCoverage(result.data?.coverage ?? []);
       })
@@ -44,7 +44,7 @@ export function useActivityContractCoverage(assetId: string | undefined) {
     return () => {
       cancelled = true;
     };
-  }, [assetId]);
+  }, [assetId, onDate]);
 
   return { coverage, loading };
 }

@@ -46,6 +46,9 @@ export interface ReferenceItemFormDialogProps {
   showInvoiceInterval?: boolean;
   /** Shows the "Default in planning" checkbox (issue #222) — `activity_type` only. */
   showPlanningDefault?: boolean;
+  /** Shows the "Inactive" switch (issue #274) — `asset_status` only: assets with such a status are no longer in
+   * use (hidden by default, not linkable to new records). */
+  showInactive?: boolean;
 }
 
 /**
@@ -101,6 +104,7 @@ export function ReferenceItemFormDialog({
   showDefaultDuration = false,
   showInvoiceInterval = false,
   showPlanningDefault = false,
+  showInactive = false,
 }: ReferenceItemFormDialogProps) {
   const isEdit = Boolean(item);
   const isDependent = Boolean(parentListKey);
@@ -115,6 +119,7 @@ export function ReferenceItemFormDialog({
     item?.default_duration_minutes != null ? String(item.default_duration_minutes) : "",
   );
   const [planningDefault, setPlanningDefault] = useState(item?.planning_default ?? false);
+  const [isInactive, setIsInactive] = useState(item?.is_inactive ?? false);
   const [intervalMonths, setIntervalMonths] = useState(
     item?.interval_months != null ? String(item.interval_months) : "",
   );
@@ -131,6 +136,7 @@ export function ReferenceItemFormDialog({
       // "" (not undefined) so an edit clears a previously-set interval.
       intervalMonths: showInvoiceInterval ? intervalMonths : undefined,
       planningDefault: showPlanningDefault ? planningDefault : undefined,
+      isInactive: showInactive ? isInactive : undefined,
     };
     const result = isEdit ? await updateReferenceItem(item!.id, input) : await createReferenceItem(listKey, input);
     if (result.error || !result.data) {
@@ -301,6 +307,25 @@ export function ReferenceItemFormDialog({
           />
           Default in planning
         </label>
+      )}
+
+      {showInactive && (
+        <DialogField
+          id="ref-item-is-inactive"
+          label="Inactive"
+          hint="Assets with this status are no longer in use: hidden by default, and not offered for new work orders, contracts or activities. An asset on an open contract cannot get this status."
+          errors={state.fieldErrors?.isInactive}
+        >
+          <label className="web-field-checkbox" htmlFor="ref-item-is-inactive">
+            <input
+              id="ref-item-is-inactive"
+              type="checkbox"
+              checked={isInactive}
+              onChange={(event) => setIsInactive(event.target.checked)}
+            />
+            Assets with this status are inactive
+          </label>
+        </DialogField>
       )}
 
       <label className="web-field-checkbox" htmlFor="ref-item-is-active">

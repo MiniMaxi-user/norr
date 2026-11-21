@@ -52,6 +52,18 @@ function endOfDayMs(iso: string): number {
   return Date.parse(`${iso}T23:59:59.999Z`);
 }
 
+/**
+ * One coverage window of an asset on a contract (issue #274): covered from `start`
+ * (baseline: the END of that day is the start boundary) up to and including `end`
+ * (the removal date: the closing reading on that day counts); `end` null = still open.
+ * An asset can have several windows (removed, then added again).
+ */
+export interface CoverageWindowInput {
+  assetId: string;
+  start: string | null;
+  end: string | null;
+}
+
 export function computeCounterUsage(
   assets: readonly CounterAsset[],
   readings: readonly CounterReading[],
@@ -59,8 +71,32 @@ export function computeCounterUsage(
   periodEnd: string,
   baselineDates?: ReadonlyMap<string, string | null>,
 ): CounterUsageResult {
+  const windows: CoverageWindowInput[] = [];
+  const seen = new Set<string>();
+  for (const asset of assets) {
+    if (seen.has(asset.id)) continue; // an asset covered twice counts once
+    seen.add(asset.id);
+    windows.push({ assetId: asset.id, start: baselineDates?.get(asset.id) ?? null, end: null });
+  }
+  return computeWindowedCounterUsage(assets, windows, readings, periodStart, periodEnd);
+}
+
+/**
+ * Windowed variant (issue #274): every coverage window counts separately, from
+ * max(start of the period start day, END of the window start day) to
+ * min(END of the period end day, END of the window end day). Nothing after a window's
+ * end counts; a window entirely outside the period is not part of it.
+ */
+export function computeWindowedCounterUsage(
+  assets: readonly CounterAsset[],
+  windows: readonly CoverageWindowInput[],
+  readings: readonly CounterReading[],
+  periodStart: string,
+  periodEnd: string,
+): CounterUsageResult {
   const periodStartMs = startOfDayMs(periodStart);
-  const endMs = endOfDayMs(periodEnd);
+  const periodEndMs = endOfDayMs(periodEnd);
+  const nameById = new Map(assets.map((a) => [a.id, a.name]));
 
   const byAsset = new Map<string, { at: number; value: number; needsReview: boolean }[]>();
   for (const reading of readings) {
@@ -72,17 +108,19 @@ export function computeCounterUsage(
   let usage = 0;
   let reviewReadingsInPeriod = 0;
   const issues: string[] = [];
-  const seen = new Set<string>();
+  const seenWindows = new Set<string>();
 
-  for (const asset of assets) {
-    if (seen.has(asset.id)) continue; // an asset covered twice counts once
-    seen.add(asset.id);
+  for (const window of windows) {
+    const windowKey = `${window.assetId}|${window.start ?? ""}|${window.end ?? ""}`;
+    if (seenWindows.has(windowKey)) continue;
+    seenWindows.add(windowKey);
+    const name = nameById.get(window.assetId) ?? window.assetId;
 
-    const baseline = baselineDates?.get(asset.id) ?? null;
-    const startMs = baseline ? Math.max(periodStartMs, endOfDayMs(baseline)) : periodStartMs;
-    if (startMs > endMs) continue; // not covered yet during this period
+    const startMs = window.start ? Math.max(periodStartMs, endOfDayMs(window.start)) : periodStartMs;
+    const endMs = window.end ? Math.min(periodEndMs, endOfDayMs(window.end)) : periodEndMs;
+    if (startMs > endMs) continue; // not covered (yet / anymore) during this period
 
-    const all = byAsset.get(asset.id) ?? [];
+    const all = byAsset.get(window.assetId) ?? [];
     reviewReadingsInPeriod += all.filter((r) => r.needsReview && r.at >= startMs && r.at <= endMs).length;
 
     const valid = all.filter((r) => !r.needsReview);
@@ -96,17 +134,17 @@ export function computeCounterUsage(
     const endReading = latestAtOrBefore(endMs);
 
     if (!endReading) {
-      issues.push(`no reading at period end for ${asset.name}`);
+      issues.push(`no reading at ${endMs < periodEndMs ? "removal date" : "period end"} for ${name}`);
     }
     if (!startReading) {
-      issues.push(`no reading at period start for ${asset.name}`);
+      issues.push(`no reading at period start for ${name}`);
     }
     if (!startReading || !endReading) continue;
 
     const delta = round3(endReading.value - startReading.value);
     if (delta < 0) {
       issues.push(
-        `counter went down for ${asset.name} (start ${startReading.value}, end ${endReading.value}); counter resets are not supported, asset not counted`,
+        `counter went down for ${name} (start ${startReading.value}, end ${endReading.value}); counter resets are not supported, asset not counted`,
       );
       continue;
     }

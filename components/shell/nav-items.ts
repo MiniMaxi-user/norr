@@ -114,7 +114,7 @@ export const NAV_ITEMS: NavItem[] = [
   // lib/rbac/features.ts / lib/rbac/permissions.ts.
   { moduleKey: "quotes", label: "Quotes", href: "/quotes", icon: ClipboardList, group: "Operations" },
   // Invoices overview (issues #234-#236) — customer invoices, payments and
-  // credit notes. `Receipt` is shared with the SaaS "Billing" placeholder
+  // credit notes. `Receipt` is also used
   // below (the icon set has no second receipt-like glyph). Finance-only:
   // `requiredPermission` drops the entry entirely for planner/engineer.
   {
@@ -149,7 +149,6 @@ export const NAV_ITEMS: NavItem[] = [
     requiredPermission: { module: "inventory", action: "read" },
   },
   { moduleKey: "reporting", label: "Reporting", href: "/reporting", icon: BarChart3, group: "Insights" },
-  { moduleKey: "billing", label: "Billing", href: "/billing", icon: Receipt, group: "Insights" },
   // Everyone can *view* Settings (read-only for non-owners — see
   // `lib/rbac/permissions.ts`'s `settings` entry); the module itself is
   // gated only on entitlement (`hasFeature`) like every other nav item, not

@@ -332,6 +332,8 @@ const MY_STOCK_LAST_SYNCED_AT_KEY = "myStockLastSyncedAt";
  * `getCachedTimeRoundingSettings` below (JSON-stringified
  * `TimeRoundingSettings`). */
 const TIME_ROUNDING_SETTINGS_KEY = "timeRoundingSettings";
+/** Issue #248 — the `meta` key holding the org's enabled feature keys (JSON array). */
+const ENABLED_FEATURES_KEY = "enabledFeatures";
 /** Which engineer's data is currently cached (see the user-scoping note
  * below) — not shown in the UI, purely a guard. */
 const USER_ID_KEY = "userId";
@@ -603,6 +605,7 @@ async function ensureCacheBelongsTo(currentUserId: string): Promise<void> {
       await db.dayWorkItems.clear();
       await db.meta.delete(MY_STOCK_LAST_SYNCED_AT_KEY);
       await db.meta.delete(TIME_ROUNDING_SETTINGS_KEY);
+      await db.meta.delete(ENABLED_FEATURES_KEY);
       await db.meta.put({ key: USER_ID_KEY, value: currentUserId });
     },
   );
@@ -1175,6 +1178,26 @@ export async function getCachedTimeRoundingSettings(currentUserId: string): Prom
   if (!row) return null;
   try {
     return JSON.parse(row.value) as TimeRoundingSettings;
+  } catch {
+    return null;
+  }
+}
+
+/** Issue #248 — caches the org's enabled feature keys (from `GET /api/features`)
+ * so module gating also works offline. */
+export async function saveCachedFeatures(features: string[], currentUserId: string): Promise<void> {
+  await ensureCacheBelongsTo(currentUserId);
+  await db.meta.put({ key: ENABLED_FEATURES_KEY, value: JSON.stringify(features) });
+}
+
+/** The cached enabled feature keys, or `null` if never fetched on this device. */
+export async function getCachedFeatures(currentUserId: string): Promise<string[] | null> {
+  await ensureCacheBelongsTo(currentUserId);
+  const row = await db.meta.get(ENABLED_FEATURES_KEY);
+  if (!row) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : null;
   } catch {
     return null;
   }

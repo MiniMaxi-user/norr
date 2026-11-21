@@ -41,6 +41,8 @@ export interface ContractRow {
   }[];
   contract_assets: {
     asset_id: string;
+    /** Last covered day when the asset was removed from the contract (#274); null = still linked. */
+    removed_on: string | null;
     asset: {
       name: string;
       serial_number: string | null;
@@ -61,11 +63,15 @@ export const CONTRACT_SELECT =
   "volume_item_id,overage_unit_price,credit_under_use," +
   "volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)," +
   "article:articles(article_number,description))," +
-  " contract_assets(asset_id,asset:assets(name,serial_number,external_reference,site:sites(address_line1,city)," +
+  " contract_assets(asset_id,removed_on,asset:assets(name,serial_number,external_reference,site:sites(address_line1,city)," +
   "asset_model:asset_models!assets_model_id_fkey(name)))";
 
 
-export function toBalanceLines(contract: ContractRow): BalanceContractLine[] {
+/**
+ * `metersEnabled` false (module off, #247): volume lines lose their counter link, so they are
+ * plain allowance lines and no counter settlement / readings are ever planned for them.
+ */
+export function toBalanceLines(contract: ContractRow, metersEnabled = true): BalanceContractLine[] {
   return contract.contract_line_items.map((l) => ({
     id: l.id,
     articleId: l.article_id,
@@ -75,7 +81,7 @@ export function toBalanceLines(contract: ContractRow): BalanceContractLine[] {
     unitPrice: Number(l.unit_price),
     sortOrder: l.sort_order,
     isVolume: l.is_volume,
-    volumeItemId: l.volume_item_id,
+    volumeItemId: metersEnabled ? l.volume_item_id : null,
     counterLabel: l.volume_item?.label ?? "Counter",
     overageUnitPrice: l.overage_unit_price === null ? null : Number(l.overage_unit_price),
     creditUnderUse: l.credit_under_use,

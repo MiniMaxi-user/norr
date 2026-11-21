@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { toast } from "@yourorg/ui";
 import { SidebarSection, WebDetailLayout, WebPage, type WebBadgeVariant } from "@yourorg/ui/web";
 import {
@@ -141,6 +142,7 @@ export function ContractScreen({
   defaultTab = "overview",
 }: ContractScreenProps) {
   const router = useRouter();
+  const metersEnabled = useModuleEnabled("meters");
   const isCreate = mode === "create";
   const [tab, setTab] = useState<ContractDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -232,17 +234,19 @@ export function ContractScreen({
   );
 
   const lineItemTotal = useMemo(() => lineItems.reduce((sum, row) => sum + row.quantity * row.unit_price, 0), [lineItems]);
+  // Issue #274: removed links are history, only open ones count as coverage.
+  const openContractAssets = useMemo(() => contractAssets.filter((row) => !row.removed_on), [contractAssets]);
   const coveredSiteCount = useMemo(
-    () => new Set(contractAssets.map((row) => row.asset?.site_id).filter((id): id is string => Boolean(id))).size,
-    [contractAssets],
+    () => new Set(openContractAssets.map((row) => row.asset?.site_id).filter((id): id is string => Boolean(id))).size,
+    [openContractAssets],
   );
 
   const counterInfo = useMemo(
     () => ({
-      hasCounterLines: lineItems.some((row) => row.is_volume && row.volume_item_id),
-      creditsUnderUse: lineItems.some((row) => row.is_volume && row.volume_item_id && row.credit_under_use),
+      hasCounterLines: metersEnabled && lineItems.some((row) => row.is_volume && row.volume_item_id),
+      creditsUnderUse: metersEnabled && lineItems.some((row) => row.is_volume && row.volume_item_id && row.credit_under_use),
     }),
-    [lineItems],
+    [lineItems, metersEnabled],
   );
 
   const showQuotes = !isCreate && quotes !== null;
@@ -266,11 +270,11 @@ export function ContractScreen({
         : [
             { id: "lineItems", label: "Line items", count: lineItems.length },
             { id: "coverage", label: "Article coverage", count: ruleCount },
-            { id: "assets", label: "Assets", count: contractAssets.length },
+            { id: "assets", label: "Assets", count: openContractAssets.length },
             ...(showQuotes ? [{ id: "quotes", label: "Quotes", count: quotes?.length ?? 0 }] : []),
           ]),
     ],
-    [isCreate, lineItems.length, ruleCount, contractAssets.length, showQuotes, quotes?.length],
+    [isCreate, lineItems.length, ruleCount, openContractAssets.length, showQuotes, quotes?.length],
   );
 
   useEffect(() => {
@@ -429,7 +433,7 @@ export function ContractScreen({
         settlement={settlement}
         lineItemCount={lineItems.length}
         lineItemTotal={lineItemTotal}
-        coveredAssetCount={contractAssets.length}
+        coveredAssetCount={openContractAssets.length}
         coveredSiteCount={coveredSiteCount}
         onShowLineItems={() => selectTab("lineItems")}
         onShowAssets={() => selectTab("assets")}
@@ -452,7 +456,7 @@ export function ContractScreen({
       >
         {tab === "overview" && (
           <div className="web-tab-stack">
-            {!isCreate && contract?.status === "draft" ? <ContractBaselineCard missing={missingBaseline} /> : null}
+            {!isCreate && metersEnabled && contract?.status === "draft" ? <ContractBaselineCard missing={missingBaseline} /> : null}
             {!isCreate && contract?.status === "ended" && finalBalance ? (
               <ContractFinalBalanceCard summary={finalBalance} canSeeQuotes={showQuotes} />
             ) : null}
@@ -502,6 +506,7 @@ export function ContractScreen({
         {tab === "assets" && contract && (
           <ContractAssetsPanel
             contractId={contract.id}
+            contractStatus={contract.status}
             contractAssets={contractAssets}
             clientAssets={clientAssets}
             siteLabelById={siteLabelById}

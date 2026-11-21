@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
+import { hasFeature } from "@/lib/rbac/features";
+import { settingsFeatureForKey } from "../../components/settings-nav-items";
 import { can, type PermissionActor } from "@/lib/rbac/permissions";
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { ReferenceListManager } from "../../components/reference-list-manager";
@@ -40,6 +42,9 @@ export default async function ReferenceListLeafPage({ params }: ReferenceListLea
   // pre-Stage-2 board's `page.tsx`, for the byte-identical lines this is
   // copied from, minus its now-redundant `notFound()` entitlement checks).
   const session = await getCurrentSession();
+  // Lists that belong to an add-on module 404 when it is off (#247).
+  const requiredFeature = settingsFeatureForKey(section.key);
+  if (requiredFeature && !(await hasFeature(session?.organization, requiredFeature))) notFound();
   const actor: PermissionActor = { role: session?.role ?? null, isPlatformAdmin: session?.isPlatformAdmin ?? false };
   const canWrite = can(actor, "settings", "create");
 

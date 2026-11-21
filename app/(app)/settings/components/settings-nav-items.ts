@@ -1,4 +1,5 @@
 import { Bell, Boxes, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Hash, Mail, Receipt, Users, type Icon } from "@yourorg/ui/icons";
+import type { FeatureKey } from "@/lib/rbac/features";
 import { REFERENCE_LIST_SECTIONS } from "../reference-lists/sections";
 
 /**
@@ -19,11 +20,15 @@ export interface SettingsNavItem {
   /** Form-type sections render their own `PageHeader` (Edit / Save in the
    * header, issue #222); the settings frame then skips its default header. */
   ownHeader?: boolean;
+  /** Module that must be enabled for the tenant, else the section is hidden and its route 404s (#247). */
+  feature?: FeatureKey;
 }
 
 export interface SettingsNavGroup {
   label: string;
   icon: Icon;
+  /** Module that must be enabled, else the whole group is hidden (#247). Items may also carry their own. */
+  feature?: FeatureKey;
   items: SettingsNavItem[];
 }
 
@@ -51,6 +56,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { key: "asset_subtype", label: findTitle("asset_subtype"), href: "/settings/reference-lists/asset_subtype" },
       { key: "asset_brand", label: findTitle("asset_brand"), href: "/settings/reference-lists/asset_brand" },
       { key: "asset_models", label: "Asset Model", href: "/settings/asset-models" },
+      // Counters/meters (Volume list) belong to the meters module (#247).
+      { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume", feature: "meters" },
     ],
   },
   {
@@ -89,19 +96,17 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   {
     label: "Contracts",
     icon: FileText,
+    feature: "contracts",
     items: [
       { key: "contract_type", label: findTitle("contract_type"), href: "/settings/reference-lists/contract_type" },
       { key: "sla_tier", label: findTitle("sla_tier"), href: "/settings/reference-lists/sla_tier" },
       { key: "billing_terms", label: findTitle("billing_terms"), href: "/settings/reference-lists/billing_terms" },
-      // Issue #131 — "Volume" line items on a contract (issue #129). Grouped
-      // under Contracts (its actual usage domain) rather than Articles, even
-      // though it's a *dependent* list on article_unit under the hood.
-      { key: "volume", label: findTitle("volume"), href: "/settings/reference-lists/volume" },
     ],
   },
   {
     label: "Quotes",
     icon: Receipt,
+    feature: "quotes",
     items: [{ key: "quote_status", label: findTitle("quote_status"), href: "/settings/reference-lists/quote_status" }],
   },
   {
@@ -128,15 +133,16 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: "Numbering",
     icon: Hash,
     items: [
-      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering", ownHeader: true },
+      { key: "contract_numbering", label: "Contract numbering", href: "/settings/contract-numbering", ownHeader: true, feature: "contracts" },
       { key: "work_order_numbering", label: "Work order numbering", href: "/settings/work-order-numbering", ownHeader: true },
       { key: "activity_numbering", label: "Activity numbering", href: "/settings/activity-numbering", ownHeader: true },
-      { key: "quote_numbering", label: "Quote numbering", href: "/settings/quote-numbering", ownHeader: true },
+      { key: "quote_numbering", label: "Quote numbering", href: "/settings/quote-numbering", ownHeader: true, feature: "quotes" },
     ],
   },
   {
     label: "Templates",
     icon: ClipboardList,
+    feature: "checklists",
     items: [{ key: "checklist_templates", label: "Checklist Templates", href: "/settings/checklist-templates" }],
   },
   {
@@ -157,11 +163,16 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { key: "time_rounding", label: "Time Rounding", href: "/settings/time-rounding", ownHeader: true },
       // Issues #210/#211 - per-tenant invoice email (sender, CC, subject, body).
       // Issue #232 - default payment term for new invoices.
-      { key: "invoicing", label: "Invoicing", href: "/settings/invoicing", ownHeader: true },
-      { key: "payment_method", label: findTitle("payment_method"), href: "/settings/reference-lists/payment_method" },
-      { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email", ownHeader: true },
+      { key: "invoicing", label: "Invoicing", href: "/settings/invoicing", ownHeader: true, feature: "invoicing" },
+      {
+        key: "payment_method",
+        label: findTitle("payment_method"),
+        href: "/settings/reference-lists/payment_method",
+        feature: "invoicing",
+      },
+      { key: "invoice_email", label: "Invoice Email", href: "/settings/invoice-email", ownHeader: true, feature: "invoicing" },
       // Issue #268 - mail queue overview (status, retry) for invoice / credit note / work receipt e-mails.
-      { key: "email_outbox", label: "Outbox", href: "/settings/email-outbox" },
+      { key: "email_outbox", label: "Outbox", href: "/settings/email-outbox", feature: "invoicing" },
     ],
   },
   {
@@ -177,6 +188,13 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       // yet to house this instead).
       { key: "region", label: findTitle("region"), href: "/settings/reference-lists/region" },
     ],
+  },
+  {
+    // Issue #249 - the tenant's modules and active users per role. Owner only:
+    // hidden for everyone else via `hiddenKeys` (see `SettingsShell`/the landing).
+    label: "Subscription",
+    icon: Boxes,
+    items: [{ key: "subscription", label: "Subscription", href: "/settings/subscription" }],
   },
   {
     // Issue #120 — which of the tenant's own `clients` rows represents the
@@ -225,4 +243,22 @@ export function findSettingsNavItemByKey(key: string): FlatSettingsNavEntry {
   const entry = FLAT_SETTINGS_NAV_ITEMS.find((candidate) => candidate.item.key === key);
   if (!entry) throw new Error(`settings-nav-items: no nav item with key "${key}"`);
   return entry;
+}
+
+/**
+ * Module a Settings section depends on (its own feature, else its group's),
+ * or null when it is always available (#247).
+ */
+export function settingsFeatureForKey(key: string): FeatureKey | null {
+  const entry = FLAT_SETTINGS_NAV_ITEMS.find((candidate) => candidate.item.key === key);
+  return entry ? (entry.item.feature ?? entry.group.feature ?? null) : null;
+}
+
+/** Section keys to hide because their module is off for the tenant (#247). */
+export function settingsKeysHiddenByModules(enabledFeatures: readonly FeatureKey[]): string[] {
+  const enabled = new Set<FeatureKey>(enabledFeatures);
+  return FLAT_SETTINGS_NAV_ITEMS.filter(({ item, group }) => {
+    const feature = item.feature ?? group.feature;
+    return feature ? !enabled.has(feature) : false;
+  }).map(({ item }) => item.key);
 }

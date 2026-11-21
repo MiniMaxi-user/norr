@@ -26,7 +26,8 @@ import { getClient, listClients, type ClientRecord, type SiteRecord } from "@/ap
 import { listReferenceItems, type ReferenceListItemRecord } from "@/lib/reference-lists/actions";
 import { listAssetModels, type AssetModelRecord } from "@/lib/asset-models/actions";
 import type { AssetVolumesData } from "@/lib/asset-volumes/actions";
-import { unlinkContractAsset, type AssetContractCoverage } from "@/app/(app)/contracts/actions";
+import type { AssetContractCoverage } from "@/app/(app)/contracts/actions";
+import { RemoveContractAssetDialog } from "@/app/(app)/contracts/components/remove-contract-asset-dialog";
 import type { ActivityRecord } from "@/app/(app)/activities/actions";
 import type { WorkOrderRecord } from "@/app/(app)/work-orders/actions";
 import { ActivitiesPanel } from "@/app/(app)/clients/[id]/activities-panel";
@@ -37,7 +38,8 @@ import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address"
 import { contractLabel } from "@/lib/format/contract-label";
 import { formatDateWeb } from "@/lib/format/web";
 import { setLastUsedView } from "@/lib/preferences/actions";
-import type { AssetRecord } from "../actions";
+import { findInactiveAssetMatch, listInactiveAssetOptions, type AssetRecord } from "../actions";
+import type { AssetErrorInfo, InactiveAssetOption } from "../asset-errors";
 import type { AssetComponentTreeNode } from "../components-actions";
 import { draftFromAsset, emptyDraft, type AssetDraft } from "./asset-draft";
 import { createAssetFromDraft, buildAssetSchema, saveAssetEdits } from "./asset-form-schema";
@@ -52,6 +54,7 @@ import { AssetContractsDialog } from "./asset-contracts-dialog";
 import { AssetCompositeManageDialog } from "./asset-composite-manage-dialog";
 import { AssetVolumesPanel } from "./asset-volumes-panel";
 import { DeleteAssetDialog } from "./delete-asset-dialog";
+import { AssetInactiveNotice, AssetSaveErrorNotice, PreviousAssetSuggestion } from "./asset-notices";
 
 export type AssetDetailTab = "overview" | "workOrders" | "activities" | "contracts" | "structure" | "volumes";
 
@@ -132,6 +135,7 @@ export function AssetScreen({
   const [tab, setTab] = useState<AssetDetailTab>(defaultTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [contractsOpen, setContractsOpen] = useState(false);
+  const [removingContractId, setRemovingContractId] = useState<string | null>(null);
   const [linkParent, setLinkParent] = useState<{ id: string; name: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -144,6 +148,10 @@ export function AssetScreen({
   const [brands, setBrands] = useState<ReferenceListItemRecord[]>([]);
   const [models, setModels] = useState<AssetModelRecord[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(!readOnly);
+  // Issue #274: inactive assets for the "Previous asset" select, the refused-save detail and the serial suggestion.
+  const [previousAssetOptions, setPreviousAssetOptions] = useState<InactiveAssetOption[]>([]);
+  const [saveErrorInfo, setSaveErrorInfo] = useState<AssetErrorInfo | undefined>(undefined);
+  const [serialMatch, setSerialMatch] = useState<InactiveAssetOption | null>(null);
 
   useEffect(() => {
     // A `readOnly` viewer never sees an edit affordance — don't fetch what
@@ -158,8 +166,12 @@ export function AssetScreen({
       listReferenceItems("asset_subtype"),
       listReferenceItems("asset_brand"),
       listAssetModels(),
+      listInactiveAssetOptions(undefined, {
+        excludeAssetId: asset?.id,
+        currentPreviousId: asset?.previous_asset_id ?? undefined,
+      }),
     ])
-      .then(([lockedResult, clientsResult, typesResult, statusesResult, subtypesResult, brandsResult, modelsResult]) => {
+      .then(([lockedResult, clientsResult, typesResult, statusesResult, subtypesResult, brandsResult, modelsResult, previousResult]) => {
         if (cancelled) return;
         setLockedClientRecord(lockedResult?.data?.client ?? null);
         setClients(clientsResult?.data?.clients ?? []);
@@ -168,6 +180,7 @@ export function AssetScreen({
         setSubtypes(subtypesResult.data?.items ?? []);
         setBrands(brandsResult.data?.items ?? []);
         setModels(modelsResult.data?.models ?? []);
+        setPreviousAssetOptions(previousResult.data?.options ?? []);
       })
       .finally(() => {
         if (!cancelled) setLoadingOptions(false);
@@ -216,6 +229,11 @@ export function AssetScreen({
               return lists.brands.find((item) => item.id === id)?.label ?? "";
             case "statusId":
               return lists.statuses.find((item) => item.id === id)?.label ?? "";
+            case "previousAssetId": {
+              const option = previousAssetOptions.find((item) => item.id === id);
+              if (option) return `${option.name} · ${option.client.name}`;
+              return asset?.previous_asset?.id === id ? asset.previous_asset.name : "";
+            }
             case "modelId": {
               const model = lists.models.find((item) => item.id === id);
               return model ? [model.brand?.label, model.name].filter(Boolean).join(" ") : "";
@@ -223,7 +241,7 @@ export function AssetScreen({
           }
         },
       }),
-    [lists, site, isCreate],
+    [lists, site, isCreate, previousAssetOptions, asset],
   );
 
   const createdIdRef = useRef<string | null>(null);
@@ -242,14 +260,14 @@ export function AssetScreen({
           router.push(`/assets/${createdIdRef.current}`);
           return { ok: true };
         }
-        const { result, assetId } = await createAssetFromDraft(draft);
+        const { result, assetId } = await createAssetFromDraft(draft, setSaveErrorInfo);
         if (!result.ok || !assetId) return result;
         createdIdRef.current = assetId;
         toast({ title: "Asset created", tone: "success", duration: 3000 });
         router.push(`/assets/${assetId}`);
         return { ok: true };
       }
-      return saveAssetEdits(asset!.id, draft, dirty);
+      return saveAssetEdits(asset!.id, draft, dirty, setSaveErrorInfo);
     },
     onSaved: () => {
       if (isCreate) return;
@@ -258,6 +276,34 @@ export function AssetScreen({
     },
   });
   const editing = edit.isEditing;
+
+  // A refused save's detail only belongs to the edit session it came from.
+  useEffect(() => {
+    if (!editing) setSaveErrorInfo(undefined);
+  }, [editing]);
+
+  // "This serial number belongs to inactive asset <x>": while editing/creating, once model and serial number are
+  // filled in, look for an inactive asset of the same model and serial number that has no successor yet.
+  const draftModelId = edit.draft.modelId;
+  const draftSerial = edit.draft.serialNumber;
+  const draftPreviousId = edit.draft.previousAssetId;
+  useEffect(() => {
+    if (!edit.isEditing || !draftModelId || !draftSerial.trim()) {
+      setSerialMatch(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void findInactiveAssetMatch(draftModelId, draftSerial, asset?.id).then((result) => {
+        if (!cancelled) setSerialMatch(result.data?.match ?? null);
+      });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [edit.isEditing, draftModelId, draftSerial, asset?.id]);
+  const suggestedMatch = serialMatch && serialMatch.id !== draftPreviousId ? serialMatch : null;
 
   // Status is required: a new asset starts on the organization's default
   // status (the user can change it).
@@ -364,7 +410,10 @@ export function AssetScreen({
         variant: "warning",
       });
     }
-    if (contractCoverage && contractCoverage.length === 0) badges.push({ label: "No contract", variant: "warning" });
+    if (asset?.is_inactive) badges.push({ label: "Inactive", variant: "neutral" });
+    if (contractCoverage && contractCoverage.length === 0 && !asset?.is_inactive) {
+      badges.push({ label: "No contract", variant: "warning" });
+    }
     const typeText = [typeLabel, subtypeLabel].filter(Boolean).join(" / ");
     if (typeText) badges.push({ label: typeText });
     if (saved.warrantyUntil) badges.push({ label: `Warranty until ${formatDateWeb(saved.warrantyUntil)}` });
@@ -453,6 +502,9 @@ export function AssetScreen({
       onManageContracts={contractCoverage ? () => selectTab("contracts") : undefined}
       warranty={{ until: saved.warrantyUntil || null, termMonths: warrantyTerm, installedAt: saved.installedAt || null }}
       structure={structure ? { ...structure, onShow: () => selectTab("structure") } : null}
+      previousAsset={asset?.previous_asset ?? null}
+      successor={asset?.successor ?? null}
+      inactive={Boolean(asset?.is_inactive)}
       livePanel={livePanel}
     />
   );
@@ -474,6 +526,19 @@ export function AssetScreen({
       >
         {tab === "overview" && (
           <div className="web-tab-stack">
+            {!isCreate && asset?.is_inactive ? <AssetInactiveNotice successor={asset.successor} /> : null}
+            {editing && saveErrorInfo ? <AssetSaveErrorNotice info={saveErrorInfo} /> : null}
+            {editing && suggestedMatch ? (
+              <PreviousAssetSuggestion
+                match={suggestedMatch}
+                onLink={(match) => {
+                  setPreviousAssetOptions((current) =>
+                    current.some((option) => option.id === match.id) ? current : [match, ...current],
+                  );
+                  edit.setValue("previousAssetId", match.id);
+                }}
+              />
+            ) : null}
             <AssetOverviewCards
               edit={edit}
               asset={asset}
@@ -482,6 +547,7 @@ export function AssetScreen({
               lists={lists}
               sites={clientScoped.sites}
               loadingOptions={loadingOptions}
+              previousAssetOptions={previousAssetOptions}
               lockedClientId={lockedClientId}
               isNew={isCreate}
             />
@@ -514,21 +580,7 @@ export function AssetScreen({
             coverage={contractCoverage}
             canManage={!readOnly}
             onLink={() => setContractsOpen(true)}
-            onUnlink={(contractId) => {
-              void unlinkContractAsset(contractId, asset.id).then((result) => {
-                if (!result.data) {
-                  toast({
-                    title: "Contract not unlinked",
-                    description: result.error ?? "Could not unlink this contract. Try again.",
-                    tone: "danger",
-                    duration: 6000,
-                  });
-                  return;
-                }
-                toast({ title: "Contract unlinked", duration: 3000 });
-                refresh();
-              });
-            }}
+            onUnlink={(contractId) => setRemovingContractId(contractId)}
           />
         )}
 
@@ -553,6 +605,20 @@ export function AssetScreen({
           loading={false}
           clientContracts={clientScoped.contracts}
           onChange={refresh}
+          onRemove={(contractId) => {
+            setContractsOpen(false);
+            setRemovingContractId(contractId);
+          }}
+        />
+      )}
+      {!isCreate && asset && removingContractId && (
+        <RemoveContractAssetDialog
+          contractId={removingContractId}
+          contractNumber={contractCoverage?.find((entry) => entry.contract.id === removingContractId)?.contract.contract_number}
+          assetId={asset.id}
+          assetName={asset.name}
+          onClose={() => setRemovingContractId(null)}
+          onRemoved={refresh}
         />
       )}
       {!isCreate && asset && !readOnly && linkParent && (

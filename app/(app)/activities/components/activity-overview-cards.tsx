@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import Link from "next/link";
 import { WebCardPair, WebCardStack } from "@yourorg/ui/web";
 import {
@@ -88,6 +89,7 @@ export function ActivityOverviewCards({
   lockedAssetId,
   isNew,
 }: ActivityOverviewCardsProps) {
+  const contractsEnabled = useModuleEnabled("contracts");
   const saved = edit.record;
   const draft = edit.draft;
 
@@ -173,7 +175,10 @@ export function ActivityOverviewCards({
   // ---- Derived contract ------------------------------------------------------
   // Never stored: whichever contract(s) cover the linked asset (direct or
   // inherited through its composite tree), else the client's own contracts.
-  const coverage = useActivityContractCoverage(draft.assetId || undefined);
+  const coverage = useActivityContractCoverage(
+    contractsEnabled ? draft.assetId || undefined : undefined,
+    activity?.created_at ? new Date(activity.created_at).toISOString().slice(0, 10) : undefined,
+  );
   const [firstCoverage, ...restCoverage] = draft.assetId
     ? coverage.coverage
     : draft.clientId
@@ -359,7 +364,7 @@ export function ActivityOverviewCards({
 
   return (
     <WebCardStack>
-      <KeyValueCard title="Details" columns={2} split={left.length} fields={[...left, ...right]} edit={binder} />
+      <KeyValueCard title="Details" columns={2} split={left.filter((field) => contractsEnabled || field.key !== "contract").length} fields={[...left, ...right].filter((field) => contractsEnabled || field.key !== "contract")} edit={binder} />
       {isNew ? (
         <TextCard
           title="Description"

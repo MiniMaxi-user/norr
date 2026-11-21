@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { workOrderArticleCreateSchema, workOrderArticleUpdateSchema } from "./schema";
 import { isWorkOrderCheckedOutInField } from "./checkout-lock";
@@ -97,8 +98,14 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
 async function attachQuotedPrices(
   supabase: SupabaseServerClient,
   rows: WorkOrderArticleRow[],
+  contractsEnabled: boolean,
 ): Promise<ActionResult<WorkOrderArticleRecord[]>> {
   if (rows.length === 0) return ok([]);
+
+  // Contracts module off: no contract coverage — show the standard price (#247).
+  if (!contractsEnabled) {
+    return ok(rows.map((row) => ({ ...row, quoted_unit_price: null, covered_by_contract: false })));
+  }
 
   const { data, error } = await supabase
     .from("quote_line_items")
@@ -196,7 +203,11 @@ export async function listWorkOrderArticles(
 
   if (error) return fail(mapDbError(error));
 
-  const covered = await attachQuotedPrices(supabase, (data ?? []) as WorkOrderArticleRow[]);
+  const covered = await attachQuotedPrices(
+    supabase,
+    (data ?? []) as WorkOrderArticleRow[],
+    await hasFeature(ctx.context.session.organization, "contracts"),
+  );
   if (!covered.data) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticles: covered.data });
 }
@@ -254,7 +265,7 @@ export async function createWorkOrderArticle(
 
   if (error) return fail(mapDbError(error));
   const saved = data as WorkOrderArticleRow;
-  const covered = await attachQuotedPrices(supabase, [saved]);
+  const covered = await attachQuotedPrices(supabase, [saved], await hasFeature(ctx.context.session.organization, "contracts"));
   if (!covered.data?.[0]) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticle: covered.data[0] });
 }
@@ -312,7 +323,7 @@ export async function updateWorkOrderArticle(
   if (error) return fail(mapDbError(error));
   if (!data) return fail("Consumed article not found, or you do not have permission to update it.");
   const saved = data as WorkOrderArticleRow;
-  const covered = await attachQuotedPrices(supabase, [saved]);
+  const covered = await attachQuotedPrices(supabase, [saved], await hasFeature(ctx.context.session.organization, "contracts"));
   if (!covered.data?.[0]) return fail(covered.error ?? "Could not load quoted prices.");
   return ok({ workOrderArticle: covered.data[0] });
 }

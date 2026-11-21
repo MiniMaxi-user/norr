@@ -31,6 +31,8 @@ export interface AssetModelFormDialogProps {
   /** Counters (Volume list items). Retired ones are only offered when
    * already configured on this model. */
   volumeOptions: VolumeCounterOption[];
+  /** `meters` module on: show the counters picker and send counters (#247). */
+  metersEnabled: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ export function AssetModelFormDialog({
   typeItems,
   subtypeItems,
   volumeOptions,
+  metersEnabled,
 }: AssetModelFormDialogProps) {
   const isEdit = Boolean(model);
   const router = useRouter();
@@ -113,7 +116,8 @@ export function AssetModelFormDialog({
       subtypeItemId: formData.get("subtypeItemId") || undefined,
       name: formData.get("name"),
       defaultWarrantyMonths: formData.get("defaultWarrantyMonths"),
-      volumeItemIds,
+      // Meters off: leave the model's counters untouched (omitted = unchanged on edit).
+      ...(metersEnabled ? { volumeItemIds } : {}),
     };
     const result = isEdit ? await updateAssetModel(model!.id, input) : await createAssetModel(input);
     if (result.error || !result.data) {
@@ -213,6 +217,7 @@ export function AssetModelFormDialog({
         />
       </DialogField>
 
+      {metersEnabled ? (
       <DialogField
         id="asset-model-volumes"
         label="Volumes (counters)"
@@ -238,6 +243,7 @@ export function AssetModelFormDialog({
           </div>
         )}
       </DialogField>
+      ) : null}
     </SettingsFormDialog>
   );
 }

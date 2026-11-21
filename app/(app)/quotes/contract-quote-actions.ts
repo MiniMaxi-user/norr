@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
 import { formatSiteAddressShort } from "@/app/(app)/clients/format-site-address";
 import {
@@ -159,6 +160,8 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
   const contractsCtx = await requireModuleContext("contracts");
   if (!contractsCtx.ok) return fail(contractsCtx.error);
   const actor = quotesCtx.context.actor;
+  // Meters off: no counter settlement and no readings asked (#247).
+  const metersOn = await hasFeature(quotesCtx.context.session.organization, "meters");
 
   if (!can(actor, "quotes", "create")) {
     return fail("Only an owner or planner can generate contract quotes.");
@@ -262,12 +265,12 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
   // Plan per contract.
   const plans: ContractPlan[] = [];
   for (const contract of candidates) {
-    const lines = toBalanceLines(contract);
+    const lines = toBalanceLines(contract, metersOn);
     const hasCounterLine = lines.some((l) => l.isVolume && l.volumeItemId);
     const intervalMonths = contract.billing_terms?.interval_months ?? null;
     const multiplier = billingMultiplier(intervalMonths, billingPeriodMonths(contract.billing_period));
     const frequency = contract.counter_settlement_frequency;
-    if (frequency !== "with_invoice" && !intervalMonths) {
+    if (metersOn && frequency !== "with_invoice" && !intervalMonths) {
       result.errors.push({
         contractId: contract.id,
         contractNumber: contract.contract_number,
@@ -371,6 +374,7 @@ export async function generateContractQuotes(): Promise<ActionResult<GenerateCon
     }
 
     const assets: ContractAssetNote[] = contract.contract_assets
+      .filter((link) => link.removed_on === null)
       .map((link) => link.asset)
       .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset))
       .map((asset) => ({

@@ -1,253 +1,120 @@
 import "server-only";
 
+import { cache } from "react";
+
+import { createClient } from "@/lib/supabase/server";
+
 /**
- * Feature-flag / entitlement gating (issue #4, CLAUDE.md rule 3: "Feature
- * access goes through hasFeature(org, key) — never assume a module is
- * available"). Every module route/component must check entitlement through
- * this one helper (docs/ARCHITECTURE.md "Feature flags") instead of
- * hardcoding module availability.
- *
- * Phase 0/1 reality: `organization_features` (docs/ARCHITECTURE.md "Core
- * schema (v1)") doesn't exist yet — it lands in Phase 3 with Stripe billing
- * sync (docs/ROADMAP.md). This file stubs the *implementation* only; the
- * function signature and every call site (components/shell/nav-items.ts,
- * and any future module route) already call this exactly the way they will
- * once the table exists, so nothing needs rewiring later — see the TODO
- * inside `hasFeature` for the exact swap.
+ * Feature-flag / entitlement gating (CLAUDE.md rule 3: "Feature access goes
+ * through hasFeature(org, key) — never assume a module is available").
+ * Backed by `organization_features` (docs/ARCHITECTURE.md "Feature flags").
+ * The module catalog (tier / requires / shipped) lives in
+ * `lib/rbac/module-catalog.ts`.
  */
 
 /**
  * Minimal shape `hasFeature` needs. Deliberately loose (just an id) so any
- * organization-shaped object — a full row from `organizations`, a session's
- * `organization`, a test fixture — can be passed without an import cycle on
- * a "real" Organization type.
+ * organization-shaped object — a full `organizations` row, a session's
+ * `organization`, a test fixture — can be passed.
  */
 export interface FeatureOrganization {
   id: string;
 }
 
 /**
- * Feature keys. Kept 1:1 with `moduleKey` in components/shell/nav-items.ts
- * and with `Module` in lib/rbac/permissions.ts today (see the comment on
- * `Module` for why that's a coincidence worth not over-relying on) — and
- * will be 1:1 with `organization_features.feature_key` once that table
- * exists.
+ * Feature keys. Same strings as `organization_features.feature_key` and (for
+ * the nav) `moduleKey` in components/shell/nav-items.ts.
+ *
+ * `reporting` and `billing` are unbuilt placeholders; `platform` is the
+ * platform-admin special case (resolved via `isPlatformAdmin`, never via
+ * `hasFeature`, see `resolveNavItems()`).
  */
 export type FeatureKey =
   | "dashboard"
   | "clients"
   | "assets"
-  | "contracts"
-  | "planning"
-  // Checklists (issue #14, second stage) — see
-  // `lib/checklist-templates/actions.ts` and
-  // `app/(app)/work-orders/checklist-actions.ts`, and
-  // `lib/rbac/permissions.ts`'s dedicated `checklists` module. Not a
-  // `nav-items.ts` entry of its own (checklist templates are configured
-  // under Settings, and checklist instances live inside a work order's own
-  // detail page), but every one of those files' Server Actions still calls
-  // `hasFeature()` first per CLAUDE.md rule 3.
-  | "checklists"
-  // Quotes / Estimates (issue #16, second stage) — see
-  // `app/(app)/quotes/actions.ts` and `lib/rbac/permissions.ts`'s dedicated
-  // `quotes` module. Every action in that file calls `hasFeature()` first per
-  // CLAUDE.md rule 3.
-  | "quotes"
-  // Invoicing (issue #119) — see `lib/rbac/permissions.ts`'s dedicated
-  // `invoicing` module (that module's own comment explains why this is a
-  // separate key from both `quotes` and the still-unshipped `billing`
-  // placeholder). No `nav-items.ts` entry of its own: this is a button/panel
-  // on the existing Quote detail page, not a new top-level sidebar
-  // destination. Every invoice Server Action (once `api-backend-engineer`
-  // lands them) must call `hasFeature()` first per CLAUDE.md rule 3.
-  | "invoicing"
-  // Activities (issue #59) — see
-  // `lib/rbac/permissions.ts`'s dedicated `activities` module and
-  // `components/shell/nav-items.ts`'s "Activities" nav entry. Every Server
-  // Action for this module must call `hasFeature()` first per CLAUDE.md
-  // rule 3.
-  | "activities"
-  // Articles / "Artikel database" (issue #92) — a NEW standalone
-  // product/parts-catalog module (`articles`, `article_groups`,
-  // `article_components`; supabase/migrations/20260829100000_articles_core.sql
-  // + .../20260829110000_articles_id_insert_grants.sql) with its own
-  // dedicated `lib/rbac/permissions.ts` `articles` module. Every Server
-  // Action for this module (once `api-backend-engineer` lands them) must call
-  // `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
-  // `activities`/`quotes`/`checklists`/`contracts`/`planning` above.
   | "articles"
-  // Inventory / "Voorraad" (issue #181, "[Story] Locaties voorraad
-  // beheren") — a NEW standalone per-engineer warehouse/stock module
-  // (`warehouses`, `warehouse_stock`;
-  // supabase/migrations/20260916090000_warehouses_and_stock.sql) with its
-  // own dedicated `lib/rbac/permissions.ts` `inventory` module and
-  // `components/shell/nav-items.ts` "Voorraad" nav entry. Every Server
-  // Action for this module (once `api-backend-engineer` lands them) must
-  // call `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
-  // `articles`/`activities`/`quotes`/`checklists`/`contracts`/`planning`
-  // above.
-  | "inventory"
-  | "reporting"
-  // Placeholder from the original matrix (issue #4) for a future, broader
-  // tenant billing/payment-tracking module ("Billing" — see
-  // `components/shell/nav-items.ts`) — NOT the same thing as `invoicing`
-  // above (issue #119's PDF-invoice-from-a-quote capability, which has its
-  // own key). Deliberately kept OUT of `SHIPPED_FEATURES` below: this module
-  // has no page/actions of its own yet, and shipping it would light up the
-  // dormant "Billing" nav entry for every role.
-  | "billing"
-  // Tenant-configurable reference lists (picklists) — see
-  // lib/reference-lists/actions.ts and lib/rbac/permissions.ts's `settings`
-  // module. Not a `nav-items.ts` entry today (no dedicated Settings page
-  // yet — a concurrent frontend effort owns that), but every
-  // reference-lists Server Action still calls `hasFeature()` first per
-  // CLAUDE.md rule 3.
+  | "activities"
+  | "planning"
   | "settings"
-  // Platform (issue #45) — Platform Admin's own cross-tenant settings stub
-  // (app/(app)/platform-settings/page.tsx) and the "Platform" nav group in
-  // components/shell/nav-items.ts. Deliberately NOT added to
-  // `SHIPPED_FEATURES` below and NOT resolved through `hasFeature()` at all:
-  // `resolveNavItems()` special-cases this key to gate on
-  // `isPlatformAdmin` instead (see that file), because `hasFeature` always
-  // returns `false` when `organization` is `null` — true for a
-  // platform-admin-only account, which is exactly the account this key
-  // exists for. Kept in this union only so `NavItem.moduleKey` (typed
-  // `FeatureKey`) can hold it, matching this file's own "same string keys
-  // as moduleKey/Module" convention.
+  | "contracts"
+  | "quotes"
+  | "invoicing"
+  | "checklists"
+  | "inventory"
+  | "meters"
+  | "preventive_maintenance"
+  | "reporting"
+  | "billing"
   | "platform";
 
 /**
- * Phase 0 stand-in for "the org's Stripe subscription entitles them to this
- * module": since there's no billing yet, entitlement is really just "does
- * this module have a shipped implementation at all" (docs/ROADMAP.md
- * phasing) — gated purely on the feature key, not on which organization is
- * asking. Update this set as modules ship; it goes away entirely once the
- * TODO below is done.
- *
- * `clients` and `assets` added here as part of Phase 1 Core CRM (issues
- * #8/#9): `app/(app)/clients/actions.ts` and `app/(app)/assets/actions.ts`
- * both call `hasFeature()` at the top of every action (CLAUDE.md rule 3) —
- * leaving these two out of this set would make every one of those actions
- * unconditionally fail with "module not enabled", which would be wrong now
- * that the modules are actually shipping.
- *
- * `settings` added alongside the reference-lists feature (tenant-
- * configurable Asset Type/Status picklists, `lib/reference-lists/actions.ts`)
- * — it ships in the same PR as `assets`' migration to `type_id`/`status_id`,
- * so it needs to be usable immediately, same reasoning as `clients`/`assets`
- * above.
- *
- * `planning` added alongside the Work Orders module
- * (`app/(app)/work-orders/actions.ts`, issue #13): every one of that file's
- * actions calls `hasFeature()` first per CLAUDE.md rule 3, so leaving
- * `planning` out of this set would make the module unconditionally fail with
- * "module not enabled" now that it's actually shipping — same reasoning as
- * `clients`/`assets`/`settings` above.
- *
- * `contracts` added alongside the Contracts module (`app/(app)/contracts/
- * actions.ts`, issue #33): every one of that file's actions (and the
- * `components/shell/nav-items.ts` entry) calls `hasFeature()` first per
- * CLAUDE.md rule 3 — same reasoning as `planning` above.
- *
- * `checklists` added alongside the Checklists module (issue #14, second
- * stage — `lib/checklist-templates/actions.ts` and
- * `app/(app)/work-orders/checklist-actions.ts`): every action in both of
- * those files calls `hasFeature()` first per CLAUDE.md rule 3 — same
- * reasoning as `contracts`/`planning` above. This exact omission (shipping a
- * module's actions/RBAC row without adding its key here) has already broken
- * `planning` once this session and was caught just before landing for
- * `contracts` — don't repeat it a third time.
- *
- * `quotes` added alongside the Quotes module (issue #16, second stage —
- * `app/(app)/quotes/actions.ts`): every action in that file calls
- * `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
- * `checklists`/`contracts`/`planning` above. Same omission flagged again in
- * `supabase/migrations/20260824090000_quotes_core.sql`'s hand-off notes —
- * double-checked it's actually in this Set, not just the `FeatureKey` union.
- *
- * `activities` added alongside the Activities module (issue #59
- * — `supabase/migrations/20260828090000_activities_core.sql`'s RLS already
- * shipped): every Activities Server Action (once `api-backend-engineer`
- * lands them) will call `hasFeature()` first per CLAUDE.md rule 3 — same
- * reasoning as `quotes`/`checklists`/`contracts`/`planning` above. Adding the
- * key here now (rather than waiting for the actions file to exist) avoids
- * repeating the exact omission flagged twice already in this comment block.
- *
- * `articles` added alongside the Articles module (issue #92 — schema already
- * live: `supabase/migrations/20260829100000_articles_core.sql` +
- * `.../20260829110000_articles_id_insert_grants.sql`): once
- * `api-backend-engineer` lands `app/(app)/articles/actions.ts`, every action
- * in that file (and the `components/shell/nav-items.ts` entry) will call
- * `hasFeature()` first per CLAUDE.md rule 3 — same reasoning as
- * `activities`/`quotes`/`checklists`/`contracts`/`planning` above. Adding the
- * key here now (rather than waiting for the actions file to exist) avoids
- * repeating the exact omission flagged repeatedly in this comment block.
- *
- * `inventory` added alongside the Inventory / "Voorraad" module (issue #181 —
- * schema already live: `supabase/migrations/20260916090000_warehouses_and_
- * stock.sql`): once `api-backend-engineer` lands
- * `app/(app)/inventory/actions.ts`, every action in that file (and the
- * `components/shell/nav-items.ts` "Voorraad" entry) will call `hasFeature()`
- * first per CLAUDE.md rule 3 — same reasoning as
- * `articles`/`activities`/`quotes`/`checklists`/`contracts`/`planning`
- * above. Adding the key here now (rather than waiting for the actions file
- * to exist) avoids repeating the exact omission flagged repeatedly in this
- * comment block.
- *
- * `invoicing` added alongside the Invoicing capability (issue #119 —
- * `invoices` table/Storage bucket landing in a concurrent
- * db-schema-architect migration): once `api-backend-engineer` lands the
- * generate/read/delete invoice Server Actions on the Quote detail page,
- * every one of them will call `hasFeature()` first per CLAUDE.md rule 3 —
- * same reasoning as `articles`/`activities`/`quotes`/`checklists`/
- * `contracts`/`planning` above. Deliberately NOT the same as adding `billing`
- * here — `billing` stays out of this set (see its `FeatureKey` comment
- * above): it's still an unimplemented placeholder, and adding it now would
- * light up the dormant "Billing" nav entry (`components/shell/
- * nav-items.ts`, pointing at a `/billing` route that doesn't exist yet) for
- * every role, which this story does not intend.
+ * Keys with a shipped implementation. A key outside this set is never
+ * available, whatever `organization_features` says (keep in sync with
+ * `shipped` in `module-catalog.ts` and `feature_catalog.shipped` in the DB).
+ * `reporting`, `billing` and `platform` are intentionally absent;
+ * `preventive_maintenance` is catalogued but not shipped yet.
  */
-const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
+export const SHIPPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   "dashboard",
   "clients",
   "assets",
-  "settings",
+  "articles",
+  "activities",
   "planning",
+  "settings",
   "contracts",
-  "checklists",
   "quotes",
   "invoicing",
-  "activities",
-  "articles",
+  "checklists",
   "inventory",
+  "meters",
 ]);
 
 /**
+ * ONE query for all enabled feature keys of an organization, memoized per
+ * request with React `cache()` (same pattern as `getCurrentSession`, #141),
+ * so dozens of `hasFeature` calls in one render cost a single round trip.
+ * Runs under the user's session: RLS lets members read their own org's rows
+ * and platform admins read all.
+ */
+export const getOrganizationFeatureKeys = cache(
+  async (organizationId: string): Promise<ReadonlySet<string>> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("organization_features")
+      .select("feature_key")
+      .eq("organization_id", organizationId)
+      .eq("enabled", true);
+    if (error || !data) return new Set<string>();
+    return new Set(data.map((row: { feature_key: string }) => row.feature_key));
+  },
+);
+
+/**
  * `hasFeature(organization, featureKey)` — the one gate every module
- * route/component/server-action must check before treating a module as
- * available (CLAUDE.md rule 3).
- *
- * TODO(auth-rbac-engineer / billing-engineer, Phase 3 — docs/ROADMAP.md):
- * once `organization_features (organization_id, feature_key, enabled)`
- * exists (synced from Stripe webhooks), replace the body with:
- *
- *   import { createClient } from "@/lib/supabase/server";
- *   const supabase = await createClient();
- *   const { data } = await supabase
- *     .from("organization_features")
- *     .select("enabled")
- *     .eq("organization_id", organization.id)
- *     .eq("feature_key", featureKey)
- *     .maybeSingle();
- *   return data?.enabled ?? false;
- *
- * Every call site already does `await hasFeature(...)` and already passes a
- * real organization — this swap is the only change needed.
+ * route/component/server-action must check (CLAUDE.md rule 3). True iff the
+ * key is shipped AND enabled for the organization. Fails closed (false) on
+ * no organization or a query error.
  */
 export async function hasFeature(
   organization: FeatureOrganization | null | undefined,
   featureKey: FeatureKey,
 ): Promise<boolean> {
   if (!organization) return false;
-  return SHIPPED_FEATURES.has(featureKey);
+  if (!SHIPPED_FEATURES.has(featureKey)) return false;
+  const enabled = await getOrganizationFeatureKeys(organization.id);
+  return enabled.has(featureKey);
+}
+
+/**
+ * The whole effective set (shipped AND enabled) for callers that need all of
+ * it at once: nav, Subscription page, the PWA features route.
+ */
+export async function getEnabledFeatures(
+  organization: FeatureOrganization | null | undefined,
+): Promise<FeatureKey[]> {
+  if (!organization) return [];
+  const enabled = await getOrganizationFeatureKeys(organization.id);
+  return [...SHIPPED_FEATURES].filter((key) => enabled.has(key));
 }

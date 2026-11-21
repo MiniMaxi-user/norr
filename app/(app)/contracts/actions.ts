@@ -4,7 +4,11 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModuleContext } from "@/lib/actions/module-context";
 import { ok, fail, mapDbError, clampLimit, clampOffset, type ActionResult } from "@/lib/actions/result";
+import { hasFeature } from "@/lib/rbac/features";
 import { can, canAny } from "@/lib/rbac/permissions";
+import { assetVolumeReadingValueSchema } from "@/lib/asset-volumes/schema";
+import { coveredAssetsForCounter, loadCounterData } from "../quotes/counter-data";
+import { addDaysIso } from "../quotes/contract-quote-helpers";
 import {
   contractCreateSchema,
   contractStatusSchema,
@@ -203,8 +207,18 @@ export interface ContractArticleRuleRecord {
  * not the full asset detail (the frontend can call `getAsset(assetId)` for
  * that if a user drills in). */
 export interface ContractAssetRecord {
+  /** Link id (issue #274). An asset can be linked more than once over time (removed, then added again). */
+  id: string;
   contract_id: string;
   asset_id: string;
+  /** Last covered day when the asset was removed from the (Active) contract; null = still linked. */
+  removed_on: string | null;
+  removed_at: string | null;
+  removed_by: string | null;
+  /** Who removed it (users row); null when open or the user is not readable/deleted. */
+  removed_by_user: { full_name: string | null; email: string | null } | null;
+  /** Contract start or the date the asset was added to an already active contract (null = from the start). */
+  added_on: string | null;
   organization_id: string;
   created_by: string | null;
   created_at: string;
@@ -229,7 +243,7 @@ const CONTRACT_SELECT =
 
 /** Shared select shape for every query returning a `ContractAssetRecord`. */
 const CONTRACT_ASSET_SELECT =
-  "*, asset:assets(id, name, client_id, site_id, serial_number, external_reference, asset_model:asset_models!assets_model_id_fkey(name), asset_brand:reference_list_items!assets_brand_item_id_fkey(label))";
+  "*, removed_by_user:users!contract_assets_removed_by_fkey(full_name, email), asset:assets(id, name, client_id, site_id, serial_number, external_reference, asset_model:asset_models!assets_model_id_fkey(name), asset_brand:reference_list_items!assets_brand_item_id_fkey(label))";
 
 const uuidSchema = z.string().uuid("Invalid id.");
 
@@ -581,6 +595,9 @@ export async function getContractBaselineStatus(
     return fail("You do not have permission to view this contract.");
   }
 
+  // Meters off: no counters, so no baseline readings are ever required (#247).
+  if (!(await hasFeature(ctx.context.session.organization, "meters"))) return ok({ missing: [] });
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("contract_missing_baseline_readings", {
     p_contract_id: idResult.data,
@@ -856,6 +873,7 @@ export async function countContractsForAsset(assetId: string): Promise<ActionRes
     .from("contract_assets")
     .select("contract_id, contract:contracts!inner(status)", { count: "exact", head: true })
     .eq("asset_id", idResult.data)
+    .is("removed_on", null)
     .eq("contract.status", "active");
 
   if (error) return fail(mapDbError(error));
@@ -915,6 +933,7 @@ export async function listContractsForAsset(assetId: string): Promise<ActionResu
     .from("contract_assets")
     .select(`contract:contracts!inner(${CONTRACT_SELECT})`)
     .eq("asset_id", idResult.data)
+    .is("removed_on", null)
     .eq("contract.status", "active")
     .order("created_at", { ascending: false });
 
@@ -980,9 +999,14 @@ export interface AssetContractCoverage {
  */
 export async function listAssetContractCoverage(
   assetId: string,
+  /** Issue #274: coverage on this date (YYYY-MM-DD, e.g. a work order's date). Without it only OPEN links count
+   * (current coverage); with it a link removed on or after the date still covers. */
+  onDate?: string,
 ): Promise<ActionResult<{ coverage: AssetContractCoverage[] }>> {
   const idResult = uuidSchema.safeParse(assetId);
   if (!idResult.success) return fail("Invalid asset id.");
+  if (onDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(onDate)) return fail("Invalid date.");
+  const removedFilter = onDate ? `removed_on.is.null,removed_on.gte.${onDate}` : null;
 
   const ctx = await requireModuleContext("contracts");
   if (!ctx.ok) return fail(ctx.error);
@@ -998,6 +1022,7 @@ export async function listAssetContractCoverage(
     .from("contract_assets")
     .select(`contract:contracts!inner(${CONTRACT_SELECT})`)
     .eq("asset_id", idResult.data)
+    .or(removedFilter ?? "removed_on.is.null")
     .eq("contract.status", "active")
     .order("created_at", { ascending: false });
   if (directError) return fail(mapDbError(directError));
@@ -1040,6 +1065,7 @@ export async function listAssetContractCoverage(
         .from("contract_assets")
         .select(`asset_id, contract:contracts!inner(${CONTRACT_SELECT})`)
         .in("asset_id", ancestorIds)
+        .or(removedFilter ?? "removed_on.is.null")
         .eq("contract.status", "active")
         .order("created_at", { ascending: false }),
     ]);
@@ -1135,7 +1161,7 @@ export async function linkContractAsset(
     .select("status")
     .eq("id", parsed.data.contractId)
     .maybeSingle<{ status: ContractStatus }>();
-  if (contractRow?.status === "active") {
+  if (contractRow?.status === "active" && (await hasFeature(ctx.context.session.organization, "meters"))) {
     const today = new Date().toISOString().slice(0, 10);
     const [{ data: missingRows }, { data: coveredRows }] = await Promise.all([
       supabase.rpc("contract_missing_baseline_readings_at", {
@@ -1145,8 +1171,8 @@ export async function linkContractAsset(
       supabase.rpc("contract_covered_assets", { p_contract_id: parsed.data.contractId }),
     ]);
     const addedTree = new Set(
-      ((coveredRows ?? []) as { asset_id: string; root_asset_id: string }[])
-        .filter((row) => row.root_asset_id === parsed.data.assetId)
+      ((coveredRows ?? []) as { asset_id: string; root_asset_id: string; coverage_end: string | null }[])
+        .filter((row) => row.root_asset_id === parsed.data.assetId && row.coverage_end === null)
         .map((row) => row.asset_id),
     );
     missingBaseline = toMissingBaseline(missingRows).filter((m) => addedTree.has(m.assetId));
@@ -1159,17 +1185,103 @@ export async function linkContractAsset(
 }
 
 /**
- * Unlinks an asset from a contract (deletes the `contract_assets` row).
- * Owner/finance only, matching the DB's
- * `contract_assets_delete_owner_or_finance` policy. There is no "update" for
- * this link (see the migration's design note 3) — to change either side,
- * unlink then link again.
+ * Is the asset (directly or as a component) covered by the contract on `date` (issue #274)? Open coverage always
+ * counts; a removed asset only up to and including its removal date. Wraps `asset_covered_by_contract_on`; use it
+ * for work-order coverage (a work order dated after the removal date is not covered). Ignores the contract status.
  */
-export async function unlinkContractAsset(
+export async function isAssetCoveredByContractOn(
   contractId: string,
   assetId: string,
-): Promise<ActionResult<{ contractId: string; assetId: string }>> {
-  const parsed = linkContractAssetSchema.safeParse({ contractId, assetId });
+  date: string,
+): Promise<ActionResult<{ covered: boolean }>> {
+  const parsed = z
+    .object({ contractId: uuidSchema, assetId: uuidSchema, date: isoDateString })
+    .safeParse({ contractId, assetId, date });
+  if (!parsed.success) return fail("Invalid input.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+  if (!canAny(ctx.context.actor, "contracts", ["read"])) {
+    return fail("You do not have permission to view this contract.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("asset_covered_by_contract_on", {
+    p_contract_id: parsed.data.contractId,
+    p_asset_id: parsed.data.assetId,
+    p_date: parsed.data.date,
+  });
+  if (error) return fail(mapDbError(error));
+  return ok({ covered: data === true });
+}
+
+// ---------------------------------------------------------------------------
+// Removing an asset from a contract (issue #274)
+// ---------------------------------------------------------------------------
+
+const isoDateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.")
+  .refine(
+    (value) => new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value,
+    "Enter a valid date.",
+  );
+
+const removeContractAssetSchema = z.object({
+  contractId: z.string().uuid("Invalid contract id."),
+  assetId: z.string().uuid("Invalid asset id."),
+  /** Last covered day (UTC date), from the asset's coverage start up to today. Required for an Active
+   * contract, ignored for a Draft one. */
+  removedOn: isoDateString.optional(),
+  /** Closing readings on `removedOn`; required for every covered asset x counter without an accepted
+   * reading that day (see `getContractAssetRemoval`). */
+  readings: z
+    .array(
+      z.object({
+        assetId: z.string().uuid("Invalid asset id."),
+        volumeItemId: z.string().uuid("Invalid counter."),
+        value: assetVolumeReadingValueSchema,
+      }),
+    )
+    .max(2000)
+    .default([]),
+});
+
+export interface RemoveContractAssetInput {
+  /** Last covered day (YYYY-MM-DD, UTC). Required for an Active contract. */
+  removedOn?: string;
+  /** Closing readings on removedOn (value is a number or numeric string). */
+  readings?: { assetId: string; volumeItemId: string; value: number | string }[];
+}
+
+export interface RemoveContractAssetResult {
+  contractId: string;
+  assetId: string;
+  /** `deleted` = Draft contract (link removed); `removed` = Active contract (link kept as history with removed_on). */
+  mode: "deleted" | "removed";
+  removedOn: string | null;
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Removes an asset from a contract through the `remove_contract_asset` RPC (replaces `unlinkContractAsset`).
+ * Owner/finance only (same gate as before; the RPC checks the roles too).
+ *  - Draft contract: the link is deleted, `removedOn`/`readings` are ignored.
+ *  - Active contract: `removedOn` is the last covered day (coverage start .. today, after the last settled
+ *    counter window) and a closing reading is REQUIRED per covered asset (incl. components) x counter that an
+ *    accepted reading does not already cover on that day. The link stays as history (`removed_on`).
+ *  - Ended contract: refused.
+ * The DB messages (date out of range, "Missing closing readings: ...", ...) are readable and passed through.
+ */
+export async function removeContractAsset(
+  contractId: string,
+  assetId: string,
+  input: RemoveContractAssetInput = {},
+): Promise<ActionResult<RemoveContractAssetResult>> {
+  const parsed = removeContractAssetSchema.safeParse({ contractId, assetId, ...input });
   if (!parsed.success) {
     return fail("Please fix the highlighted fields.", parsed.error.flatten().fieldErrors);
   }
@@ -1178,24 +1290,219 @@ export async function unlinkContractAsset(
   if (!ctx.ok) return fail(ctx.error);
 
   if (!can(ctx.context.actor, "contracts", "delete")) {
-    return fail("Only an owner or finance user can unlink assets from a contract.");
+    return fail("Only an owner or finance user can remove assets from a contract.");
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("contract_assets")
-    .delete()
-    .eq("contract_id", parsed.data.contractId)
-    .eq("asset_id", parsed.data.assetId)
-    .select("contract_id, asset_id")
-    .maybeSingle();
-
-  if (error) return fail(mapDbError(error));
-  if (!data) {
-    return fail("This asset is not linked to the contract, or you do not have permission to unlink it.");
+  const { data: contractRow, error: contractError } = await supabase
+    .from("contracts")
+    .select("status")
+    .eq("id", parsed.data.contractId)
+    .maybeSingle<{ status: ContractStatus }>();
+  if (contractError) return fail(mapDbError(contractError));
+  if (!contractRow) return fail("Contract not found.");
+  if (contractRow.status === "ended") return fail("An asset cannot be removed from an ended contract.");
+  if (contractRow.status === "active" && !parsed.data.removedOn) {
+    return fail("Choose the removal date.", { removedOn: ["Choose the removal date."] });
   }
-  return ok({ contractId: data.contract_id as string, assetId: data.asset_id as string });
+
+  const { error } = await supabase.rpc("remove_contract_asset", {
+    p_contract_id: parsed.data.contractId,
+    p_asset_id: parsed.data.assetId,
+    p_removed_on: contractRow.status === "active" ? parsed.data.removedOn : null,
+    // Meters off: no closing readings are asked or stored (#247).
+    p_readings: (await hasFeature(ctx.context.session.organization, "meters") ? parsed.data.readings : []).map((r) => ({
+      asset_id: r.assetId,
+      volume_item_id: r.volumeItemId,
+      value: r.value,
+    })),
+  });
+  if (error) {
+    return fail(error.code === "23514" || error.code === "42501" || error.code === "P0002" ? error.message : mapDbError(error));
+  }
+
+  return ok({
+    contractId: parsed.data.contractId,
+    assetId: parsed.data.assetId,
+    mode: contractRow.status === "active" ? "removed" : "deleted",
+    removedOn: contractRow.status === "active" ? (parsed.data.removedOn ?? null) : null,
+  });
 }
+
+/** One counter reading the removal dialog asks for (covered asset incl. components x counter of a volume line). */
+export interface RemovalReadingRow {
+  assetId: string;
+  assetName: string;
+  serialNumber: string | null;
+  volumeItemId: string;
+  counterLabel: string;
+  /** Latest accepted reading before the removal date. */
+  lastReading: { value: number; readAt: string } | null;
+  /** Accepted reading that already exists on the removal date: needs no input. */
+  closingReading: { value: number; readAt: string } | null;
+  /** True when `closingReading` exists; every other row needs a value in `removeContractAsset({ readings })`. */
+  resolved: boolean;
+}
+
+export interface ContractAssetRemovalInfo {
+  contractId: string;
+  contractNumber: string;
+  status: ContractStatus;
+  assetId: string;
+  assetName: string;
+  /** First day the asset was covered: greatest(contract start, date added). */
+  coverageStart: string;
+  /** Earliest allowed removal date: the coverage start, or the day after the last settled counter window. */
+  minDate: string;
+  /** Latest allowed removal date: today (UTC). Never in the future. */
+  maxDate: string;
+  /** Default removal date (today). */
+  defaultDate: string;
+  /** End of the last settled counter window of the contract; the removal date must be after it. */
+  lastSettledEnd: string | null;
+  /** The date the rows below were computed for (the requested `removedOn`, else the default). */
+  removedOn: string;
+  /** Null when `removedOn` is allowed, else why not (bounds). */
+  dateError: string | null;
+  /** True when the contract has counter lines: closing readings apply. Draft/ended contracts: always false/empty. */
+  hasCounterLines: boolean;
+  /** Reading rows for `removedOn`; empty for a Draft contract (nothing needed) or when there are no counters. */
+  readingRows: RemovalReadingRow[];
+  /** Number of rows without an existing closing reading. */
+  missingReadings: number;
+}
+
+/**
+ * Everything the "Remove asset from contract" dialog needs: date bounds and, for an Active contract with counter
+ * lines, the closing-reading rows for the chosen date (same style as the End contract page rows). `removedOn`
+ * defaults to today; call again when the user changes the date (rows depend on the date: an accepted reading on
+ * that day resolves a row). Read-only; same gate as `removeContractAsset`.
+ */
+export async function getContractAssetRemoval(
+  contractId: string,
+  assetId: string,
+  removedOn?: string,
+): Promise<ActionResult<ContractAssetRemovalInfo>> {
+  const idsResult = z.object({ contractId: uuidSchema, assetId: uuidSchema }).safeParse({ contractId, assetId });
+  if (!idsResult.success) return fail("Invalid id.");
+  if (removedOn !== undefined && !isoDateString.safeParse(removedOn).success) return fail("Enter a valid date.");
+
+  const ctx = await requireModuleContext("contracts");
+  if (!ctx.ok) return fail(ctx.error);
+  if (!can(ctx.context.actor, "contracts", "delete")) {
+    return fail("Only an owner or finance user can remove assets from a contract.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const [{ data: contract, error: contractError }, { data: link, error: linkError }] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select("id, contract_number, status, start_date")
+      .eq("id", idsResult.data.contractId)
+      .maybeSingle<{ id: string; contract_number: string; status: ContractStatus; start_date: string }>(),
+    supabase
+      .from("contract_assets")
+      .select("id, added_on, asset:assets(name)")
+      .eq("contract_id", idsResult.data.contractId)
+      .eq("asset_id", idsResult.data.assetId)
+      .is("removed_on", null)
+      .maybeSingle<{ id: string; added_on: string | null; asset: { name: string } | null }>(),
+  ]);
+  if (contractError) return fail(mapDbError(contractError));
+  if (linkError) return fail(mapDbError(linkError));
+  if (!contract) return fail("Contract not found.");
+  if (!link) return fail("This asset is not linked to the contract.");
+
+  const today = utcToday();
+  const coverageStart = link.added_on && link.added_on > contract.start_date ? link.added_on : contract.start_date;
+
+  const { data: ledger, error: ledgerError } = await supabase
+    .from("contract_counter_settlements")
+    .select("period_end")
+    .eq("contract_id", contract.id)
+    .order("period_end", { ascending: false })
+    .limit(1);
+  if (ledgerError) return fail(mapDbError(ledgerError));
+  const lastSettledEnd = ((ledger ?? [])[0]?.period_end as string | undefined) ?? null;
+
+  const minDate = lastSettledEnd && addDaysIso(lastSettledEnd, 1) > coverageStart ? addDaysIso(lastSettledEnd, 1) : coverageStart;
+  const date = removedOn ?? today;
+  let dateError: string | null = null;
+  if (date > today) dateError = "The removal date cannot be in the future.";
+  else if (date < coverageStart) dateError = `The removal date cannot be before the asset was covered (${coverageStart}).`;
+  else if (lastSettledEnd && date <= lastSettledEnd) {
+    dateError = `Counter usage is already settled up to ${lastSettledEnd}; choose a later date.`;
+  }
+
+  const base: ContractAssetRemovalInfo = {
+    contractId: contract.id,
+    contractNumber: contract.contract_number,
+    status: contract.status,
+    assetId: idsResult.data.assetId,
+    assetName: link.asset?.name ?? "",
+    coverageStart,
+    minDate,
+    maxDate: today,
+    defaultDate: today,
+    lastSettledEnd,
+    removedOn: date,
+    dateError,
+    hasCounterLines: false,
+    readingRows: [],
+    missingReadings: 0,
+  };
+  // Meters off: no counters, so no closing readings are asked (#247).
+  if (contract.status !== "active" || !(await hasFeature(ctx.context.session.organization, "meters"))) return ok(base);
+
+  const { data: lineRows, error: linesError } = await supabase
+    .from("contract_line_items")
+    .select("volume_item_id, volume_item:reference_list_items!contract_line_items_volume_item_id_fkey(label)")
+    .eq("contract_id", contract.id)
+    .eq("is_volume", true)
+    .not("volume_item_id", "is", null);
+  if (linesError) return fail(mapDbError(linesError));
+  const counters = new Map<string, string>();
+  for (const row of (lineRows ?? []) as unknown as { volume_item_id: string; volume_item: { label: string } | null }[]) {
+    counters.set(row.volume_item_id, row.volume_item?.label ?? "Counter");
+  }
+  if (counters.size === 0) return ok(base);
+
+  const loaded = await loadCounterData(
+    supabase,
+    [{ id: contract.id, startDate: contract.start_date, volumeItemIds: [...counters.keys()] }],
+    date,
+  );
+  if ("error" in loaded) return fail(`Counter readings could not be loaded (${loaded.error}).`);
+
+  const readingRows: RemovalReadingRow[] = [];
+  for (const [volumeItemId, counterLabel] of counters) {
+    for (const asset of coveredAssetsForCounter(loaded.data, contract.id, volumeItemId, { openOnly: true })) {
+      if (asset.contractAssetId !== link.id) continue; // only this link's asset + components
+      const valid = (loaded.data.readings.get(`${asset.id}|${volumeItemId}`) ?? []).filter((r) => !r.needsReview);
+      const closing = valid.find((r) => r.readAt.slice(0, 10) === date) ?? null;
+      const last = valid.find((r) => r.readAt.slice(0, 10) < date) ?? null;
+      readingRows.push({
+        assetId: asset.id,
+        assetName: asset.name,
+        serialNumber: asset.serialNumber,
+        volumeItemId,
+        counterLabel,
+        lastReading: last ? { value: last.value, readAt: last.readAt } : null,
+        closingReading: closing ? { value: closing.value, readAt: closing.readAt } : null,
+        resolved: Boolean(closing),
+      });
+    }
+  }
+  readingRows.sort((a, b) => a.assetName.localeCompare(b.assetName) || a.counterLabel.localeCompare(b.counterLabel));
+
+  return ok({
+    ...base,
+    hasCounterLines: true,
+    readingRows,
+    missingReadings: readingRows.filter((r) => !r.resolved).length,
+  });
+}
+
 
 // ---------------------------------------------------------------------------
 // Contract line items — the `contract_line_items` sub-entity (issue #122):
@@ -1319,7 +1626,8 @@ export async function listContractCounterOptions(
   const { data: links, error: linksError } = await supabase
     .from("contract_assets")
     .select("asset_id")
-    .eq("contract_id", idResult.data);
+    .eq("contract_id", idResult.data)
+    .is("removed_on", null);
   if (linksError) return fail(mapDbError(linksError));
 
   const covered = new Set<string>((links ?? []).map((l) => l.asset_id as string));

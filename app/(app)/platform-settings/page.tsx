@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { WebCard, WebDataTableEmpty, WebSettingsHeader, WebSettingsMain, WebSettingsPage } from "@yourorg/ui/web";
+import { WebCardSkeleton, WebCardStack, WebSettingsHeader, WebSettingsMain, WebSettingsPage } from "@yourorg/ui/web";
 import { getCurrentSession } from "@/lib/auth/session";
 import { canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
+import { DefaultModulesCard } from "./default-modules-card";
 
 export const metadata = { title: "Platform settings" };
 
@@ -19,8 +21,7 @@ export const metadata = { title: "Platform settings" };
  * authorization check, for consistency with how every other page in this
  * app authorizes (`lib/rbac/permissions.ts`'s `platform` module).
  *
- * No real settings content yet — an honest placeholder, per the approved
- * plan for this stage.
+ * Content: the default module bundle for new tenants (#246).
  */
 export default async function PlatformSettingsPage() {
   const session = await getCurrentSession();
@@ -33,12 +34,11 @@ export default async function PlatformSettingsPage() {
     <WebSettingsPage>
       <WebSettingsHeader breadcrumb={[{ label: "Platform settings" }]} title="Platform settings" />
       <WebSettingsMain>
-        <WebCard title="Nothing configurable yet">
-          <WebDataTableEmpty>
-            This is a placeholder. Platform-wide settings (e.g. default module bundles for new tenants, platform
-            billing) will land here in a future stage. Cross-tenant configuration for Norr&rsquo;s own operators.
-          </WebDataTableEmpty>
-        </WebCard>
+        <WebCardStack>
+          <Suspense fallback={<WebCardSkeleton rows={4} />}>
+            <DefaultModulesCard />
+          </Suspense>
+        </WebCardStack>
       </WebSettingsMain>
     </WebSettingsPage>
   );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useModuleEnabled } from "@/components/shell/module-features";
 import { toast } from "@yourorg/ui";
 import {
   WebBadge,
@@ -98,6 +99,8 @@ export function ContractEndScreen({
   timeline,
 }: ContractEndScreenProps) {
   const router = useRouter();
+  // Meters off: no closing-readings step, the later steps renumber (#247).
+  const metersEnabled = useModuleEnabled("meters");
   const [endDate, setEndDate] = useState(initialEndDate);
   const [entered, setEntered] = useState<Record<string, string>>({});
   const [balance, setBalance] = useState<ContractEndBalance | null>(initialBalance);
@@ -323,6 +326,7 @@ export function ContractEndScreen({
 
           {isSchedule || balance === null ? null : (
             <>
+              {metersEnabled ? (
               <WebCard
                 title="2. Closing readings"
                 meta={
@@ -404,10 +408,16 @@ export function ContractEndScreen({
                   </WebCardSection>
                 ) : null}
               </WebCard>
+              ) : null}
 
-              <BalanceOverview balance={balance} refreshing={refreshing} canSeeQuotes={canSeeQuotes} />
+              <BalanceOverview
+                balance={balance}
+                refreshing={refreshing}
+                canSeeQuotes={canSeeQuotes}
+                step={metersEnabled ? 3 : 2}
+              />
 
-              <WebCard title="4. Confirm">
+              <WebCard title={`${metersEnabled ? 4 : 3}. Confirm`}>
                 <WebCardSection>
                   <WebHint>
                     Creates a draft <strong>Final settlement</strong> quote and ends the contract on{" "}
@@ -442,13 +452,15 @@ function BalanceOverview({
   balance,
   refreshing,
   canSeeQuotes,
+  step,
 }: {
   balance: ContractEndBalance;
   refreshing: boolean;
   canSeeQuotes: boolean;
+  step: number;
 }) {
   return (
-    <WebCard title="3. Balance overview" meta={refreshing ? "Updating…" : undefined} aria-busy={refreshing}>
+    <WebCard title={`${step}. Balance overview`} meta={refreshing ? "Updating…" : undefined} aria-busy={refreshing}>
       <WebCardSection>
         <p className="web-dialog-section">Billing periods</p>
         {balance.periods.length === 0 ? <p className="web-dialog-text">No billing periods up to the end date.</p> : null}

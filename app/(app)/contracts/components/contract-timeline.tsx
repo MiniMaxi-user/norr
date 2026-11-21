@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { TimelineItem } from "@yourorg/ui/web";
 import type { ContractQuoteRecord } from "@/app/(app)/quotes/contract-quote-actions";
-import { formatDateTimeWeb } from "@/lib/format/web";
+import { formatDateTimeWeb, formatDateWeb } from "@/lib/format/web";
 import type { ContractAssetRecord, ContractLineItemRecord, ContractRecord } from "../actions";
 
 
@@ -42,8 +42,21 @@ export function buildContractTimeline(input: {
   }
 
   for (const link of contractAssets) {
+    if (link.removed_on && link.removed_at) {
+      events.push({
+        id: `asset-removed-${link.id}`,
+        at: link.removed_at,
+        title: (
+          <>
+            Asset removed ·{" "}
+            {link.asset ? <Link href={`/assets/${link.asset.id}`}>{link.asset.name}</Link> : "Unknown asset"} (coverage
+            until {formatDateWeb(link.removed_on)})
+          </>
+        ),
+      });
+    }
     events.push({
-      id: `asset-${link.asset_id}`,
+      id: `asset-${link.id}`,
       at: link.created_at,
       title: (
         <>

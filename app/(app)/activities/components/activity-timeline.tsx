@@ -29,6 +29,8 @@ interface Event {
 export function buildActivityTimeline(input: {
   events: ActivityEventRecord[];
   notes: ActivityNoteRecord[];
+  /** Quotes module on; off => the quote is named but not linked (#247). */
+  quotesEnabled?: boolean;
 }): TimelineItem[] {
   const events: Event[] = [];
 
@@ -43,7 +45,12 @@ export function buildActivityTimeline(input: {
     } else if (event.event_type === "quote_created" && event.related_quote) {
       title = (
         <>
-          {title} · <Link href={`/quotes/${event.related_quote.id}`}>{event.related_quote.name}</Link>
+          {title} ·{" "}
+          {input.quotesEnabled === false ? (
+            event.related_quote.name
+          ) : (
+            <Link href={`/quotes/${event.related_quote.id}`}>{event.related_quote.name}</Link>
+          )}
         </>
       );
     }

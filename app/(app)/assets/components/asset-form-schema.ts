@@ -1,5 +1,6 @@
 import type { DirtyField, EditSchema, SaveResult } from "@yourorg/ui/web-client";
 import { createAsset, updateAsset } from "../actions";
+import type { AssetErrorInfo } from "../asset-errors";
 import { draftToInput, type AssetDraft } from "./asset-draft";
 
 /**
@@ -15,7 +16,10 @@ function tooLong(label: string, value: string, max: number) {
 }
 
 export function buildAssetSchema(options: {
-  labelFor: (key: "modelId" | "typeId" | "statusId" | "siteId" | "clientId" | "brandItemId" | "subtypeId", id: string) => string;
+  labelFor: (
+    key: "modelId" | "typeId" | "statusId" | "siteId" | "clientId" | "brandItemId" | "subtypeId" | "previousAssetId",
+    id: string,
+  ) => string;
   /** New mode: the Asset ID is assigned by the database (numbering), so it is
    * not an input and not validated. */
   isNew?: boolean;
@@ -64,6 +68,10 @@ export function buildAssetSchema(options: {
       format: (value) => (value ? labelFor("statusId", value) : ""),
       validate: (value) => (value ? null : "Choose a status"),
     },
+    previousAssetId: {
+      label: "Previous asset",
+      format: (value) => (value ? labelFor("previousAssetId", value) : ""),
+    },
     externalReference: {
       label: "External reference",
       validate: (value) => tooLong("External reference", value, 200),
@@ -106,12 +114,15 @@ export async function saveAssetEdits(
   assetId: string,
   draft: AssetDraft,
   dirty: DirtyField<AssetDraft>[],
+  /** Receives the structured error of a refused save (contracts to remove the asset from, serial in use...). */
+  onErrorInfo?: (info: AssetErrorInfo | undefined) => void,
 ): Promise<SaveResult<AssetDraft>> {
   const patch: Partial<AssetDraft> = {};
   for (const entry of dirty) (patch as Record<string, unknown>)[entry.key] = draft[entry.key];
   const input = draftToInput(patch);
   if (Object.keys(input).length === 0) return { ok: true };
   const result = await updateAsset(assetId, input);
+  onErrorInfo?.(result.errorInfo);
   if (!result.data) return { ok: false, error: result.error, fieldErrors: firstFieldErrors(result.fieldErrors) };
   return { ok: true };
 }
@@ -120,8 +131,12 @@ export async function saveAssetEdits(
  * id so the page can open its read page. */
 export async function createAssetFromDraft(
   draft: AssetDraft,
+  onErrorInfo?: (info: AssetErrorInfo | undefined) => void,
 ): Promise<{ result: SaveResult<AssetDraft>; assetId?: string }> {
-  const created = await createAsset(draftToInput(draft));
+  const input = draftToInput(draft);
+  if (input.previousAssetId === null) delete input.previousAssetId;
+  const created = await createAsset(input);
+  onErrorInfo?.(created.errorInfo);
   if (!created.data) {
     return { result: { ok: false, error: created.error, fieldErrors: firstFieldErrors(created.fieldErrors) } };
   }

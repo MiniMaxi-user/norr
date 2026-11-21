@@ -6,6 +6,7 @@ import { PwaStack, WebBadge, WebStatusBadge } from "@yourorg/ui/web";
 import { AlertTriangle, Boxes, X } from "@yourorg/ui/icons";
 import { addLocalArticle, getCachedCatalog, getCachedMyStock, type LocalArticle } from "@/lib/offline/db";
 import type { MyStockItem } from "@/lib/inventory/types";
+import { useFeatures } from "@/lib/features/use-features";
 import type { CatalogArticle } from "@/lib/work-orders/types";
 
 /** Unfiltered rows shown before the engineer types a search query — this
@@ -51,6 +52,8 @@ export function ArticleCatalogSheet({
   localArticles: LocalArticle[];
   onAdded: () => void | Promise<void>;
 }) {
+  // Issue #248: stock numbers only exist with the Inventory module.
+  const showStock = useFeatures().has("inventory");
   const [catalog, setCatalog] = useState<CatalogArticle[] | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState(false);
@@ -63,6 +66,10 @@ export function ArticleCatalogSheet({
   // added, see `decrementLocalMyStockQuantity`); a live read only when this
   // device has never synced it. Re-read after every add so the number follows.
   const loadStock = useCallback(async () => {
+    if (!showStock) {
+      setStockByArticle(new Map());
+      return;
+    }
     let items = await getCachedMyStock(currentUserId);
     if (items.length === 0) {
       try {
@@ -73,7 +80,7 @@ export function ArticleCatalogSheet({
       }
     }
     setStockByArticle(new Map(items.map((item) => [item.articleId, item])));
-  }, [currentUserId]);
+  }, [currentUserId, showStock]);
 
   useEffect(() => {
     if (open) void loadStock();
