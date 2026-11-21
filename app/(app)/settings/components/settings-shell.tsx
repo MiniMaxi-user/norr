@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { WebSettingsHeader, WebSettingsMain, WebSettingsNav, WebSettingsPage } from "@yourorg/ui/web";
 import { findSettingsNavItem, SETTINGS_NAV_GROUPS } from "./settings-nav-items";
@@ -10,8 +11,8 @@ import { findSettingsNavItem, SETTINGS_NAV_GROUPS } from "./settings-nav-items";
  * marked), and on the right a header plus ONE scroll area
  * (`scrollbar-gutter: stable`) — the browser page never scrolls.
  *
- *  - `/settings` (the landing) is full width without the nav: its cards already
- *    link to every section.
+ *  - The nav is shown on every route, the landing included, and scrolls the
+ *    active section into view.
  *  - A list/tree section renders inside the frame unchanged: the frame adds a
  *    header (breadcrumb `Settings / <section>`, title = section name) and puts
  *    `children` in the scroll area.
@@ -27,8 +28,19 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLanding = pathname === "/settings";
   const current = findSettingsNavItem(pathname);
+  const activeHref = current?.item.href ?? null;
 
-  const nav = isLanding ? undefined : <WebSettingsNav groups={SETTINGS_NAV_GROUPS} activeHref={current?.item.href ?? null} />;
+  // Keep the active section visible in the nav (its own scroll area): on opening
+  // a section directly, the nav scrolls so that section is in view.
+  useEffect(() => {
+    if (!activeHref) return;
+    document
+      .querySelector<HTMLElement>('.web-settings-nav [aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeHref]);
+
+  // The nav is always shown, also on the landing, so every section is one click away.
+  const nav = <WebSettingsNav groups={SETTINGS_NAV_GROUPS} activeHref={activeHref} />;
 
   if (current?.item.ownHeader) {
     return <WebSettingsPage nav={nav}>{children}</WebSettingsPage>;
