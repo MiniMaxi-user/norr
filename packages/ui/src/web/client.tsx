@@ -192,6 +192,10 @@ export interface PageHeaderActions {
   overflow?: WebMenuItem[];
   /** The ONE navy primary action of read mode. */
   primary?: ReactNode;
+  /** A secondary (white) button of read mode, left of Edit: e.g. "Cancel" on an
+   * action page that leaves without doing anything. The action that must happen
+   * NOW never goes here: that belongs in the LivePanel. */
+  secondary?: ReactNode;
   onSave: () => void;
   onCancel: () => void;
   saving?: boolean;
@@ -417,6 +421,7 @@ export function PageHeader({
               </>
             ) : (
               <>
+                {actions.secondary ?? null}
                 {actions.canEdit ? (
                   <WebButton id="web-edit-button" onClick={actions.onEdit}>
                     <Pencil aria-hidden />

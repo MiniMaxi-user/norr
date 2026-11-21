@@ -12,6 +12,7 @@ import {
   WebDataTable,
   WebField,
   WebHint,
+  WebLinkButton,
   SidebarRows,
   type TimelineItem,
   SidebarSection,
@@ -46,6 +47,11 @@ export interface ContractEndScreenProps {
   contractId: string;
   contractNumber: string;
   startDate: string;
+  clientId: string;
+  /** Null when the client could not be loaded. */
+  clientName: string | null;
+  /** Assets linked directly to the contract (components not counted). */
+  linkedAssetCount: number;
   /** Balance computed on the server for `initialEndDate`. */
   /** `null` when the server could not compute it (see `initialError`); the date stays editable to retry. */
   initialBalance: ContractEndBalance | null;
@@ -71,6 +77,9 @@ export function ContractEndScreen({
   contractId,
   contractNumber,
   startDate,
+  clientId,
+  clientName,
+  linkedAssetCount,
   initialBalance,
   initialError,
   initialEndDate,
@@ -195,6 +204,7 @@ export function ContractEndScreen({
         onSave: () => {},
         onCancel: () => {},
         primary: null,
+        secondary: <WebLinkButton href={`/contracts/${contractId}`}>Cancel</WebLinkButton>,
       }}
     />
   );
@@ -240,6 +250,18 @@ export function ContractEndScreen({
             <SidebarSection title="Contract">
               <SidebarRows
                 rows={[
+                  {
+                    label: "Client",
+                    value: clientName ? <Link href={`/clients/${clientId}`}>{clientName}</Link> : "—",
+                  },
+                  {
+                    label: "Linked assets",
+                    value: (
+                      <Link href={`/contracts/${contractId}?tab=assets`}>
+                        {linkedAssetCount} {linkedAssetCount === 1 ? "asset" : "assets"}
+                      </Link>
+                    ),
+                  },
                   { label: "Start date", value: formatDateWeb(startDate) },
                   { label: "Current end date", value: currentEndDate ? formatDateWeb(currentEndDate) : "Open-ended" },
                 ]}
@@ -301,6 +323,14 @@ export function ContractEndScreen({
                     Needed to settle counter usage up to the end date. Readings entered here are saved as normal counter
                     readings when you complete the balance.
                   </p>
+                  {rows.length > 0 ? (
+                    <WebHint>
+                      <strong>Settle without reading</strong>: use this when a counter cannot be read (meter broken,
+                      asset already removed). That asset is left out of the counter settlement for that counter: its
+                      usage since the last settled reading is not billed, and no under-use is credited for that counter.
+                      The final balance shows a warning so it stays traceable.
+                    </WebHint>
+                  ) : null}
                   {rows.length === 0 ? (
                     <p className="web-dialog-text">This contract has no counters on covered assets, so no readings are needed.</p>
                   ) : null}
@@ -505,6 +535,12 @@ function BalanceOverview({
         <>
           <WebCardSection>
             <p className="web-dialog-section">Counter settlement</p>
+            <WebHint>
+              Usage above the included volume is billed at the line&apos;s overage price. Usage below it (under-use) is
+              only credited, at the line&apos;s sales price, when <strong>Credit under-use</strong> is on for that contract
+              line. When it is off, the line is a minimum contract: the included volume stays paid, whatever was used.
+              Under-use is never credited while readings are incomplete.
+            </WebHint>
           </WebCardSection>
           {balance.counterWindows.map((entry) => (
             <div key={`${entry.window.start}-${entry.window.end}`}>
@@ -529,6 +565,7 @@ function BalanceOverview({
                     <th scope="col" data-numeric="true">
                       Under-use
                     </th>
+                    <th scope="col">Credit under-use</th>
                     <th scope="col" data-numeric="true">
                       Amount
                     </th>
@@ -543,7 +580,17 @@ function BalanceOverview({
                       <td data-numeric="true">{formatNumberWeb(counter.overage)}</td>
                       <td data-numeric="true">
                         {formatNumberWeb(counter.underUse)}
-                        {counter.underUse > 0 && !counter.creditUnderUse ? " (not credited)" : ""}
+                      </td>
+                      <td>
+                        {!counter.creditUnderUse ? (
+                          <WebBadge variant="neutral">Off · minimum contract</WebBadge>
+                        ) : counter.underUseCreditAmount > 0 ? (
+                          <WebBadge variant="success">Credited {formatMoneyWeb(-counter.underUseCreditAmount)}</WebBadge>
+                        ) : counter.underUse > 0 ? (
+                          <WebBadge variant="warning">On · not credited (incomplete readings)</WebBadge>
+                        ) : (
+                          <WebBadge variant="neutral">On · nothing to credit</WebBadge>
+                        )}
                       </td>
                       <td data-numeric="true">
                         {formatMoneyWeb(Math.round((counter.overageAmount - counter.underUseCreditAmount) * 100) / 100)}

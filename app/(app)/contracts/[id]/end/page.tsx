@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasFeature } from "@/lib/rbac/features";
 import { can, canAccessModule, type PermissionActor } from "@/lib/rbac/permissions";
 import { getContract, listContractAssets, listContractLineItems } from "../../actions";
+import { getClient } from "@/app/(app)/clients/actions";
 import { listQuotesForContract } from "@/app/(app)/quotes/contract-quote-actions";
 import { buildContractTimeline } from "../../components/contract-timeline";
 import { getContractEndBalance } from "../../end-actions";
@@ -53,12 +54,14 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
 
   const canSeeQuotes = (await hasFeature(session.organization, "quotes")) && canAccessModule(actor, "quotes");
 
-  const [balanceResult, lineItemsResult, contractAssetsResult, quotesResult] = await Promise.all([
+  const [balanceResult, lineItemsResult, contractAssetsResult, quotesResult, clientResult] = await Promise.all([
     getContractEndBalance(id, { endDate: initialEndDate }),
     listContractLineItems(id),
     listContractAssets(id),
     canSeeQuotes ? listQuotesForContract(id) : Promise.resolve(null),
+    getClient(contract.client_id),
   ]);
+  const contractAssets = contractAssetsResult.data?.contractAssets ?? [];
 
   const lines = lineItemsResult.data?.lineItems ?? [];
   const explanation = buildInvoicingExplanation({
@@ -73,7 +76,7 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
   const timeline = buildContractTimeline({
     contract,
     lineItems: lines,
-    contractAssets: contractAssetsResult.data?.contractAssets ?? [],
+    contractAssets,
     quotes: canSeeQuotes ? (quotesResult?.data?.quotes ?? []) : null,
   });
 
@@ -82,6 +85,9 @@ export default async function EndContractPage({ params }: EndContractPageProps) 
       contractId={id}
       contractNumber={contract.contract_number}
       startDate={contract.start_date}
+      clientId={contract.client_id}
+      clientName={clientResult.data?.client.name ?? null}
+      linkedAssetCount={contractAssets.length}
       currentEndDate={contract.end_date}
       initialEndDate={initialEndDate}
       initialBalance={balanceResult.data ?? null}
